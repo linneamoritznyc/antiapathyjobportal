@@ -168,7 +168,6 @@ class DatabaseManager:
             LEFT JOIN applications a ON j.id = a.job_id
             WHERE a.id IS NULL AND j.link_status = 'active'
             AND ({location_filter})
-            AND (j.deadline IS NULL OR j.deadline >= datetime('now', 'localtime'))
             ORDER BY 
                 CASE j.priority 
                     WHEN 'akut' THEN 1 
@@ -345,7 +344,7 @@ class JobScraper:
                     "startIndex": 0,
                     "source": "pb"
                 },
-                timeout=10
+                timeout=30
             )
             
             if response.status_code == 200:
@@ -449,7 +448,7 @@ Returnera ENDAST JSON, ingen annan text."""
                     "max_tokens": 500,
                     "messages": [{"role": "user", "content": prompt}]
                 },
-                timeout=10
+                timeout=30
             )
             
             if response.status_code == 200:
@@ -534,7 +533,7 @@ Skriv på svenska. Ingen inledning, bara meningen."""
                     "max_tokens": 100,
                     "messages": [{"role": "user", "content": prompt}]
                 },
-                timeout=10
+                timeout=30
             )
             
             if response.status_code == 200:
@@ -588,11 +587,6 @@ Skriv på svenska. Ingen inledning, bara meningen."""
 - Innehållsmoderator på Clubhouse (Jun 2021-Jan 2022): Trust & Safety, svenska/norska/danska marknaden, ökade produktivitet 98%
 - Innehållsanalytiker på Google Ads (Maj 2018-Apr 2019): 100+ annonser/dag, svenska marknaden""",
             
-            "customerservice": """- Innehållsmoderator på Clubhouse (Jun 2021-Jan 2022): Trust & Safety, customer support, svenska/norska/danska, ökade produktivitet 98%
-- Innehållsanalytiker på Google Ads (Maj 2018-Apr 2019): 100+ annonser/dag, customer support, svenska marknaden
-- Global Marketing på Minerva Project (Sep 2019-Apr 2020): Kundservice via Intercom för 2000+ sökande, outreach, marketing
-- Kvalitetsgranskare på TikTok/ByteDance (Maj-Jun 2022): Kvalitetskontroll, customer support""",
-            
             "reception": """- Gårdsvärd på Wallby Säteri (Jun-Aug 2016): Reception, bokningar, telefon, betalningar, café
 - Global Marketing på Minerva Project (Sep 2019-Apr 2020): Kundservice via Intercom för 2000+ sökande"""
         }
@@ -645,7 +639,7 @@ Skriv ENDAST mailet."""
                     "max_tokens": 250,
                     "messages": [{"role": "user", "content": prompt}]
                 },
-                timeout=10
+                timeout=30
             )
             
             if response.status_code == 200:
@@ -709,13 +703,12 @@ Beskrivning: {job.description[:1500]}
 2. Börja med "Hej {job.company}!" eller "Till {job.company},"
 3. Förklara VARFÖR du vill jobba just där
 4. Lyft fram 2-3 konkreta erfarenheter från listan ovan som matchar jobbet
-4.5. VIKTIGT: För kundtjänst/customer service/support - prioritera ALLTID content moderation, customer support, outreach, och marketing FÖRE restaurang/café
 5. Visa personlighet - berätta kort vad du trivs med i arbetet
 6. Nämn att du är stabil, ansvarsfull och har lång arbetslivserfarenhet
 7. Om HELTID nämns: Skriv att du söker heltid
 8. Nämn Sollentuna + B-körkort + flexibel med tider
 9. Avsluta med: "Jag ser fram emot att höra från er."
-10. Signera: "Med vänlig hälsning, Linnea Moritz" + telefon + "linneamoritzCV@gmail.com"
+10. Signera: "Med vänlig hälsning, Linnea Moritz" + telefon + email
 
 NÄMN ALDRIG konst, målning, utställningar, Shopify eller e-handel.
 
@@ -734,7 +727,7 @@ Skriv ENDAST brevet."""
                     "max_tokens": 500,
                     "messages": [{"role": "user", "content": prompt}]
                 },
-                timeout=10
+                timeout=30
             )
             
             if response.status_code == 200:
@@ -766,14 +759,14 @@ Jag ser fram emot att höra från er.
 Med vänlig hälsning,
 Linnea Moritz
 0761166109
-linneamoritzCV@gmail.com"""
+linneamoritz1@gmail.com"""
 
 
 class GmailDraftManager:
     """Hanterar Gmail-utkast via IMAP"""
     
     def __init__(self):
-        self.email = "linneamoritzCV@gmail.com"
+        self.email = "linneamoritzcv@gmail.com"
         self.app_password = os.environ.get('GMAIL_APP_PASSWORD', "xcwu agnn brcq unng")
         self.smtp_server = "smtp.gmail.com"
         self.smtp_port = 587
@@ -845,7 +838,7 @@ class GmailDraftManager:
         y -= 14
         c.drawRightString(width - right_margin, y, "0761166109")
         y -= 14
-        c.drawRightString(width - right_margin, y, "linneamoritzCV@gmail.com")
+        c.drawRightString(width - right_margin, y, "linneamoritz1@gmail.com")
         y -= 30
         
         # === DATUM (vänster) ===
