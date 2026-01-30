@@ -4,7 +4,7 @@ Anti-Apathy Job Portal - Vercel Serverless Entry Point
 
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, HTMLResponse
 from pydantic import BaseModel
 from typing import Optional, List, Dict, Any
 import os
@@ -541,3 +541,214 @@ async def global_exception_handler(request: Request, exc: Exception):
         status_code=500,
         content={"success": False, "error": str(exc)}
     )
+
+
+# Serve frontend
+FRONTEND_HTML = '''<!DOCTYPE html>
+<html lang="sv">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Anti-Apathy Job Portal</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+    <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        body { font-family: 'Inter', sans-serif; }
+        .gradient-bg { background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); }
+    </style>
+</head>
+<body class="bg-gray-50 min-h-screen">
+    <div id="root"></div>
+    <script type="text/babel">
+        const { useState, useEffect, useCallback } = React;
+        const API_URL = '';
+
+        const StatsDashboard = ({ stats }) => (
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
+                <div className="bg-white rounded-xl p-5 shadow-sm border border-gray-100">
+                    <div className="text-4xl font-bold text-purple-600">{stats.pending_jobs || 0}</div>
+                    <div className="text-gray-600 text-sm font-semibold uppercase">Vantande jobb</div>
+                </div>
+                <div className="bg-white rounded-xl p-5 shadow-sm border border-gray-100">
+                    <div className="text-4xl font-bold text-green-600">{stats.sent_applications || 0}</div>
+                    <div className="text-gray-600 text-sm font-semibold uppercase">Skickade</div>
+                </div>
+                <div className="bg-white rounded-xl p-5 shadow-sm border border-gray-100">
+                    <div className="text-4xl font-bold text-blue-600">{stats.interviews || 0}</div>
+                    <div className="text-gray-600 text-sm font-semibold uppercase">Intervjuer</div>
+                </div>
+                <div className="bg-white rounded-xl p-5 shadow-sm border border-gray-100">
+                    <div className="text-4xl font-bold text-red-600">{stats.deadline_today || 0}</div>
+                    <div className="text-gray-600 text-sm font-semibold uppercase">Deadline idag</div>
+                </div>
+            </div>
+        );
+
+        const JobCard = ({ job, onGenerateLetter, onSkip, loading }) => {
+            if (!job) return null;
+            return (
+                <div className="bg-white rounded-2xl shadow-lg overflow-hidden border border-gray-100">
+                    <div className="gradient-bg p-6 text-white">
+                        <span className={`px-3 py-1 rounded-full text-sm font-medium ${job.priority === 'akut' ? 'bg-red-100 text-red-700' : 'bg-blue-100 text-blue-700'}`}>
+                            {job.priority === 'akut' ? 'AKUT' : 'Strategisk'}
+                        </span>
+                        <h2 className="text-3xl font-bold mt-4 mb-2">{job.title}</h2>
+                        <p className="text-xl opacity-95">{job.company}</p>
+                        <p className="opacity-85">{job.location}</p>
+                    </div>
+                    <div className="p-6">
+                        <div className="text-gray-600 mb-6 max-h-40 overflow-y-auto">
+                            {job.description?.slice(0, 500)}{job.description?.length > 500 && '...'}
+                        </div>
+                        {job.url && <a href={job.url} target="_blank" className="text-purple-600 hover:text-purple-800 text-sm mb-4 block">Se annons</a>}
+                        <div className="flex gap-3">
+                            <button onClick={onGenerateLetter} disabled={loading} className="flex-1 bg-purple-600 text-white py-3 px-6 rounded-xl font-medium hover:bg-purple-700 disabled:opacity-50">
+                                {loading ? 'Genererar...' : 'Generera Brev'}
+                            </button>
+                            <button onClick={onSkip} className="px-6 py-3 border-2 border-gray-200 text-gray-600 rounded-xl font-medium hover:bg-gray-50">Skippa</button>
+                        </div>
+                    </div>
+                </div>
+            );
+        };
+
+        const CoverLetterModal = ({ isOpen, letter, job, onClose, onSave, saving }) => {
+            const [editedLetter, setEditedLetter] = useState(letter);
+            useEffect(() => { setEditedLetter(letter); }, [letter]);
+            if (!isOpen) return null;
+            return (
+                <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
+                    <div className="bg-white rounded-2xl max-w-2xl w-full max-h-[90vh] overflow-hidden">
+                        <div className="gradient-bg p-6 text-white">
+                            <h3 className="text-2xl font-bold">Personligt Brev</h3>
+                            <p className="opacity-90">{job?.title} @ {job?.company}</p>
+                        </div>
+                        <div className="p-6">
+                            <textarea value={editedLetter} onChange={(e) => setEditedLetter(e.target.value)} className="w-full h-48 p-4 border rounded-lg" />
+                            <div className="flex gap-3 mt-4">
+                                <button onClick={() => onSave(editedLetter)} disabled={saving} className="flex-1 bg-green-600 text-white py-3 px-6 rounded-xl font-medium hover:bg-green-700 disabled:opacity-50">
+                                    {saving ? 'Sparar...' : 'Spara'}
+                                </button>
+                                <button onClick={onClose} className="px-6 py-3 border-2 border-gray-200 rounded-xl">Avbryt</button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            );
+        };
+
+        const App = () => {
+            const [currentJob, setCurrentJob] = useState(null);
+            const [stats, setStats] = useState({});
+            const [coverLetter, setCoverLetter] = useState('');
+            const [showModal, setShowModal] = useState(false);
+            const [loading, setLoading] = useState(false);
+            const [saving, setSaving] = useState(false);
+            const [scraping, setScraping] = useState(false);
+            const [error, setError] = useState(null);
+            const [connected, setConnected] = useState(false);
+
+            const fetchStats = useCallback(async () => {
+                try {
+                    const res = await fetch(`${API_URL}/api/stats`);
+                    if (res.ok) { const data = await res.json(); setStats(data.stats); setConnected(true); }
+                } catch (err) { setConnected(false); }
+            }, []);
+
+            const fetchNextJob = useCallback(async () => {
+                try {
+                    const res = await fetch(`${API_URL}/api/jobs/next`);
+                    if (res.ok) { const data = await res.json(); setCurrentJob(data.job); setConnected(true); }
+                } catch (err) { setConnected(false); setError('Kunde inte ansluta.'); }
+            }, []);
+
+            const handleGenerateLetter = async () => {
+                if (!currentJob) return;
+                setLoading(true);
+                try {
+                    const res = await fetch(`${API_URL}/api/jobs/${currentJob.id}/generate-letter`, { method: 'POST' });
+                    if (res.ok) { const data = await res.json(); setCoverLetter(data.cover_letter); setShowModal(true); }
+                } catch (err) { setError('Fel vid generering'); }
+                setLoading(false);
+            };
+
+            const handleSaveApplication = async (letter) => {
+                if (!currentJob) return;
+                setSaving(true);
+                try {
+                    const res = await fetch(`${API_URL}/api/jobs/${currentJob.id}/apply`, {
+                        method: 'POST', headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ cover_letter: letter })
+                    });
+                    if (res.ok) { setShowModal(false); setCoverLetter(''); fetchNextJob(); fetchStats(); }
+                } catch (err) { setError('Kunde inte spara'); }
+                setSaving(false);
+            };
+
+            const handleSkip = async () => {
+                if (!currentJob) return;
+                await fetch(`${API_URL}/api/jobs/${currentJob.id}/skip`, { method: 'POST' });
+                fetchNextJob(); fetchStats();
+            };
+
+            const handleScrape = async () => {
+                setScraping(true);
+                try {
+                    const res = await fetch(`${API_URL}/api/scrape/sync`, { method: 'POST' });
+                    if (res.ok) { fetchNextJob(); fetchStats(); }
+                } catch (err) { setError('Kunde inte scrapa'); }
+                setScraping(false);
+            };
+
+            useEffect(() => { fetchStats(); fetchNextJob(); }, [fetchStats, fetchNextJob]);
+
+            return (
+                <div className="min-h-screen bg-gray-50">
+                    <header className="gradient-bg text-white py-8 px-4">
+                        <div className="max-w-4xl mx-auto flex items-center justify-between">
+                            <div>
+                                <h1 className="text-4xl font-bold">Anti-Apathy Portal</h1>
+                                <p className="opacity-90 mt-2">En uppgift i taget. Du klarar detta!</p>
+                            </div>
+                            <div className="flex items-center gap-2">
+                                <div className={`w-3 h-3 rounded-full ${connected ? 'bg-green-400' : 'bg-red-400'}`}></div>
+                                <span className="text-sm opacity-80">{connected ? 'Ansluten' : 'Ej ansluten'}</span>
+                            </div>
+                        </div>
+                    </header>
+                    <main className="max-w-4xl mx-auto px-4 py-8">
+                        {error && <div className="bg-red-100 text-red-700 px-4 py-3 rounded-lg mb-6 flex justify-between"><span>{error}</span><button onClick={() => setError(null)}>X</button></div>}
+                        <StatsDashboard stats={stats} />
+                        {currentJob ? (
+                            <JobCard job={currentJob} onGenerateLetter={handleGenerateLetter} onSkip={handleSkip} loading={loading} />
+                        ) : (
+                            <div className="bg-white rounded-2xl shadow-lg p-12 text-center">
+                                <h2 className="text-3xl font-bold text-gray-800 mb-3">Inga fler jobb just nu</h2>
+                                <button onClick={handleScrape} disabled={scraping} className="bg-purple-600 text-white py-3 px-8 rounded-xl font-medium hover:bg-purple-700 disabled:opacity-50">
+                                    {scraping ? 'Scrapar...' : 'Scrapa Nya Jobb'}
+                                </button>
+                            </div>
+                        )}
+                        <div className="mt-8 flex justify-center">
+                            <button onClick={handleScrape} disabled={scraping} className="text-purple-600 hover:text-purple-800 font-medium">
+                                {scraping ? 'Scrapar...' : 'Scrapa fler jobb'}
+                            </button>
+                        </div>
+                    </main>
+                    <CoverLetterModal isOpen={showModal} letter={coverLetter} job={currentJob} onClose={() => setShowModal(false)} onSave={handleSaveApplication} saving={saving} />
+                </div>
+            );
+        };
+        ReactDOM.createRoot(document.getElementById('root')).render(<App />);
+    </script>
+</body>
+</html>'''
+
+
+@app.get("/", response_class=HTMLResponse)
+async def serve_frontend():
+    """Serve the frontend"""
+    return FRONTEND_HTML
