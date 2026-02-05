@@ -171,9 +171,29 @@ async def get_job_by_id(job_id: str) -> Optional[Dict]:
 
 
 async def save_job(job_data: dict) -> bool:
-    """Save or update a job"""
-    result = await supabase_request("POST", "jobs", data=job_data)
-    return result is not None
+    """Save or update a job (upsert)"""
+    if not SUPABASE_URL or not SUPABASE_KEY:
+        logger.error("Supabase not configured")
+        return False
+
+    url = f"{SUPABASE_URL}/rest/v1/jobs"
+    headers = {
+        "apikey": SUPABASE_KEY,
+        "Authorization": f"Bearer {SUPABASE_KEY}",
+        "Content-Type": "application/json",
+        "Prefer": "resolution=merge-duplicates,return=representation"
+    }
+
+    try:
+        async with httpx.AsyncClient() as client:
+            response = await client.post(url, headers=headers, json=job_data, timeout=10)
+            if response.status_code >= 400:
+                logger.error(f"Save job error: {response.status_code} - {response.text}")
+                return False
+            return True
+    except Exception as e:
+        logger.error(f"Save job exception: {e}")
+        return False
 
 
 async def save_application(job_id: str, status: str, cover_letter: str = None, gmail_draft_id: str = None) -> int:
@@ -395,7 +415,13 @@ async def scrape_platsbanken(keyword: str) -> List[Dict]:
 
 @app.get("/api/health")
 async def health_check():
-    return {"status": "healthy", "service": "anti-apathy-portal", "version": "2.0.0"}
+    return {
+        "status": "healthy",
+        "service": "anti-apathy-portal",
+        "version": "2.0.0",
+        "supabase_configured": bool(SUPABASE_URL and SUPABASE_KEY),
+        "anthropic_configured": bool(ANTHROPIC_API_KEY)
+    }
 
 
 @app.get("/api/jobs/next")
@@ -494,19 +520,31 @@ async def api_skip_job(job_id: str, request: SkipRequest = None):
 @app.post("/api/scrape/sync")
 async def api_scrape_sync():
     """Run scraping synchronously"""
+    # Check if Supabase is configured
+    if not SUPABASE_URL or not SUPABASE_KEY:
+        return {
+            "success": False,
+            "error": "Supabase not configured. Add SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY to Vercel environment variables."
+        }
+
     keywords = ["servitör", "kundtjänst", "café", "barista", "butik"]
     total = 0
+    errors = []
 
     for keyword in keywords:
-        jobs = await scrape_platsbanken(keyword)
-        for job in jobs:
-            if await save_job(job):
-                total += 1
+        try:
+            jobs = await scrape_platsbanken(keyword)
+            for job in jobs:
+                if await save_job(job):
+                    total += 1
+        except Exception as e:
+            errors.append(f"{keyword}: {str(e)}")
 
     return {
         "success": True,
         "jobs_scraped": total,
-        "message": f"Scraping klar! {total} jobb hittade."
+        "message": f"Scraping klar! {total} jobb hittade.",
+        "errors": errors if errors else None
     }
 
 
