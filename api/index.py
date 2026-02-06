@@ -420,6 +420,9 @@ async def health_check():
         "service": "anti-apathy-portal",
         "version": "2.0.0",
         "supabase_configured": bool(SUPABASE_URL and SUPABASE_KEY),
+        "supabase_url_set": bool(SUPABASE_URL),
+        "supabase_key_set": bool(SUPABASE_KEY),
+        "expected_key_names": "SUPABASE_SERVICE_ROLE_KEY or SUPABASE_ANON_KEY",
         "anthropic_configured": bool(ANTHROPIC_API_KEY)
     }
 
