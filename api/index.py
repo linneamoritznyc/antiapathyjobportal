@@ -244,7 +244,7 @@ def detect_job_category(title: str, description: str) -> str:
         "retail": ["butik", "kassa", "försäljare", "ica", "coop"],
         "industry": ["industri", "lager", "trädgård", "städ"],
         "healthcare": ["vård", "omsorg", "äldreboende", "hemtjänst"],
-        "tech": ["it", "tech", "data", "analyst"],
+        "tech": ["it", "tech", "data", "analyst", "utvecklare", "developer", "frontend", "backend", "fullstack", "webbutvecklare", "apputvecklare", "react", "javascript", "python"],
         "customerservice": ["kundtjänst", "customer service", "support"],
     }
 
@@ -269,6 +269,10 @@ def get_relevant_experience(category: str) -> str:
 - Global Marketing på Minerva Project (Sep 2019-Apr 2020): Kundservice via Intercom""",
 
         "healthcare": """- Timvikarie på Kvarngården äldreboende (Maj-Sep 2020): Omvårdnad, medicinhantering""",
+
+        "tech": """- Webbutvecklingsprojekt: Byggt och deployadat fullstack-applikationer med React, Python/FastAPI, och PostgreSQL
+- Erfarenhet av Vercel deployment, Supabase, och API-integrationer
+- Innehållsanalytiker på Google Ads (Maj 2018-Apr 2019): Teknisk granskning, dataanalys""",
     }
     return experiences.get(category, experiences["restaurant"])
 
@@ -530,7 +534,7 @@ async def api_scrape_sync():
             "error": "Supabase not configured. Add SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY to Vercel environment variables."
         }
 
-    keywords = ["servitör", "kundtjänst", "café", "barista", "butik"]
+    keywords = ["servitör", "kundtjänst", "café", "barista", "butik", "webbutvecklare", "frontend", "backend", "fullstack", "apputvecklare"]
     total = 0
     errors = []
 
