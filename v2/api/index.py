@@ -1124,307 +1124,36 @@ def _create_gmail_link(job: Dict, letter: str) -> str:
 
 # ============== FRONTEND ==============
 
-FRONTEND_HTML = '''<!DOCTYPE html>
+import pathlib
+
+def get_frontend_html():
+    """Load frontend HTML from file or use embedded version"""
+    try:
+        frontend_path = pathlib.Path(__file__).parent.parent / "frontend.html"
+        if frontend_path.exists():
+            return frontend_path.read_text(encoding='utf-8')
+    except:
+        pass
+
+    # Fallback: minimal embedded version
+    return '''<!DOCTYPE html>
 <html lang="sv">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Anti-Apathy Job Portal</title>
     <script src="https://cdn.tailwindcss.com"></script>
-    <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
-    <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
-    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
-    <style>
-        * { font-family: system-ui, -apple-system, sans-serif; }
-        .gradient { background: linear-gradient(135deg, #6366f1 0%, #8b5cf6 50%, #a855f7 100%); }
-    </style>
 </head>
-<body class="bg-slate-50 min-h-screen">
-    <div id="root"></div>
-    <script type="text/babel">
-        const { useState, useEffect } = React;
-
-        // Stats component
-        const Stats = ({ stats }) => (
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
-                {[
-                    { label: "Jobb", value: stats.total_jobs, color: "text-indigo-600" },
-                    { label: "Utkast", value: stats.drafts, color: "text-amber-600" },
-                    { label: "Skickade", value: stats.sent, color: "text-green-600" },
-                    { label: "Intervjuer", value: stats.interviews, color: "text-purple-600" }
-                ].map(({ label, value, color }) => (
-                    <div key={label} className="bg-white rounded-xl p-4 shadow-sm">
-                        <div className={`text-3xl font-bold ${color}`}>{value || 0}</div>
-                        <div className="text-slate-500 text-sm">{label}</div>
-                    </div>
-                ))}
-            </div>
-        );
-
-        // Job card component
-        const JobCard = ({ job, onGenerate, loading }) => {
-            const priorityColors = {
-                urgent: "bg-red-100 text-red-700",
-                soon: "bg-amber-100 text-amber-700",
-                normal: "bg-green-100 text-green-700"
-            };
-
-            return (
-                <div className="bg-white rounded-xl shadow-sm overflow-hidden border border-slate-100">
-                    <div className="p-6">
-                        <div className="flex items-start justify-between mb-3">
-                            <div>
-                                <span className={`text-xs px-2 py-1 rounded-full ${priorityColors[job.priority] || priorityColors.normal}`}>
-                                    {job.priority === 'urgent' ? '⚡ Akut' : job.priority === 'soon' ? '⏰ Snart' : '✓ Normal'}
-                                </span>
-                            </div>
-                            {job.deadline && (
-                                <span className="text-xs text-slate-400">
-                                    Deadline: {new Date(job.deadline).toLocaleDateString('sv-SE')}
-                                </span>
-                            )}
-                        </div>
-
-                        <h3 className="text-xl font-semibold text-slate-800 mb-1">{job.title}</h3>
-                        <p className="text-indigo-600 font-medium mb-1">{job.company}</p>
-                        <p className="text-slate-500 text-sm mb-4">{job.location}</p>
-
-                        <p className="text-slate-600 text-sm mb-4 line-clamp-3">
-                            {job.description?.slice(0, 200)}...
-                        </p>
-
-                        <div className="bg-slate-50 rounded-lg p-3 mb-4">
-                            <p className="text-sm text-slate-600">
-                                <span className="font-medium">📧 Ansök till:</span>{' '}
-                                <a href={`mailto:${job.contact_email}`} className="text-indigo-600 hover:underline">
-                                    {job.contact_email}
-                                </a>
-                                {job.contact_name && <span className="text-slate-400"> ({job.contact_name})</span>}
-                            </p>
-                        </div>
-
-                        <div className="flex gap-2">
-                            <button
-                                onClick={() => onGenerate(job)}
-                                disabled={loading}
-                                className="flex-1 bg-indigo-600 text-white py-2.5 px-4 rounded-lg font-medium hover:bg-indigo-700 disabled:opacity-50 transition"
-                            >
-                                {loading ? 'Genererar...' : '✨ Generera brev'}
-                            </button>
-                            <a
-                                href={job.url}
-                                target="_blank"
-                                className="px-4 py-2.5 border border-slate-200 rounded-lg text-slate-600 hover:bg-slate-50 transition"
-                            >
-                                Se annons
-                            </a>
-                        </div>
-                    </div>
-                </div>
-            );
-        };
-
-        // Letter modal
-        const LetterModal = ({ isOpen, job, letter, onClose, onCopy, onEmail }) => {
-            const [editedLetter, setEditedLetter] = useState(letter);
-
-            useEffect(() => setEditedLetter(letter), [letter]);
-
-            if (!isOpen) return null;
-
-            return (
-                <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50">
-                    <div className="bg-white rounded-2xl max-w-2xl w-full max-h-[90vh] overflow-hidden shadow-xl">
-                        <div className="gradient text-white p-6">
-                            <h3 className="text-xl font-bold">Personligt brev</h3>
-                            <p className="opacity-90">{job?.title} @ {job?.company}</p>
-                        </div>
-                        <div className="p-6">
-                            <textarea
-                                value={editedLetter}
-                                onChange={(e) => setEditedLetter(e.target.value)}
-                                className="w-full h-64 p-4 border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
-                            />
-                            <div className="flex gap-3 mt-4">
-                                <button
-                                    onClick={() => onEmail(job, editedLetter)}
-                                    className="flex-1 bg-green-600 text-white py-2.5 px-4 rounded-lg font-medium hover:bg-green-700 transition"
-                                >
-                                    📧 Öppna i Gmail
-                                </button>
-                                <button
-                                    onClick={() => onCopy(editedLetter)}
-                                    className="px-4 py-2.5 border border-slate-200 rounded-lg text-slate-600 hover:bg-slate-50 transition"
-                                >
-                                    📋 Kopiera
-                                </button>
-                                <button
-                                    onClick={onClose}
-                                    className="px-4 py-2.5 border border-slate-200 rounded-lg text-slate-600 hover:bg-slate-50 transition"
-                                >
-                                    Stäng
-                                </button>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-            );
-        };
-
-        // Main App
-        const App = () => {
-            const [jobs, setJobs] = useState([]);
-            const [stats, setStats] = useState({});
-            const [loading, setLoading] = useState(false);
-            const [scraping, setScraping] = useState(false);
-            const [selectedJob, setSelectedJob] = useState(null);
-            const [coverLetter, setCoverLetter] = useState('');
-            const [showModal, setShowModal] = useState(false);
-            const [keywords, setKeywords] = useState('');
-            const [message, setMessage] = useState(null);
-
-            const fetchJobs = async () => {
-                const res = await fetch('/api/jobs');
-                const data = await res.json();
-                if (data.success) setJobs(data.jobs || []);
-            };
-
-            const fetchStats = async () => {
-                const res = await fetch('/api/stats');
-                const data = await res.json();
-                if (data.success) setStats(data.stats || {});
-            };
-
-            const handleScrape = async () => {
-                setScraping(true);
-                setMessage(null);
-                try {
-                    const kw = keywords.trim() ? keywords.split(',').map(k => k.trim()) : null;
-                    const res = await fetch('/api/scrape', {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ keywords: kw })
-                    });
-                    const data = await res.json();
-                    if (data.success) {
-                        setMessage({ type: 'success', text: `Hittade ${data.jobs_found} jobb med e-postansökan!` });
-                        fetchJobs();
-                        fetchStats();
-                    }
-                } catch (err) {
-                    setMessage({ type: 'error', text: 'Kunde inte hämta jobb' });
-                }
-                setScraping(false);
-            };
-
-            const handleGenerate = async (job) => {
-                setLoading(true);
-                setSelectedJob(job);
-                try {
-                    const res = await fetch(`/api/jobs/${job.id}/letter`, { method: 'POST' });
-                    const data = await res.json();
-                    if (data.success) {
-                        setCoverLetter(data.cover_letter);
-                        setShowModal(true);
-                    }
-                } catch (err) {
-                    setMessage({ type: 'error', text: 'Kunde inte generera brev' });
-                }
-                setLoading(false);
-            };
-
-            const handleCopy = (text) => {
-                navigator.clipboard.writeText(text);
-                setMessage({ type: 'success', text: 'Kopierat till urklipp!' });
-            };
-
-            const handleEmail = (job, letter) => {
-                const subject = encodeURIComponent(`Ansökan: ${job.title}`);
-                const body = encodeURIComponent(letter);
-                window.open(`https://mail.google.com/mail/?view=cm&fs=1&to=${job.contact_email}&su=${subject}&body=${body}`, '_blank');
-            };
-
-            useEffect(() => {
-                fetchJobs();
-                fetchStats();
-            }, []);
-
-            return (
-                <div className="min-h-screen">
-                    <header className="gradient text-white py-8 px-4">
-                        <div className="max-w-5xl mx-auto">
-                            <h1 className="text-3xl font-bold mb-2">Anti-Apathy Job Portal</h1>
-                            <p className="opacity-90">Sök jobb utan apati. En ansökan i taget.</p>
-                        </div>
-                    </header>
-
-                    <main className="max-w-5xl mx-auto px-4 py-8">
-                        {message && (
-                            <div className={`mb-6 p-4 rounded-lg ${message.type === 'error' ? 'bg-red-100 text-red-700' : 'bg-green-100 text-green-700'}`}>
-                                {message.text}
-                                <button onClick={() => setMessage(null)} className="float-right font-bold">×</button>
-                            </div>
-                        )}
-
-                        <Stats stats={stats} />
-
-                        <div className="bg-white rounded-xl p-6 shadow-sm mb-8">
-                            <h2 className="text-lg font-semibold mb-4">🔍 Sök nya jobb</h2>
-                            <div className="flex gap-3">
-                                <input
-                                    type="text"
-                                    value={keywords}
-                                    onChange={(e) => setKeywords(e.target.value)}
-                                    placeholder="t.ex. servitör, kundtjänst, butik"
-                                    className="flex-1 border border-slate-200 rounded-lg px-4 py-2 focus:ring-2 focus:ring-indigo-500"
-                                />
-                                <button
-                                    onClick={handleScrape}
-                                    disabled={scraping}
-                                    className="bg-indigo-600 text-white px-6 py-2 rounded-lg font-medium hover:bg-indigo-700 disabled:opacity-50 transition"
-                                >
-                                    {scraping ? 'Söker...' : 'Sök jobb'}
-                                </button>
-                            </div>
-                            <p className="text-sm text-slate-500 mt-2">
-                                Visar endast jobb där du kan ansöka via e-post direkt till arbetsgivaren.
-                            </p>
-                        </div>
-
-                        <h2 className="text-lg font-semibold mb-4">📋 Jobb att söka ({jobs.length})</h2>
-
-                        {jobs.length === 0 ? (
-                            <div className="bg-white rounded-xl p-12 text-center shadow-sm">
-                                <p className="text-slate-600 mb-4">Inga jobb än. Klicka på "Sök jobb" för att hitta nya!</p>
-                            </div>
-                        ) : (
-                            <div className="grid md:grid-cols-2 gap-4">
-                                {jobs.map(job => (
-                                    <JobCard
-                                        key={job.id}
-                                        job={job}
-                                        onGenerate={handleGenerate}
-                                        loading={loading && selectedJob?.id === job.id}
-                                    />
-                                ))}
-                            </div>
-                        )}
-                    </main>
-
-                    <LetterModal
-                        isOpen={showModal}
-                        job={selectedJob}
-                        letter={coverLetter}
-                        onClose={() => setShowModal(false)}
-                        onCopy={handleCopy}
-                        onEmail={handleEmail}
-                    />
-                </div>
-            );
-        };
-
-        ReactDOM.createRoot(document.getElementById('root')).render(<App />);
-    </script>
+<body class="bg-slate-50 min-h-screen flex items-center justify-center">
+    <div class="text-center p-8">
+        <h1 class="text-3xl font-bold text-indigo-600 mb-4">Anti-Apathy Job Portal</h1>
+        <p class="text-slate-600 mb-4">API is running!</p>
+        <p class="text-sm text-slate-400">Frontend file not found. Check /v2/frontend.html</p>
+        <div class="mt-6 space-x-4">
+            <a href="/api/health" class="text-indigo-600 hover:underline">Health Check</a>
+            <a href="/docs" class="text-indigo-600 hover:underline">API Docs</a>
+        </div>
+    </div>
 </body>
 </html>'''
 
@@ -1432,7 +1161,7 @@ FRONTEND_HTML = '''<!DOCTYPE html>
 @app.get("/", response_class=HTMLResponse)
 async def root():
     """Serve frontend"""
-    return FRONTEND_HTML
+    return get_frontend_html()
 
 
 @app.exception_handler(Exception)
