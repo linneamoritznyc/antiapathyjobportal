@@ -367,7 +367,7 @@ async def scrape_platsbanken(keyword: str) -> List[Dict]:
                     "filters": [{"type": "freetext", "value": keyword}],
                     "fromDate": None,
                     "order": "relevance",
-                    "maxRecords": 50,
+                    "maxRecords": 10,
                     "startIndex": 0,
                     "source": "pb"
                 },
@@ -534,7 +534,7 @@ async def api_scrape_sync():
             "error": "Supabase not configured. Add SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY to Vercel environment variables."
         }
 
-    keywords = ["servitör", "kundtjänst", "café", "barista", "butik", "webbutvecklare", "frontend", "backend", "fullstack", "apputvecklare"]
+    keywords = ["servitör", "kundtjänst", "webbutvecklare"]
     total = 0
     errors = []
 
