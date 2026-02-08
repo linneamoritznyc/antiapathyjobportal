@@ -52,7 +52,44 @@ class GenerateLetterRequest(BaseModel):
 class SaveApplicationRequest(BaseModel):
     job_id: str
     cover_letter: str
+    cv_id: Optional[str] = None
     status: str = "draft"
+
+
+class UploadCVRequest(BaseModel):
+    """User's master CV - their full experience"""
+    full_name: str
+    email: str
+    phone: str
+    location: str
+    languages: List[str] = ["Svenska", "Engelska"]
+    drivers_license: bool = False
+    experience: str  # Full work history as text
+    education: str = ""
+    skills: str = ""
+    about_me: str = ""
+
+
+class GenerateCVVibesRequest(BaseModel):
+    """Request to generate multiple CV versions"""
+    user_id: Optional[str] = None
+
+
+# CV Categories/Vibes
+CV_VIBES = [
+    {"id": "restaurant", "name": "Restaurang & Café", "emoji": "🍽️",
+     "focus": "servering, kundkontakt, stresshantering, teamwork, hygien"},
+    {"id": "retail", "name": "Butik & Kassa", "emoji": "🛒",
+     "focus": "försäljning, kassahantering, kundservice, lagerhantering"},
+    {"id": "customerservice", "name": "Kundtjänst & Support", "emoji": "💬",
+     "focus": "problemlösning, kommunikation, CRM-system, tålamod"},
+    {"id": "tech", "name": "Tech & IT", "emoji": "💻",
+     "focus": "programmering, teknisk kompetens, analytiskt tänkande"},
+    {"id": "healthcare", "name": "Vård & Omsorg", "emoji": "🏥",
+     "focus": "omvårdnad, empati, medicinhantering, dokumentation"},
+    {"id": "garden", "name": "Trädgård & Industri", "emoji": "🌱",
+     "focus": "fysiskt arbete, utomhusarbete, maskiner, självständighet"},
+]
 
 
 # ============== HELPERS ==============
@@ -327,6 +364,134 @@ Linnea Moritz
 linneamoritzCV@gmail.com"""
 
 
+# ============== CV GENERATION ==============
+
+async def generate_cv_vibe(master_cv: Dict, vibe: Dict) -> str:
+    """Generate a CV version optimized for a specific job category"""
+
+    if not ANTHROPIC_API_KEY:
+        return f"[CV för {vibe['name']} - API ej konfigurerad]"
+
+    prompt = f"""Skriv ett CV på svenska optimerat för {vibe['name']}-jobb.
+
+PERSONINFO:
+- Namn: {master_cv.get('full_name')}
+- E-post: {master_cv.get('email')}
+- Telefon: {master_cv.get('phone')}
+- Plats: {master_cv.get('location')}
+- Språk: {', '.join(master_cv.get('languages', ['Svenska']))}
+- Körkort: {'Ja, B-körkort' if master_cv.get('drivers_license') else 'Nej'}
+
+ERFARENHET:
+{master_cv.get('experience', '')}
+
+UTBILDNING:
+{master_cv.get('education', 'Ej angivet')}
+
+FÄRDIGHETER:
+{master_cv.get('skills', 'Ej angivet')}
+
+OM MIG:
+{master_cv.get('about_me', '')}
+
+FOKUSOMRÅDEN FÖR DENNA CV-VERSION:
+{vibe['focus']}
+
+INSTRUKTIONER:
+1. Skriv ett professionellt CV på svenska
+2. Lyft fram erfarenheter som är relevanta för {vibe['name']}-jobb
+3. Fokusera på: {vibe['focus']}
+4. Använd konkreta exempel och siffror där möjligt
+5. Håll det till 1 sida (ca 300-400 ord)
+6. Formatera snyggt med tydliga sektioner:
+   - Kontaktinfo (namn, tel, email, plats)
+   - Profil (2-3 meningar)
+   - Erfarenhet (relevanta jobb)
+   - Utbildning
+   - Färdigheter
+
+Skriv ENDAST CV-texten, inget annat."""
+
+    try:
+        async with httpx.AsyncClient() as client:
+            response = await client.post(
+                "https://api.anthropic.com/v1/messages",
+                headers={
+                    "x-api-key": ANTHROPIC_API_KEY,
+                    "anthropic-version": "2023-06-01",
+                    "content-type": "application/json"
+                },
+                json={
+                    "model": "claude-sonnet-4-20250514",
+                    "max_tokens": 1000,
+                    "messages": [{"role": "user", "content": prompt}]
+                },
+                timeout=60
+            )
+
+            if response.status_code == 200:
+                result = response.json()
+                return result["content"][0]["text"].strip()
+            else:
+                logger.error(f"Claude API error: {response.status_code}")
+
+    except Exception as e:
+        logger.error(f"Error generating CV: {e}")
+
+    return f"[Kunde inte generera CV för {vibe['name']}]"
+
+
+async def generate_all_cv_vibes(master_cv: Dict, user_id: str) -> List[Dict]:
+    """Generate all CV versions for a user"""
+    generated_cvs = []
+
+    for vibe in CV_VIBES:
+        logger.info(f"Generating CV vibe: {vibe['name']}...")
+        cv_text = await generate_cv_vibe(master_cv, vibe)
+
+        cv_data = {
+            "user_id": user_id,
+            "vibe_id": vibe["id"],
+            "vibe_name": vibe["name"],
+            "vibe_emoji": vibe["emoji"],
+            "cv_text": cv_text,
+            "created_at": datetime.now().isoformat()
+        }
+
+        # Save to database
+        saved = await db_request("POST", "user_cvs", data=cv_data)
+        if saved:
+            generated_cvs.append(saved[0])
+        else:
+            generated_cvs.append(cv_data)
+
+    return generated_cvs
+
+
+def match_job_to_cv_vibe(job_title: str, job_description: str) -> str:
+    """Match a job to the best CV vibe"""
+    text = f"{job_title} {job_description}".lower()
+
+    # Keywords for each vibe
+    vibe_keywords = {
+        "restaurant": ["servitör", "servitris", "restaurang", "kock", "café", "barista", "kök", "mat", "dryck"],
+        "retail": ["butik", "kassa", "försäljare", "säljare", "retail", "lager", "handel"],
+        "customerservice": ["kundtjänst", "customer service", "support", "kundservice", "telefon", "chat"],
+        "tech": ["it", "tech", "utvecklare", "developer", "webbutvecklare", "frontend", "backend", "data", "programmering"],
+        "healthcare": ["vård", "omsorg", "sjuksköterska", "äldreboende", "hemtjänst", "medicin"],
+        "garden": ["trädgård", "industri", "lager", "städ", "fysiskt", "utomhus", "bygg"],
+    }
+
+    # Count keyword matches
+    scores = {}
+    for vibe_id, keywords in vibe_keywords.items():
+        scores[vibe_id] = sum(1 for kw in keywords if kw in text)
+
+    # Return best match, or "customerservice" as default
+    best_vibe = max(scores, key=scores.get) if max(scores.values()) > 0 else "customerservice"
+    return best_vibe
+
+
 # ============== SUPABASE DATABASE ==============
 
 async def db_request(method: str, table: str, data: dict = None, params: dict = None) -> Optional[List]:
@@ -524,6 +689,180 @@ async def get_stats():
             "interviews": len([a for a in (apps or []) if a.get("status") == "interview"])
         }
     }
+
+
+# ============== CV ENDPOINTS ==============
+
+@app.get("/api/cv/vibes")
+async def list_cv_vibes():
+    """List all available CV vibes/categories"""
+    return {"success": True, "vibes": CV_VIBES}
+
+
+@app.post("/api/cv/upload")
+async def upload_master_cv(request: UploadCVRequest):
+    """Upload/save user's master CV info"""
+    # For now, use a simple user_id (in production, this comes from auth)
+    user_id = "default_user"
+
+    master_cv = {
+        "user_id": user_id,
+        "full_name": request.full_name,
+        "email": request.email,
+        "phone": request.phone,
+        "location": request.location,
+        "languages": request.languages,
+        "drivers_license": request.drivers_license,
+        "experience": request.experience,
+        "education": request.education,
+        "skills": request.skills,
+        "about_me": request.about_me,
+        "created_at": datetime.now().isoformat()
+    }
+
+    # Save to database
+    result = await db_request("POST", "master_cvs", data=master_cv)
+
+    if result:
+        return {"success": True, "master_cv": result[0], "message": "CV sparat!"}
+
+    # If database not available, return the data anyway
+    return {"success": True, "master_cv": master_cv, "message": "CV sparat (lokalt)"}
+
+
+@app.get("/api/cv/master")
+async def get_master_cv(user_id: str = "default_user"):
+    """Get user's master CV"""
+    cvs = await db_request("GET", "master_cvs", params={
+        "user_id": f"eq.{user_id}",
+        "order": "created_at.desc",
+        "limit": "1"
+    })
+
+    if cvs and len(cvs) > 0:
+        return {"success": True, "master_cv": cvs[0]}
+
+    return {"success": True, "master_cv": None, "message": "Ingen CV uppladdad ännu"}
+
+
+@app.post("/api/cv/generate-vibes")
+async def generate_cv_vibes(request: GenerateCVVibesRequest = None):
+    """Generate all CV vibe versions from master CV"""
+    user_id = request.user_id if request and request.user_id else "default_user"
+
+    # Get master CV
+    cvs = await db_request("GET", "master_cvs", params={
+        "user_id": f"eq.{user_id}",
+        "order": "created_at.desc",
+        "limit": "1"
+    })
+
+    if not cvs:
+        raise HTTPException(status_code=404, detail="Ladda upp din CV först!")
+
+    master_cv = cvs[0]
+
+    # Generate all vibes
+    generated = await generate_all_cv_vibes(master_cv, user_id)
+
+    return {
+        "success": True,
+        "message": f"Genererade {len(generated)} CV-versioner!",
+        "cvs": generated
+    }
+
+
+@app.get("/api/cv/all")
+async def get_user_cvs(user_id: str = "default_user"):
+    """Get all user's generated CV versions"""
+    cvs = await db_request("GET", "user_cvs", params={
+        "user_id": f"eq.{user_id}",
+        "order": "vibe_id.asc"
+    })
+
+    return {"success": True, "cvs": cvs or []}
+
+
+@app.get("/api/cv/{vibe_id}")
+async def get_cv_by_vibe(vibe_id: str, user_id: str = "default_user"):
+    """Get a specific CV version"""
+    cvs = await db_request("GET", "user_cvs", params={
+        "user_id": f"eq.{user_id}",
+        "vibe_id": f"eq.{vibe_id}"
+    })
+
+    if cvs and len(cvs) > 0:
+        return {"success": True, "cv": cvs[0]}
+
+    raise HTTPException(status_code=404, detail=f"Ingen CV för {vibe_id}")
+
+
+@app.patch("/api/cv/{vibe_id}")
+async def update_cv(vibe_id: str, cv_text: str, user_id: str = "default_user"):
+    """Update a CV version (after user edits)"""
+    result = await db_request("PATCH", "user_cvs",
+        data={"cv_text": cv_text, "updated_at": datetime.now().isoformat()},
+        params={"user_id": f"eq.{user_id}", "vibe_id": f"eq.{vibe_id}"}
+    )
+
+    if result:
+        return {"success": True, "cv": result[0]}
+
+    raise HTTPException(status_code=500, detail="Kunde inte uppdatera CV")
+
+
+@app.post("/api/jobs/{job_id}/apply-with-cv")
+async def apply_with_cv(job_id: str, user_id: str = "default_user"):
+    """
+    Smart apply: Auto-selects best CV, generates cover letter, returns both.
+    This is the main "one-click apply" endpoint.
+    """
+    # Get job
+    jobs = await db_request("GET", "jobs", params={"id": f"eq.{job_id}"})
+    if not jobs:
+        raise HTTPException(status_code=404, detail="Job not found")
+
+    job = jobs[0]
+
+    # Match job to best CV vibe
+    best_vibe = match_job_to_cv_vibe(job.get("title", ""), job.get("description", ""))
+    logger.info(f"Job '{job.get('title')}' matched to CV vibe: {best_vibe}")
+
+    # Get the matching CV
+    cvs = await db_request("GET", "user_cvs", params={
+        "user_id": f"eq.{user_id}",
+        "vibe_id": f"eq.{best_vibe}"
+    })
+
+    cv = cvs[0] if cvs else None
+
+    # Generate cover letter using the CV
+    cv_text_for_letter = cv.get("cv_text") if cv else None
+    cover_letter = await generate_cover_letter(job, cv_text_for_letter)
+
+    return {
+        "success": True,
+        "job": {
+            "id": job.get("id"),
+            "title": job.get("title"),
+            "company": job.get("company"),
+            "contact_email": job.get("contact_email"),
+            "contact_name": job.get("contact_name")
+        },
+        "matched_vibe": best_vibe,
+        "cv": cv,
+        "cover_letter": cover_letter,
+        "gmail_link": _create_gmail_link(job, cover_letter)
+    }
+
+
+def _create_gmail_link(job: Dict, letter: str) -> str:
+    """Create Gmail compose link"""
+    import urllib.parse
+    to = job.get("contact_email", "")
+    subject = urllib.parse.quote(f"Ansökan: {job.get('title', 'Tjänst')}")
+    body = urllib.parse.quote(letter)
+    return f"https://mail.google.com/mail/?view=cm&fs=1&to={to}&su={subject}&body={body}"
 
 
 # ============== FRONTEND ==============
