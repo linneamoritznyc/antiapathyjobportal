@@ -56,18 +56,64 @@ class SaveApplicationRequest(BaseModel):
     status: str = "draft"
 
 
-class UploadCVRequest(BaseModel):
-    """User's master CV - their full experience"""
+# ============== STRUCTURED CV MODELS ==============
+
+class UserProfile(BaseModel):
+    """User's personal info"""
     full_name: str
     email: str
     phone: str
     location: str
-    languages: List[str] = ["Svenska", "Engelska"]
+    photo_url: Optional[str] = None
     drivers_license: bool = False
-    experience: str  # Full work history as text
-    education: str = ""
-    skills: str = ""
-    about_me: str = ""
+    languages: List[str] = ["Svenska (Modersmål)", "Engelska (flytande)"]
+    certificates: List[str] = []
+
+
+class EducationEntry(BaseModel):
+    """Education entry"""
+    school: str
+    location: str
+    degree: str
+    dates: str
+    bullets: List[str] = []
+    sort_order: int = 0
+
+
+class ExperienceEntry(BaseModel):
+    """Work experience entry with category tags"""
+    company: str
+    location: str
+    title: str
+    dates: str
+    bullets: List[str] = []
+    categories: List[str] = []  # ['restaurant', 'tech', 'retail', etc.]
+    sort_order: int = 0
+
+
+class VolunteerEntry(BaseModel):
+    """Volunteer work entry"""
+    organization: str
+    dates: str
+    bullets: List[str] = []
+    sort_order: int = 0
+
+
+class SkillEntry(BaseModel):
+    """Skill entry with category"""
+    category: str  # 'tech', 'restaurant', 'all'
+    skill_type: str  # 'technical', 'certificate', 'language'
+    skill_text: str
+
+
+class MasterCV(BaseModel):
+    """Complete Master CV with all data"""
+    profile: UserProfile
+    education: List[EducationEntry] = []
+    experiences: List[ExperienceEntry] = []
+    volunteer: List[VolunteerEntry] = []
+    awards: List[str] = []
+    skills: List[SkillEntry] = []
 
 
 class GenerateCVVibesRequest(BaseModel):
@@ -78,17 +124,29 @@ class GenerateCVVibesRequest(BaseModel):
 # CV Categories/Vibes
 CV_VIBES = [
     {"id": "restaurant", "name": "Restaurang & Café", "emoji": "🍽️",
-     "focus": "servering, kundkontakt, stresshantering, teamwork, hygien"},
+     "focus": "servering, kundkontakt, stresshantering, teamwork, hygien",
+     "keywords": ["servitör", "restaurang", "café", "barista", "kök", "mat"]},
     {"id": "retail", "name": "Butik & Kassa", "emoji": "🛒",
-     "focus": "försäljning, kassahantering, kundservice, lagerhantering"},
+     "focus": "försäljning, kassahantering, kundservice, lagerhantering",
+     "keywords": ["butik", "kassa", "försäljare", "säljare", "handel"]},
     {"id": "customerservice", "name": "Kundtjänst & Support", "emoji": "💬",
-     "focus": "problemlösning, kommunikation, CRM-system, tålamod"},
-    {"id": "tech", "name": "Tech & IT", "emoji": "💻",
-     "focus": "programmering, teknisk kompetens, analytiskt tänkande"},
+     "focus": "problemlösning, kommunikation, CRM-system, tålamod",
+     "keywords": ["kundtjänst", "support", "customer service", "telefon"]},
+    {"id": "tech", "name": "Tech & Kontor", "emoji": "💻",
+     "focus": "programmering, teknisk kompetens, analytiskt tänkande, dataanalys",
+     "keywords": ["it", "tech", "utvecklare", "data", "analyst", "kontor"]},
     {"id": "healthcare", "name": "Vård & Omsorg", "emoji": "🏥",
-     "focus": "omvårdnad, empati, medicinhantering, dokumentation"},
+     "focus": "omvårdnad, empati, medicinhantering, dokumentation",
+     "keywords": ["vård", "omsorg", "sjuksköterska", "äldreboende"]},
     {"id": "garden", "name": "Trädgård & Industri", "emoji": "🌱",
-     "focus": "fysiskt arbete, utomhusarbete, maskiner, självständighet"},
+     "focus": "fysiskt arbete, utomhusarbete, maskiner, självständighet",
+     "keywords": ["trädgård", "industri", "lager", "städ", "bygg"]},
+    {"id": "hotel", "name": "Hotell & Reception", "emoji": "🏨",
+     "focus": "gästservice, bokningssystem, incheckning, serviceinriktad",
+     "keywords": ["hotell", "reception", "gäst", "bokning", "concierge"]},
+    {"id": "content", "name": "Content & Moderation", "emoji": "📱",
+     "focus": "innehållsgranskning, trust & safety, riktlinjer, datahantering",
+     "keywords": ["content", "moderat", "trust", "safety", "granskning"]},
 ]
 
 
@@ -699,50 +757,249 @@ async def list_cv_vibes():
     return {"success": True, "vibes": CV_VIBES}
 
 
-@app.post("/api/cv/upload")
-async def upload_master_cv(request: UploadCVRequest):
-    """Upload/save user's master CV info"""
-    # For now, use a simple user_id (in production, this comes from auth)
-    user_id = "default_user"
-
-    master_cv = {
+@app.post("/api/cv/master")
+async def save_master_cv(master_cv: MasterCV, user_id: str = "default_user"):
+    """
+    Save complete Master CV with all structured data.
+    This is the source of truth - all CV vibes are generated from this.
+    """
+    # Save profile
+    profile_data = {
         "user_id": user_id,
-        "full_name": request.full_name,
-        "email": request.email,
-        "phone": request.phone,
-        "location": request.location,
-        "languages": request.languages,
-        "drivers_license": request.drivers_license,
-        "experience": request.experience,
-        "education": request.education,
-        "skills": request.skills,
-        "about_me": request.about_me,
-        "created_at": datetime.now().isoformat()
+        "full_name": master_cv.profile.full_name,
+        "email": master_cv.profile.email,
+        "phone": master_cv.profile.phone,
+        "location": master_cv.profile.location,
+        "photo_url": master_cv.profile.photo_url,
+        "drivers_license": master_cv.profile.drivers_license,
+        "languages": master_cv.profile.languages,
+        "certificates": master_cv.profile.certificates,
+        "updated_at": datetime.now().isoformat()
     }
+    await db_request("POST", "user_profiles", data=profile_data)
 
-    # Save to database
-    result = await db_request("POST", "master_cvs", data=master_cv)
+    # Save education entries
+    for i, edu in enumerate(master_cv.education):
+        edu_data = {
+            "user_id": user_id,
+            "school": edu.school,
+            "location": edu.location,
+            "degree": edu.degree,
+            "dates": edu.dates,
+            "bullets": edu.bullets,
+            "sort_order": i
+        }
+        await db_request("POST", "user_education", data=edu_data)
 
-    if result:
-        return {"success": True, "master_cv": result[0], "message": "CV sparat!"}
+    # Save experience entries with category tags
+    for i, exp in enumerate(master_cv.experiences):
+        exp_data = {
+            "user_id": user_id,
+            "company": exp.company,
+            "location": exp.location,
+            "title": exp.title,
+            "dates": exp.dates,
+            "bullets": exp.bullets,
+            "categories": exp.categories,
+            "sort_order": i
+        }
+        await db_request("POST", "user_experiences", data=exp_data)
 
-    # If database not available, return the data anyway
-    return {"success": True, "master_cv": master_cv, "message": "CV sparat (lokalt)"}
+    # Save volunteer entries
+    for i, vol in enumerate(master_cv.volunteer):
+        vol_data = {
+            "user_id": user_id,
+            "organization": vol.organization,
+            "dates": vol.dates,
+            "bullets": vol.bullets,
+            "sort_order": i
+        }
+        await db_request("POST", "user_volunteer", data=vol_data)
+
+    # Save awards
+    for i, award in enumerate(master_cv.awards):
+        award_data = {
+            "user_id": user_id,
+            "award_text": award,
+            "sort_order": i
+        }
+        await db_request("POST", "user_awards", data=award_data)
+
+    # Save skills
+    for skill in master_cv.skills:
+        skill_data = {
+            "user_id": user_id,
+            "category": skill.category,
+            "skill_type": skill.skill_type,
+            "skill_text": skill.skill_text
+        }
+        await db_request("POST", "user_skills", data=skill_data)
+
+    return {
+        "success": True,
+        "message": "Master CV sparad!",
+        "summary": {
+            "education": len(master_cv.education),
+            "experiences": len(master_cv.experiences),
+            "volunteer": len(master_cv.volunteer),
+            "awards": len(master_cv.awards),
+            "skills": len(master_cv.skills)
+        }
+    }
 
 
 @app.get("/api/cv/master")
 async def get_master_cv(user_id: str = "default_user"):
-    """Get user's master CV"""
-    cvs = await db_request("GET", "master_cvs", params={
+    """Get user's complete Master CV as structured data"""
+
+    # Get profile
+    profiles = await db_request("GET", "user_profiles", params={"user_id": f"eq.{user_id}"})
+    profile = profiles[0] if profiles else None
+
+    if not profile:
+        return {"success": True, "master_cv": None, "message": "Ingen CV uppladdad ännu"}
+
+    # Get all data
+    education = await db_request("GET", "user_education", params={
+        "user_id": f"eq.{user_id}", "order": "sort_order.asc"
+    }) or []
+
+    experiences = await db_request("GET", "user_experiences", params={
+        "user_id": f"eq.{user_id}", "order": "sort_order.asc"
+    }) or []
+
+    volunteer = await db_request("GET", "user_volunteer", params={
+        "user_id": f"eq.{user_id}", "order": "sort_order.asc"
+    }) or []
+
+    awards = await db_request("GET", "user_awards", params={
+        "user_id": f"eq.{user_id}", "order": "sort_order.asc"
+    }) or []
+
+    skills = await db_request("GET", "user_skills", params={
+        "user_id": f"eq.{user_id}"
+    }) or []
+
+    return {
+        "success": True,
+        "master_cv": {
+            "profile": profile,
+            "education": education,
+            "experiences": experiences,
+            "volunteer": volunteer,
+            "awards": [a.get("award_text") for a in awards],
+            "skills": skills
+        }
+    }
+
+
+@app.get("/api/cv/export/{vibe_id}")
+async def export_cv_for_vibe(vibe_id: str, user_id: str = "default_user"):
+    """
+    Export CV data filtered for a specific vibe.
+    Returns structured data ready for PDF template.
+    """
+    # Get master CV
+    master_cv_response = await get_master_cv(user_id)
+    if not master_cv_response.get("master_cv"):
+        raise HTTPException(status_code=404, detail="No Master CV found")
+
+    master = master_cv_response["master_cv"]
+    profile = master["profile"]
+
+    # Filter experiences by vibe category
+    all_experiences = master.get("experiences", [])
+    filtered_experiences = [
+        exp for exp in all_experiences
+        if vibe_id in exp.get("categories", [])
+    ]
+
+    # Get skills for this vibe (and 'all' skills)
+    all_skills = master.get("skills", [])
+    vibe_skills = [s for s in all_skills if s.get("category") in [vibe_id, "all"]]
+
+    # Build technical skills string if tech vibe
+    technical_skills = None
+    if vibe_id in ["tech", "content"]:
+        tech_skill_texts = [s.get("skill_text") for s in vibe_skills if s.get("skill_type") == "technical"]
+        if tech_skill_texts:
+            technical_skills = ", ".join(tech_skill_texts)
+
+    # Get vibe info
+    vibe_info = next((v for v in CV_VIBES if v["id"] == vibe_id), None)
+
+    return {
+        "success": True,
+        "vibe": vibe_info,
+        "cv_data": {
+            "full_name": profile.get("full_name"),
+            "email": profile.get("email"),
+            "phone": profile.get("phone"),
+            "location": profile.get("location"),
+            "photo_url": profile.get("photo_url"),
+            "drivers_license": profile.get("drivers_license"),
+            "languages": ", ".join(profile.get("languages", [])),
+            "certificates": ", ".join(profile.get("certificates", [])),
+            "technical_skills": technical_skills,
+            "education": master.get("education", []),
+            "experience": filtered_experiences,
+            "volunteer": master.get("volunteer", []),
+            "awards": master.get("awards", [])
+        }
+    }
+
+
+@app.post("/api/cv/suggest-vibe")
+async def suggest_new_vibe(job_keywords: List[str], user_id: str = "default_user"):
+    """
+    Analyze job search keywords and suggest if user should create a new CV vibe.
+    Returns suggestion if pattern detected and user doesn't have that vibe.
+    """
+    # Count keyword matches per vibe
+    vibe_scores = {}
+    for vibe in CV_VIBES:
+        score = 0
+        for keyword in job_keywords:
+            if any(vk in keyword.lower() for vk in vibe.get("keywords", [])):
+                score += 1
+        if score > 0:
+            vibe_scores[vibe["id"]] = score
+
+    if not vibe_scores:
+        return {"success": True, "suggestion": None}
+
+    # Find top vibe
+    top_vibe_id = max(vibe_scores, key=vibe_scores.get)
+    top_score = vibe_scores[top_vibe_id]
+
+    # Only suggest if significant pattern (3+ matches)
+    if top_score < 3:
+        return {"success": True, "suggestion": None}
+
+    # Check if user has experiences tagged for this vibe
+    experiences = await db_request("GET", "user_experiences", params={
         "user_id": f"eq.{user_id}",
-        "order": "created_at.desc",
-        "limit": "1"
+        "categories": f"cs.{{{top_vibe_id}}}"  # contains
     })
 
-    if cvs and len(cvs) > 0:
-        return {"success": True, "master_cv": cvs[0]}
+    has_vibe_cv = bool(experiences)
 
-    return {"success": True, "master_cv": None, "message": "Ingen CV uppladdad ännu"}
+    if has_vibe_cv:
+        return {"success": True, "suggestion": None, "message": f"Du har redan ett {top_vibe_id}-CV!"}
+
+    # Get vibe info
+    vibe_info = next((v for v in CV_VIBES if v["id"] == top_vibe_id), None)
+
+    return {
+        "success": True,
+        "suggestion": {
+            "vibe_id": top_vibe_id,
+            "vibe_name": vibe_info["name"],
+            "vibe_emoji": vibe_info["emoji"],
+            "match_count": top_score,
+            "message": f"Hej! Jag ser att du söker många jobb inom {vibe_info['name'].lower()}. Vill du skapa ett CV anpassat för den branschen?"
+        }
+    }
 
 
 @app.post("/api/cv/generate-vibes")
