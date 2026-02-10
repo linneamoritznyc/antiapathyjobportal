@@ -145,8 +145,8 @@ class MasterCV(BaseModel):
     skills: List[SkillEntry] = []
 
 
-class GenerateCVVibesRequest(BaseModel):
-    """Request to generate multiple CV versions"""
+class GenerateCVBranscherRequest(BaseModel):
+    """Request to generate multiple CV versions for different branscher"""
     user_id: Optional[str] = None
 
 
@@ -166,8 +166,9 @@ class CreateGmailDraftRequest(BaseModel):
     job_id: Optional[str] = None
 
 
-# CV Categories/Vibes
-CV_VIBES = [
+# CV Categories/Branscher (will be loaded from database per user)
+# This is a fallback for users without custom branscher
+CV_BRANSCHER = [
     {"id": "restaurant", "name": "Restaurang & Café", "emoji": "🍽️",
      "focus": "servering, kundkontakt, stresshantering, teamwork, hygien",
      "keywords": ["servitör", "restaurang", "café", "barista", "kök", "mat"]},
@@ -183,7 +184,7 @@ CV_VIBES = [
     {"id": "healthcare", "name": "Vård & Omsorg", "emoji": "🏥",
      "focus": "omvårdnad, empati, medicinhantering, dokumentation",
      "keywords": ["vård", "omsorg", "sjuksköterska", "äldreboende"]},
-    {"id": "garden", "name": "Trädgård & Industri", "emoji": "🌱",
+    {"id": "industry", "name": "Trädgård & Industri", "emoji": "🌱",
      "focus": "fysiskt arbete, utomhusarbete, maskiner, självständighet",
      "keywords": ["trädgård", "industri", "lager", "städ", "bygg"]},
     {"id": "hotel", "name": "Hotell & Reception", "emoji": "🏨",
@@ -548,7 +549,7 @@ async def generate_all_cv_vibes(master_cv: Dict, user_id: str) -> List[Dict]:
     """Generate all CV versions for a user"""
     generated_cvs = []
 
-    for vibe in CV_VIBES:
+    for vibe in CV_BRANSCHER:
         logger.info(f"Generating CV vibe: {vibe['name']}...")
         cv_text = await generate_cv_vibe(master_cv, vibe)
 
@@ -799,7 +800,7 @@ async def get_stats():
 @app.get("/api/cv/vibes")
 async def list_cv_vibes():
     """List all available CV vibes/categories"""
-    return {"success": True, "vibes": CV_VIBES}
+    return {"success": True, "vibes": CV_BRANSCHER}
 
 
 @app.post("/api/cv/master")
@@ -971,7 +972,7 @@ async def export_cv_for_vibe(vibe_id: str, user_id: str = "default_user"):
             technical_skills = ", ".join(tech_skill_texts)
 
     # Get vibe info
-    vibe_info = next((v for v in CV_VIBES if v["id"] == vibe_id), None)
+    vibe_info = next((v for v in CV_BRANSCHER if v["id"] == vibe_id), None)
 
     return {
         "success": True,
@@ -1002,7 +1003,7 @@ async def suggest_new_vibe(job_keywords: List[str], user_id: str = "default_user
     """
     # Count keyword matches per vibe
     vibe_scores = {}
-    for vibe in CV_VIBES:
+    for vibe in CV_BRANSCHER:
         score = 0
         for keyword in job_keywords:
             if any(vk in keyword.lower() for vk in vibe.get("keywords", [])):
@@ -1033,7 +1034,7 @@ async def suggest_new_vibe(job_keywords: List[str], user_id: str = "default_user
         return {"success": True, "suggestion": None, "message": f"Du har redan ett {top_vibe_id}-CV!"}
 
     # Get vibe info
-    vibe_info = next((v for v in CV_VIBES if v["id"] == top_vibe_id), None)
+    vibe_info = next((v for v in CV_BRANSCHER if v["id"] == top_vibe_id), None)
 
     return {
         "success": True,

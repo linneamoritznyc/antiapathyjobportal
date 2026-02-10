@@ -40,19 +40,19 @@ CREATE TABLE IF NOT EXISTS user_profiles (
 
 -- ============== NEW MULTI-USER PREFERENCE TABLES ==============
 
--- User-defined CV vibes/industries (replaces hard-coded CV_VIBES)
-CREATE TABLE IF NOT EXISTS user_cv_vibes (
+-- User-defined CV branscher/industries (replaces hard-coded CV_VIBES)
+CREATE TABLE IF NOT EXISTS user_cv_branscher (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     user_id TEXT NOT NULL,
-    vibe_id TEXT NOT NULL,  -- user-defined slug, e.g., "restaurant", "tattoo"
-    vibe_name TEXT NOT NULL,  -- display name, e.g., "Restaurang & Café"
+    bransch_id TEXT NOT NULL,  -- user-defined slug, e.g., "restaurant", "tattoo"
+    bransch_name TEXT NOT NULL,  -- display name, e.g., "Restaurang & Café"
     emoji TEXT,  -- e.g., "🍽️"
-    focus TEXT,  -- what to emphasize for this vibe
+    focus TEXT,  -- what to emphasize for this bransch
     keywords TEXT[] DEFAULT ARRAY[]::TEXT[],  -- job search keywords
     is_active BOOLEAN DEFAULT TRUE,
     sort_order INT DEFAULT 0,
     created_at TIMESTAMPTZ DEFAULT NOW(),
-    UNIQUE(user_id, vibe_id)
+    UNIQUE(user_id, bransch_id)
 );
 
 -- Cover letter preferences per user
@@ -89,14 +89,20 @@ CREATE TABLE IF NOT EXISTS user_job_preferences (
 );
 
 -- AI feedback from users (learning their preferences)
+-- feedback_type options:
+--   'cover_letter' - How to write cover letters (default)
+--   'new_bransch_request' - Request to create new CV bransch
+--   'exclude_jobs' - Filter out certain jobs ("I don't want to work in Äldrevården")
+--   'general' - Other feedback
 CREATE TABLE IF NOT EXISTS user_ai_feedback (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     user_id TEXT NOT NULL,
-    feedback_type TEXT DEFAULT 'cover_letter',  -- 'cover_letter', 'new_vibe_request', 'general'
+    feedback_type TEXT DEFAULT 'cover_letter',
     feedback_text TEXT NOT NULL,  -- Can be Swedish or English
-    applies_to_vibes TEXT[] DEFAULT ARRAY[]::TEXT[],  -- ['tattoo', 'art'] or empty for all
+    applies_to_branscher TEXT[] DEFAULT ARRAY[]::TEXT[],  -- ['tattoo', 'art'] or empty for all
+    excluded_keywords TEXT[] DEFAULT ARRAY[]::TEXT[],  -- For exclude_jobs: keywords to filter out
     is_active BOOLEAN DEFAULT TRUE,
-    is_processed BOOLEAN DEFAULT FALSE,  -- For new_vibe_request: has vibe been created?
+    is_processed BOOLEAN DEFAULT FALSE,
     created_at TIMESTAMPTZ DEFAULT NOW()
 );
 
@@ -127,17 +133,17 @@ CREATE TABLE IF NOT EXISTS user_experiences (
     created_at TIMESTAMPTZ DEFAULT NOW()
 );
 
--- Experience tags: links experiences to vibes with priority
+-- Experience tags: links experiences to branscher with priority
 -- (must be after user_experiences for foreign key)
 CREATE TABLE IF NOT EXISTS user_experience_tags (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     user_id TEXT NOT NULL,
     experience_id UUID REFERENCES user_experiences(id) ON DELETE CASCADE,
-    vibe_id TEXT NOT NULL,  -- which CV vibe this experience is relevant for
-    priority INT DEFAULT 5,  -- 1-10, how important for this vibe
+    bransch_id TEXT NOT NULL,  -- which CV bransch this experience is relevant for
+    priority INT DEFAULT 5,  -- 1-10, how important for this bransch
     highlight_points TEXT[] DEFAULT ARRAY[]::TEXT[],  -- specific bullets to emphasize
     created_at TIMESTAMPTZ DEFAULT NOW(),
-    UNIQUE(experience_id, vibe_id)
+    UNIQUE(experience_id, bransch_id)
 );
 
 -- Volunteer work (same for all CV vibes)
@@ -407,10 +413,10 @@ CREATE INDEX IF NOT EXISTS idx_applications_user ON applications(user_id);
 CREATE INDEX IF NOT EXISTS idx_applications_status ON applications(status);
 
 -- Indexes for new multi-user tables
-CREATE INDEX IF NOT EXISTS idx_user_cv_vibes_user ON user_cv_vibes(user_id);
+CREATE INDEX IF NOT EXISTS idx_user_cv_branscher_user ON user_cv_branscher(user_id);
 CREATE INDEX IF NOT EXISTS idx_user_ai_feedback_user ON user_ai_feedback(user_id);
 CREATE INDEX IF NOT EXISTS idx_user_experience_tags_user ON user_experience_tags(user_id);
-CREATE INDEX IF NOT EXISTS idx_user_experience_tags_vibe ON user_experience_tags(vibe_id);
+CREATE INDEX IF NOT EXISTS idx_user_experience_tags_bransch ON user_experience_tags(bransch_id);
 
 -- Row Level Security (enable when you add auth)
 -- ALTER TABLE user_profiles ENABLE ROW LEVEL SECURITY;
@@ -425,8 +431,8 @@ COMMENT ON TABLE jobs IS 'Jobs scraped from Platsbanken (only email-application 
 COMMENT ON TABLE user_profiles IS 'User profile with personal info and photo';
 COMMENT ON TABLE user_cvs IS 'Generated CV versions for different job categories';
 COMMENT ON TABLE applications IS 'Job applications with status tracking';
-COMMENT ON TABLE user_cv_vibes IS 'User-defined CV vibes/industries (replaces hard-coded CV_VIBES)';
+COMMENT ON TABLE user_cv_branscher IS 'User-defined CV branscher/industries (replaces hard-coded CV_VIBES)';
 COMMENT ON TABLE user_cover_letter_preferences IS 'Per-user cover letter style and content preferences';
 COMMENT ON TABLE user_job_preferences IS 'Per-user job search filters and preferences';
 COMMENT ON TABLE user_ai_feedback IS 'User feedback to AI for personalized cover letter generation';
-COMMENT ON TABLE user_experience_tags IS 'Links experiences to vibes with priority for cover letter generation';
+COMMENT ON TABLE user_experience_tags IS 'Links experiences to branscher with priority for cover letter generation';
