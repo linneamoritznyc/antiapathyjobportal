@@ -92,9 +92,11 @@ CREATE TABLE IF NOT EXISTS user_job_preferences (
 CREATE TABLE IF NOT EXISTS user_ai_feedback (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     user_id TEXT NOT NULL,
+    feedback_type TEXT DEFAULT 'cover_letter',  -- 'cover_letter', 'new_vibe_request', 'general'
     feedback_text TEXT NOT NULL,  -- Can be Swedish or English
     applies_to_vibes TEXT[] DEFAULT ARRAY[]::TEXT[],  -- ['tattoo', 'art'] or empty for all
     is_active BOOLEAN DEFAULT TRUE,
+    is_processed BOOLEAN DEFAULT FALSE,  -- For new_vibe_request: has vibe been created?
     created_at TIMESTAMPTZ DEFAULT NOW()
 );
 
