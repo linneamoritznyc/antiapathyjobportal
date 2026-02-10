@@ -1,0 +1,546 @@
+<!DOCTYPE html>
+<html lang="sv">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Anti-Apathy Job Portal</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+    <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    <style>
+        * { font-family: system-ui, -apple-system, sans-serif; }
+        .gradient { background: linear-gradient(135deg, #6366f1 0%, #8b5cf6 50%, #a855f7 100%); }
+        .tab-active { border-bottom: 3px solid white; }
+    </style>
+</head>
+<body class="bg-slate-50 min-h-screen">
+    <div id="root"></div>
+    <script type="text/babel">
+        const { useState, useEffect } = React;
+
+        // ============== COMPONENTS ==============
+
+        // Navigation tabs
+        const NavTabs = ({ activeTab, setActiveTab }) => (
+            <div className="flex gap-6">
+                {[
+                    { id: 'jobs', label: 'Jobb', icon: '🔍' },
+                    { id: 'cvs', label: 'Mina CV', icon: '📄' },
+                    { id: 'applications', label: 'Ansökningar', icon: '📬' }
+                ].map(tab => (
+                    <button
+                        key={tab.id}
+                        onClick={() => setActiveTab(tab.id)}
+                        className={`pb-2 text-white/80 hover:text-white transition ${activeTab === tab.id ? 'tab-active text-white font-medium' : ''}`}
+                    >
+                        {tab.icon} {tab.label}
+                    </button>
+                ))}
+            </div>
+        );
+
+        // Stats dashboard
+        const Stats = ({ stats }) => (
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
+                {[
+                    { label: "Jobb", value: stats.total_jobs, color: "text-indigo-600", bg: "bg-indigo-50" },
+                    { label: "CV-vibes", value: stats.cv_vibes || 0, color: "text-purple-600", bg: "bg-purple-50" },
+                    { label: "Skickade", value: stats.sent, color: "text-green-600", bg: "bg-green-50" },
+                    { label: "Intervjuer", value: stats.interviews, color: "text-amber-600", bg: "bg-amber-50" }
+                ].map(({ label, value, color, bg }) => (
+                    <div key={label} className={`${bg} rounded-xl p-4`}>
+                        <div className={`text-3xl font-bold ${color}`}>{value || 0}</div>
+                        <div className="text-slate-500 text-sm">{label}</div>
+                    </div>
+                ))}
+            </div>
+        );
+
+        // Job card
+        const JobCard = ({ job, onApply, loading }) => {
+            const priorityColors = {
+                urgent: "bg-red-100 text-red-700",
+                soon: "bg-amber-100 text-amber-700",
+                normal: "bg-green-100 text-green-700"
+            };
+
+            return (
+                <div className="bg-white rounded-xl shadow-sm border border-slate-100 p-5">
+                    <div className="flex justify-between items-start mb-2">
+                        <span className={`text-xs px-2 py-1 rounded-full ${priorityColors[job.priority] || priorityColors.normal}`}>
+                            {job.priority === 'urgent' ? '⚡ Akut' : job.priority === 'soon' ? '⏰ Snart' : '✓'}
+                        </span>
+                        {job.deadline && (
+                            <span className="text-xs text-slate-400">
+                                {new Date(job.deadline).toLocaleDateString('sv-SE')}
+                            </span>
+                        )}
+                    </div>
+                    <h3 className="text-lg font-semibold text-slate-800">{job.title}</h3>
+                    <p className="text-indigo-600 font-medium text-sm">{job.company}</p>
+                    <p className="text-slate-400 text-xs mb-3">{job.location}</p>
+
+                    <div className="bg-slate-50 rounded-lg p-2 mb-3">
+                        <p className="text-xs text-slate-600">
+                            📧 <a href={`mailto:${job.contact_email}`} className="text-indigo-600">{job.contact_email}</a>
+                        </p>
+                    </div>
+
+                    <div className="flex gap-2">
+                        <button
+                            onClick={() => onApply(job)}
+                            disabled={loading}
+                            className="flex-1 bg-indigo-600 text-white py-2 px-3 rounded-lg text-sm font-medium hover:bg-indigo-700 disabled:opacity-50"
+                        >
+                            {loading ? '...' : '✨ Ansök'}
+                        </button>
+                        <a href={job.url} target="_blank" className="px-3 py-2 border border-slate-200 rounded-lg text-slate-500 text-sm hover:bg-slate-50">
+                            ↗
+                        </a>
+                    </div>
+                </div>
+            );
+        };
+
+        // CV Vibe card
+        const CVVibeCard = ({ vibe, userCV, onSelect }) => {
+            const hasCV = !!userCV;
+            return (
+                <div
+                    className={`rounded-xl p-5 border-2 cursor-pointer transition ${hasCV ? 'bg-white border-green-200 hover:border-green-400' : 'bg-slate-50 border-slate-200 hover:border-indigo-300'}`}
+                    onClick={() => onSelect(vibe, userCV)}
+                >
+                    <div className="text-3xl mb-2">{vibe.emoji}</div>
+                    <h3 className="font-semibold text-slate-800">{vibe.name}</h3>
+                    <p className="text-xs text-slate-500 mt-1">{vibe.focus}</p>
+                    {hasCV ? (
+                        <span className="inline-block mt-3 text-xs bg-green-100 text-green-700 px-2 py-1 rounded-full">✓ CV finns</span>
+                    ) : (
+                        <span className="inline-block mt-3 text-xs bg-slate-100 text-slate-500 px-2 py-1 rounded-full">Inte skapat</span>
+                    )}
+                </div>
+            );
+        };
+
+        // Application modal
+        const ApplyModal = ({ isOpen, job, result, onClose }) => {
+            const [letter, setLetter] = useState('');
+
+            useEffect(() => {
+                if (result?.cover_letter) setLetter(result.cover_letter);
+            }, [result]);
+
+            if (!isOpen || !job) return null;
+
+            const openGmail = () => {
+                const subject = encodeURIComponent(`Ansökan: ${job.title}`);
+                const body = encodeURIComponent(letter);
+                window.open(`https://mail.google.com/mail/?view=cm&fs=1&to=${job.contact_email}&su=${subject}&body=${body}`, '_blank');
+            };
+
+            const copyLetter = () => {
+                navigator.clipboard.writeText(letter);
+                alert('Kopierat!');
+            };
+
+            return (
+                <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50">
+                    <div className="bg-white rounded-2xl max-w-2xl w-full max-h-[90vh] overflow-hidden">
+                        <div className="gradient text-white p-5">
+                            <h3 className="text-xl font-bold">{job.title}</h3>
+                            <p className="opacity-90">{job.company}</p>
+                            {result?.matched_vibe && (
+                                <span className="inline-block mt-2 text-xs bg-white/20 px-2 py-1 rounded-full">
+                                    CV: {result.matched_vibe}
+                                </span>
+                            )}
+                        </div>
+                        <div className="p-5">
+                            <label className="block text-sm font-medium text-slate-700 mb-2">Personligt brev</label>
+                            <textarea
+                                value={letter}
+                                onChange={(e) => setLetter(e.target.value)}
+                                className="w-full h-48 p-3 border border-slate-200 rounded-lg text-sm"
+                            />
+
+                            {result?.cv && (
+                                <div className="mt-4 p-3 bg-slate-50 rounded-lg">
+                                    <p className="text-sm font-medium text-slate-700 mb-1">Bifogat CV: {result.cv.vibe_name}</p>
+                                    <p className="text-xs text-slate-500 line-clamp-2">{result.cv.cv_text?.slice(0, 150)}...</p>
+                                </div>
+                            )}
+
+                            <div className="flex gap-3 mt-4">
+                                <button onClick={openGmail} className="flex-1 bg-green-600 text-white py-2.5 px-4 rounded-lg font-medium hover:bg-green-700">
+                                    📧 Öppna i Gmail
+                                </button>
+                                <button onClick={copyLetter} className="px-4 py-2.5 border border-slate-200 rounded-lg hover:bg-slate-50">
+                                    📋 Kopiera
+                                </button>
+                                <button onClick={onClose} className="px-4 py-2.5 border border-slate-200 rounded-lg hover:bg-slate-50">
+                                    Stäng
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            );
+        };
+
+        // CV Detail Modal
+        const CVModal = ({ isOpen, vibe, cvText, onClose, onSave }) => {
+            const [text, setText] = useState(cvText || '');
+
+            useEffect(() => setText(cvText || ''), [cvText]);
+
+            if (!isOpen) return null;
+
+            return (
+                <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50">
+                    <div className="bg-white rounded-2xl max-w-2xl w-full max-h-[90vh] overflow-hidden">
+                        <div className="gradient text-white p-5">
+                            <h3 className="text-xl font-bold">{vibe?.emoji} {vibe?.name}</h3>
+                            <p className="opacity-90 text-sm">{vibe?.focus}</p>
+                        </div>
+                        <div className="p-5">
+                            <textarea
+                                value={text}
+                                onChange={(e) => setText(e.target.value)}
+                                className="w-full h-64 p-3 border border-slate-200 rounded-lg text-sm font-mono"
+                                placeholder="Ditt CV-innehåll här..."
+                            />
+                            <div className="flex gap-3 mt-4">
+                                <button
+                                    onClick={() => onSave(vibe.id, text)}
+                                    className="flex-1 bg-indigo-600 text-white py-2.5 px-4 rounded-lg font-medium hover:bg-indigo-700"
+                                >
+                                    Spara CV
+                                </button>
+                                <button onClick={onClose} className="px-4 py-2.5 border border-slate-200 rounded-lg hover:bg-slate-50">
+                                    Avbryt
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            );
+        };
+
+        // ============== PAGES ==============
+
+        // Jobs page
+        const JobsPage = ({ jobs, onScrape, onApply, scraping, applyingJob }) => {
+            const [keywords, setKeywords] = useState('');
+
+            return (
+                <div>
+                    <div className="bg-white rounded-xl p-5 shadow-sm mb-6">
+                        <h2 className="text-lg font-semibold mb-3">🔍 Sök jobb på Platsbanken</h2>
+                        <div className="flex gap-3">
+                            <input
+                                type="text"
+                                value={keywords}
+                                onChange={(e) => setKeywords(e.target.value)}
+                                placeholder="t.ex. servitör, kundtjänst, butik"
+                                className="flex-1 border border-slate-200 rounded-lg px-4 py-2"
+                                onKeyDown={(e) => e.key === 'Enter' && onScrape(keywords)}
+                            />
+                            <button
+                                onClick={() => onScrape(keywords)}
+                                disabled={scraping}
+                                className="bg-indigo-600 text-white px-6 py-2 rounded-lg font-medium hover:bg-indigo-700 disabled:opacity-50"
+                            >
+                                {scraping ? 'Söker...' : 'Sök'}
+                            </button>
+                        </div>
+                        <p className="text-xs text-slate-500 mt-2">Visar endast jobb med e-postansökan.</p>
+                    </div>
+
+                    <h2 className="text-lg font-semibold mb-4">📋 Jobb ({jobs.length})</h2>
+                    {jobs.length === 0 ? (
+                        <div className="bg-white rounded-xl p-10 text-center shadow-sm">
+                            <p className="text-slate-500">Inga jobb ännu. Sök för att hitta nya!</p>
+                        </div>
+                    ) : (
+                        <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-4">
+                            {jobs.map(job => (
+                                <JobCard
+                                    key={job.id}
+                                    job={job}
+                                    onApply={onApply}
+                                    loading={applyingJob === job.id}
+                                />
+                            ))}
+                        </div>
+                    )}
+                </div>
+            );
+        };
+
+        // CVs page
+        const CVsPage = ({ vibes, userCVs, onSelectVibe, onGenerateVibes, generating }) => (
+            <div>
+                <div className="flex justify-between items-center mb-6">
+                    <h2 className="text-lg font-semibold">📄 Mina CV-versioner</h2>
+                    <button
+                        onClick={onGenerateVibes}
+                        disabled={generating}
+                        className="bg-purple-600 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-purple-700 disabled:opacity-50"
+                    >
+                        {generating ? 'Genererar...' : '✨ Generera alla CV'}
+                    </button>
+                </div>
+
+                <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 mb-6">
+                    <p className="text-sm text-amber-800">
+                        <strong>Tips:</strong> Klicka på en kategori för att se/redigera CV:t.
+                        "Generera alla CV" skapar AI-versioner baserat på ditt Master CV.
+                    </p>
+                </div>
+
+                <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-4">
+                    {vibes.map(vibe => {
+                        const userCV = userCVs.find(cv => cv.vibe_id === vibe.id);
+                        return (
+                            <CVVibeCard
+                                key={vibe.id}
+                                vibe={vibe}
+                                userCV={userCV}
+                                onSelect={onSelectVibe}
+                            />
+                        );
+                    })}
+                </div>
+            </div>
+        );
+
+        // Applications page
+        const ApplicationsPage = ({ applications }) => (
+            <div>
+                <h2 className="text-lg font-semibold mb-4">📬 Mina ansökningar</h2>
+                {applications.length === 0 ? (
+                    <div className="bg-white rounded-xl p-10 text-center shadow-sm">
+                        <p className="text-slate-500">Inga ansökningar ännu.</p>
+                    </div>
+                ) : (
+                    <div className="space-y-3">
+                        {applications.map(app => (
+                            <div key={app.id} className="bg-white rounded-xl p-4 shadow-sm flex justify-between items-center">
+                                <div>
+                                    <p className="font-medium text-slate-800">{app.job_title || 'Jobb'}</p>
+                                    <p className="text-sm text-slate-500">{new Date(app.created_at).toLocaleDateString('sv-SE')}</p>
+                                </div>
+                                <span className={`px-3 py-1 rounded-full text-xs font-medium ${
+                                    app.status === 'sent' ? 'bg-green-100 text-green-700' :
+                                    app.status === 'interview' ? 'bg-purple-100 text-purple-700' :
+                                    app.status === 'rejected' ? 'bg-red-100 text-red-700' :
+                                    'bg-slate-100 text-slate-600'
+                                }`}>
+                                    {app.status === 'sent' ? '✓ Skickad' :
+                                     app.status === 'interview' ? '🎉 Intervju' :
+                                     app.status === 'rejected' ? '✗ Avslag' :
+                                     'Utkast'}
+                                </span>
+                            </div>
+                        ))}
+                    </div>
+                )}
+            </div>
+        );
+
+        // ============== MAIN APP ==============
+
+        const App = () => {
+            const [activeTab, setActiveTab] = useState('jobs');
+            const [jobs, setJobs] = useState([]);
+            const [vibes, setVibes] = useState([]);
+            const [userCVs, setUserCVs] = useState([]);
+            const [applications, setApplications] = useState([]);
+            const [stats, setStats] = useState({});
+
+            const [scraping, setScraping] = useState(false);
+            const [generating, setGenerating] = useState(false);
+            const [applyingJob, setApplyingJob] = useState(null);
+
+            const [showApplyModal, setShowApplyModal] = useState(false);
+            const [showCVModal, setShowCVModal] = useState(false);
+            const [selectedJob, setSelectedJob] = useState(null);
+            const [applyResult, setApplyResult] = useState(null);
+            const [selectedVibe, setSelectedVibe] = useState(null);
+            const [selectedCVText, setSelectedCVText] = useState('');
+
+            // Fetch initial data
+            useEffect(() => {
+                fetchJobs();
+                fetchVibes();
+                fetchUserCVs();
+                fetchApplications();
+                fetchStats();
+            }, []);
+
+            const fetchJobs = async () => {
+                const res = await fetch('/api/jobs');
+                const data = await res.json();
+                if (data.success) setJobs(data.jobs || []);
+            };
+
+            const fetchVibes = async () => {
+                const res = await fetch('/api/cv/vibes');
+                const data = await res.json();
+                if (data.success) setVibes(data.vibes || []);
+            };
+
+            const fetchUserCVs = async () => {
+                const res = await fetch('/api/cv/all');
+                const data = await res.json();
+                if (data.success) setUserCVs(data.cvs || []);
+            };
+
+            const fetchApplications = async () => {
+                const res = await fetch('/api/applications');
+                const data = await res.json();
+                if (data.success) setApplications(data.applications || []);
+            };
+
+            const fetchStats = async () => {
+                const res = await fetch('/api/stats');
+                const data = await res.json();
+                if (data.success) {
+                    setStats({...data.stats, cv_vibes: userCVs.length});
+                }
+            };
+
+            const handleScrape = async (keywords) => {
+                setScraping(true);
+                const kw = keywords.trim() ? keywords.split(',').map(k => k.trim()) : null;
+                const res = await fetch('/api/scrape', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ keywords: kw })
+                });
+                const data = await res.json();
+                if (data.success) {
+                    setJobs(data.jobs || []);
+                    fetchStats();
+                }
+                setScraping(false);
+            };
+
+            const handleApply = async (job) => {
+                setApplyingJob(job.id);
+                setSelectedJob(job);
+
+                const res = await fetch(`/api/jobs/${job.id}/apply-with-cv`, { method: 'POST' });
+                const data = await res.json();
+
+                if (data.success) {
+                    setApplyResult(data);
+                    setShowApplyModal(true);
+                }
+                setApplyingJob(null);
+            };
+
+            const handleSelectVibe = (vibe, userCV) => {
+                setSelectedVibe(vibe);
+                setSelectedCVText(userCV?.cv_text || '');
+                setShowCVModal(true);
+            };
+
+            const handleSaveCV = async (vibeId, text) => {
+                // Save or update CV
+                const existingCV = userCVs.find(cv => cv.vibe_id === vibeId);
+
+                if (existingCV) {
+                    // Update
+                    await fetch(`/api/cv/${vibeId}?cv_text=${encodeURIComponent(text)}`, { method: 'PATCH' });
+                } else {
+                    // Create (simplified - in real app, would need full data)
+                    const vibe = vibes.find(v => v.id === vibeId);
+                    await fetch('/api/cv/all', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            vibe_id: vibeId,
+                            vibe_name: vibe?.name,
+                            vibe_emoji: vibe?.emoji,
+                            cv_text: text
+                        })
+                    });
+                }
+
+                fetchUserCVs();
+                setShowCVModal(false);
+            };
+
+            const handleGenerateVibes = async () => {
+                setGenerating(true);
+                await fetch('/api/cv/generate-vibes', { method: 'POST' });
+                fetchUserCVs();
+                setGenerating(false);
+            };
+
+            return (
+                <div className="min-h-screen">
+                    <header className="gradient text-white py-6 px-4">
+                        <div className="max-w-6xl mx-auto">
+                            <div className="flex justify-between items-center mb-4">
+                                <div>
+                                    <h1 className="text-2xl font-bold">Anti-Apathy Job Portal</h1>
+                                    <p className="opacity-80 text-sm">Sök jobb utan apati. En ansökan i taget.</p>
+                                </div>
+                            </div>
+                            <NavTabs activeTab={activeTab} setActiveTab={setActiveTab} />
+                        </div>
+                    </header>
+
+                    <main className="max-w-6xl mx-auto px-4 py-6">
+                        <Stats stats={{...stats, cv_vibes: userCVs.length}} />
+
+                        {activeTab === 'jobs' && (
+                            <JobsPage
+                                jobs={jobs}
+                                onScrape={handleScrape}
+                                onApply={handleApply}
+                                scraping={scraping}
+                                applyingJob={applyingJob}
+                            />
+                        )}
+
+                        {activeTab === 'cvs' && (
+                            <CVsPage
+                                vibes={vibes}
+                                userCVs={userCVs}
+                                onSelectVibe={handleSelectVibe}
+                                onGenerateVibes={handleGenerateVibes}
+                                generating={generating}
+                            />
+                        )}
+
+                        {activeTab === 'applications' && (
+                            <ApplicationsPage applications={applications} />
+                        )}
+                    </main>
+
+                    <ApplyModal
+                        isOpen={showApplyModal}
+                        job={selectedJob}
+                        result={applyResult}
+                        onClose={() => setShowApplyModal(false)}
+                    />
+
+                    <CVModal
+                        isOpen={showCVModal}
+                        vibe={selectedVibe}
+                        cvText={selectedCVText}
+                        onClose={() => setShowCVModal(false)}
+                        onSave={handleSaveCV}
+                    />
+                </div>
+            );
+        };
+
+        ReactDOM.createRoot(document.getElementById('root')).render(<App />);
+    </script>
+</body>
+</html>
