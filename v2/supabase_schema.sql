@@ -302,6 +302,7 @@ CREATE TABLE IF NOT EXISTS user_google_credentials (
 );
 
 -- Applications (tracking what user has applied to)
+CREATE TABLE IF NOT EXISTS applications (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     user_id TEXT DEFAULT 'default_user',
     job_id TEXT REFERENCES jobs(id),
