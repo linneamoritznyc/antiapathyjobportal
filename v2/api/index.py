@@ -24,6 +24,7 @@ logger = logging.getLogger(__name__)
 # Environment variables
 SUPABASE_URL = os.getenv("SUPABASE_URL")
 SUPABASE_KEY = os.getenv("SUPABASE_SERVICE_ROLE_KEY") or os.getenv("SUPABASE_ANON_KEY")
+SUPABASE_ANON_KEY = os.getenv("SUPABASE_ANON_KEY")  # For client-side auth
 ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY")
 
 # Gmail API scopes (for user's own Google Cloud credentials)
@@ -61,6 +62,27 @@ class SaveApplicationRequest(BaseModel):
     cover_letter: str
     cv_id: Optional[str] = None
     status: str = "draft"
+
+
+# ============== AUTH MODELS ==============
+
+class SignUpRequest(BaseModel):
+    email: str
+    password: str
+    full_name: Optional[str] = None
+
+
+class SignInRequest(BaseModel):
+    email: str
+    password: str
+
+
+class ResetPasswordRequest(BaseModel):
+    email: str
+
+
+class UpdatePasswordRequest(BaseModel):
+    new_password: str
 
 
 # ============== STRUCTURED CV MODELS ==============
@@ -1160,6 +1182,17 @@ def get_setup_guide_html():
     return "<h1>Setup guide not found</h1>"
 
 
+def get_login_html():
+    """Load login page HTML"""
+    try:
+        login_path = pathlib.Path(__file__).parent.parent / "login.html"
+        if login_path.exists():
+            return login_path.read_text(encoding='utf-8')
+    except:
+        pass
+    return "<h1>Login page not found</h1>"
+
+
 def get_frontend_html():
     """Load frontend HTML from file or use embedded version"""
     try:
@@ -1190,6 +1223,190 @@ def get_frontend_html():
     </div>
 </body>
 </html>'''
+
+
+# ============== AUTH ENDPOINTS ==============
+
+@app.post("/api/auth/signup")
+async def sign_up(request: SignUpRequest):
+    """
+    Create a new user account with email and password.
+    Supabase will send a confirmation email automatically.
+    """
+    if not SUPABASE_URL or not SUPABASE_ANON_KEY:
+        raise HTTPException(status_code=500, detail="Supabase not configured")
+
+    async with httpx.AsyncClient() as client:
+        response = await client.post(
+            f"{SUPABASE_URL}/auth/v1/signup",
+            headers={
+                "apikey": SUPABASE_ANON_KEY,
+                "Content-Type": "application/json"
+            },
+            json={
+                "email": request.email,
+                "password": request.password,
+                "data": {"full_name": request.full_name} if request.full_name else {}
+            }
+        )
+
+        if response.status_code not in [200, 201]:
+            error = response.json()
+            raise HTTPException(status_code=400, detail=error.get("msg", "Kunde inte skapa konto"))
+
+        data = response.json()
+        return {
+            "success": True,
+            "message": "Konto skapat! Kolla din e-post för att bekräfta.",
+            "user_id": data.get("user", {}).get("id")
+        }
+
+
+@app.post("/api/auth/signin")
+async def sign_in(request: SignInRequest):
+    """
+    Sign in with email and password.
+    Returns access token and user info.
+    """
+    if not SUPABASE_URL or not SUPABASE_ANON_KEY:
+        raise HTTPException(status_code=500, detail="Supabase not configured")
+
+    async with httpx.AsyncClient() as client:
+        response = await client.post(
+            f"{SUPABASE_URL}/auth/v1/token?grant_type=password",
+            headers={
+                "apikey": SUPABASE_ANON_KEY,
+                "Content-Type": "application/json"
+            },
+            json={
+                "email": request.email,
+                "password": request.password
+            }
+        )
+
+        if response.status_code != 200:
+            error = response.json()
+            raise HTTPException(status_code=401, detail=error.get("error_description", "Fel e-post eller lösenord"))
+
+        data = response.json()
+        return {
+            "success": True,
+            "access_token": data.get("access_token"),
+            "refresh_token": data.get("refresh_token"),
+            "user": {
+                "id": data.get("user", {}).get("id"),
+                "email": data.get("user", {}).get("email"),
+                "full_name": data.get("user", {}).get("user_metadata", {}).get("full_name")
+            }
+        }
+
+
+@app.post("/api/auth/signout")
+async def sign_out(request: Request):
+    """Sign out the current user."""
+    auth_header = request.headers.get("Authorization", "")
+    if not auth_header.startswith("Bearer "):
+        return {"success": True, "message": "Utloggad"}
+
+    token = auth_header.replace("Bearer ", "")
+
+    async with httpx.AsyncClient() as client:
+        await client.post(
+            f"{SUPABASE_URL}/auth/v1/logout",
+            headers={
+                "apikey": SUPABASE_ANON_KEY,
+                "Authorization": f"Bearer {token}"
+            }
+        )
+
+    return {"success": True, "message": "Utloggad"}
+
+
+@app.post("/api/auth/reset-password")
+async def reset_password(request: ResetPasswordRequest):
+    """
+    Send password reset email.
+    Supabase handles the email automatically.
+    """
+    if not SUPABASE_URL or not SUPABASE_ANON_KEY:
+        raise HTTPException(status_code=500, detail="Supabase not configured")
+
+    async with httpx.AsyncClient() as client:
+        response = await client.post(
+            f"{SUPABASE_URL}/auth/v1/recover",
+            headers={
+                "apikey": SUPABASE_ANON_KEY,
+                "Content-Type": "application/json"
+            },
+            json={"email": request.email}
+        )
+
+        # Always return success to prevent email enumeration
+        return {
+            "success": True,
+            "message": "Om e-postadressen finns skickas en återställningslänk."
+        }
+
+
+@app.post("/api/auth/update-password")
+async def update_password(request: UpdatePasswordRequest, req: Request):
+    """
+    Update password after reset.
+    Requires valid access token from reset link.
+    """
+    auth_header = req.headers.get("Authorization", "")
+    if not auth_header.startswith("Bearer "):
+        raise HTTPException(status_code=401, detail="Token saknas")
+
+    token = auth_header.replace("Bearer ", "")
+
+    async with httpx.AsyncClient() as client:
+        response = await client.put(
+            f"{SUPABASE_URL}/auth/v1/user",
+            headers={
+                "apikey": SUPABASE_ANON_KEY,
+                "Authorization": f"Bearer {token}",
+                "Content-Type": "application/json"
+            },
+            json={"password": request.new_password}
+        )
+
+        if response.status_code != 200:
+            raise HTTPException(status_code=400, detail="Kunde inte uppdatera lösenord")
+
+        return {"success": True, "message": "Lösenord uppdaterat!"}
+
+
+@app.get("/api/auth/user")
+async def get_current_user(request: Request):
+    """Get current logged in user info."""
+    auth_header = request.headers.get("Authorization", "")
+    if not auth_header.startswith("Bearer "):
+        return {"authenticated": False}
+
+    token = auth_header.replace("Bearer ", "")
+
+    async with httpx.AsyncClient() as client:
+        response = await client.get(
+            f"{SUPABASE_URL}/auth/v1/user",
+            headers={
+                "apikey": SUPABASE_ANON_KEY,
+                "Authorization": f"Bearer {token}"
+            }
+        )
+
+        if response.status_code != 200:
+            return {"authenticated": False}
+
+        user = response.json()
+        return {
+            "authenticated": True,
+            "user": {
+                "id": user.get("id"),
+                "email": user.get("email"),
+                "full_name": user.get("user_metadata", {}).get("full_name")
+            }
+        }
 
 
 # ============== GMAIL API ENDPOINTS (User brings own credentials) ==============
@@ -1442,6 +1659,12 @@ async def create_gmail_draft(request: CreateGmailDraftRequest, user_id: str = "d
 async def setup_page():
     """Gmail setup guide page"""
     return get_setup_guide_html()
+
+
+@app.get("/login", response_class=HTMLResponse)
+async def login_page():
+    """Login/signup page"""
+    return get_login_html()
 
 
 @app.get("/", response_class=HTMLResponse)
