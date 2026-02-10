@@ -1,0 +1,280 @@
+<!DOCTYPE html>
+<html lang="sv">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Logga in - Platsbanken AI</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-gradient-to-br from-indigo-50 to-slate-100 min-h-screen flex items-center justify-center p-4">
+    <div class="w-full max-w-md">
+        <!-- Logo -->
+        <div class="text-center mb-8">
+            <h1 class="text-3xl font-bold text-indigo-600">Platsbanken AI</h1>
+            <p class="text-slate-600 mt-2">Sök jobb smartare, inte hårdare</p>
+        </div>
+
+        <!-- Card -->
+        <div class="bg-white rounded-2xl shadow-xl p-8">
+            <!-- Tabs -->
+            <div class="flex mb-6 bg-slate-100 rounded-lg p-1">
+                <button id="tab-login" onclick="showTab('login')"
+                    class="flex-1 py-2 px-4 rounded-md text-sm font-medium transition tab-active">
+                    Logga in
+                </button>
+                <button id="tab-signup" onclick="showTab('signup')"
+                    class="flex-1 py-2 px-4 rounded-md text-sm font-medium transition text-slate-600">
+                    Skapa konto
+                </button>
+            </div>
+
+            <!-- Login Form -->
+            <form id="login-form" onsubmit="handleLogin(event)" class="space-y-4">
+                <div>
+                    <label class="block text-sm font-medium text-slate-700 mb-1">E-post</label>
+                    <input type="email" id="login-email" required
+                        class="w-full px-4 py-3 border border-slate-200 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
+                        placeholder="din@email.se">
+                </div>
+                <div>
+                    <label class="block text-sm font-medium text-slate-700 mb-1">Lösenord</label>
+                    <input type="password" id="login-password" required
+                        class="w-full px-4 py-3 border border-slate-200 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
+                        placeholder="••••••••">
+                </div>
+                <button type="submit" id="login-btn"
+                    class="w-full bg-indigo-600 text-white font-semibold py-3 px-4 rounded-lg hover:bg-indigo-700 transition flex items-center justify-center gap-2">
+                    <span>Logga in</span>
+                </button>
+                <button type="button" onclick="showResetForm()"
+                    class="w-full text-sm text-indigo-600 hover:underline">
+                    Glömt lösenord?
+                </button>
+            </form>
+
+            <!-- Signup Form -->
+            <form id="signup-form" onsubmit="handleSignup(event)" class="space-y-4 hidden">
+                <div>
+                    <label class="block text-sm font-medium text-slate-700 mb-1">Namn</label>
+                    <input type="text" id="signup-name"
+                        class="w-full px-4 py-3 border border-slate-200 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
+                        placeholder="Ditt namn">
+                </div>
+                <div>
+                    <label class="block text-sm font-medium text-slate-700 mb-1">E-post</label>
+                    <input type="email" id="signup-email" required
+                        class="w-full px-4 py-3 border border-slate-200 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
+                        placeholder="din@email.se">
+                </div>
+                <div>
+                    <label class="block text-sm font-medium text-slate-700 mb-1">Lösenord</label>
+                    <input type="password" id="signup-password" required minlength="6"
+                        class="w-full px-4 py-3 border border-slate-200 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
+                        placeholder="Minst 6 tecken">
+                </div>
+                <button type="submit" id="signup-btn"
+                    class="w-full bg-indigo-600 text-white font-semibold py-3 px-4 rounded-lg hover:bg-indigo-700 transition">
+                    Skapa konto
+                </button>
+            </form>
+
+            <!-- Reset Password Form -->
+            <form id="reset-form" onsubmit="handleReset(event)" class="space-y-4 hidden">
+                <p class="text-slate-600 text-sm mb-4">
+                    Ange din e-post så skickar vi en länk för att återställa ditt lösenord.
+                </p>
+                <div>
+                    <label class="block text-sm font-medium text-slate-700 mb-1">E-post</label>
+                    <input type="email" id="reset-email" required
+                        class="w-full px-4 py-3 border border-slate-200 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
+                        placeholder="din@email.se">
+                </div>
+                <button type="submit"
+                    class="w-full bg-indigo-600 text-white font-semibold py-3 px-4 rounded-lg hover:bg-indigo-700 transition">
+                    Skicka återställningslänk
+                </button>
+                <button type="button" onclick="hideResetForm()"
+                    class="w-full text-sm text-slate-600 hover:underline">
+                    Tillbaka till inloggning
+                </button>
+            </form>
+
+            <!-- Status message -->
+            <div id="status" class="mt-4 hidden p-4 rounded-lg text-sm"></div>
+        </div>
+
+        <!-- Footer -->
+        <p class="text-center text-slate-500 text-sm mt-6">
+            Dina uppgifter är säkra och delas aldrig med tredje part.
+        </p>
+    </div>
+
+    <style>
+        .tab-active {
+            background: white;
+            color: #4f46e5;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+        }
+    </style>
+
+    <script>
+        // Check if already logged in
+        const token = localStorage.getItem('auth_token');
+        if (token) {
+            // Verify token is still valid
+            fetch('/api/auth/user', {
+                headers: { 'Authorization': `Bearer ${token}` }
+            })
+            .then(r => r.json())
+            .then(data => {
+                if (data.authenticated) {
+                    window.location.href = '/';
+                }
+            });
+        }
+
+        function showTab(tab) {
+            const loginForm = document.getElementById('login-form');
+            const signupForm = document.getElementById('signup-form');
+            const resetForm = document.getElementById('reset-form');
+            const tabLogin = document.getElementById('tab-login');
+            const tabSignup = document.getElementById('tab-signup');
+
+            resetForm.classList.add('hidden');
+
+            if (tab === 'login') {
+                loginForm.classList.remove('hidden');
+                signupForm.classList.add('hidden');
+                tabLogin.classList.add('tab-active');
+                tabSignup.classList.remove('tab-active');
+                tabSignup.classList.add('text-slate-600');
+            } else {
+                loginForm.classList.add('hidden');
+                signupForm.classList.remove('hidden');
+                tabSignup.classList.add('tab-active');
+                tabLogin.classList.remove('tab-active');
+                tabLogin.classList.add('text-slate-600');
+            }
+            hideStatus();
+        }
+
+        function showResetForm() {
+            document.getElementById('login-form').classList.add('hidden');
+            document.getElementById('signup-form').classList.add('hidden');
+            document.getElementById('reset-form').classList.remove('hidden');
+            hideStatus();
+        }
+
+        function hideResetForm() {
+            document.getElementById('reset-form').classList.add('hidden');
+            document.getElementById('login-form').classList.remove('hidden');
+        }
+
+        function showStatus(message, isError = false) {
+            const status = document.getElementById('status');
+            status.textContent = message;
+            status.classList.remove('hidden', 'bg-green-100', 'text-green-800', 'bg-red-100', 'text-red-800');
+            status.classList.add(
+                isError ? 'bg-red-100' : 'bg-green-100',
+                isError ? 'text-red-800' : 'text-green-800'
+            );
+        }
+
+        function hideStatus() {
+            document.getElementById('status').classList.add('hidden');
+        }
+
+        async function handleLogin(e) {
+            e.preventDefault();
+            const btn = document.getElementById('login-btn');
+            btn.disabled = true;
+            btn.innerHTML = '<span class="animate-pulse">Loggar in...</span>';
+
+            const email = document.getElementById('login-email').value;
+            const password = document.getElementById('login-password').value;
+
+            try {
+                const res = await fetch('/api/auth/signin', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ email, password })
+                });
+
+                const data = await res.json();
+
+                if (!res.ok) {
+                    throw new Error(data.detail || 'Inloggning misslyckades');
+                }
+
+                // Save tokens
+                localStorage.setItem('auth_token', data.access_token);
+                localStorage.setItem('refresh_token', data.refresh_token);
+                localStorage.setItem('user', JSON.stringify(data.user));
+
+                showStatus('Inloggad! Omdirigerar...');
+                setTimeout(() => {
+                    window.location.href = '/';
+                }, 1000);
+
+            } catch (err) {
+                showStatus(err.message, true);
+                btn.disabled = false;
+                btn.innerHTML = '<span>Logga in</span>';
+            }
+        }
+
+        async function handleSignup(e) {
+            e.preventDefault();
+            const btn = document.getElementById('signup-btn');
+            btn.disabled = true;
+            btn.textContent = 'Skapar konto...';
+
+            const name = document.getElementById('signup-name').value;
+            const email = document.getElementById('signup-email').value;
+            const password = document.getElementById('signup-password').value;
+
+            try {
+                const res = await fetch('/api/auth/signup', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ email, password, full_name: name })
+                });
+
+                const data = await res.json();
+
+                if (!res.ok) {
+                    throw new Error(data.detail || 'Kunde inte skapa konto');
+                }
+
+                showStatus('Konto skapat! Kolla din e-post för att bekräfta.');
+                document.getElementById('signup-form').reset();
+
+            } catch (err) {
+                showStatus(err.message, true);
+            } finally {
+                btn.disabled = false;
+                btn.textContent = 'Skapa konto';
+            }
+        }
+
+        async function handleReset(e) {
+            e.preventDefault();
+            const email = document.getElementById('reset-email').value;
+
+            try {
+                const res = await fetch('/api/auth/reset-password', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ email })
+                });
+
+                showStatus('Om e-postadressen finns skickas en återställningslänk.');
+                document.getElementById('reset-form').reset();
+
+            } catch (err) {
+                showStatus('Något gick fel. Försök igen.', true);
+            }
+        }
+    </script>
+</body>
+</html>
