@@ -387,19 +387,30 @@ CREATE TABLE IF NOT EXISTS user_google_credentials (
 );
 
 -- Applications (tracking what user has applied to)
+-- status options:
+--   'draft' - Saved as Gmail draft, not sent yet
+--   'sent' - Application sent
+--   'skipped' - User doesn't want this job (won't show again)
+--   'saved' - Saved for later (will show again)
+--   'interview' - Got interview
+--   'rejected' - Got rejection
+--   'offer' - Got job offer!
 CREATE TABLE IF NOT EXISTS applications (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     user_id TEXT DEFAULT 'default_user',
     job_id TEXT REFERENCES jobs(id),
     cv_id UUID REFERENCES user_cvs(id),
+    bransch_id TEXT,  -- Which bransch CV was used
     cover_letter TEXT,
-    status TEXT DEFAULT 'draft',  -- draft, sent, interview, rejected, offer
+    status TEXT DEFAULT 'draft',
     gmail_draft_id TEXT,
+    gmail_message_id TEXT,  -- After sending
     notes TEXT,
     created_at TIMESTAMPTZ DEFAULT NOW(),
     updated_at TIMESTAMPTZ DEFAULT NOW(),
     sent_at TIMESTAMPTZ,
-    response_at TIMESTAMPTZ
+    response_at TIMESTAMPTZ,
+    UNIQUE(user_id, job_id)  -- One application per job per user
 );
 
 -- Indexes for performance
