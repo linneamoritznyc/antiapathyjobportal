@@ -305,23 +305,22 @@ CREATE TABLE IF NOT EXISTS applications (
 CREATE INDEX IF NOT EXISTS idx_jobs_scraped_at ON jobs(scraped_at DESC);
 CREATE INDEX IF NOT EXISTS idx_jobs_priority ON jobs(priority);
 CREATE INDEX IF NOT EXISTS idx_jobs_contact_email ON jobs(contact_email) WHERE contact_email IS NOT NULL;
-CREATE INDEX IF NOT EXISTS idx_master_cvs_user ON master_cvs(user_id);
+CREATE INDEX IF NOT EXISTS idx_master_cv_exports_user ON master_cv_exports(user_id);
 CREATE INDEX IF NOT EXISTS idx_user_cvs_user ON user_cvs(user_id);
 CREATE INDEX IF NOT EXISTS idx_user_cvs_vibe ON user_cvs(user_id, vibe_id);
 CREATE INDEX IF NOT EXISTS idx_applications_user ON applications(user_id);
 CREATE INDEX IF NOT EXISTS idx_applications_status ON applications(status);
 
 -- Row Level Security (enable when you add auth)
--- ALTER TABLE master_cvs ENABLE ROW LEVEL SECURITY;
+-- ALTER TABLE user_profiles ENABLE ROW LEVEL SECURITY;
 -- ALTER TABLE user_cvs ENABLE ROW LEVEL SECURITY;
 -- ALTER TABLE applications ENABLE ROW LEVEL SECURITY;
 
 -- Example RLS policies (uncomment when you have auth)
--- CREATE POLICY "Users can view own CVs" ON master_cvs FOR SELECT USING (auth.uid()::text = user_id);
--- CREATE POLICY "Users can insert own CVs" ON master_cvs FOR INSERT WITH CHECK (auth.uid()::text = user_id);
--- CREATE POLICY "Users can update own CVs" ON master_cvs FOR UPDATE USING (auth.uid()::text = user_id);
+-- CREATE POLICY "Users can view own profile" ON user_profiles FOR SELECT USING (auth.uid()::text = user_id);
+-- CREATE POLICY "Users can update own profile" ON user_profiles FOR UPDATE USING (auth.uid()::text = user_id);
 
 COMMENT ON TABLE jobs IS 'Jobs scraped from Platsbanken (only email-application jobs)';
-COMMENT ON TABLE master_cvs IS 'User master CV with all their experience';
+COMMENT ON TABLE user_profiles IS 'User profile with personal info and photo';
 COMMENT ON TABLE user_cvs IS 'Generated CV versions for different job categories';
 COMMENT ON TABLE applications IS 'Job applications with status tracking';
