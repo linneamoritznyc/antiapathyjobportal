@@ -1,0 +1,205 @@
+<!DOCTYPE html>
+<html lang="sv">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Gmail Setup Guide - Platsbanken AI</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-slate-50 min-h-screen">
+    <div class="max-w-3xl mx-auto px-4 py-12">
+        <div class="text-center mb-12">
+            <h1 class="text-4xl font-bold text-slate-800 mb-4">Koppla din Gmail</h1>
+            <p class="text-lg text-slate-600">
+                För att automatiskt spara utkast till din Gmail behöver du skapa ett eget Google Cloud-projekt.
+                Det tar cirka 10-15 minuter.
+            </p>
+        </div>
+
+        <!-- Why -->
+        <div class="bg-amber-50 border border-amber-200 rounded-xl p-6 mb-8">
+            <h2 class="font-bold text-amber-800 mb-2">Varför behöver jag göra detta?</h2>
+            <p class="text-amber-700">
+                Vi vill inte hantera dina Gmail-uppgifter. Genom att skapa ditt eget Google Cloud-projekt
+                har du full kontroll över åtkomsten och kan återkalla den när som helst.
+                <strong>Dina uppgifter lagras aldrig hos oss.</strong>
+            </p>
+        </div>
+
+        <!-- Steps -->
+        <div class="space-y-8">
+            <!-- Step 1 -->
+            <div class="bg-white rounded-xl shadow-sm border p-6">
+                <div class="flex items-start gap-4">
+                    <div class="w-10 h-10 bg-indigo-600 text-white rounded-full flex items-center justify-center font-bold flex-shrink-0">1</div>
+                    <div class="flex-1">
+                        <h3 class="text-xl font-bold text-slate-800 mb-3">Skapa ett Google Cloud-projekt</h3>
+                        <ol class="space-y-3 text-slate-600">
+                            <li>1. Gå till <a href="https://console.cloud.google.com" target="_blank" class="text-indigo-600 hover:underline font-medium">console.cloud.google.com</a></li>
+                            <li>2. Logga in med ditt Google-konto (samma som din Gmail)</li>
+                            <li>3. Klicka på <strong>"Select a project"</strong> högst upp</li>
+                            <li>4. Klicka <strong>"New Project"</strong></li>
+                            <li>5. Namnge projektet (t.ex. "Jobbsökning")</li>
+                            <li>6. Klicka <strong>"Create"</strong></li>
+                        </ol>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Step 2 -->
+            <div class="bg-white rounded-xl shadow-sm border p-6">
+                <div class="flex items-start gap-4">
+                    <div class="w-10 h-10 bg-indigo-600 text-white rounded-full flex items-center justify-center font-bold flex-shrink-0">2</div>
+                    <div class="flex-1">
+                        <h3 class="text-xl font-bold text-slate-800 mb-3">Aktivera Gmail API</h3>
+                        <ol class="space-y-3 text-slate-600">
+                            <li>1. Gå till <a href="https://console.cloud.google.com/apis/library/gmail.googleapis.com" target="_blank" class="text-indigo-600 hover:underline font-medium">Gmail API-sidan</a></li>
+                            <li>2. Se till att rätt projekt är valt högst upp</li>
+                            <li>3. Klicka <strong>"Enable"</strong></li>
+                        </ol>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Step 3 -->
+            <div class="bg-white rounded-xl shadow-sm border p-6">
+                <div class="flex items-start gap-4">
+                    <div class="w-10 h-10 bg-indigo-600 text-white rounded-full flex items-center justify-center font-bold flex-shrink-0">3</div>
+                    <div class="flex-1">
+                        <h3 class="text-xl font-bold text-slate-800 mb-3">Konfigurera OAuth Consent Screen</h3>
+                        <ol class="space-y-3 text-slate-600">
+                            <li>1. Gå till <a href="https://console.cloud.google.com/apis/credentials/consent" target="_blank" class="text-indigo-600 hover:underline font-medium">OAuth consent screen</a></li>
+                            <li>2. Välj <strong>"External"</strong> och klicka "Create"</li>
+                            <li>3. Fyll i:
+                                <ul class="ml-6 mt-2 space-y-1 list-disc">
+                                    <li>App name: <code class="bg-slate-100 px-2 py-1 rounded">Jobbsökning</code></li>
+                                    <li>User support email: Din e-post</li>
+                                    <li>Developer contact: Din e-post</li>
+                                </ul>
+                            </li>
+                            <li>4. Klicka <strong>"Save and Continue"</strong></li>
+                            <li>5. På "Scopes" - klicka bara "Save and Continue"</li>
+                            <li>6. På "Test users" - klicka <strong>"Add Users"</strong> och lägg till din Gmail-adress</li>
+                            <li>7. Klicka <strong>"Save and Continue"</strong></li>
+                        </ol>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Step 4 -->
+            <div class="bg-white rounded-xl shadow-sm border p-6">
+                <div class="flex items-start gap-4">
+                    <div class="w-10 h-10 bg-indigo-600 text-white rounded-full flex items-center justify-center font-bold flex-shrink-0">4</div>
+                    <div class="flex-1">
+                        <h3 class="text-xl font-bold text-slate-800 mb-3">Skapa OAuth-credentials</h3>
+                        <ol class="space-y-3 text-slate-600">
+                            <li>1. Gå till <a href="https://console.cloud.google.com/apis/credentials" target="_blank" class="text-indigo-600 hover:underline font-medium">Credentials</a></li>
+                            <li>2. Klicka <strong>"Create Credentials"</strong> → <strong>"OAuth client ID"</strong></li>
+                            <li>3. Application type: <strong>"Web application"</strong></li>
+                            <li>4. Name: <code class="bg-slate-100 px-2 py-1 rounded">Jobbsökning Web</code></li>
+                            <li>5. Under <strong>"Authorized redirect URIs"</strong>, lägg till:
+                                <div class="mt-2 p-3 bg-slate-100 rounded font-mono text-sm break-all">
+                                    https://platsbanken-ai.vercel.app/api/gmail/callback
+                                </div>
+                            </li>
+                            <li>6. Klicka <strong>"Create"</strong></li>
+                            <li>7. <strong>Kopiera</strong> Client ID och Client Secret som visas!</li>
+                        </ol>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Step 5 -->
+            <div class="bg-white rounded-xl shadow-sm border p-6">
+                <div class="flex items-start gap-4">
+                    <div class="w-10 h-10 bg-green-600 text-white rounded-full flex items-center justify-center font-bold flex-shrink-0">5</div>
+                    <div class="flex-1">
+                        <h3 class="text-xl font-bold text-slate-800 mb-3">Klistra in i appen</h3>
+                        <p class="text-slate-600 mb-4">
+                            Gå tillbaka till appen och klistra in dina credentials i inställningarna.
+                        </p>
+
+                        <form id="credentials-form" class="space-y-4">
+                            <div>
+                                <label class="block text-sm font-medium text-slate-700 mb-1">Client ID</label>
+                                <input type="text" id="client-id" placeholder="xxxxxx.apps.googleusercontent.com"
+                                    class="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500">
+                            </div>
+                            <div>
+                                <label class="block text-sm font-medium text-slate-700 mb-1">Client Secret</label>
+                                <input type="password" id="client-secret" placeholder="GOCSPX-xxxxxxxxxx"
+                                    class="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500">
+                            </div>
+                            <button type="submit"
+                                class="w-full bg-indigo-600 text-white font-semibold py-3 px-6 rounded-lg hover:bg-indigo-700 transition">
+                                Spara och Koppla Gmail
+                            </button>
+                        </form>
+
+                        <div id="status" class="mt-4 hidden"></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Back link -->
+        <div class="text-center mt-12">
+            <a href="/" class="text-indigo-600 hover:underline">← Tillbaka till appen</a>
+        </div>
+    </div>
+
+    <script>
+        const form = document.getElementById('credentials-form');
+        const status = document.getElementById('status');
+
+        form.addEventListener('submit', async (e) => {
+            e.preventDefault();
+
+            const clientId = document.getElementById('client-id').value.trim();
+            const clientSecret = document.getElementById('client-secret').value.trim();
+
+            if (!clientId || !clientSecret) {
+                showStatus('Fyll i båda fälten', 'error');
+                return;
+            }
+
+            try {
+                // Save credentials
+                const saveRes = await fetch('/api/gmail/credentials', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        google_client_id: clientId,
+                        google_client_secret: clientSecret
+                    })
+                });
+
+                if (!saveRes.ok) throw new Error('Kunde inte spara credentials');
+
+                // Get auth URL
+                const authRes = await fetch('/api/gmail/auth-url');
+                const authData = await authRes.json();
+
+                if (authData.auth_url) {
+                    showStatus('Credentials sparade! Omdirigerar till Google...', 'success');
+                    setTimeout(() => {
+                        window.location.href = authData.auth_url;
+                    }, 1500);
+                }
+            } catch (err) {
+                showStatus('Fel: ' + err.message, 'error');
+            }
+        });
+
+        function showStatus(message, type) {
+            status.classList.remove('hidden', 'bg-green-100', 'bg-red-100', 'text-green-800', 'text-red-800');
+            status.classList.add(
+                type === 'success' ? 'bg-green-100' : 'bg-red-100',
+                type === 'success' ? 'text-green-800' : 'text-red-800',
+                'p-4', 'rounded-lg'
+            );
+            status.textContent = message;
+        }
+    </script>
+</body>
+</html>

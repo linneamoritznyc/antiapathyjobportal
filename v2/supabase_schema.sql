@@ -285,8 +285,23 @@ CREATE TABLE IF NOT EXISTS user_cvs (
     UNIQUE(user_id, vibe_id)
 );
 
+-- User Google Cloud credentials (each user brings their own)
+-- This is more secure - users control their own API access
+CREATE TABLE IF NOT EXISTS user_google_credentials (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    user_id TEXT NOT NULL UNIQUE,
+    google_client_id TEXT NOT NULL,
+    google_client_secret TEXT NOT NULL,  -- Stored securely, user provides their own
+    access_token TEXT,
+    refresh_token TEXT,
+    token_expires_at TIMESTAMPTZ,
+    gmail_address TEXT,  -- User's Gmail address after OAuth
+    is_connected BOOLEAN DEFAULT FALSE,
+    created_at TIMESTAMPTZ DEFAULT NOW(),
+    updated_at TIMESTAMPTZ DEFAULT NOW()
+);
+
 -- Applications (tracking what user has applied to)
-CREATE TABLE IF NOT EXISTS applications (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     user_id TEXT DEFAULT 'default_user',
     job_id TEXT REFERENCES jobs(id),
