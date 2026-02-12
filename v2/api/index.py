@@ -1410,6 +1410,168 @@ async def get_current_user(request: Request):
         }
 
 
+@app.delete("/api/auth/delete-account")
+async def delete_account(request: Request):
+    """
+    Delete user account and ALL associated data.
+    This is permanent and cannot be undone (GDPR right to be forgotten).
+    """
+    auth_header = request.headers.get("Authorization", "")
+    if not auth_header.startswith("Bearer "):
+        raise HTTPException(status_code=401, detail="Ej inloggad")
+
+    token = auth_header.replace("Bearer ", "")
+
+    # Get user info first
+    async with httpx.AsyncClient() as client:
+        user_response = await client.get(
+            f"{SUPABASE_URL}/auth/v1/user",
+            headers={
+                "apikey": SUPABASE_ANON_KEY,
+                "Authorization": f"Bearer {token}"
+            }
+        )
+
+        if user_response.status_code != 200:
+            raise HTTPException(status_code=401, detail="Ogiltig session")
+
+        user = user_response.json()
+        user_id = user.get("id")
+
+    if not user_id:
+        raise HTTPException(status_code=400, detail="Kunde inte hitta användare")
+
+    # Delete all user data from all tables (order matters due to foreign keys)
+    tables_to_clear = [
+        "applications",
+        "user_cvs",
+        "user_cv_branscher",
+        "user_skills",
+        "user_awards",
+        "user_volunteer",
+        "user_experience_tags",
+        "user_experiences",
+        "user_education",
+        "user_ai_feedback",
+        "user_cover_letter_preferences",
+        "user_job_preferences",
+        "user_google_credentials",
+        "user_profiles",
+    ]
+
+    deleted_counts = {}
+    for table in tables_to_clear:
+        try:
+            # Use service role key to bypass RLS for deletion
+            async with httpx.AsyncClient() as client:
+                response = await client.delete(
+                    f"{SUPABASE_URL}/rest/v1/{table}?user_id=eq.{user_id}",
+                    headers={
+                        "apikey": SUPABASE_KEY,
+                        "Authorization": f"Bearer {SUPABASE_KEY}",
+                        "Prefer": "return=representation"
+                    },
+                    timeout=10
+                )
+                if response.status_code < 400:
+                    deleted = response.json() if response.text else []
+                    deleted_counts[table] = len(deleted) if isinstance(deleted, list) else 0
+        except Exception as e:
+            logger.warning(f"Could not delete from {table}: {e}")
+
+    # Delete the user from Supabase Auth (requires service role)
+    async with httpx.AsyncClient() as client:
+        delete_response = await client.delete(
+            f"{SUPABASE_URL}/auth/v1/admin/users/{user_id}",
+            headers={
+                "apikey": SUPABASE_KEY,
+                "Authorization": f"Bearer {SUPABASE_KEY}"
+            }
+        )
+
+        if delete_response.status_code not in [200, 204]:
+            logger.error(f"Failed to delete auth user: {delete_response.text}")
+            # Data is already deleted, so we continue
+
+    logger.info(f"Deleted account {user_id}: {deleted_counts}")
+
+    return {
+        "success": True,
+        "message": "Ditt konto och all din data har raderats permanent.",
+        "deleted": deleted_counts
+    }
+
+
+@app.get("/api/auth/export-data")
+async def export_user_data(request: Request):
+    """
+    Export all user data as JSON (GDPR Art. 20 - Right to data portability).
+    Returns all personal data in a machine-readable format.
+    """
+    auth_header = request.headers.get("Authorization", "")
+    if not auth_header.startswith("Bearer "):
+        raise HTTPException(status_code=401, detail="Ej inloggad")
+
+    token = auth_header.replace("Bearer ", "")
+
+    # Get user info
+    async with httpx.AsyncClient() as client:
+        user_response = await client.get(
+            f"{SUPABASE_URL}/auth/v1/user",
+            headers={
+                "apikey": SUPABASE_ANON_KEY,
+                "Authorization": f"Bearer {token}"
+            }
+        )
+
+        if user_response.status_code != 200:
+            raise HTTPException(status_code=401, detail="Ogiltig session")
+
+        user = user_response.json()
+        user_id = user.get("id")
+
+    if not user_id:
+        raise HTTPException(status_code=400, detail="Kunde inte hitta användare")
+
+    # Collect all user data from all tables
+    export_data = {
+        "export_date": datetime.now().isoformat(),
+        "user_id": user_id,
+        "email": user.get("email"),
+        "created_at": user.get("created_at"),
+        "data": {}
+    }
+
+    tables_to_export = [
+        ("profile", "user_profiles"),
+        ("job_preferences", "user_job_preferences"),
+        ("cover_letter_preferences", "user_cover_letter_preferences"),
+        ("ai_feedback", "user_ai_feedback"),
+        ("education", "user_education"),
+        ("experiences", "user_experiences"),
+        ("volunteer", "user_volunteer"),
+        ("awards", "user_awards"),
+        ("skills", "user_skills"),
+        ("cv_branscher", "user_cv_branscher"),
+        ("cvs", "user_cvs"),
+        ("applications", "applications"),
+    ]
+
+    for key, table in tables_to_export:
+        try:
+            data = await db_request("GET", table, params={"user_id": f"eq.{user_id}"})
+            export_data["data"][key] = data or []
+        except Exception as e:
+            logger.warning(f"Could not export from {table}: {e}")
+            export_data["data"][key] = []
+
+    return {
+        "success": True,
+        "message": "All din data har exporterats.",
+        "export": export_data
+    }
+
+
 # ============== GMAIL API ENDPOINTS (User brings own credentials) ==============
 
 @app.post("/api/gmail/credentials")
@@ -1666,6 +1828,18 @@ async def setup_page():
 async def login_page():
     """Login/signup page"""
     return get_login_html()
+
+
+@app.get("/integritetspolicy", response_class=HTMLResponse)
+async def privacy_policy_page():
+    """Privacy policy page (GDPR)"""
+    try:
+        policy_path = pathlib.Path(__file__).parent.parent / "integritetspolicy.html"
+        if policy_path.exists():
+            return policy_path.read_text(encoding='utf-8')
+    except:
+        pass
+    return "<h1>Integritetspolicy kunde inte laddas</h1>"
 
 
 @app.get("/", response_class=HTMLResponse)
