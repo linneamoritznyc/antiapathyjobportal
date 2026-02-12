@@ -38,9 +38,15 @@
                 </div>
                 <div>
                     <label class="block text-sm font-medium text-slate-700 mb-1">Lösenord</label>
-                    <input type="password" id="login-password" required
-                        class="w-full px-4 py-3 border border-slate-200 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
-                        placeholder="••••••••">
+                    <div class="relative">
+                        <input type="password" id="login-password" required
+                            class="w-full px-4 py-3 border border-slate-200 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent pr-12"
+                            placeholder="••••••••">
+                        <button type="button" onclick="togglePassword('login-password', 'login-eye')"
+                            class="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600">
+                            <span id="login-eye">👁️</span>
+                        </button>
+                    </div>
                 </div>
                 <button type="submit" id="login-btn"
                     class="w-full bg-indigo-600 text-white font-semibold py-3 px-4 rounded-lg hover:bg-indigo-700 transition flex items-center justify-center gap-2">
@@ -68,9 +74,15 @@
                 </div>
                 <div>
                     <label class="block text-sm font-medium text-slate-700 mb-1">Lösenord</label>
-                    <input type="password" id="signup-password" required minlength="6"
-                        class="w-full px-4 py-3 border border-slate-200 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
-                        placeholder="Minst 6 tecken">
+                    <div class="relative">
+                        <input type="password" id="signup-password" required minlength="6"
+                            class="w-full px-4 py-3 border border-slate-200 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent pr-12"
+                            placeholder="Minst 6 tecken">
+                        <button type="button" onclick="togglePassword('signup-password', 'signup-eye')"
+                            class="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600">
+                            <span id="signup-eye">👁️</span>
+                        </button>
+                    </div>
                 </div>
                 <button type="submit" id="signup-btn"
                     class="w-full bg-indigo-600 text-white font-semibold py-3 px-4 rounded-lg hover:bg-indigo-700 transition">
@@ -170,14 +182,31 @@
             document.getElementById('login-form').classList.remove('hidden');
         }
 
-        function showStatus(message, isError = false) {
+        function togglePassword(inputId, eyeId) {
+            const input = document.getElementById(inputId);
+            const eye = document.getElementById(eyeId);
+            if (input.type === 'password') {
+                input.type = 'text';
+                eye.textContent = '🙈';
+            } else {
+                input.type = 'password';
+                eye.textContent = '👁️';
+            }
+        }
+
+        function showStatus(message, isError = false, showSignupLink = false) {
             const status = document.getElementById('status');
-            status.textContent = message;
             status.classList.remove('hidden', 'bg-green-100', 'text-green-800', 'bg-red-100', 'text-red-800');
             status.classList.add(
                 isError ? 'bg-red-100' : 'bg-green-100',
                 isError ? 'text-red-800' : 'text-green-800'
             );
+
+            if (showSignupLink) {
+                status.innerHTML = `${message} <button onclick="showTab('signup')" class="underline font-medium">Skapa konto här</button>`;
+            } else {
+                status.textContent = message;
+            }
         }
 
         function hideStatus() {
@@ -203,7 +232,12 @@
                 const data = await res.json();
 
                 if (!res.ok) {
-                    throw new Error(data.detail || 'Inloggning misslyckades');
+                    // Check if it's an "invalid credentials" error - likely no account
+                    const errorMsg = data.detail || '';
+                    if (errorMsg.includes('Invalid') || errorMsg.includes('Fel e-post') || res.status === 401) {
+                        throw { message: 'Inget konto hittades med denna e-post.', showSignup: true };
+                    }
+                    throw { message: errorMsg || 'Inloggning misslyckades', showSignup: false };
                 }
 
                 // Save tokens
@@ -217,7 +251,7 @@
                 }, 1000);
 
             } catch (err) {
-                showStatus(err.message, true);
+                showStatus(err.message || err, true, err.showSignup || false);
                 btn.disabled = false;
                 btn.innerHTML = '<span>Logga in</span>';
             }
