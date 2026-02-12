@@ -32,7 +32,7 @@
             <form id="login-form" onsubmit="handleLogin(event)" class="space-y-4">
                 <div>
                     <label class="block text-sm font-medium text-slate-700 mb-1">E-post</label>
-                    <input type="email" id="login-email" required
+                    <input type="email" id="login-email" required autofocus
                         class="w-full px-4 py-3 border border-slate-200 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
                         placeholder="din@email.se">
                 </div>
@@ -77,11 +77,21 @@
                     <div class="relative">
                         <input type="password" id="signup-password" required minlength="6"
                             class="w-full px-4 py-3 border border-slate-200 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent pr-12"
-                            placeholder="Minst 6 tecken">
+                            placeholder="Minst 6 tecken"
+                            oninput="updatePasswordStrength(this.value)">
                         <button type="button" onclick="togglePassword('signup-password', 'signup-eye')"
                             class="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600">
                             <span id="signup-eye">👁️</span>
                         </button>
+                    </div>
+                    <div id="password-strength" class="mt-2 hidden">
+                        <div class="flex gap-1 mb-1">
+                            <div id="strength-1" class="h-1 flex-1 rounded bg-slate-200"></div>
+                            <div id="strength-2" class="h-1 flex-1 rounded bg-slate-200"></div>
+                            <div id="strength-3" class="h-1 flex-1 rounded bg-slate-200"></div>
+                            <div id="strength-4" class="h-1 flex-1 rounded bg-slate-200"></div>
+                        </div>
+                        <p id="strength-text" class="text-xs text-slate-500"></p>
                     </div>
                 </div>
                 <button type="submit" id="signup-btn"
@@ -145,7 +155,7 @@
             });
         }
 
-        function showTab(tab) {
+        function showTab(tab, prefillEmail = false) {
             const loginForm = document.getElementById('login-form');
             const signupForm = document.getElementById('signup-form');
             const resetForm = document.getElementById('reset-form');
@@ -160,12 +170,21 @@
                 tabLogin.classList.add('tab-active');
                 tabSignup.classList.remove('tab-active');
                 tabSignup.classList.add('text-slate-600');
+                document.getElementById('login-email').focus();
             } else {
+                // Copy email from login form if switching
+                if (prefillEmail) {
+                    const loginEmail = document.getElementById('login-email').value;
+                    if (loginEmail) {
+                        document.getElementById('signup-email').value = loginEmail;
+                    }
+                }
                 loginForm.classList.add('hidden');
                 signupForm.classList.remove('hidden');
                 tabSignup.classList.add('tab-active');
                 tabLogin.classList.remove('tab-active');
                 tabLogin.classList.add('text-slate-600');
+                document.getElementById('signup-name').focus();
             }
             hideStatus();
         }
@@ -203,7 +222,7 @@
             );
 
             if (showSignupLink) {
-                status.innerHTML = `${message} <button onclick="showTab('signup')" class="underline font-medium">Skapa konto här</button>`;
+                status.innerHTML = `${message} <button onclick="showTab('signup', true)" class="underline font-medium">Skapa konto här</button>`;
             } else {
                 status.textContent = message;
             }
@@ -211,6 +230,48 @@
 
         function hideStatus() {
             document.getElementById('status').classList.add('hidden');
+        }
+
+        function showSignupSuccess(email) {
+            const status = document.getElementById('status');
+            status.classList.remove('hidden', 'bg-red-100', 'text-red-800');
+            status.classList.add('bg-green-100', 'text-green-800');
+            status.innerHTML = `
+                <div class="flex items-start gap-3">
+                    <span class="text-2xl">📧</span>
+                    <div>
+                        <p class="font-medium">Konto skapat!</p>
+                        <p class="text-sm mt-1">Vi har skickat en bekräftelselänk till <strong>${email}</strong>. Klicka på länken i mailet för att aktivera ditt konto.</p>
+                    </div>
+                </div>
+            `;
+        }
+
+        function updatePasswordStrength(password) {
+            const container = document.getElementById('password-strength');
+            const text = document.getElementById('strength-text');
+            const bars = [1, 2, 3, 4].map(n => document.getElementById(`strength-${n}`));
+
+            if (!password) {
+                container.classList.add('hidden');
+                return;
+            }
+            container.classList.remove('hidden');
+
+            let strength = 0;
+            if (password.length >= 6) strength++;
+            if (password.length >= 10) strength++;
+            if (/[A-Z]/.test(password) && /[a-z]/.test(password)) strength++;
+            if (/[0-9]/.test(password) || /[^A-Za-z0-9]/.test(password)) strength++;
+
+            const colors = ['bg-red-500', 'bg-orange-500', 'bg-yellow-500', 'bg-green-500'];
+            const texts = ['Svagt', 'Okej', 'Bra', 'Starkt'];
+
+            bars.forEach((bar, i) => {
+                bar.className = 'h-1 flex-1 rounded ' + (i < strength ? colors[strength - 1] : 'bg-slate-200');
+            });
+            text.textContent = texts[strength - 1] || '';
+            text.className = 'text-xs ' + (strength <= 1 ? 'text-red-600' : strength === 2 ? 'text-orange-600' : strength === 3 ? 'text-yellow-600' : 'text-green-600');
         }
 
         async function handleLogin(e) {
@@ -280,7 +341,7 @@
                     throw new Error(data.detail || 'Kunde inte skapa konto');
                 }
 
-                showStatus('Konto skapat! Kolla din e-post för att bekräfta.');
+                showSignupSuccess(email);
                 document.getElementById('signup-form').reset();
 
             } catch (err) {
