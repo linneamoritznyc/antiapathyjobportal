@@ -1263,6 +1263,39 @@ async def sign_up(request: SignUpRequest):
         }
 
 
+class ResendVerificationRequest(BaseModel):
+    email: str
+
+
+@app.post("/api/auth/resend-verification")
+async def resend_verification(request: ResendVerificationRequest):
+    """
+    Resend email verification link.
+    Uses Supabase's resend endpoint.
+    """
+    if not SUPABASE_URL or not SUPABASE_ANON_KEY:
+        raise HTTPException(status_code=500, detail="Supabase not configured")
+
+    async with httpx.AsyncClient() as client:
+        response = await client.post(
+            f"{SUPABASE_URL}/auth/v1/resend",
+            headers={
+                "apikey": SUPABASE_ANON_KEY,
+                "Content-Type": "application/json"
+            },
+            json={
+                "type": "signup",
+                "email": request.email
+            }
+        )
+
+        # Always return success to prevent email enumeration
+        return {
+            "success": True,
+            "message": "Om e-postadressen finns skickas en ny verifieringslänk."
+        }
+
+
 @app.post("/api/auth/signin")
 async def sign_in(request: SignInRequest):
     """

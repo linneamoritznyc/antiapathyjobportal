@@ -149,6 +149,119 @@
     </style>
 
     <script>
+        // Check for auth errors in URL fragment (from Supabase redirect)
+        function checkAuthError() {
+            const hash = window.location.hash.substring(1);
+            if (!hash) return;
+
+            const params = new URLSearchParams(hash);
+            const error = params.get('error');
+            const errorCode = params.get('error_code');
+            const errorDescription = params.get('error_description');
+
+            if (error === 'access_denied') {
+                // Clear the URL fragment
+                history.replaceState(null, '', window.location.pathname);
+
+                // Show appropriate error message
+                let message = '';
+                let showResend = false;
+
+                switch (errorCode) {
+                    case 'otp_expired':
+                        message = 'Verifieringslänken har gått ut eller är ogiltig.';
+                        showResend = true;
+                        break;
+                    case 'otp_disabled':
+                        message = 'E-postverifiering är inte aktiverat.';
+                        break;
+                    default:
+                        message = errorDescription ?
+                            decodeURIComponent(errorDescription.replace(/\+/g, ' ')) :
+                            'Ett fel uppstod vid verifieringen.';
+                        showResend = true;
+                }
+
+                showAuthError(message, showResend);
+            }
+        }
+
+        function showAuthError(message, showResend = false) {
+            const status = document.getElementById('status');
+            status.classList.remove('hidden', 'bg-green-100', 'text-green-800');
+            status.classList.add('bg-red-50', 'border', 'border-red-200');
+
+            let html = `
+                <div class="flex items-start gap-3">
+                    <span class="text-2xl">⚠️</span>
+                    <div class="flex-1">
+                        <p class="font-medium text-red-800">${message}</p>
+            `;
+
+            if (showResend) {
+                html += `
+                        <p class="text-sm text-red-700 mt-2">Ange din e-postadress nedan så skickar vi en ny verifieringslänk.</p>
+                        <div class="mt-3 flex gap-2">
+                            <input type="email" id="resend-email" placeholder="din@email.se"
+                                class="flex-1 px-3 py-2 text-sm border border-red-200 rounded-lg focus:ring-2 focus:ring-red-500 focus:border-transparent">
+                            <button onclick="resendVerification()" id="resend-btn"
+                                class="px-4 py-2 bg-red-600 text-white text-sm font-medium rounded-lg hover:bg-red-700 transition">
+                                Skicka ny länk
+                            </button>
+                        </div>
+                `;
+            }
+
+            html += `
+                    </div>
+                </div>
+            `;
+
+            status.innerHTML = html;
+        }
+
+        async function resendVerification() {
+            const email = document.getElementById('resend-email').value.trim();
+            if (!email) {
+                alert('Ange din e-postadress');
+                return;
+            }
+
+            const btn = document.getElementById('resend-btn');
+            btn.disabled = true;
+            btn.textContent = 'Skickar...';
+
+            try {
+                const res = await fetch('/api/auth/resend-verification', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ email })
+                });
+
+                const data = await res.json();
+
+                const status = document.getElementById('status');
+                status.classList.remove('bg-red-50', 'border-red-200');
+                status.classList.add('bg-green-50', 'border-green-200');
+                status.innerHTML = `
+                    <div class="flex items-start gap-3">
+                        <span class="text-2xl">📧</span>
+                        <div>
+                            <p class="font-medium text-green-800">Ny verifieringslänk skickad!</p>
+                            <p class="text-sm text-green-700 mt-1">Kolla din inkorg (och skräppost) för att bekräfta din e-postadress.</p>
+                        </div>
+                    </div>
+                `;
+            } catch (err) {
+                alert('Något gick fel. Försök igen.');
+                btn.disabled = false;
+                btn.textContent = 'Skicka ny länk';
+            }
+        }
+
+        // Run on page load
+        checkAuthError();
+
         // Check if already logged in
         const token = localStorage.getItem('auth_token');
         if (token) {
