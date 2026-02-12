@@ -1449,6 +1449,279 @@ async def get_current_user(request: Request):
         }
 
 
+class UserPreferences(BaseModel):
+    job_titles: str = ""
+    locations: str = ""
+    job_types: list = []
+    experience_level: str = ""
+    gmail_client_id: str = ""
+    gmail_client_secret: str = ""
+
+
+@app.get("/api/user/preferences")
+async def get_user_preferences(request: Request):
+    """Get user job preferences and settings."""
+    auth_header = request.headers.get("Authorization", "")
+    if not auth_header.startswith("Bearer "):
+        raise HTTPException(status_code=401, detail="Ej inloggad")
+
+    token = auth_header.replace("Bearer ", "")
+
+    # Get user ID from token
+    async with httpx.AsyncClient() as client:
+        user_response = await client.get(
+            f"{SUPABASE_URL}/auth/v1/user",
+            headers={
+                "apikey": SUPABASE_ANON_KEY,
+                "Authorization": f"Bearer {token}"
+            }
+        )
+        if user_response.status_code != 200:
+            raise HTTPException(status_code=401, detail="Ogiltig session")
+
+        user = user_response.json()
+        user_id = user.get("id")
+
+    # Get preferences from database
+    async with httpx.AsyncClient() as client:
+        response = await client.get(
+            f"{SUPABASE_URL}/rest/v1/user_job_preferences?user_id=eq.{user_id}&select=*",
+            headers={
+                "apikey": SUPABASE_KEY,
+                "Authorization": f"Bearer {SUPABASE_KEY}"
+            }
+        )
+
+        if response.status_code == 200:
+            data = response.json()
+            if data and len(data) > 0:
+                return {"success": True, "preferences": data[0]}
+
+    return {"success": True, "preferences": None}
+
+
+@app.post("/api/user/preferences")
+async def save_user_preferences(request: Request, prefs: UserPreferences):
+    """Save user job preferences and Gmail credentials."""
+    auth_header = request.headers.get("Authorization", "")
+    if not auth_header.startswith("Bearer "):
+        raise HTTPException(status_code=401, detail="Ej inloggad")
+
+    token = auth_header.replace("Bearer ", "")
+
+    # Get user ID from token
+    async with httpx.AsyncClient() as client:
+        user_response = await client.get(
+            f"{SUPABASE_URL}/auth/v1/user",
+            headers={
+                "apikey": SUPABASE_ANON_KEY,
+                "Authorization": f"Bearer {token}"
+            }
+        )
+        if user_response.status_code != 200:
+            raise HTTPException(status_code=401, detail="Ogiltig session")
+
+        user = user_response.json()
+        user_id = user.get("id")
+
+    # Upsert preferences
+    prefs_data = {
+        "user_id": user_id,
+        "job_titles": prefs.job_titles,
+        "locations": prefs.locations,
+        "job_types": prefs.job_types,
+        "experience_level": prefs.experience_level,
+        "updated_at": "now()"
+    }
+
+    async with httpx.AsyncClient() as client:
+        response = await client.post(
+            f"{SUPABASE_URL}/rest/v1/user_job_preferences",
+            headers={
+                "apikey": SUPABASE_KEY,
+                "Authorization": f"Bearer {SUPABASE_KEY}",
+                "Content-Type": "application/json",
+                "Prefer": "resolution=merge-duplicates"
+            },
+            json=prefs_data
+        )
+
+    # Save Gmail credentials if provided
+    if prefs.gmail_client_id and prefs.gmail_client_secret:
+        gmail_data = {
+            "user_id": user_id,
+            "client_id": prefs.gmail_client_id,
+            "client_secret": prefs.gmail_client_secret,
+            "updated_at": "now()"
+        }
+
+        async with httpx.AsyncClient() as client:
+            await client.post(
+                f"{SUPABASE_URL}/rest/v1/user_google_credentials",
+                headers={
+                    "apikey": SUPABASE_KEY,
+                    "Authorization": f"Bearer {SUPABASE_KEY}",
+                    "Content-Type": "application/json",
+                    "Prefer": "resolution=merge-duplicates"
+                },
+                json=gmail_data
+            )
+
+    return {"success": True, "message": "Preferenser sparade!"}
+
+
+class UserProfile(BaseModel):
+    full_name: str = ""
+    email: str = ""
+    phone: str = ""
+    linkedin_url: str = ""
+    summary: str = ""
+    skills: str = ""
+    experiences: list = []
+    education: list = []
+
+
+@app.post("/api/user/profile")
+async def save_user_profile(request: Request, profile: UserProfile):
+    """Save user profile and CV data."""
+    auth_header = request.headers.get("Authorization", "")
+    if not auth_header.startswith("Bearer "):
+        raise HTTPException(status_code=401, detail="Ej inloggad")
+
+    token = auth_header.replace("Bearer ", "")
+
+    # Get user ID from token
+    async with httpx.AsyncClient() as client:
+        user_response = await client.get(
+            f"{SUPABASE_URL}/auth/v1/user",
+            headers={
+                "apikey": SUPABASE_ANON_KEY,
+                "Authorization": f"Bearer {token}"
+            }
+        )
+        if user_response.status_code != 200:
+            raise HTTPException(status_code=401, detail="Ogiltig session")
+
+        user = user_response.json()
+        user_id = user.get("id")
+
+    # Upsert user profile
+    profile_data = {
+        "user_id": user_id,
+        "full_name": profile.full_name,
+        "email": profile.email or user.get("email"),
+        "phone": profile.phone,
+        "linkedin_url": profile.linkedin_url,
+        "summary": profile.summary,
+        "updated_at": "now()"
+    }
+
+    async with httpx.AsyncClient() as client:
+        await client.post(
+            f"{SUPABASE_URL}/rest/v1/user_profiles",
+            headers={
+                "apikey": SUPABASE_KEY,
+                "Authorization": f"Bearer {SUPABASE_KEY}",
+                "Content-Type": "application/json",
+                "Prefer": "resolution=merge-duplicates"
+            },
+            json=profile_data
+        )
+
+    # Save skills
+    if profile.skills:
+        skills_list = [s.strip() for s in profile.skills.split(",") if s.strip()]
+        for skill in skills_list:
+            skill_data = {
+                "user_id": user_id,
+                "skill_name": skill
+            }
+            async with httpx.AsyncClient() as client:
+                await client.post(
+                    f"{SUPABASE_URL}/rest/v1/user_skills",
+                    headers={
+                        "apikey": SUPABASE_KEY,
+                        "Authorization": f"Bearer {SUPABASE_KEY}",
+                        "Content-Type": "application/json",
+                        "Prefer": "resolution=merge-duplicates"
+                    },
+                    json=skill_data
+                )
+
+    # Save experiences
+    for exp in profile.experiences:
+        exp_data = {
+            "user_id": user_id,
+            "company": exp.get("company", ""),
+            "title": exp.get("title", ""),
+            "start_date": exp.get("start_date", ""),
+            "end_date": exp.get("end_date", ""),
+            "description": exp.get("description", "")
+        }
+        async with httpx.AsyncClient() as client:
+            await client.post(
+                f"{SUPABASE_URL}/rest/v1/user_experiences",
+                headers={
+                    "apikey": SUPABASE_KEY,
+                    "Authorization": f"Bearer {SUPABASE_KEY}",
+                    "Content-Type": "application/json"
+                },
+                json=exp_data
+            )
+
+    # Save education
+    for edu in profile.education:
+        edu_data = {
+            "user_id": user_id,
+            "school": edu.get("school", ""),
+            "degree": edu.get("degree", ""),
+            "field_of_study": edu.get("field", ""),
+            "start_date": edu.get("start_date", ""),
+            "end_date": edu.get("end_date", "")
+        }
+        async with httpx.AsyncClient() as client:
+            await client.post(
+                f"{SUPABASE_URL}/rest/v1/user_education",
+                headers={
+                    "apikey": SUPABASE_KEY,
+                    "Authorization": f"Bearer {SUPABASE_KEY}",
+                    "Content-Type": "application/json"
+                },
+                json=edu_data
+            )
+
+    return {"success": True, "message": "Profil sparad!"}
+
+
+class LinkedInImport(BaseModel):
+    linkedin_url: str
+
+
+@app.post("/api/user/import-linkedin")
+async def import_from_linkedin(request: Request, data: LinkedInImport):
+    """
+    Import profile data from LinkedIn URL.
+    Note: This is a placeholder - actual LinkedIn scraping requires OAuth or paid API.
+    """
+    auth_header = request.headers.get("Authorization", "")
+    if not auth_header.startswith("Bearer "):
+        raise HTTPException(status_code=401, detail="Ej inloggad")
+
+    # Validate LinkedIn URL
+    if "linkedin.com/in/" not in data.linkedin_url:
+        return {
+            "success": False,
+            "message": "Ogiltig LinkedIn-URL. Använd formatet: linkedin.com/in/ditt-namn"
+        }
+
+    # For now, return a message that manual import is needed
+    # In production, you would use LinkedIn API or a scraping service
+    return {
+        "success": False,
+        "message": "Automatisk LinkedIn-import är inte tillgänglig just nu. Fyll i din profil manuellt eller exportera din LinkedIn-data och ladda upp."
+    }
+
+
 @app.delete("/api/auth/delete-account")
 async def delete_account(request: Request):
     """
