@@ -1697,6 +1697,267 @@ class LinkedInImport(BaseModel):
     linkedin_url: str
 
 
+class CVUploadResponse(BaseModel):
+    success: bool
+    recommendations: list = []
+    extracted_text: str = ""
+    profile_data: dict = {}
+
+
+@app.post("/api/cv/upload-and-analyze")
+async def upload_and_analyze_cv(request: Request):
+    """
+    Upload CV (PDF or text) and get AI-powered job recommendations.
+    Returns clickable job category suggestions based on work history.
+    """
+    auth_header = request.headers.get("Authorization", "")
+    if not auth_header.startswith("Bearer "):
+        raise HTTPException(status_code=401, detail="Ej inloggad")
+
+    token = auth_header.replace("Bearer ", "")
+
+    # Get user ID from token
+    async with httpx.AsyncClient() as client:
+        user_response = await client.get(
+            f"{SUPABASE_URL}/auth/v1/user",
+            headers={
+                "apikey": SUPABASE_ANON_KEY,
+                "Authorization": f"Bearer {token}"
+            }
+        )
+        if user_response.status_code != 200:
+            raise HTTPException(status_code=401, detail="Ogiltig session")
+
+        user = user_response.json()
+        user_id = user.get("id")
+
+    # Get the uploaded file content
+    content_type = request.headers.get("content-type", "")
+
+    if "multipart/form-data" in content_type:
+        # Handle file upload
+        form = await request.form()
+        file = form.get("file")
+        if file:
+            file_content = await file.read()
+            # Try to decode as text (for plain text CVs)
+            try:
+                cv_text = file_content.decode('utf-8')
+            except:
+                # For PDF, we'd need a PDF parser - for now return helpful message
+                cv_text = "[PDF-fil uppladdad - texten extraheras]"
+    else:
+        # Handle JSON with text content
+        body = await request.json()
+        cv_text = body.get("cv_text", "")
+
+    if not cv_text or len(cv_text) < 50:
+        raise HTTPException(status_code=400, detail="CV-text är för kort eller saknas")
+
+    # Use AI to analyze CV and generate recommendations
+    recommendations = await analyze_cv_with_ai(cv_text)
+
+    # Extract profile data from CV
+    profile_data = await extract_profile_from_cv(cv_text)
+
+    # Save CV text to user profile
+    await db_request("POST", "user_cv_uploads", data={
+        "user_id": user_id,
+        "cv_text": cv_text[:10000],  # Limit size
+        "recommendations": recommendations,
+        "created_at": datetime.now().isoformat()
+    })
+
+    return {
+        "success": True,
+        "recommendations": recommendations,
+        "extracted_text": cv_text[:500] + "..." if len(cv_text) > 500 else cv_text,
+        "profile_data": profile_data
+    }
+
+
+async def analyze_cv_with_ai(cv_text: str) -> list:
+    """
+    Use Claude AI to analyze CV and suggest job categories.
+    Returns list of clickable recommendations.
+    """
+    if not ANTHROPIC_API_KEY:
+        # Fallback: simple keyword matching
+        return get_fallback_recommendations(cv_text)
+
+    prompt = f"""Analysera detta CV och ge jobbförslag baserat på personens erfarenhet.
+
+CV:
+{cv_text[:3000]}
+
+Returnera ENDAST en JSON-array med 3-6 jobbkategorier som passar denna person.
+Varje objekt ska ha:
+- "id": kort id (t.ex. "restaurant", "retail", "office")
+- "title": svensk jobbtitel (t.ex. "Servitör/Servitris")
+- "emoji": passande emoji
+- "reason": en kort mening på svenska om varför detta passar (baserat på CV:t)
+- "keywords": lista med sökord för Platsbanken
+
+Exempel på format:
+[
+  {{"id": "restaurant", "title": "Restaurang & Café", "emoji": "🍽️", "reason": "Du har erfarenhet från Max Hamburgare och kafé", "keywords": ["servitör", "restaurang", "café", "barista"]}},
+  {{"id": "retail", "title": "Butik & Försäljning", "emoji": "🛒", "reason": "Du har jobbat i butik tidigare", "keywords": ["butik", "försäljare", "kassa"]}}
+]
+
+Svara ENDAST med JSON-arrayen, inget annat."""
+
+    try:
+        async with httpx.AsyncClient() as client:
+            response = await client.post(
+                "https://api.anthropic.com/v1/messages",
+                headers={
+                    "x-api-key": ANTHROPIC_API_KEY,
+                    "anthropic-version": "2023-06-01",
+                    "content-type": "application/json"
+                },
+                json={
+                    "model": "claude-sonnet-4-20250514",
+                    "max_tokens": 1000,
+                    "messages": [{"role": "user", "content": prompt}]
+                },
+                timeout=30
+            )
+
+            if response.status_code == 200:
+                result = response.json()
+                text = result["content"][0]["text"].strip()
+                # Parse JSON from response
+                import json
+                # Find JSON array in response
+                start = text.find('[')
+                end = text.rfind(']') + 1
+                if start >= 0 and end > start:
+                    recommendations = json.loads(text[start:end])
+                    return recommendations
+
+    except Exception as e:
+        logger.error(f"AI analysis error: {e}")
+
+    return get_fallback_recommendations(cv_text)
+
+
+def get_fallback_recommendations(cv_text: str) -> list:
+    """Fallback keyword-based recommendations when AI is unavailable"""
+    text_lower = cv_text.lower()
+    recommendations = []
+
+    # Check for different job categories
+    categories = [
+        {
+            "id": "restaurant",
+            "title": "Restaurang & Café",
+            "emoji": "🍽️",
+            "keywords": ["servitör", "servitris", "restaurang", "café", "kafe", "barista", "kök", "kock", "mat", "dryck", "max", "mcdonalds", "espresso"],
+            "search_keywords": ["servitör", "restaurang", "café", "barista"]
+        },
+        {
+            "id": "retail",
+            "title": "Butik & Försäljning",
+            "emoji": "🛒",
+            "keywords": ["butik", "kassa", "försäljare", "säljare", "ica", "coop", "handel", "lager"],
+            "search_keywords": ["butik", "försäljare", "kassa", "säljare"]
+        },
+        {
+            "id": "customerservice",
+            "title": "Kundtjänst",
+            "emoji": "💬",
+            "keywords": ["kundtjänst", "support", "telefon", "chat", "kundservice", "ärenden", "helpdesk"],
+            "search_keywords": ["kundtjänst", "support", "kundservice"]
+        },
+        {
+            "id": "office",
+            "title": "Kontor & Admin",
+            "emoji": "💼",
+            "keywords": ["kontor", "admin", "assistent", "koordinator", "planering", "excel", "word"],
+            "search_keywords": ["administratör", "kontorsassistent", "koordinator"]
+        },
+        {
+            "id": "tech",
+            "title": "IT & Tech",
+            "emoji": "💻",
+            "keywords": ["utvecklare", "programmering", "it", "tech", "data", "python", "javascript", "react", "webb"],
+            "search_keywords": ["utvecklare", "IT", "webbutvecklare", "data"]
+        },
+        {
+            "id": "healthcare",
+            "title": "Vård & Omsorg",
+            "emoji": "🏥",
+            "keywords": ["vård", "omsorg", "sjukvård", "äldreboende", "hemtjänst", "undersköterska"],
+            "search_keywords": ["undersköterska", "vårdbiträde", "omsorg"]
+        },
+        {
+            "id": "warehouse",
+            "title": "Lager & Logistik",
+            "emoji": "📦",
+            "keywords": ["lager", "logistik", "truck", "plock", "packa", "leverans", "transport"],
+            "search_keywords": ["lager", "logistik", "truckförare"]
+        },
+        {
+            "id": "cleaning",
+            "title": "Städ & Fastighet",
+            "emoji": "🧹",
+            "keywords": ["städ", "städare", "fastighet", "vaktmästare", "lokalvård"],
+            "search_keywords": ["städare", "lokalvårdare", "fastighet"]
+        }
+    ]
+
+    for cat in categories:
+        matches = sum(1 for kw in cat["keywords"] if kw in text_lower)
+        if matches >= 1:
+            recommendations.append({
+                "id": cat["id"],
+                "title": cat["title"],
+                "emoji": cat["emoji"],
+                "reason": f"Matchar {matches} nyckelord i ditt CV",
+                "keywords": cat["search_keywords"],
+                "match_score": matches
+            })
+
+    # Sort by match score and take top 5
+    recommendations.sort(key=lambda x: x.get("match_score", 0), reverse=True)
+
+    # If no matches, add general recommendations
+    if not recommendations:
+        recommendations = [
+            {"id": "general", "title": "Allmänt", "emoji": "🔍", "reason": "Öppen för alla typer av jobb", "keywords": ["jobb"]},
+            {"id": "customerservice", "title": "Kundtjänst", "emoji": "💬", "reason": "Passar många profiler", "keywords": ["kundtjänst"]},
+            {"id": "retail", "title": "Butik", "emoji": "🛒", "reason": "Många lediga tjänster", "keywords": ["butik"]}
+        ]
+
+    return recommendations[:6]
+
+
+async def extract_profile_from_cv(cv_text: str) -> dict:
+    """Extract basic profile info from CV text"""
+    profile = {}
+
+    # Try to extract email
+    email_match = re.search(r'[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}', cv_text)
+    if email_match:
+        profile["email"] = email_match.group()
+
+    # Try to extract phone (Swedish format)
+    phone_match = re.search(r'(?:0|\+46)[0-9\s-]{8,12}', cv_text)
+    if phone_match:
+        profile["phone"] = phone_match.group().strip()
+
+    # Try to extract name (first line often contains name)
+    lines = cv_text.strip().split('\n')
+    if lines:
+        first_line = lines[0].strip()
+        # If first line looks like a name (2-4 words, capitalized)
+        words = first_line.split()
+        if 1 <= len(words) <= 4 and all(w[0].isupper() for w in words if w):
+            profile["full_name"] = first_line
+
+    return profile
+
+
 @app.post("/api/user/import-linkedin")
 async def import_from_linkedin(request: Request, data: LinkedInImport):
     """
