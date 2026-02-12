@@ -127,6 +127,34 @@ CREATE TABLE IF NOT EXISTS public.applications (
     created_at timestamptz DEFAULT now()
 );
 
+-- Cover letter preferences (tone, style, what to mention/avoid)
+CREATE TABLE IF NOT EXISTS public.user_cover_letter_preferences (
+    id uuid DEFAULT gen_random_uuid() PRIMARY KEY,
+    user_id uuid NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
+    tone text DEFAULT 'professional',  -- 'formal', 'casual', 'warm', 'professional'
+    max_words integer DEFAULT 200,
+    greeting_style text DEFAULT 'Hej!',  -- 'Hej!', 'Hej [Company]!', 'Till [Company],'
+    signature_style text DEFAULT 'Med vänlig hälsning',
+    always_mention text[] DEFAULT ARRAY[]::text[],  -- ['flexibel med tider', 'tillgänglig omgående']
+    never_mention text[] DEFAULT ARRAY[]::text[],  -- ['konst', 'målning', 'Shopify']
+    priority_jobs_to_reference jsonb,  -- {"restaurant": ["Max Hamburgare"], "tech": ["Clubhouse"]}
+    custom_instructions text,
+    updated_at timestamptz DEFAULT now(),
+    UNIQUE(user_id)
+);
+
+-- AI feedback for learning user preferences
+CREATE TABLE IF NOT EXISTS public.user_ai_feedback (
+    id uuid DEFAULT gen_random_uuid() PRIMARY KEY,
+    user_id uuid NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
+    application_id uuid,
+    feedback_type text,  -- 'too_formal', 'too_casual', 'good', 'edit_needed'
+    original_text text,
+    edited_text text,
+    notes text,
+    created_at timestamptz DEFAULT now()
+);
+
 -- Google/Gmail credentials
 CREATE TABLE IF NOT EXISTS public.user_google_credentials (
     id uuid DEFAULT gen_random_uuid() PRIMARY KEY,
@@ -155,6 +183,12 @@ ALTER TABLE public.user_cvs ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.user_cv_uploads ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.applications ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.user_google_credentials ENABLE ROW LEVEL SECURITY;
+
+-- Cover letter preferences
+ALTER TABLE public.user_cover_letter_preferences ENABLE ROW LEVEL SECURITY;
+
+-- AI feedback
+ALTER TABLE public.user_ai_feedback ENABLE ROW LEVEL SECURITY;
 
 -- Jobs är publika
 ALTER TABLE public.jobs ENABLE ROW LEVEL SECURITY;
@@ -225,6 +259,18 @@ CREATE POLICY "Users can manage own google creds" ON public.user_google_credenti
 CREATE POLICY "Service role full access google" ON public.user_google_credentials
     FOR ALL USING (auth.jwt() ->> 'role' = 'service_role');
 
+-- Cover Letter Preferences
+CREATE POLICY "Users can manage own letter prefs" ON public.user_cover_letter_preferences
+    FOR ALL USING (auth.uid() = user_id);
+CREATE POLICY "Service role full access letter prefs" ON public.user_cover_letter_preferences
+    FOR ALL USING (auth.jwt() ->> 'role' = 'service_role');
+
+-- AI Feedback
+CREATE POLICY "Users can manage own feedback" ON public.user_ai_feedback
+    FOR ALL USING (auth.uid() = user_id);
+CREATE POLICY "Service role full access feedback" ON public.user_ai_feedback
+    FOR ALL USING (auth.jwt() ->> 'role' = 'service_role');
+
 -- Jobs - everyone can read
 CREATE POLICY "Anyone can view jobs" ON public.jobs
     FOR SELECT USING (true);
@@ -260,14 +306,35 @@ VALUES (
 INSERT INTO public.user_job_preferences (user_id, job_titles, locations, job_types, experience_level)
 VALUES (
     '1e9d7392-b0d6-4f35-b69d-090c2fe2c671',
-    'servitör, kundtjänst, content moderator, butik, café',
-    'Stockholm, Sollentuna, Sundbyberg',
+    'servitör, kundtjänst, content moderator, butik, café, barista, receptionist, trädgård',
+    'Stockholm, Sollentuna, Sundbyberg, Vetlanda, Nässjö, Eksjö, Småland',
     ARRAY['full_time', 'part_time'],
     'mid'
 ) ON CONFLICT (user_id) DO UPDATE SET
     job_titles = EXCLUDED.job_titles,
     locations = EXCLUDED.locations,
     job_types = EXCLUDED.job_types,
+    updated_at = now();
+
+-- Cover letter preferences
+INSERT INTO public.user_cover_letter_preferences (
+    user_id, tone, max_words, greeting_style, signature_style,
+    always_mention, never_mention, priority_jobs_to_reference
+)
+VALUES (
+    '1e9d7392-b0d6-4f35-b69d-090c2fe2c671',
+    'professional',
+    200,
+    'Hej!',
+    'Med vänlig hälsning',
+    ARRAY['flexibel med arbetstider', 'tillgänglig omgående', 'B-körkort', 'bor i Sollentuna'],
+    ARRAY['konst', 'målning', 'utställningar', 'Shopify', 'linneamoritz.com'],
+    '{"restaurant": ["Max Hamburgare", "House of Beans"], "tech": ["Clubhouse", "Google Ads"], "customerservice": ["Clubhouse", "Minerva Project"]}'::jsonb
+) ON CONFLICT (user_id) DO UPDATE SET
+    tone = EXCLUDED.tone,
+    always_mention = EXCLUDED.always_mention,
+    never_mention = EXCLUDED.never_mention,
+    priority_jobs_to_reference = EXCLUDED.priority_jobs_to_reference,
     updated_at = now();
 
 -- Arbetslivserfarenhet
