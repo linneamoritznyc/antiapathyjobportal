@@ -523,6 +523,32 @@
                 }
             };
 
+            const handleExportData = async () => {
+                const token = localStorage.getItem('auth_token');
+                try {
+                    const res = await fetch('/api/auth/export-data', {
+                        headers: { 'Authorization': `Bearer ${token}` }
+                    });
+                    const data = await res.json();
+                    if (data.success) {
+                        // Download as JSON file
+                        const blob = new Blob([JSON.stringify(data.export, null, 2)], { type: 'application/json' });
+                        const url = URL.createObjectURL(blob);
+                        const a = document.createElement('a');
+                        a.href = url;
+                        a.download = `platsbanken-ai-data-${new Date().toISOString().split('T')[0]}.json`;
+                        document.body.appendChild(a);
+                        a.click();
+                        document.body.removeChild(a);
+                        URL.revokeObjectURL(url);
+                    } else {
+                        alert('Kunde inte exportera data: ' + (data.detail || 'Okänt fel'));
+                    }
+                } catch (err) {
+                    alert('Något gick fel. Försök igen.');
+                }
+            };
+
             // Delete confirmation modal
             const DeleteConfirmModal = () => showDeleteConfirm ? (
                 <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50">
@@ -573,6 +599,13 @@
                                     {user ? (
                                         <>
                                             <span className="text-white/80 text-sm">{user.email}</span>
+                                            <button
+                                                onClick={handleExportData}
+                                                className="bg-white/20 hover:bg-white/30 px-3 py-2 rounded-lg text-sm transition"
+                                                title="Exportera min data"
+                                            >
+                                                📥
+                                            </button>
                                             <button
                                                 onClick={handleLogout}
                                                 className="bg-white/20 hover:bg-white/30 px-4 py-2 rounded-lg text-sm font-medium transition"
@@ -643,6 +676,10 @@
                         onClose={() => setShowCVModal(false)}
                         onSave={handleSaveCV}
                     />
+
+                    <footer className="text-center py-6 text-slate-400 text-sm">
+                        <a href="/integritetspolicy" className="hover:text-indigo-600">Integritetspolicy</a>
+                    </footer>
                 </div>
             );
         };
