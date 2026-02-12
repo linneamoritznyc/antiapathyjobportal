@@ -163,20 +163,43 @@
             // Clear the URL fragment
             history.replaceState(null, '', window.location.pathname);
 
-            // Handle successful verification
+            // Handle successful verification - AUTO LOGIN
             if (accessToken) {
-                // Try to extract email from JWT token
+                const refreshToken = params.get('refresh_token');
+
+                // Save tokens immediately
+                localStorage.setItem('auth_token', accessToken);
+                if (refreshToken) {
+                    localStorage.setItem('refresh_token', refreshToken);
+                }
+
+                // Try to get user info from token
                 try {
                     const payload = JSON.parse(atob(accessToken.split('.')[1]));
-                    const email = payload.email;
-                    if (email) {
-                        document.getElementById('login-email').value = email;
+                    if (payload.email) {
+                        localStorage.setItem('user', JSON.stringify({ email: payload.email, id: payload.sub }));
                     }
                 } catch (e) {
                     // Ignore token parsing errors
                 }
 
-                showVerificationSuccess();
+                // Show success and redirect
+                const status = document.getElementById('status');
+                status.classList.remove('hidden');
+                status.classList.add('bg-green-50', 'border', 'border-green-200');
+                status.innerHTML = `
+                    <div class="flex items-center gap-3">
+                        <span class="text-2xl">✅</span>
+                        <div>
+                            <p class="font-medium text-green-800">Konto verifierat! Du loggas in...</p>
+                        </div>
+                    </div>
+                `;
+
+                // Redirect to main app
+                setTimeout(() => {
+                    window.location.href = '/';
+                }, 1500);
                 return;
             }
 

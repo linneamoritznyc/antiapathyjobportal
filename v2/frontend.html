@@ -287,6 +287,182 @@
 
         // ============== PAGES ==============
 
+        // Quiz page - step by step job preferences
+        const QuizPage = ({ onComplete, saving }) => {
+            const [step, setStep] = useState(0);
+            const [answers, setAnswers] = useState({
+                job_titles: [],
+                industries: [],
+                experience_level: '',
+                work_type: [],
+                locations: [],
+                salary_range: '',
+                company_size: [],
+                dealbreakers: []
+            });
+
+            const questions = [
+                {
+                    id: 'job_titles',
+                    question: 'Vilken typ av jobb soker du?',
+                    subtitle: 'Valj en eller flera',
+                    type: 'multi',
+                    options: [
+                        { value: 'servitor', label: 'Servitor/Restaurang' },
+                        { value: 'kundtjanst', label: 'Kundtjanst/Support' },
+                        { value: 'butik', label: 'Butik/Kassa' },
+                        { value: 'lager', label: 'Lager/Logistik' },
+                        { value: 'kontor', label: 'Kontor/Admin' },
+                        { value: 'tech', label: 'IT/Tech' },
+                        { value: 'vard', label: 'Vard/Omsorg' },
+                        { value: 'annat', label: 'Annat' }
+                    ]
+                },
+                {
+                    id: 'experience_level',
+                    question: 'Hur mycket erfarenhet har du?',
+                    type: 'single',
+                    options: [
+                        { value: 'entry', label: 'Nybörjare (0-1 år)' },
+                        { value: 'mid', label: 'Lite erfarenhet (1-3 år)' },
+                        { value: 'senior', label: 'Erfaren (3+ år)' }
+                    ]
+                },
+                {
+                    id: 'work_type',
+                    question: 'Vilken typ av anställning passar dig?',
+                    type: 'multi',
+                    options: [
+                        { value: 'heltid', label: 'Heltid' },
+                        { value: 'deltid', label: 'Deltid' },
+                        { value: 'extra', label: 'Extra/Timmar' },
+                        { value: 'sommar', label: 'Sommarjobb' }
+                    ]
+                },
+                {
+                    id: 'locations',
+                    question: 'Var vill du jobba?',
+                    type: 'multi',
+                    options: [
+                        { value: 'stockholm', label: 'Stockholm' },
+                        { value: 'goteborg', label: 'Goteborg' },
+                        { value: 'malmo', label: 'Malmo' },
+                        { value: 'remote', label: 'Distans/Remote' },
+                        { value: 'anywhere', label: 'Hela Sverige' }
+                    ]
+                },
+                {
+                    id: 'dealbreakers',
+                    question: 'Finns det något du INTE vill gora?',
+                    subtitle: 'Vi filtrerar bort dessa jobb',
+                    type: 'multi',
+                    options: [
+                        { value: 'natt', label: 'Nattarbete' },
+                        { value: 'helg', label: 'Helgarbete' },
+                        { value: 'kall', label: 'Utomhus/Kallt' },
+                        { value: 'telefon', label: 'Telefonforssaljning' },
+                        { value: 'aldrevard', label: 'Aldrevård' }
+                    ]
+                }
+            ];
+
+            const currentQ = questions[step];
+            const isLastStep = step === questions.length - 1;
+            const progress = ((step + 1) / questions.length) * 100;
+
+            const handleSelect = (value) => {
+                if (currentQ.type === 'single') {
+                    setAnswers({ ...answers, [currentQ.id]: value });
+                } else {
+                    const current = answers[currentQ.id] || [];
+                    if (current.includes(value)) {
+                        setAnswers({ ...answers, [currentQ.id]: current.filter(v => v !== value) });
+                    } else {
+                        setAnswers({ ...answers, [currentQ.id]: [...current, value] });
+                    }
+                }
+            };
+
+            const isSelected = (value) => {
+                if (currentQ.type === 'single') {
+                    return answers[currentQ.id] === value;
+                }
+                return (answers[currentQ.id] || []).includes(value);
+            };
+
+            const canProceed = currentQ.type === 'single'
+                ? !!answers[currentQ.id]
+                : (answers[currentQ.id] || []).length > 0;
+
+            return (
+                <div className="min-h-[60vh] flex flex-col">
+                    {/* Progress bar */}
+                    <div className="mb-8">
+                        <div className="h-2 bg-slate-200 rounded-full overflow-hidden">
+                            <div
+                                className="h-full bg-gradient-to-r from-indigo-500 to-purple-500 transition-all duration-500"
+                                style={{ width: `${progress}%` }}
+                            />
+                        </div>
+                        <p className="text-sm text-slate-500 mt-2">Steg {step + 1} av {questions.length}</p>
+                    </div>
+
+                    {/* Question */}
+                    <div className="flex-1">
+                        <h2 className="text-2xl font-bold text-slate-800 mb-2">{currentQ.question}</h2>
+                        {currentQ.subtitle && (
+                            <p className="text-slate-500 mb-6">{currentQ.subtitle}</p>
+                        )}
+
+                        <div className="grid grid-cols-2 md:grid-cols-3 gap-3 mt-6">
+                            {currentQ.options.map(opt => (
+                                <button
+                                    key={opt.value}
+                                    onClick={() => handleSelect(opt.value)}
+                                    className={`p-4 rounded-xl border-2 text-left transition ${
+                                        isSelected(opt.value)
+                                            ? 'border-indigo-500 bg-indigo-50 text-indigo-700'
+                                            : 'border-slate-200 hover:border-slate-300 text-slate-700'
+                                    }`}
+                                >
+                                    <span className="font-medium">{opt.label}</span>
+                                </button>
+                            ))}
+                        </div>
+                    </div>
+
+                    {/* Navigation */}
+                    <div className="flex justify-between mt-8 pt-6 border-t border-slate-200">
+                        <button
+                            onClick={() => setStep(Math.max(0, step - 1))}
+                            disabled={step === 0}
+                            className="px-6 py-3 text-slate-600 hover:text-slate-800 disabled:opacity-30 transition"
+                        >
+                            Tillbaka
+                        </button>
+
+                        {isLastStep ? (
+                            <button
+                                onClick={() => onComplete(answers)}
+                                disabled={!canProceed || saving}
+                                className="px-8 py-3 bg-indigo-600 text-white font-semibold rounded-lg hover:bg-indigo-700 disabled:opacity-50 transition"
+                            >
+                                {saving ? 'Sparar...' : 'Klar - Borja soka jobb!'}
+                            </button>
+                        ) : (
+                            <button
+                                onClick={() => setStep(step + 1)}
+                                disabled={!canProceed}
+                                className="px-8 py-3 bg-indigo-600 text-white font-semibold rounded-lg hover:bg-indigo-700 disabled:opacity-50 transition"
+                            >
+                                Nasta
+                            </button>
+                        )}
+                    </div>
+                </div>
+            );
+        };
+
         // Jobs page
         const JobsPage = ({ jobs, onScrape, onApply, scraping, applyingJob }) => {
             const [keywords, setKeywords] = useState('');
