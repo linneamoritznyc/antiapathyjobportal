@@ -2415,6 +2415,18 @@ async def privacy_policy_page():
     return "<h1>Integritetspolicy kunde inte laddas</h1>"
 
 
+@app.get("/account", response_class=HTMLResponse)
+async def account_page():
+    """Account settings page"""
+    try:
+        account_path = pathlib.Path(__file__).parent.parent / "account.html"
+        if account_path.exists():
+            return account_path.read_text(encoding='utf-8')
+    except:
+        pass
+    return "<h1>Kontosidan kunde inte laddas</h1>"
+
+
 @app.get("/", response_class=HTMLResponse)
 async def root():
     """Serve frontend"""
