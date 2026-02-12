@@ -1740,35 +1740,84 @@ Dataanalys, Kvalitetssakring
 Svenska (modersmal), Engelska (flytande)"""}
     ]
 
-    results = {"profile": False, "experiences": 0, "education": 0, "cvs": 0}
+    results = {"profile": False, "experiences": 0, "education": 0, "cvs": 0, "errors": []}
 
-    # Save profile
-    saved = await db_request("POST", "user_profiles", data=PROFILE)
-    if saved:
-        results["profile"] = True
+    headers = {
+        "apikey": SUPABASE_KEY,
+        "Authorization": f"Bearer {SUPABASE_KEY}",
+        "Content-Type": "application/json",
+        "Prefer": "return=representation"
+    }
 
-    # Save experiences
-    for exp in EXPERIENCES:
-        saved = await db_request("POST", "user_experiences", data=exp)
-        if saved:
-            results["experiences"] += 1
+    async with httpx.AsyncClient(timeout=30) as client:
+        # 1. Upsert profile (on_conflict=user_id)
+        try:
+            res = await client.post(
+                f"{SUPABASE_URL}/rest/v1/user_profiles?on_conflict=user_id",
+                headers=headers,
+                json=PROFILE
+            )
+            if res.status_code < 400:
+                results["profile"] = True
+            else:
+                results["errors"].append(f"Profile: {res.status_code}")
+        except Exception as e:
+            results["errors"].append(f"Profile error: {str(e)}")
 
-    # Save education
-    for edu in EDUCATION:
-        saved = await db_request("POST", "user_education", data=edu)
-        if saved:
-            results["education"] += 1
+        # 2. Delete old experiences, then insert new
+        try:
+            await client.delete(
+                f"{SUPABASE_URL}/rest/v1/user_experiences?user_id=eq.{user_id}",
+                headers=headers
+            )
+            for exp in EXPERIENCES:
+                res = await client.post(
+                    f"{SUPABASE_URL}/rest/v1/user_experiences",
+                    headers=headers,
+                    json=exp
+                )
+                if res.status_code < 400:
+                    results["experiences"] += 1
+        except Exception as e:
+            results["errors"].append(f"Experiences error: {str(e)}")
 
-    # Save CV versions
-    for cv in CV_VERSIONS:
-        cv["created_at"] = datetime.now().isoformat()
-        saved = await db_request("POST", "user_cvs", data=cv)
-        if saved:
-            results["cvs"] += 1
+        # 3. Delete old education, then insert new
+        try:
+            await client.delete(
+                f"{SUPABASE_URL}/rest/v1/user_education?user_id=eq.{user_id}",
+                headers=headers
+            )
+            for edu in EDUCATION:
+                res = await client.post(
+                    f"{SUPABASE_URL}/rest/v1/user_education",
+                    headers=headers,
+                    json=edu
+                )
+                if res.status_code < 400:
+                    results["education"] += 1
+        except Exception as e:
+            results["errors"].append(f"Education error: {str(e)}")
 
+        # 4. Upsert CV versions (on_conflict=user_id,vibe_id)
+        try:
+            for cv in CV_VERSIONS:
+                cv["created_at"] = datetime.now().isoformat()
+                res = await client.post(
+                    f"{SUPABASE_URL}/rest/v1/user_cvs?on_conflict=user_id,vibe_id",
+                    headers=headers,
+                    json=cv
+                )
+                if res.status_code < 400:
+                    results["cvs"] += 1
+                else:
+                    results["errors"].append(f"CV {cv['vibe_id']}: {res.status_code}")
+        except Exception as e:
+            results["errors"].append(f"CVs error: {str(e)}")
+
+    success = results["profile"] and results["experiences"] > 0 and results["cvs"] > 0
     return {
-        "success": True,
-        "message": "Data migrerad!",
+        "success": success,
+        "message": f"Migrerat! Profil: {'OK' if results['profile'] else 'FEL'}, Erfarenheter: {results['experiences']}, CV:n: {results['cvs']}",
         "results": results
     }
 

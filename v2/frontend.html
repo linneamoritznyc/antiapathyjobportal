@@ -1678,13 +1678,27 @@
             };
 
             const fetchMasterCV = async () => {
-                const token = localStorage.getItem('auth_token');
-                const res = await fetch('/api/cv/master', {
-                    headers: { 'Authorization': `Bearer ${token}` }
-                });
-                const data = await res.json();
-                if (data.success && data.master_cv) {
-                    setMasterCV(data.master_cv);
+                try {
+                    const token = localStorage.getItem('auth_token');
+                    if (!token) {
+                        console.error('No auth token');
+                        return false;
+                    }
+                    const res = await fetch('/api/cv/master', {
+                        headers: { 'Authorization': `Bearer ${token}` }
+                    });
+                    if (!res.ok) {
+                        console.error('Fetch master CV failed:', res.status);
+                        return false;
+                    }
+                    const data = await res.json();
+                    if (data.success && data.master_cv) {
+                        setMasterCV(data.master_cv);
+                    }
+                    return true;
+                } catch (err) {
+                    console.error('Error fetching master CV:', err);
+                    return false;
                 }
             };
 
