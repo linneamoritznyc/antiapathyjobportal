@@ -939,31 +939,37 @@
         };
 
         // CVs page
-        const CVsPage = ({ vibes, userCVs, onSelectVibe, onGenerateVibes, generating, onOpenMasterCV }) => (
+        const CVsPage = ({ vibes, userCVs, onSelectVibe, onGenerateVibes, generating, onOpenMasterCV, onMigrate, migrating }) => (
             <div>
                 <div className="flex justify-between items-center mb-6">
-                    <h2 className="text-lg font-semibold">📄 Mina CV-versioner</h2>
+                    <h2 className="text-lg font-semibold">Mina CV-versioner</h2>
                     <div className="flex gap-2">
+                        <button
+                            onClick={onMigrate}
+                            disabled={migrating}
+                            className="bg-green-600 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-green-700 disabled:opacity-50"
+                        >
+                            {migrating ? 'Laddar...' : 'Ladda min data'}
+                        </button>
                         <button
                             onClick={onOpenMasterCV}
                             className="bg-slate-700 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-slate-800"
                         >
-                            📋 Redigera Master CV
+                            Redigera Master CV
                         </button>
                         <button
                             onClick={onGenerateVibes}
                             disabled={generating}
                             className="bg-purple-600 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-purple-700 disabled:opacity-50"
                         >
-                            {generating ? 'Genererar...' : '✨ Generera alla CV'}
+                            {generating ? 'Genererar...' : 'Generera alla CV'}
                         </button>
                     </div>
                 </div>
 
                 <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 mb-6">
                     <p className="text-sm text-amber-800">
-                        <strong>Tips:</strong> Klicka på en kategori för att se/redigera CV:t.
-                        "Generera alla CV" skapar AI-versioner baserat på ditt Master CV.
+                        <strong>Tips:</strong> Klicka "Ladda min data" for att hamta dina fardiga CV:n och erfarenheter.
                     </p>
                 </div>
 
@@ -1850,6 +1856,30 @@
                 setGenerating(false);
             };
 
+            const [migrating, setMigrating] = useState(false);
+            const handleMigrateData = async () => {
+                if (!confirm('Vill du ladda in fardiga CV:n och erfarenheter?')) return;
+                setMigrating(true);
+                try {
+                    const token = localStorage.getItem('auth_token');
+                    const res = await fetch('/api/migrate-my-data', {
+                        method: 'POST',
+                        headers: { 'Authorization': `Bearer ${token}` }
+                    });
+                    const data = await res.json();
+                    if (data.success) {
+                        alert('Data inladdat! Laddar om...');
+                        window.location.reload();
+                    } else {
+                        alert(data.detail || 'Kunde inte ladda data.');
+                    }
+                } catch (err) {
+                    console.error(err);
+                    alert('Fel vid inladdning.');
+                }
+                setMigrating(false);
+            };
+
             // Check auth on mount
             const [user, setUser] = useState(null);
 
@@ -2003,6 +2033,8 @@
                                 onGenerateVibes={handleGenerateVibes}
                                 generating={generating}
                                 onOpenMasterCV={handleOpenMasterCV}
+                                onMigrate={handleMigrateData}
+                                migrating={migrating}
                             />
                         )}
 
