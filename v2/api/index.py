@@ -804,11 +804,28 @@ async def list_cv_vibes():
 
 
 @app.post("/api/cv/master")
-async def save_master_cv(master_cv: MasterCV, user_id: str = "default_user"):
+async def save_master_cv(request: Request, master_cv: MasterCV):
     """
     Save complete Master CV with all structured data.
     This is the source of truth - all CV vibes are generated from this.
     """
+    # Get user_id from auth token
+    auth_header = request.headers.get("Authorization", "")
+    user_id = None
+
+    if auth_header.startswith("Bearer "):
+        token = auth_header.replace("Bearer ", "")
+        async with httpx.AsyncClient() as client:
+            user_response = await client.get(
+                f"{SUPABASE_URL}/auth/v1/user",
+                headers={"apikey": SUPABASE_ANON_KEY, "Authorization": f"Bearer {token}"}
+            )
+            if user_response.status_code == 200:
+                user_id = user_response.json().get("id")
+
+    if not user_id:
+        raise HTTPException(status_code=401, detail="Ej inloggad")
+
     # Save profile
     profile_data = {
         "user_id": user_id,
