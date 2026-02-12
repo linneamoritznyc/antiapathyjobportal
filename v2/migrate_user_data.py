@@ -8,7 +8,7 @@ import asyncio
 from datetime import datetime
 
 # Din user ID från Supabase
-USER_ID = "1e9d7392-b0d6-4f35-b69d-090c2fe2c671"
+USER_ID = "da8ed517-3b67-4456-8831-6ed3cb7114ad"
 
 # Supabase credentials (hämtas från miljövariabler)
 SUPABASE_URL = os.getenv("SUPABASE_URL")

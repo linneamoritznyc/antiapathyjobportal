@@ -476,43 +476,91 @@ async def generate_cv_vibe(master_cv: Dict, vibe: Dict) -> str:
     if not ANTHROPIC_API_KEY:
         return f"[CV för {vibe['name']} - API ej konfigurerad]"
 
-    prompt = f"""Skriv ett CV på svenska optimerat för {vibe['name']}-jobb.
+    # Extract profile data
+    profile = master_cv.get('profile', {})
+    if isinstance(profile, list) and len(profile) > 0:
+        profile = profile[0]
+
+    # Format experiences as text
+    experiences = master_cv.get('experiences', [])
+    experience_text = ""
+    for exp in experiences:
+        if isinstance(exp, dict):
+            company = exp.get('company', '')
+            title = exp.get('title', '')
+            location = exp.get('location', '')
+            dates = exp.get('dates', '') or f"{exp.get('start_date', '')} - {exp.get('end_date', 'Nuvarande')}"
+            description = exp.get('description', '')
+            categories = exp.get('categories', [])
+            experience_text += f"\n{title} - {company} ({location})\n{dates}\n{description}\nKategorier: {', '.join(categories) if categories else 'Alla'}\n"
+
+    # Format education as text
+    education_list = master_cv.get('education', [])
+    education_text = ""
+    for edu in education_list:
+        if isinstance(edu, dict):
+            school = edu.get('school', '')
+            degree = edu.get('degree', '')
+            field = edu.get('field_of_study', '')
+            dates = edu.get('dates', '') or f"{edu.get('start_date', '')} - {edu.get('end_date', '')}"
+            education_text += f"\n{school} - {degree} {field} ({dates})"
+
+    # Format skills as text
+    skills_list = master_cv.get('skills', [])
+    skills_text = ""
+    for skill in skills_list:
+        if isinstance(skill, dict):
+            skills_text += f"\n- {skill.get('skill_text', '')} ({skill.get('category', 'all')})"
+        elif isinstance(skill, str):
+            skills_text += f"\n- {skill}"
+
+    prompt = f"""Skriv ett komplett CV på svenska för {vibe['name']}-jobb.
 
 PERSONINFO:
-- Namn: {master_cv.get('full_name')}
-- E-post: {master_cv.get('email')}
-- Telefon: {master_cv.get('phone')}
-- Plats: {master_cv.get('location')}
-- Språk: {', '.join(master_cv.get('languages', ['Svenska']))}
-- Körkort: {'Ja, B-körkort' if master_cv.get('drivers_license') else 'Nej'}
+- Namn: {profile.get('full_name', '')}
+- E-post: {profile.get('email', '')}
+- Telefon: {profile.get('phone', '')}
+- Plats: {profile.get('location', '')}
+- Språk: {', '.join(profile.get('languages', ['Svenska', 'Engelska'])) if isinstance(profile.get('languages'), list) else 'Svenska, Engelska'}
+- Körkort: {'Ja, B-körkort' if profile.get('drivers_license') else 'Nej'}
 
-ERFARENHET:
-{master_cv.get('experience', '')}
+ALL ERFARENHET (inkludera ALLT):
+{experience_text or 'Ingen erfarenhet angiven'}
 
-UTBILDNING:
-{master_cv.get('education', 'Ej angivet')}
+ALL UTBILDNING:
+{education_text or 'Ej angivet'}
 
-FÄRDIGHETER:
-{master_cv.get('skills', 'Ej angivet')}
+ALLA FÄRDIGHETER:
+{skills_text or 'Ej angivet'}
 
-OM MIG:
-{master_cv.get('about_me', '')}
-
-FOKUSOMRÅDEN FÖR DENNA CV-VERSION:
-{vibe['focus']}
+DENNA CV-VERSION ÄR FÖR: {vibe['name']}
+Fokus: {vibe['focus']}
 
 INSTRUKTIONER:
-1. Skriv ett professionellt CV på svenska
-2. Lyft fram erfarenheter som är relevanta för {vibe['name']}-jobb
-3. Fokusera på: {vibe['focus']}
-4. Använd konkreta exempel och siffror där möjligt
-5. Håll det till 1 sida (ca 300-400 ord)
-6. Formatera snyggt med tydliga sektioner:
-   - Kontaktinfo (namn, tel, email, plats)
-   - Profil (2-3 meningar)
-   - Erfarenhet (relevanta jobb)
-   - Utbildning
-   - Färdigheter
+1. Skriv ett KOMPLETT CV - inkludera ALL erfarenhet, ALL utbildning, ALLA färdigheter
+2. Ordna erfarenheterna kronologiskt (senaste först)
+3. För {vibe['name']}-versionen: skriv en kort profil (2-3 meningar) som lyfter erfarenhet relevant för denna bransch
+4. Bullet points för varje jobb ska vara korta och konkreta
+5. Inga emojis
+6. Format:
+   NAMN
+   Plats | Telefon | E-post
+
+   PROFIL
+   [2-3 meningar]
+
+   ERFARENHET
+   [Titel - Företag (Datum)]
+   - Punkt 1
+   - Punkt 2
+
+   UTBILDNING
+   [Skola - Examen (Datum)]
+
+   FÄRDIGHETER
+   [Lista]
+
+KRITISKT - Du MÅSTE inkludera VARJE jobb som listas ovan. Räkna jobben. Om det finns 5 jobb ovan måste det finnas 5 jobb i CV:t. INGA undantag. FILTRERA INTE.
 
 Skriv ENDAST CV-texten, inget annat."""
 
@@ -1189,11 +1237,28 @@ async def update_cv(vibe_id: str, cv_text: str, user_id: str = "default_user"):
 
 
 @app.post("/api/jobs/{job_id}/apply-with-cv")
-async def apply_with_cv(job_id: str, user_id: str = "default_user"):
+async def apply_with_cv(request: Request, job_id: str):
     """
     Smart apply: Auto-selects best CV, generates cover letter, returns both.
     This is the main "one-click apply" endpoint.
     """
+    # Get user_id from auth token
+    auth_header = request.headers.get("Authorization", "")
+    user_id = None
+
+    if auth_header.startswith("Bearer "):
+        token = auth_header.replace("Bearer ", "")
+        async with httpx.AsyncClient() as client:
+            user_response = await client.get(
+                f"{SUPABASE_URL}/auth/v1/user",
+                headers={"apikey": SUPABASE_ANON_KEY, "Authorization": f"Bearer {token}"}
+            )
+            if user_response.status_code == 200:
+                user_id = user_response.json().get("id")
+
+    if not user_id:
+        raise HTTPException(status_code=401, detail="Ej inloggad")
+
     # Get job
     jobs = await db_request("GET", "jobs", params={"id": f"eq.{job_id}"})
     if not jobs:
