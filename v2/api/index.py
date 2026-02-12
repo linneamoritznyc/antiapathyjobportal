@@ -1076,14 +1076,31 @@ async def generate_cv_branscher(request: GenerateCVBranscherRequest = None):
 
 
 @app.get("/api/cv/all")
-async def get_user_cvs(user_id: str = "default_user"):
+async def get_user_cvs(request: Request):
     """Get all user's generated CV versions"""
+    # Get user_id from auth token
+    auth_header = request.headers.get("Authorization", "")
+    user_id = None
+
+    if auth_header.startswith("Bearer "):
+        token = auth_header.replace("Bearer ", "")
+        async with httpx.AsyncClient() as client:
+            user_response = await client.get(
+                f"{SUPABASE_URL}/auth/v1/user",
+                headers={"apikey": SUPABASE_ANON_KEY, "Authorization": f"Bearer {token}"}
+            )
+            if user_response.status_code == 200:
+                user_id = user_response.json().get("id")
+
+    if not user_id:
+        return {"success": True, "cvs": [], "message": "Ej inloggad"}
+
     cvs = await db_request("GET", "user_cvs", params={
         "user_id": f"eq.{user_id}",
         "order": "vibe_id.asc"
     })
 
-    return {"success": True, "cvs": cvs or []}
+    return {"success": True, "cvs": cvs or [], "user_id": user_id}
 
 
 @app.get("/api/cv/{vibe_id}")

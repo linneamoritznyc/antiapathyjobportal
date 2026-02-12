@@ -1321,7 +1321,10 @@
             };
 
             const fetchUserCVs = async () => {
-                const res = await fetch('/api/cv/all');
+                const token = localStorage.getItem('auth_token');
+                const res = await fetch('/api/cv/all', {
+                    headers: token ? { 'Authorization': `Bearer ${token}` } : {}
+                });
                 const data = await res.json();
                 if (data.success) setUserCVs(data.cvs || []);
             };
