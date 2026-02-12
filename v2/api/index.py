@@ -1449,6 +1449,127 @@ async def get_current_user(request: Request):
         }
 
 
+class UserPreferences(BaseModel):
+    job_titles: str = ""
+    locations: str = ""
+    job_types: list = []
+    experience_level: str = ""
+    gmail_client_id: str = ""
+    gmail_client_secret: str = ""
+
+
+@app.get("/api/user/preferences")
+async def get_user_preferences(request: Request):
+    """Get user job preferences and settings."""
+    auth_header = request.headers.get("Authorization", "")
+    if not auth_header.startswith("Bearer "):
+        raise HTTPException(status_code=401, detail="Ej inloggad")
+
+    token = auth_header.replace("Bearer ", "")
+
+    # Get user ID from token
+    async with httpx.AsyncClient() as client:
+        user_response = await client.get(
+            f"{SUPABASE_URL}/auth/v1/user",
+            headers={
+                "apikey": SUPABASE_ANON_KEY,
+                "Authorization": f"Bearer {token}"
+            }
+        )
+        if user_response.status_code != 200:
+            raise HTTPException(status_code=401, detail="Ogiltig session")
+
+        user = user_response.json()
+        user_id = user.get("id")
+
+    # Get preferences from database
+    async with httpx.AsyncClient() as client:
+        response = await client.get(
+            f"{SUPABASE_URL}/rest/v1/user_job_preferences?user_id=eq.{user_id}&select=*",
+            headers={
+                "apikey": SUPABASE_KEY,
+                "Authorization": f"Bearer {SUPABASE_KEY}"
+            }
+        )
+
+        if response.status_code == 200:
+            data = response.json()
+            if data and len(data) > 0:
+                return {"success": True, "preferences": data[0]}
+
+    return {"success": True, "preferences": None}
+
+
+@app.post("/api/user/preferences")
+async def save_user_preferences(request: Request, prefs: UserPreferences):
+    """Save user job preferences and Gmail credentials."""
+    auth_header = request.headers.get("Authorization", "")
+    if not auth_header.startswith("Bearer "):
+        raise HTTPException(status_code=401, detail="Ej inloggad")
+
+    token = auth_header.replace("Bearer ", "")
+
+    # Get user ID from token
+    async with httpx.AsyncClient() as client:
+        user_response = await client.get(
+            f"{SUPABASE_URL}/auth/v1/user",
+            headers={
+                "apikey": SUPABASE_ANON_KEY,
+                "Authorization": f"Bearer {token}"
+            }
+        )
+        if user_response.status_code != 200:
+            raise HTTPException(status_code=401, detail="Ogiltig session")
+
+        user = user_response.json()
+        user_id = user.get("id")
+
+    # Upsert preferences
+    prefs_data = {
+        "user_id": user_id,
+        "job_titles": prefs.job_titles,
+        "locations": prefs.locations,
+        "job_types": prefs.job_types,
+        "experience_level": prefs.experience_level,
+        "updated_at": "now()"
+    }
+
+    async with httpx.AsyncClient() as client:
+        response = await client.post(
+            f"{SUPABASE_URL}/rest/v1/user_job_preferences",
+            headers={
+                "apikey": SUPABASE_KEY,
+                "Authorization": f"Bearer {SUPABASE_KEY}",
+                "Content-Type": "application/json",
+                "Prefer": "resolution=merge-duplicates"
+            },
+            json=prefs_data
+        )
+
+    # Save Gmail credentials if provided
+    if prefs.gmail_client_id and prefs.gmail_client_secret:
+        gmail_data = {
+            "user_id": user_id,
+            "client_id": prefs.gmail_client_id,
+            "client_secret": prefs.gmail_client_secret,
+            "updated_at": "now()"
+        }
+
+        async with httpx.AsyncClient() as client:
+            await client.post(
+                f"{SUPABASE_URL}/rest/v1/user_google_credentials",
+                headers={
+                    "apikey": SUPABASE_KEY,
+                    "Authorization": f"Bearer {SUPABASE_KEY}",
+                    "Content-Type": "application/json",
+                    "Prefer": "resolution=merge-duplicates"
+                },
+                json=gmail_data
+            )
+
+    return {"success": True, "message": "Preferenser sparade!"}
+
+
 @app.delete("/api/auth/delete-account")
 async def delete_account(request: Request):
     """

@@ -349,6 +349,278 @@
             </div>
         );
 
+        // ============== ONBOARDING ==============
+
+        const OnboardingWizard = ({ onComplete }) => {
+            const [step, setStep] = useState(1);
+            const [saving, setSaving] = useState(false);
+            const [preferences, setPreferences] = useState({
+                job_titles: '',
+                locations: '',
+                job_types: [],
+                experience_level: '',
+                gmail_client_id: '',
+                gmail_client_secret: ''
+            });
+
+            const jobTypes = [
+                { id: 'full_time', label: 'Heltid' },
+                { id: 'part_time', label: 'Deltid' },
+                { id: 'temporary', label: 'Visstid' },
+                { id: 'internship', label: 'Praktik' },
+                { id: 'remote', label: 'Distans' }
+            ];
+
+            const experienceLevels = [
+                { id: 'entry', label: 'Nyutexaminerad / Första jobbet' },
+                { id: 'junior', label: '1-2 års erfarenhet' },
+                { id: 'mid', label: '3-5 års erfarenhet' },
+                { id: 'senior', label: '5+ års erfarenhet' }
+            ];
+
+            const toggleJobType = (id) => {
+                setPreferences(prev => ({
+                    ...prev,
+                    job_types: prev.job_types.includes(id)
+                        ? prev.job_types.filter(t => t !== id)
+                        : [...prev.job_types, id]
+                }));
+            };
+
+            const handleSave = async () => {
+                setSaving(true);
+                const token = localStorage.getItem('auth_token');
+                try {
+                    const res = await fetch('/api/user/preferences', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'Authorization': `Bearer ${token}`
+                        },
+                        body: JSON.stringify(preferences)
+                    });
+                    const data = await res.json();
+                    if (data.success) {
+                        localStorage.setItem('onboarding_complete', 'true');
+                        onComplete();
+                    }
+                } catch (err) {
+                    alert('Kunde inte spara. Försök igen.');
+                } finally {
+                    setSaving(false);
+                }
+            };
+
+            return (
+                <div className="min-h-screen bg-gradient-to-br from-indigo-50 to-slate-100 flex items-center justify-center p-4">
+                    <div className="bg-white rounded-2xl shadow-xl max-w-2xl w-full p-8">
+                        {/* Progress */}
+                        <div className="flex gap-2 mb-8">
+                            {[1, 2, 3].map(i => (
+                                <div key={i} className={`flex-1 h-2 rounded-full ${i <= step ? 'bg-indigo-600' : 'bg-slate-200'}`} />
+                            ))}
+                        </div>
+
+                        {/* Step 1: Job Preferences */}
+                        {step === 1 && (
+                            <div>
+                                <h2 className="text-2xl font-bold text-slate-800 mb-2">Vad söker du för jobb?</h2>
+                                <p className="text-slate-600 mb-6">Berätta så vi kan hitta rätt jobb åt dig.</p>
+
+                                <div className="space-y-4">
+                                    <div>
+                                        <label className="block text-sm font-medium text-slate-700 mb-1">
+                                            Jobbtitlar du söker
+                                        </label>
+                                        <input
+                                            type="text"
+                                            value={preferences.job_titles}
+                                            onChange={(e) => setPreferences({...preferences, job_titles: e.target.value})}
+                                            placeholder="t.ex. servitör, kundtjänst, säljare"
+                                            className="w-full px-4 py-3 border border-slate-200 rounded-lg focus:ring-2 focus:ring-indigo-500"
+                                        />
+                                        <p className="text-xs text-slate-500 mt-1">Separera med komma</p>
+                                    </div>
+
+                                    <div>
+                                        <label className="block text-sm font-medium text-slate-700 mb-1">
+                                            Var vill du jobba?
+                                        </label>
+                                        <input
+                                            type="text"
+                                            value={preferences.locations}
+                                            onChange={(e) => setPreferences({...preferences, locations: e.target.value})}
+                                            placeholder="t.ex. Stockholm, Göteborg, Remote"
+                                            className="w-full px-4 py-3 border border-slate-200 rounded-lg focus:ring-2 focus:ring-indigo-500"
+                                        />
+                                    </div>
+
+                                    <div>
+                                        <label className="block text-sm font-medium text-slate-700 mb-2">
+                                            Vilken typ av anställning?
+                                        </label>
+                                        <div className="flex flex-wrap gap-2">
+                                            {jobTypes.map(type => (
+                                                <button
+                                                    key={type.id}
+                                                    onClick={() => toggleJobType(type.id)}
+                                                    className={`px-4 py-2 rounded-lg text-sm font-medium transition ${
+                                                        preferences.job_types.includes(type.id)
+                                                            ? 'bg-indigo-600 text-white'
+                                                            : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
+                                                    }`}
+                                                >
+                                                    {type.label}
+                                                </button>
+                                            ))}
+                                        </div>
+                                    </div>
+
+                                    <div>
+                                        <label className="block text-sm font-medium text-slate-700 mb-2">
+                                            Din erfarenhetsnivå
+                                        </label>
+                                        <div className="grid grid-cols-2 gap-2">
+                                            {experienceLevels.map(level => (
+                                                <button
+                                                    key={level.id}
+                                                    onClick={() => setPreferences({...preferences, experience_level: level.id})}
+                                                    className={`px-4 py-3 rounded-lg text-sm font-medium transition text-left ${
+                                                        preferences.experience_level === level.id
+                                                            ? 'bg-indigo-600 text-white'
+                                                            : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
+                                                    }`}
+                                                >
+                                                    {level.label}
+                                                </button>
+                                            ))}
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <button
+                                    onClick={() => setStep(2)}
+                                    className="w-full mt-8 bg-indigo-600 text-white py-3 rounded-lg font-semibold hover:bg-indigo-700"
+                                >
+                                    Fortsätt
+                                </button>
+                            </div>
+                        )}
+
+                        {/* Step 2: Gmail Setup */}
+                        {step === 2 && (
+                            <div>
+                                <h2 className="text-2xl font-bold text-slate-800 mb-2">Koppla Gmail</h2>
+                                <p className="text-slate-600 mb-6">
+                                    För att skicka ansökningar direkt behöver vi din Gmail API-nyckel.
+                                </p>
+
+                                <div className="bg-amber-50 border border-amber-200 rounded-lg p-4 mb-6">
+                                    <p className="text-sm text-amber-800">
+                                        <strong>Så här får du en API-nyckel:</strong><br/>
+                                        1. Gå till <a href="https://console.cloud.google.com" target="_blank" className="underline">Google Cloud Console</a><br/>
+                                        2. Skapa ett projekt och aktivera Gmail API<br/>
+                                        3. Skapa OAuth 2.0-uppgifter<br/>
+                                        4. Kopiera Client ID och Client Secret
+                                    </p>
+                                </div>
+
+                                <div className="space-y-4">
+                                    <div>
+                                        <label className="block text-sm font-medium text-slate-700 mb-1">
+                                            Gmail Client ID
+                                        </label>
+                                        <input
+                                            type="text"
+                                            value={preferences.gmail_client_id}
+                                            onChange={(e) => setPreferences({...preferences, gmail_client_id: e.target.value})}
+                                            placeholder="xxxx.apps.googleusercontent.com"
+                                            className="w-full px-4 py-3 border border-slate-200 rounded-lg focus:ring-2 focus:ring-indigo-500 font-mono text-sm"
+                                        />
+                                    </div>
+
+                                    <div>
+                                        <label className="block text-sm font-medium text-slate-700 mb-1">
+                                            Gmail Client Secret
+                                        </label>
+                                        <input
+                                            type="password"
+                                            value={preferences.gmail_client_secret}
+                                            onChange={(e) => setPreferences({...preferences, gmail_client_secret: e.target.value})}
+                                            placeholder="GOCSPX-xxxx"
+                                            className="w-full px-4 py-3 border border-slate-200 rounded-lg focus:ring-2 focus:ring-indigo-500 font-mono text-sm"
+                                        />
+                                    </div>
+                                </div>
+
+                                <div className="flex gap-3 mt-8">
+                                    <button
+                                        onClick={() => setStep(1)}
+                                        className="flex-1 border border-slate-200 py-3 rounded-lg font-semibold hover:bg-slate-50"
+                                    >
+                                        Tillbaka
+                                    </button>
+                                    <button
+                                        onClick={() => setStep(3)}
+                                        className="flex-1 bg-indigo-600 text-white py-3 rounded-lg font-semibold hover:bg-indigo-700"
+                                    >
+                                        {preferences.gmail_client_id ? 'Fortsätt' : 'Hoppa över'}
+                                    </button>
+                                </div>
+                            </div>
+                        )}
+
+                        {/* Step 3: Summary */}
+                        {step === 3 && (
+                            <div>
+                                <h2 className="text-2xl font-bold text-slate-800 mb-2">Allt klart!</h2>
+                                <p className="text-slate-600 mb-6">Här är en sammanfattning av dina preferenser.</p>
+
+                                <div className="bg-slate-50 rounded-lg p-4 space-y-3">
+                                    <div>
+                                        <span className="text-sm text-slate-500">Söker:</span>
+                                        <p className="font-medium">{preferences.job_titles || 'Ej angivet'}</p>
+                                    </div>
+                                    <div>
+                                        <span className="text-sm text-slate-500">Plats:</span>
+                                        <p className="font-medium">{preferences.locations || 'Ej angivet'}</p>
+                                    </div>
+                                    <div>
+                                        <span className="text-sm text-slate-500">Anställningstyp:</span>
+                                        <p className="font-medium">
+                                            {preferences.job_types.length > 0
+                                                ? preferences.job_types.map(t => jobTypes.find(jt => jt.id === t)?.label).join(', ')
+                                                : 'Alla typer'}
+                                        </p>
+                                    </div>
+                                    <div>
+                                        <span className="text-sm text-slate-500">Gmail:</span>
+                                        <p className="font-medium">{preferences.gmail_client_id ? 'Kopplad' : 'Inte kopplad'}</p>
+                                    </div>
+                                </div>
+
+                                <div className="flex gap-3 mt-8">
+                                    <button
+                                        onClick={() => setStep(2)}
+                                        className="flex-1 border border-slate-200 py-3 rounded-lg font-semibold hover:bg-slate-50"
+                                    >
+                                        Tillbaka
+                                    </button>
+                                    <button
+                                        onClick={handleSave}
+                                        disabled={saving}
+                                        className="flex-1 bg-indigo-600 text-white py-3 rounded-lg font-semibold hover:bg-indigo-700 disabled:opacity-50"
+                                    >
+                                        {saving ? 'Sparar...' : 'Starta jobbsökning!'}
+                                    </button>
+                                </div>
+                            </div>
+                        )}
+                    </div>
+                </div>
+            );
+        };
+
         // ============== MAIN APP ==============
 
         const App = () => {
@@ -358,6 +630,7 @@
             const [userCVs, setUserCVs] = useState([]);
             const [applications, setApplications] = useState([]);
             const [stats, setStats] = useState({});
+            const [showOnboarding, setShowOnboarding] = useState(false);
 
             const [scraping, setScraping] = useState(false);
             const [generating, setGenerating] = useState(false);
@@ -377,7 +650,33 @@
                 fetchUserCVs();
                 fetchApplications();
                 fetchStats();
+                checkOnboarding();
             }, []);
+
+            const checkOnboarding = async () => {
+                const token = localStorage.getItem('auth_token');
+                if (!token) return;
+
+                // Check if onboarding is complete
+                const onboardingComplete = localStorage.getItem('onboarding_complete');
+                if (onboardingComplete) return;
+
+                // Check with server
+                try {
+                    const res = await fetch('/api/user/preferences', {
+                        headers: { 'Authorization': `Bearer ${token}` }
+                    });
+                    const data = await res.json();
+                    if (!data.success || !data.preferences?.job_titles) {
+                        setShowOnboarding(true);
+                    } else {
+                        localStorage.setItem('onboarding_complete', 'true');
+                    }
+                } catch (err) {
+                    // If error, show onboarding
+                    setShowOnboarding(true);
+                }
+            };
 
             const fetchJobs = async () => {
                 const res = await fetch('/api/jobs');
@@ -584,6 +883,11 @@
                     </div>
                 </div>
             ) : null;
+
+            // Show onboarding if needed
+            if (showOnboarding && user) {
+                return <OnboardingWizard onComplete={() => setShowOnboarding(false)} />;
+            }
 
             return (
                 <div className="min-h-screen">
