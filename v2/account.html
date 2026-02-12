@@ -1,0 +1,438 @@
+<!DOCTYPE html>
+<html lang="sv">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Mitt konto - Platsbanken AI</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-slate-50 min-h-screen">
+    <div id="root"></div>
+    <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+    <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    <script type="text/babel">
+        const { useState, useEffect } = React;
+
+        // Toast notification system
+        const Toast = ({ message, type, onClose }) => (
+            <div className={`fixed top-4 right-4 z-50 px-4 py-3 rounded-lg shadow-lg flex items-center gap-3 animate-slide-in ${
+                type === 'success' ? 'bg-green-600 text-white' :
+                type === 'error' ? 'bg-red-600 text-white' :
+                'bg-slate-800 text-white'
+            }`}>
+                <span>{message}</span>
+                <button onClick={onClose} className="hover:opacity-70">✕</button>
+            </div>
+        );
+
+        const AccountPage = () => {
+            const [user, setUser] = useState(null);
+            const [loading, setLoading] = useState(true);
+            const [toast, setToast] = useState(null);
+
+            // Form states
+            const [profile, setProfile] = useState({ full_name: '', phone: '' });
+            const [passwords, setPasswords] = useState({ current: '', new: '', confirm: '' });
+            const [deleteConfirm, setDeleteConfirm] = useState('');
+            const [showDeleteModal, setShowDeleteModal] = useState(false);
+
+            // Loading states
+            const [savingProfile, setSavingProfile] = useState(false);
+            const [savingPassword, setSavingPassword] = useState(false);
+            const [exporting, setExporting] = useState(false);
+            const [deleting, setDeleting] = useState(false);
+
+            useEffect(() => {
+                checkAuth();
+            }, []);
+
+            const showToast = (message, type = 'success') => {
+                setToast({ message, type });
+                setTimeout(() => setToast(null), 4000);
+            };
+
+            const checkAuth = async () => {
+                const token = localStorage.getItem('auth_token');
+                const storedUser = localStorage.getItem('user');
+
+                if (!token || !storedUser) {
+                    window.location.href = '/login';
+                    return;
+                }
+
+                const userData = JSON.parse(storedUser);
+                setUser(userData);
+                setProfile({
+                    full_name: userData.full_name || '',
+                    phone: ''
+                });
+                setLoading(false);
+            };
+
+            const handleSaveProfile = async (e) => {
+                e.preventDefault();
+                setSavingProfile(true);
+                const token = localStorage.getItem('auth_token');
+
+                try {
+                    const res = await fetch('/api/user/profile', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'Authorization': `Bearer ${token}`
+                        },
+                        body: JSON.stringify(profile)
+                    });
+
+                    if (res.ok) {
+                        // Update local storage
+                        const updatedUser = { ...user, full_name: profile.full_name };
+                        localStorage.setItem('user', JSON.stringify(updatedUser));
+                        setUser(updatedUser);
+                        showToast('Profil sparad!');
+                    } else {
+                        showToast('Kunde inte spara profilen.', 'error');
+                    }
+                } catch (err) {
+                    showToast('Något gick fel.', 'error');
+                } finally {
+                    setSavingProfile(false);
+                }
+            };
+
+            const handleChangePassword = async (e) => {
+                e.preventDefault();
+
+                if (passwords.new !== passwords.confirm) {
+                    showToast('Lösenorden matchar inte.', 'error');
+                    return;
+                }
+
+                if (passwords.new.length < 8) {
+                    showToast('Lösenordet måste vara minst 8 tecken.', 'error');
+                    return;
+                }
+
+                setSavingPassword(true);
+                const token = localStorage.getItem('auth_token');
+
+                try {
+                    const res = await fetch('/api/auth/update-password', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'Authorization': `Bearer ${token}`
+                        },
+                        body: JSON.stringify({ new_password: passwords.new })
+                    });
+
+                    if (res.ok) {
+                        setPasswords({ current: '', new: '', confirm: '' });
+                        showToast('Lösenordet har ändrats!');
+                    } else {
+                        showToast('Kunde inte ändra lösenordet.', 'error');
+                    }
+                } catch (err) {
+                    showToast('Något gick fel.', 'error');
+                } finally {
+                    setSavingPassword(false);
+                }
+            };
+
+            const handleExportData = async () => {
+                setExporting(true);
+                const token = localStorage.getItem('auth_token');
+
+                try {
+                    const res = await fetch('/api/auth/export-data', {
+                        headers: { 'Authorization': `Bearer ${token}` }
+                    });
+                    const data = await res.json();
+
+                    if (data.success) {
+                        const blob = new Blob([JSON.stringify(data.export, null, 2)], { type: 'application/json' });
+                        const url = URL.createObjectURL(blob);
+                        const a = document.createElement('a');
+                        a.href = url;
+                        a.download = `platsbanken-ai-data-${new Date().toISOString().split('T')[0]}.json`;
+                        document.body.appendChild(a);
+                        a.click();
+                        document.body.removeChild(a);
+                        URL.revokeObjectURL(url);
+                        showToast('Data exporterad!');
+                    } else {
+                        showToast('Kunde inte exportera data.', 'error');
+                    }
+                } catch (err) {
+                    showToast('Något gick fel.', 'error');
+                } finally {
+                    setExporting(false);
+                }
+            };
+
+            const handleDeleteAccount = async () => {
+                if (deleteConfirm !== 'RADERA') {
+                    showToast('Skriv RADERA för att bekräfta.', 'error');
+                    return;
+                }
+
+                setDeleting(true);
+                const token = localStorage.getItem('auth_token');
+
+                try {
+                    const res = await fetch('/api/auth/delete-account', {
+                        method: 'DELETE',
+                        headers: { 'Authorization': `Bearer ${token}` }
+                    });
+                    const data = await res.json();
+
+                    if (data.success) {
+                        localStorage.clear();
+                        window.location.href = '/login';
+                    } else {
+                        showToast('Kunde inte radera kontot.', 'error');
+                    }
+                } catch (err) {
+                    showToast('Något gick fel.', 'error');
+                } finally {
+                    setDeleting(false);
+                }
+            };
+
+            const handleLogout = () => {
+                localStorage.removeItem('auth_token');
+                localStorage.removeItem('refresh_token');
+                localStorage.removeItem('user');
+                localStorage.removeItem('onboarding_complete');
+                window.location.href = '/login';
+            };
+
+            if (loading) {
+                return (
+                    <div className="min-h-screen flex items-center justify-center">
+                        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-indigo-600"></div>
+                    </div>
+                );
+            }
+
+            return (
+                <div className="min-h-screen bg-slate-50">
+                    {toast && <Toast {...toast} onClose={() => setToast(null)} />}
+
+                    {/* Header */}
+                    <header className="bg-white border-b border-slate-200">
+                        <div className="max-w-4xl mx-auto px-4 py-4 flex items-center justify-between">
+                            <div className="flex items-center gap-4">
+                                <a href="/" className="text-slate-400 hover:text-slate-600">
+                                    ← Tillbaka
+                                </a>
+                                <h1 className="text-xl font-bold text-slate-800">Mitt konto</h1>
+                            </div>
+                            <button
+                                onClick={handleLogout}
+                                className="text-slate-600 hover:text-slate-800 text-sm"
+                            >
+                                Logga ut
+                            </button>
+                        </div>
+                    </header>
+
+                    {/* Main content */}
+                    <main className="max-w-4xl mx-auto px-4 py-8 space-y-8">
+
+                        {/* Profile Section */}
+                        <section className="bg-white rounded-xl border border-slate-200 p-6">
+                            <h2 className="text-lg font-semibold text-slate-800 mb-4">Profil</h2>
+                            <form onSubmit={handleSaveProfile} className="space-y-4">
+                                <div>
+                                    <label className="block text-sm font-medium text-slate-700 mb-1">
+                                        E-postadress
+                                    </label>
+                                    <input
+                                        type="email"
+                                        value={user?.email || ''}
+                                        disabled
+                                        className="w-full px-4 py-2 border border-slate-200 rounded-lg bg-slate-50 text-slate-500"
+                                    />
+                                    <p className="text-xs text-slate-500 mt-1">E-postadressen kan inte ändras.</p>
+                                </div>
+                                <div>
+                                    <label className="block text-sm font-medium text-slate-700 mb-1">
+                                        Namn
+                                    </label>
+                                    <input
+                                        type="text"
+                                        value={profile.full_name}
+                                        onChange={(e) => setProfile({ ...profile, full_name: e.target.value })}
+                                        className="w-full px-4 py-2 border border-slate-200 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
+                                    />
+                                </div>
+                                <div>
+                                    <label className="block text-sm font-medium text-slate-700 mb-1">
+                                        Telefon
+                                    </label>
+                                    <input
+                                        type="tel"
+                                        value={profile.phone}
+                                        onChange={(e) => setProfile({ ...profile, phone: e.target.value })}
+                                        placeholder="070-123 45 67"
+                                        className="w-full px-4 py-2 border border-slate-200 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
+                                    />
+                                </div>
+                                <button
+                                    type="submit"
+                                    disabled={savingProfile}
+                                    className="px-6 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 disabled:opacity-50"
+                                >
+                                    {savingProfile ? 'Sparar...' : 'Spara ändringar'}
+                                </button>
+                            </form>
+                        </section>
+
+                        {/* Security Section */}
+                        <section className="bg-white rounded-xl border border-slate-200 p-6">
+                            <h2 className="text-lg font-semibold text-slate-800 mb-4">Säkerhet</h2>
+                            <form onSubmit={handleChangePassword} className="space-y-4">
+                                <div>
+                                    <label className="block text-sm font-medium text-slate-700 mb-1">
+                                        Nuvarande lösenord
+                                    </label>
+                                    <input
+                                        type="password"
+                                        value={passwords.current}
+                                        onChange={(e) => setPasswords({ ...passwords, current: e.target.value })}
+                                        className="w-full px-4 py-2 border border-slate-200 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
+                                    />
+                                </div>
+                                <div>
+                                    <label className="block text-sm font-medium text-slate-700 mb-1">
+                                        Nytt lösenord
+                                    </label>
+                                    <input
+                                        type="password"
+                                        value={passwords.new}
+                                        onChange={(e) => setPasswords({ ...passwords, new: e.target.value })}
+                                        placeholder="Minst 8 tecken"
+                                        className="w-full px-4 py-2 border border-slate-200 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
+                                    />
+                                </div>
+                                <div>
+                                    <label className="block text-sm font-medium text-slate-700 mb-1">
+                                        Bekräfta nytt lösenord
+                                    </label>
+                                    <input
+                                        type="password"
+                                        value={passwords.confirm}
+                                        onChange={(e) => setPasswords({ ...passwords, confirm: e.target.value })}
+                                        className="w-full px-4 py-2 border border-slate-200 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
+                                    />
+                                </div>
+                                <button
+                                    type="submit"
+                                    disabled={savingPassword || !passwords.new}
+                                    className="px-6 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 disabled:opacity-50"
+                                >
+                                    {savingPassword ? 'Ändrar...' : 'Ändra lösenord'}
+                                </button>
+                            </form>
+                        </section>
+
+                        {/* GDPR Section */}
+                        <section className="bg-white rounded-xl border border-slate-200 p-6">
+                            <h2 className="text-lg font-semibold text-slate-800 mb-4">Dina uppgifter</h2>
+                            <p className="text-slate-600 text-sm mb-4">
+                                Enligt GDPR har du rätt att få ut alla dina uppgifter. Klicka nedan för att ladda ner en fil med all din data.
+                            </p>
+                            <button
+                                onClick={handleExportData}
+                                disabled={exporting}
+                                className="px-6 py-2 border border-slate-300 text-slate-700 rounded-lg hover:bg-slate-50 disabled:opacity-50"
+                            >
+                                {exporting ? 'Exporterar...' : 'Exportera mina uppgifter'}
+                            </button>
+                            <p className="text-xs text-slate-500 mt-3">
+                                <a href="/integritetspolicy" className="text-indigo-600 hover:underline">
+                                    Läs vår integritetspolicy
+                                </a>
+                            </p>
+                        </section>
+
+                        {/* Danger Zone */}
+                        <section className="bg-white rounded-xl border-2 border-red-200 p-6">
+                            <h2 className="text-lg font-semibold text-red-600 mb-2">Radera konto</h2>
+                            <p className="text-slate-600 text-sm mb-4">
+                                När du raderar ditt konto tas all din data bort permanent. Detta inkluderar alla CV:n, ansökningar och inställningar. <strong>Detta går inte att ångra.</strong>
+                            </p>
+                            <button
+                                onClick={() => setShowDeleteModal(true)}
+                                className="px-6 py-2 border-2 border-red-300 text-red-600 rounded-lg hover:bg-red-50"
+                            >
+                                Radera mitt konto
+                            </button>
+                        </section>
+
+                    </main>
+
+                    {/* Footer */}
+                    <footer className="border-t border-slate-200 mt-16">
+                        <div className="max-w-4xl mx-auto px-4 py-6 text-center text-sm text-slate-500">
+                            <div className="flex justify-center gap-4 mb-2">
+                                <a href="/integritetspolicy" className="hover:text-indigo-600">Integritetspolicy</a>
+                                <span>·</span>
+                                <a href="/anvandarvillkor" className="hover:text-indigo-600">Användarvillkor</a>
+                            </div>
+                            <p>© 2026 Platsbanken AI</p>
+                        </div>
+                    </footer>
+
+                    {/* Delete Confirmation Modal */}
+                    {showDeleteModal && (
+                        <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50">
+                            <div className="bg-white rounded-2xl max-w-md w-full p-6">
+                                <h3 className="text-xl font-bold text-red-600 mb-2">Är du säker?</h3>
+                                <p className="text-slate-600 mb-4">
+                                    All din data kommer att raderas permanent. Skriv <strong>RADERA</strong> för att bekräfta.
+                                </p>
+                                <input
+                                    type="text"
+                                    value={deleteConfirm}
+                                    onChange={(e) => setDeleteConfirm(e.target.value)}
+                                    placeholder="Skriv RADERA"
+                                    className="w-full px-4 py-2 border border-slate-200 rounded-lg mb-4 focus:ring-2 focus:ring-red-500 focus:border-transparent"
+                                />
+                                <div className="flex gap-3">
+                                    <button
+                                        onClick={() => { setShowDeleteModal(false); setDeleteConfirm(''); }}
+                                        className="flex-1 px-4 py-2 border border-slate-200 rounded-lg hover:bg-slate-50"
+                                    >
+                                        Avbryt
+                                    </button>
+                                    <button
+                                        onClick={handleDeleteAccount}
+                                        disabled={deleting || deleteConfirm !== 'RADERA'}
+                                        className="flex-1 px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 disabled:opacity-50"
+                                    >
+                                        {deleting ? 'Raderar...' : 'Radera permanent'}
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    )}
+                </div>
+            );
+        };
+
+        ReactDOM.createRoot(document.getElementById('root')).render(<AccountPage />);
+    </script>
+    <style>
+        @keyframes slide-in {
+            from { transform: translateX(100%); opacity: 0; }
+            to { transform: translateX(0); opacity: 1; }
+        }
+        .animate-slide-in {
+            animation: slide-in 0.3s ease-out;
+        }
+    </style>
+</body>
+</html>

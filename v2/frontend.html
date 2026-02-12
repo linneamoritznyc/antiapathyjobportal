@@ -21,6 +21,64 @@
 
         // ============== COMPONENTS ==============
 
+        // User menu dropdown
+        const UserMenu = ({ user, onLogout }) => {
+            const [isOpen, setIsOpen] = useState(false);
+            const initials = user.full_name
+                ? user.full_name.split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2)
+                : user.email[0].toUpperCase();
+
+            return (
+                <div className="relative">
+                    <button
+                        onClick={() => setIsOpen(!isOpen)}
+                        className="flex items-center gap-2 bg-white/20 hover:bg-white/30 px-3 py-2 rounded-lg transition"
+                    >
+                        <div className="w-8 h-8 bg-white/30 rounded-full flex items-center justify-center text-sm font-medium">
+                            {initials}
+                        </div>
+                        <span className="text-sm font-medium hidden sm:block">
+                            {user.full_name || user.email.split('@')[0]}
+                        </span>
+                        <svg className={`w-4 h-4 transition ${isOpen ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                        </svg>
+                    </button>
+
+                    {isOpen && (
+                        <>
+                            <div className="fixed inset-0 z-10" onClick={() => setIsOpen(false)} />
+                            <div className="absolute right-0 mt-2 w-64 bg-white rounded-xl shadow-lg border border-slate-200 py-2 z-20">
+                                <div className="px-4 py-3 border-b border-slate-100">
+                                    <p className="font-medium text-slate-800">{user.full_name || 'Användare'}</p>
+                                    <p className="text-sm text-slate-500 truncate">{user.email}</p>
+                                </div>
+                                <a
+                                    href="/account"
+                                    className="block px-4 py-2 text-slate-700 hover:bg-slate-50 transition"
+                                >
+                                    Mitt konto
+                                </a>
+                                <a
+                                    href="/account#settings"
+                                    className="block px-4 py-2 text-slate-700 hover:bg-slate-50 transition"
+                                >
+                                    Inställningar
+                                </a>
+                                <hr className="my-2 border-slate-100" />
+                                <button
+                                    onClick={() => { setIsOpen(false); onLogout(); }}
+                                    className="w-full text-left px-4 py-2 text-slate-700 hover:bg-slate-50 transition"
+                                >
+                                    Logga ut
+                                </button>
+                            </div>
+                        </>
+                    )}
+                </div>
+            );
+        };
+
         // Navigation tabs
         const NavTabs = ({ activeTab, setActiveTab }) => (
             <div className="flex gap-6">
@@ -1056,8 +1114,6 @@
 
             // Check auth on mount
             const [user, setUser] = useState(null);
-            const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
-            const [deleting, setDeleting] = useState(false);
 
             useEffect(() => {
                 const storedUser = localStorage.getItem('user');
@@ -1070,94 +1126,10 @@
                 localStorage.removeItem('auth_token');
                 localStorage.removeItem('refresh_token');
                 localStorage.removeItem('user');
+                localStorage.removeItem('onboarding_complete');
                 setUser(null);
+                window.location.href = '/login';
             };
-
-            const handleDeleteAccount = async () => {
-                setDeleting(true);
-                const token = localStorage.getItem('auth_token');
-                try {
-                    const res = await fetch('/api/auth/delete-account', {
-                        method: 'DELETE',
-                        headers: { 'Authorization': `Bearer ${token}` }
-                    });
-                    const data = await res.json();
-                    if (data.success) {
-                        localStorage.clear();
-                        alert('Ditt konto har raderats. Tack för att du använde Platsbanken AI!');
-                        window.location.href = '/login';
-                    } else {
-                        alert('Kunde inte radera kontot: ' + (data.detail || 'Okänt fel'));
-                    }
-                } catch (err) {
-                    alert('Något gick fel. Försök igen.');
-                } finally {
-                    setDeleting(false);
-                    setShowDeleteConfirm(false);
-                }
-            };
-
-            const handleExportData = async () => {
-                const token = localStorage.getItem('auth_token');
-                try {
-                    const res = await fetch('/api/auth/export-data', {
-                        headers: { 'Authorization': `Bearer ${token}` }
-                    });
-                    const data = await res.json();
-                    if (data.success) {
-                        // Download as JSON file
-                        const blob = new Blob([JSON.stringify(data.export, null, 2)], { type: 'application/json' });
-                        const url = URL.createObjectURL(blob);
-                        const a = document.createElement('a');
-                        a.href = url;
-                        a.download = `platsbanken-ai-data-${new Date().toISOString().split('T')[0]}.json`;
-                        document.body.appendChild(a);
-                        a.click();
-                        document.body.removeChild(a);
-                        URL.revokeObjectURL(url);
-                    } else {
-                        alert('Kunde inte exportera data: ' + (data.detail || 'Okänt fel'));
-                    }
-                } catch (err) {
-                    alert('Något gick fel. Försök igen.');
-                }
-            };
-
-            // Delete confirmation modal
-            const DeleteConfirmModal = () => showDeleteConfirm ? (
-                <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50">
-                    <div className="bg-white rounded-2xl max-w-md w-full p-6">
-                        <h3 className="text-xl font-bold text-red-600 mb-2">⚠️ Radera konto</h3>
-                        <p className="text-slate-600 mb-4">
-                            Är du säker på att du vill radera ditt konto? Detta kommer att <strong>permanent radera</strong>:
-                        </p>
-                        <ul className="text-sm text-slate-600 mb-4 list-disc list-inside">
-                            <li>Alla dina CV:n</li>
-                            <li>Alla dina ansökningar</li>
-                            <li>Alla dina inställningar</li>
-                            <li>Ditt konto</li>
-                        </ul>
-                        <p className="text-red-600 text-sm font-medium mb-4">
-                            Detta går inte att ångra!
-                        </p>
-                        <div className="flex gap-3">
-                            <button
-                                onClick={() => setShowDeleteConfirm(false)}
-                                className="flex-1 px-4 py-2 border border-slate-200 rounded-lg hover:bg-slate-50"
-                            >
-                                Avbryt
-                            </button>
-                            <button
-                                onClick={handleDeleteAccount}
-                                disabled={deleting}
-                                className="flex-1 px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 disabled:opacity-50"
-                            >
-                                {deleting ? 'Raderar...' : 'Ja, radera allt'}
-                            </button>
-                        </div>
-                    </div>
-                </div>
-            ) : null;
 
             // Show onboarding if needed
             if (showOnboarding && user) {
@@ -1166,7 +1138,6 @@
 
             return (
                 <div className="min-h-screen">
-                    <DeleteConfirmModal />
                     <header className="gradient text-white py-6 px-4">
                         <div className="max-w-6xl mx-auto">
                             <div className="flex justify-between items-center mb-4">
@@ -1176,29 +1147,7 @@
                                 </div>
                                 <div className="flex items-center gap-3">
                                     {user ? (
-                                        <>
-                                            <span className="text-white/80 text-sm">{user.email}</span>
-                                            <button
-                                                onClick={handleExportData}
-                                                className="bg-white/20 hover:bg-white/30 px-3 py-2 rounded-lg text-sm transition"
-                                                title="Exportera min data"
-                                            >
-                                                📥
-                                            </button>
-                                            <button
-                                                onClick={handleLogout}
-                                                className="bg-white/20 hover:bg-white/30 px-4 py-2 rounded-lg text-sm font-medium transition"
-                                            >
-                                                Logga ut
-                                            </button>
-                                            <button
-                                                onClick={() => setShowDeleteConfirm(true)}
-                                                className="bg-red-500/80 hover:bg-red-500 px-3 py-2 rounded-lg text-sm transition"
-                                                title="Radera konto"
-                                            >
-                                                🗑️
-                                            </button>
-                                        </>
+                                        <UserMenu user={user} onLogout={handleLogout} />
                                     ) : (
                                         <a
                                             href="/login"
@@ -1256,8 +1205,15 @@
                         onSave={handleSaveCV}
                     />
 
-                    <footer className="text-center py-6 text-slate-400 text-sm">
-                        <a href="/integritetspolicy" className="hover:text-indigo-600">Integritetspolicy</a>
+                    <footer className="border-t border-slate-200 mt-8">
+                        <div className="max-w-6xl mx-auto px-4 py-6 text-center text-sm text-slate-500">
+                            <div className="flex justify-center gap-4 mb-2">
+                                <a href="/integritetspolicy" className="hover:text-indigo-600">Integritetspolicy</a>
+                                <span>·</span>
+                                <a href="/anvandarvillkor" className="hover:text-indigo-600">Användarvillkor</a>
+                            </div>
+                            <p>© 2026 Platsbanken AI</p>
+                        </div>
                     </footer>
                 </div>
             );
