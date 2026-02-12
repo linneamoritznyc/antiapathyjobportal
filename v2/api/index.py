@@ -1693,6 +1693,239 @@ async def save_user_profile(request: Request, profile: UserProfile):
     return {"success": True, "message": "Profil sparad!"}
 
 
+# ============== EXPERIENCE CRUD ==============
+
+class ExperienceData(BaseModel):
+    company: str = ""
+    title: str = ""
+    location: str = ""
+    start_date: str = ""
+    end_date: str = ""
+    description: str = ""
+    categories: list = []
+
+
+@app.post("/api/user/experience")
+async def create_experience(request: Request, exp: ExperienceData):
+    """Create a new work experience."""
+    auth_header = request.headers.get("Authorization", "")
+    if not auth_header.startswith("Bearer "):
+        raise HTTPException(status_code=401, detail="Ej inloggad")
+
+    token = auth_header.replace("Bearer ", "")
+
+    async with httpx.AsyncClient() as client:
+        user_response = await client.get(
+            f"{SUPABASE_URL}/auth/v1/user",
+            headers={"apikey": SUPABASE_ANON_KEY, "Authorization": f"Bearer {token}"}
+        )
+        if user_response.status_code != 200:
+            raise HTTPException(status_code=401, detail="Ogiltig session")
+        user_id = user_response.json().get("id")
+
+    exp_data = {
+        "user_id": user_id,
+        "company": exp.company,
+        "title": exp.title,
+        "location": exp.location,
+        "start_date": exp.start_date,
+        "end_date": exp.end_date,
+        "description": exp.description,
+        "categories": exp.categories
+    }
+
+    async with httpx.AsyncClient() as client:
+        response = await client.post(
+            f"{SUPABASE_URL}/rest/v1/user_experiences",
+            headers={
+                "apikey": SUPABASE_KEY,
+                "Authorization": f"Bearer {SUPABASE_KEY}",
+                "Content-Type": "application/json",
+                "Prefer": "return=representation"
+            },
+            json=exp_data
+        )
+        if response.status_code in [200, 201]:
+            return {"success": True, "experience": response.json()[0] if response.json() else exp_data}
+
+    return {"success": False, "error": "Kunde inte skapa erfarenhet"}
+
+
+@app.put("/api/user/experience/{exp_id}")
+async def update_experience(request: Request, exp_id: str, exp: ExperienceData):
+    """Update an existing work experience."""
+    auth_header = request.headers.get("Authorization", "")
+    if not auth_header.startswith("Bearer "):
+        raise HTTPException(status_code=401, detail="Ej inloggad")
+
+    token = auth_header.replace("Bearer ", "")
+
+    async with httpx.AsyncClient() as client:
+        user_response = await client.get(
+            f"{SUPABASE_URL}/auth/v1/user",
+            headers={"apikey": SUPABASE_ANON_KEY, "Authorization": f"Bearer {token}"}
+        )
+        if user_response.status_code != 200:
+            raise HTTPException(status_code=401, detail="Ogiltig session")
+        user_id = user_response.json().get("id")
+
+    exp_data = {
+        "company": exp.company,
+        "title": exp.title,
+        "location": exp.location,
+        "start_date": exp.start_date,
+        "end_date": exp.end_date,
+        "description": exp.description,
+        "categories": exp.categories
+    }
+
+    async with httpx.AsyncClient() as client:
+        response = await client.patch(
+            f"{SUPABASE_URL}/rest/v1/user_experiences?id=eq.{exp_id}&user_id=eq.{user_id}",
+            headers={
+                "apikey": SUPABASE_KEY,
+                "Authorization": f"Bearer {SUPABASE_KEY}",
+                "Content-Type": "application/json"
+            },
+            json=exp_data
+        )
+        if response.status_code in [200, 204]:
+            return {"success": True, "message": "Erfarenhet uppdaterad"}
+
+    return {"success": False, "error": "Kunde inte uppdatera erfarenhet"}
+
+
+@app.delete("/api/user/experience/{exp_id}")
+async def delete_experience(request: Request, exp_id: str):
+    """Delete a work experience."""
+    auth_header = request.headers.get("Authorization", "")
+    if not auth_header.startswith("Bearer "):
+        raise HTTPException(status_code=401, detail="Ej inloggad")
+
+    token = auth_header.replace("Bearer ", "")
+
+    async with httpx.AsyncClient() as client:
+        user_response = await client.get(
+            f"{SUPABASE_URL}/auth/v1/user",
+            headers={"apikey": SUPABASE_ANON_KEY, "Authorization": f"Bearer {token}"}
+        )
+        if user_response.status_code != 200:
+            raise HTTPException(status_code=401, detail="Ogiltig session")
+        user_id = user_response.json().get("id")
+
+    async with httpx.AsyncClient() as client:
+        response = await client.delete(
+            f"{SUPABASE_URL}/rest/v1/user_experiences?id=eq.{exp_id}&user_id=eq.{user_id}",
+            headers={
+                "apikey": SUPABASE_KEY,
+                "Authorization": f"Bearer {SUPABASE_KEY}"
+            }
+        )
+        if response.status_code in [200, 204]:
+            return {"success": True, "message": "Erfarenhet borttagen"}
+
+    return {"success": False, "error": "Kunde inte ta bort erfarenhet"}
+
+
+# ============== EDUCATION CRUD ==============
+
+class EducationData(BaseModel):
+    school: str = ""
+    degree: str = ""
+    field_of_study: str = ""
+    location: str = ""
+    start_date: str = ""
+    end_date: str = ""
+
+
+@app.post("/api/user/education")
+async def create_education(request: Request, edu: EducationData):
+    """Create a new education entry."""
+    auth_header = request.headers.get("Authorization", "")
+    if not auth_header.startswith("Bearer "):
+        raise HTTPException(status_code=401, detail="Ej inloggad")
+
+    token = auth_header.replace("Bearer ", "")
+
+    async with httpx.AsyncClient() as client:
+        user_response = await client.get(
+            f"{SUPABASE_URL}/auth/v1/user",
+            headers={"apikey": SUPABASE_ANON_KEY, "Authorization": f"Bearer {token}"}
+        )
+        if user_response.status_code != 200:
+            raise HTTPException(status_code=401, detail="Ogiltig session")
+        user_id = user_response.json().get("id")
+
+    edu_data = {
+        "user_id": user_id,
+        "school": edu.school,
+        "degree": edu.degree,
+        "field_of_study": edu.field_of_study,
+        "location": edu.location,
+        "start_date": edu.start_date,
+        "end_date": edu.end_date
+    }
+
+    async with httpx.AsyncClient() as client:
+        response = await client.post(
+            f"{SUPABASE_URL}/rest/v1/user_education",
+            headers={
+                "apikey": SUPABASE_KEY,
+                "Authorization": f"Bearer {SUPABASE_KEY}",
+                "Content-Type": "application/json",
+                "Prefer": "return=representation"
+            },
+            json=edu_data
+        )
+        if response.status_code in [200, 201]:
+            return {"success": True, "education": response.json()[0] if response.json() else edu_data}
+
+    return {"success": False, "error": "Kunde inte skapa utbildning"}
+
+
+@app.put("/api/user/education/{edu_id}")
+async def update_education(request: Request, edu_id: str, edu: EducationData):
+    """Update an existing education entry."""
+    auth_header = request.headers.get("Authorization", "")
+    if not auth_header.startswith("Bearer "):
+        raise HTTPException(status_code=401, detail="Ej inloggad")
+
+    token = auth_header.replace("Bearer ", "")
+
+    async with httpx.AsyncClient() as client:
+        user_response = await client.get(
+            f"{SUPABASE_URL}/auth/v1/user",
+            headers={"apikey": SUPABASE_ANON_KEY, "Authorization": f"Bearer {token}"}
+        )
+        if user_response.status_code != 200:
+            raise HTTPException(status_code=401, detail="Ogiltig session")
+        user_id = user_response.json().get("id")
+
+    edu_data = {
+        "school": edu.school,
+        "degree": edu.degree,
+        "field_of_study": edu.field_of_study,
+        "location": edu.location,
+        "start_date": edu.start_date,
+        "end_date": edu.end_date
+    }
+
+    async with httpx.AsyncClient() as client:
+        response = await client.patch(
+            f"{SUPABASE_URL}/rest/v1/user_education?id=eq.{edu_id}&user_id=eq.{user_id}",
+            headers={
+                "apikey": SUPABASE_KEY,
+                "Authorization": f"Bearer {SUPABASE_KEY}",
+                "Content-Type": "application/json"
+            },
+            json=edu_data
+        )
+        if response.status_code in [200, 204]:
+            return {"success": True, "message": "Utbildning uppdaterad"}
+
+    return {"success": False, "error": "Kunde inte uppdatera utbildning"}
+
+
 class LinkedInImport(BaseModel):
     linkedin_url: str
 
