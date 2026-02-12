@@ -2000,6 +2000,128 @@ async def update_education(request: Request, edu_id: str, edu: EducationData):
     return {"success": False, "error": "Kunde inte uppdatera utbildning"}
 
 
+# ============== SKILLS CRUD ==============
+
+class SkillData(BaseModel):
+    category: str = "all"
+    skill_type: str = "technical"
+    skill_text: str = ""
+
+
+@app.post("/api/user/skill")
+async def create_skill(request: Request, skill: SkillData):
+    """Create a new skill entry."""
+    auth_header = request.headers.get("Authorization", "")
+    if not auth_header.startswith("Bearer "):
+        raise HTTPException(status_code=401, detail="Ej inloggad")
+
+    token = auth_header.replace("Bearer ", "")
+
+    async with httpx.AsyncClient() as client:
+        user_response = await client.get(
+            f"{SUPABASE_URL}/auth/v1/user",
+            headers={"apikey": SUPABASE_ANON_KEY, "Authorization": f"Bearer {token}"}
+        )
+        if user_response.status_code != 200:
+            raise HTTPException(status_code=401, detail="Ogiltig session")
+        user_id = user_response.json().get("id")
+
+    skill_data = {
+        "user_id": user_id,
+        "category": skill.category,
+        "skill_type": skill.skill_type,
+        "skill_text": skill.skill_text
+    }
+
+    async with httpx.AsyncClient() as client:
+        response = await client.post(
+            f"{SUPABASE_URL}/rest/v1/user_skills",
+            headers={
+                "apikey": SUPABASE_KEY,
+                "Authorization": f"Bearer {SUPABASE_KEY}",
+                "Content-Type": "application/json",
+                "Prefer": "return=representation"
+            },
+            json=skill_data
+        )
+        if response.status_code in [200, 201]:
+            return {"success": True, "skill": response.json()[0] if response.json() else skill_data}
+
+    return {"success": False, "error": "Kunde inte skapa kompetens"}
+
+
+@app.put("/api/user/skill/{skill_id}")
+async def update_skill(request: Request, skill_id: str, skill: SkillData):
+    """Update an existing skill entry."""
+    auth_header = request.headers.get("Authorization", "")
+    if not auth_header.startswith("Bearer "):
+        raise HTTPException(status_code=401, detail="Ej inloggad")
+
+    token = auth_header.replace("Bearer ", "")
+
+    async with httpx.AsyncClient() as client:
+        user_response = await client.get(
+            f"{SUPABASE_URL}/auth/v1/user",
+            headers={"apikey": SUPABASE_ANON_KEY, "Authorization": f"Bearer {token}"}
+        )
+        if user_response.status_code != 200:
+            raise HTTPException(status_code=401, detail="Ogiltig session")
+        user_id = user_response.json().get("id")
+
+    skill_data = {
+        "category": skill.category,
+        "skill_type": skill.skill_type,
+        "skill_text": skill.skill_text
+    }
+
+    async with httpx.AsyncClient() as client:
+        response = await client.patch(
+            f"{SUPABASE_URL}/rest/v1/user_skills?id=eq.{skill_id}&user_id=eq.{user_id}",
+            headers={
+                "apikey": SUPABASE_KEY,
+                "Authorization": f"Bearer {SUPABASE_KEY}",
+                "Content-Type": "application/json"
+            },
+            json=skill_data
+        )
+        if response.status_code in [200, 204]:
+            return {"success": True, "message": "Kompetens uppdaterad"}
+
+    return {"success": False, "error": "Kunde inte uppdatera kompetens"}
+
+
+@app.delete("/api/user/skill/{skill_id}")
+async def delete_skill(request: Request, skill_id: str):
+    """Delete a skill entry."""
+    auth_header = request.headers.get("Authorization", "")
+    if not auth_header.startswith("Bearer "):
+        raise HTTPException(status_code=401, detail="Ej inloggad")
+
+    token = auth_header.replace("Bearer ", "")
+
+    async with httpx.AsyncClient() as client:
+        user_response = await client.get(
+            f"{SUPABASE_URL}/auth/v1/user",
+            headers={"apikey": SUPABASE_ANON_KEY, "Authorization": f"Bearer {token}"}
+        )
+        if user_response.status_code != 200:
+            raise HTTPException(status_code=401, detail="Ogiltig session")
+        user_id = user_response.json().get("id")
+
+    async with httpx.AsyncClient() as client:
+        response = await client.delete(
+            f"{SUPABASE_URL}/rest/v1/user_skills?id=eq.{skill_id}&user_id=eq.{user_id}",
+            headers={
+                "apikey": SUPABASE_KEY,
+                "Authorization": f"Bearer {SUPABASE_KEY}"
+            }
+        )
+        if response.status_code in [200, 204]:
+            return {"success": True, "message": "Kompetens borttagen"}
+
+    return {"success": False, "error": "Kunde inte ta bort kompetens"}
+
+
 class LinkedInImport(BaseModel):
     linkedin_url: str
 

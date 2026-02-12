@@ -723,18 +723,83 @@
                         {/* Skills Section */}
                         {activeSection === 'skills' && (
                             <div>
-                                <h3 className="text-xl font-bold mb-4">⭐ Kompetenser</h3>
+                                <div className="flex justify-between items-center mb-4">
+                                    <h3 className="text-xl font-bold">⭐ Kompetenser</h3>
+                                    <button
+                                        onClick={() => setEditedCV({
+                                            ...editedCV,
+                                            skills: [...(editedCV.skills || []), { category: 'all', skill_type: 'technical', skill_text: '' }]
+                                        })}
+                                        className="bg-indigo-600 text-white px-4 py-2 rounded-lg text-sm hover:bg-indigo-700"
+                                    >
+                                        + Lägg till
+                                    </button>
+                                </div>
                                 <p className="text-sm text-slate-500 mb-4">
                                     Dina kompetenser grupperade per kategori. Dessa används för att matcha mot jobb.
                                 </p>
                                 <div className="space-y-3">
                                     {editedCV.skills?.map((skill, i) => (
-                                        <div key={i} className="flex items-center gap-2 bg-slate-50 rounded-lg p-3">
-                                            <span className="text-xs bg-indigo-100 text-indigo-700 px-2 py-1 rounded">{skill.category || 'all'}</span>
-                                            <span className="text-xs bg-slate-200 px-2 py-1 rounded">{skill.skill_type || 'soft'}</span>
-                                            <span className="flex-1">{skill.skill_text}</span>
+                                        <div key={i} className="bg-slate-50 rounded-xl p-4 border border-slate-200">
+                                            <div className="flex justify-between items-start mb-3">
+                                                <span className="text-xs font-medium text-slate-500">#{i + 1}</span>
+                                                <button
+                                                    onClick={() => setEditedCV({
+                                                        ...editedCV,
+                                                        skills: editedCV.skills.filter((_, idx) => idx !== i)
+                                                    })}
+                                                    className="text-red-500 hover:text-red-700 text-sm"
+                                                >
+                                                    🗑️ Ta bort
+                                                </button>
+                                            </div>
+                                            <div className="grid md:grid-cols-3 gap-3">
+                                                <select
+                                                    value={skill.category || 'all'}
+                                                    onChange={(e) => {
+                                                        const newSkills = [...editedCV.skills];
+                                                        newSkills[i] = { ...newSkills[i], category: e.target.value };
+                                                        setEditedCV({ ...editedCV, skills: newSkills });
+                                                    }}
+                                                    className="px-3 py-2 border border-slate-200 rounded-lg text-sm"
+                                                >
+                                                    <option value="all">Alla branscher</option>
+                                                    <option value="tech">Tech</option>
+                                                    <option value="restaurant">Restaurang</option>
+                                                    <option value="retail">Butik</option>
+                                                    <option value="customerservice">Kundtjänst</option>
+                                                    <option value="healthcare">Vård</option>
+                                                </select>
+                                                <select
+                                                    value={skill.skill_type || 'technical'}
+                                                    onChange={(e) => {
+                                                        const newSkills = [...editedCV.skills];
+                                                        newSkills[i] = { ...newSkills[i], skill_type: e.target.value };
+                                                        setEditedCV({ ...editedCV, skills: newSkills });
+                                                    }}
+                                                    className="px-3 py-2 border border-slate-200 rounded-lg text-sm"
+                                                >
+                                                    <option value="technical">Teknisk</option>
+                                                    <option value="soft">Mjuk</option>
+                                                    <option value="language">Språk</option>
+                                                    <option value="certificate">Certifikat</option>
+                                                </select>
+                                                <input
+                                                    placeholder="Kompetens/Färdighet"
+                                                    value={skill.skill_text || ''}
+                                                    onChange={(e) => {
+                                                        const newSkills = [...editedCV.skills];
+                                                        newSkills[i] = { ...newSkills[i], skill_text: e.target.value };
+                                                        setEditedCV({ ...editedCV, skills: newSkills });
+                                                    }}
+                                                    className="px-3 py-2 border border-slate-200 rounded-lg text-sm"
+                                                />
+                                            </div>
                                         </div>
                                     ))}
+                                    {(!editedCV.skills || editedCV.skills.length === 0) && (
+                                        <p className="text-slate-400 text-center py-8">Inga kompetenser tillagda ännu. Klicka "+ Lägg till" ovan.</p>
+                                    )}
                                 </div>
                             </div>
                         )}
@@ -1659,6 +1724,23 @@
                                 method: 'POST',
                                 headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
                                 body: JSON.stringify(edu)
+                            });
+                        }
+                    }
+
+                    // Save skills
+                    for (const skill of (editedCV.skills || [])) {
+                        if (skill.id) {
+                            await fetch(`/api/user/skill/${skill.id}`, {
+                                method: 'PUT',
+                                headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+                                body: JSON.stringify(skill)
+                            });
+                        } else if (skill.skill_text) {
+                            await fetch('/api/user/skill', {
+                                method: 'POST',
+                                headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+                                body: JSON.stringify(skill)
                             });
                         }
                     }
