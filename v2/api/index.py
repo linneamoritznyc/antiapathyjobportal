@@ -1189,11 +1189,28 @@ async def update_cv(vibe_id: str, cv_text: str, user_id: str = "default_user"):
 
 
 @app.post("/api/jobs/{job_id}/apply-with-cv")
-async def apply_with_cv(job_id: str, user_id: str = "default_user"):
+async def apply_with_cv(request: Request, job_id: str):
     """
     Smart apply: Auto-selects best CV, generates cover letter, returns both.
     This is the main "one-click apply" endpoint.
     """
+    # Get user_id from auth token
+    auth_header = request.headers.get("Authorization", "")
+    user_id = None
+
+    if auth_header.startswith("Bearer "):
+        token = auth_header.replace("Bearer ", "")
+        async with httpx.AsyncClient() as client:
+            user_response = await client.get(
+                f"{SUPABASE_URL}/auth/v1/user",
+                headers={"apikey": SUPABASE_ANON_KEY, "Authorization": f"Bearer {token}"}
+            )
+            if user_response.status_code == 200:
+                user_id = user_response.json().get("id")
+
+    if not user_id:
+        raise HTTPException(status_code=401, detail="Ej inloggad")
+
     # Get job
     jobs = await db_request("GET", "jobs", params={"id": f"eq.{job_id}"})
     if not jobs:
