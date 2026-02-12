@@ -1048,9 +1048,9 @@ async def suggest_new_vibe(job_keywords: List[str], user_id: str = "default_user
     }
 
 
-@app.post("/api/cv/generate-vibes")
-async def generate_cv_vibes(request: GenerateCVVibesRequest = None):
-    """Generate all CV vibe versions from master CV"""
+@app.post("/api/cv/generate-branscher")
+async def generate_cv_branscher(request: GenerateCVBranscherRequest = None):
+    """Generate all CV bransch versions from master CV"""
     user_id = request.user_id if request and request.user_id else "default_user"
 
     # Get master CV
