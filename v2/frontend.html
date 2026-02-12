@@ -342,12 +342,39 @@
             const [activeSection, setActiveSection] = useState('experiences');
 
             useEffect(() => {
-                if (masterCV) {
-                    setEditedCV(JSON.parse(JSON.stringify(masterCV))); // Deep clone
+                if (isOpen) {
+                    // Initialize with masterCV data or empty defaults
+                    const defaultCV = {
+                        profile: { full_name: '', email: '', phone: '', location: '' },
+                        experiences: [],
+                        education: [],
+                        skills: [],
+                        volunteer: [],
+                        awards: []
+                    };
+                    if (masterCV) {
+                        setEditedCV({
+                            ...defaultCV,
+                            ...JSON.parse(JSON.stringify(masterCV)),
+                            experiences: masterCV.experiences || [],
+                            education: masterCV.education || [],
+                            skills: masterCV.skills || []
+                        });
+                    } else {
+                        setEditedCV(defaultCV);
+                    }
                 }
-            }, [masterCV]);
+            }, [masterCV, isOpen]);
 
-            if (!isOpen || !editedCV) return null;
+            if (!isOpen) return null;
+            if (!editedCV) return (
+                <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center">
+                    <div className="bg-white rounded-xl p-8">
+                        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-indigo-600 mx-auto"></div>
+                        <p className="mt-4 text-slate-600">Laddar Master CV...</p>
+                    </div>
+                </div>
+            );
 
             const updateExperience = (index, field, value) => {
                 const newExp = [...editedCV.experiences];
@@ -1475,8 +1502,27 @@
 
             const handleGenerateVibes = async () => {
                 setGenerating(true);
-                await fetch('/api/cv/generate-vibes', { method: 'POST' });
-                fetchUserCVs();
+                try {
+                    const token = localStorage.getItem('auth_token');
+                    const res = await fetch('/api/cv/generate-branscher', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            ...(token ? { 'Authorization': `Bearer ${token}` } : {})
+                        },
+                        body: JSON.stringify({})
+                    });
+                    const data = await res.json();
+                    if (data.success) {
+                        await fetchUserCVs();
+                        alert(`${data.message || 'CV:n genererade!'}`);
+                    } else {
+                        alert(data.detail || data.message || 'Kunde inte generera CV:n. Lägg till erfarenheter först i Master CV.');
+                    }
+                } catch (err) {
+                    console.error(err);
+                    alert('Något gick fel vid genereringen.');
+                }
                 setGenerating(false);
             };
 
@@ -1504,6 +1550,92 @@
                 return <OnboardingWizard onComplete={() => setShowOnboarding(false)} />;
             }
 
+            // Landing page for non-logged-in users
+            if (!user) {
+                return (
+                    <div className="min-h-screen bg-gradient-to-br from-indigo-600 via-purple-600 to-pink-500">
+                        {/* Hero Section */}
+                        <header className="px-4 py-6">
+                            <div className="max-w-6xl mx-auto flex justify-between items-center">
+                                <h1 className="text-2xl font-bold text-white">Anti-Apathy Portal</h1>
+                                <a href="/login" className="bg-white text-indigo-600 px-6 py-2 rounded-full font-semibold hover:bg-white/90 transition shadow-lg">
+                                    Logga in
+                                </a>
+                            </div>
+                        </header>
+
+                        <main className="px-4 py-16">
+                            <div className="max-w-4xl mx-auto text-center text-white">
+                                <h2 className="text-5xl font-bold mb-6 leading-tight">
+                                    Sök jobb utan apati.<br/>
+                                    <span className="text-yellow-300">En ansökan i taget.</span>
+                                </h2>
+                                <p className="text-xl opacity-90 mb-10 max-w-2xl mx-auto">
+                                    Sluta skicka samma CV överallt. Vi skapar skräddarsydda CV:n för varje bransch
+                                    och genererar personliga brev automatiskt.
+                                </p>
+                                <a href="/login" className="inline-block bg-white text-indigo-600 px-10 py-4 rounded-full text-xl font-bold hover:bg-yellow-300 hover:text-indigo-700 transition shadow-xl">
+                                    Kom igång gratis
+                                </a>
+                            </div>
+
+                            {/* Features */}
+                            <div className="max-w-5xl mx-auto mt-24 grid md:grid-cols-3 gap-8">
+                                <div className="bg-white/10 backdrop-blur-sm rounded-2xl p-6 text-white">
+                                    <div className="text-4xl mb-4">📋</div>
+                                    <h3 className="text-xl font-bold mb-2">Master CV</h3>
+                                    <p className="opacity-80">En källa för all din info. Lägg till erfarenheter, utbildning och skills på ett ställe.</p>
+                                </div>
+                                <div className="bg-white/10 backdrop-blur-sm rounded-2xl p-6 text-white">
+                                    <div className="text-4xl mb-4">✨</div>
+                                    <h3 className="text-xl font-bold mb-2">CV-vibes</h3>
+                                    <p className="opacity-80">Generera anpassade CV:n för restaurang, kundtjänst, tech, butik och fler branscher.</p>
+                                </div>
+                                <div className="bg-white/10 backdrop-blur-sm rounded-2xl p-6 text-white">
+                                    <div className="text-4xl mb-4">🚀</div>
+                                    <h3 className="text-xl font-bold mb-2">Snabb ansökan</h3>
+                                    <p className="opacity-80">Hitta jobb på Platsbanken, få AI-genererat personligt brev, ansök med ett klick.</p>
+                                </div>
+                            </div>
+
+                            {/* How it works */}
+                            <div className="max-w-4xl mx-auto mt-24 text-white text-center">
+                                <h3 className="text-3xl font-bold mb-12">Så funkar det</h3>
+                                <div className="grid md:grid-cols-4 gap-6">
+                                    <div>
+                                        <div className="w-12 h-12 bg-yellow-400 text-indigo-900 rounded-full flex items-center justify-center text-xl font-bold mx-auto mb-4">1</div>
+                                        <p className="font-medium">Skapa konto</p>
+                                    </div>
+                                    <div>
+                                        <div className="w-12 h-12 bg-yellow-400 text-indigo-900 rounded-full flex items-center justify-center text-xl font-bold mx-auto mb-4">2</div>
+                                        <p className="font-medium">Fyll i Master CV</p>
+                                    </div>
+                                    <div>
+                                        <div className="w-12 h-12 bg-yellow-400 text-indigo-900 rounded-full flex items-center justify-center text-xl font-bold mx-auto mb-4">3</div>
+                                        <p className="font-medium">Generera CV-vibes</p>
+                                    </div>
+                                    <div>
+                                        <div className="w-12 h-12 bg-yellow-400 text-indigo-900 rounded-full flex items-center justify-center text-xl font-bold mx-auto mb-4">4</div>
+                                        <p className="font-medium">Sök jobb!</p>
+                                    </div>
+                                </div>
+                            </div>
+                        </main>
+
+                        <footer className="px-4 py-8 mt-16 border-t border-white/20">
+                            <div className="max-w-6xl mx-auto text-center text-white/60 text-sm">
+                                <div className="flex justify-center gap-4 mb-2">
+                                    <a href="/integritetspolicy" className="hover:text-white">Integritetspolicy</a>
+                                    <span>·</span>
+                                    <a href="/anvandarvillkor" className="hover:text-white">Användarvillkor</a>
+                                </div>
+                                <p>© 2026 Anti-Apathy Portal</p>
+                            </div>
+                        </footer>
+                    </div>
+                );
+            }
+
             return (
                 <div className="min-h-screen">
                     <header className="gradient text-white py-6 px-4">
@@ -1513,18 +1645,7 @@
                                     <h1 className="text-2xl font-bold">Anti-Apathy Job Portal</h1>
                                     <p className="opacity-80 text-sm">Sök jobb utan apati. En ansökan i taget.</p>
                                 </div>
-                                <div className="flex items-center gap-3">
-                                    {user ? (
-                                        <UserMenu user={user} onLogout={handleLogout} />
-                                    ) : (
-                                        <a
-                                            href="/login"
-                                            className="bg-white text-indigo-600 px-4 py-2 rounded-lg text-sm font-medium hover:bg-white/90 transition"
-                                        >
-                                            Logga in
-                                        </a>
-                                    )}
-                                </div>
+                                <UserMenu user={user} onLogout={handleLogout} />
                             </div>
                             <NavTabs activeTab={activeTab} setActiveTab={setActiveTab} />
                         </div>

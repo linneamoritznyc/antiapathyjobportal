@@ -895,15 +895,32 @@ async def save_master_cv(master_cv: MasterCV, user_id: str = "default_user"):
 
 
 @app.get("/api/cv/master")
-async def get_master_cv(user_id: str = "default_user"):
+async def get_master_cv(request: Request):
     """Get user's complete Master CV as structured data"""
+    # Get user_id from auth token
+    auth_header = request.headers.get("Authorization", "")
+    user_id = None
+
+    if auth_header.startswith("Bearer "):
+        token = auth_header.replace("Bearer ", "")
+        async with httpx.AsyncClient() as client:
+            user_response = await client.get(
+                f"{SUPABASE_URL}/auth/v1/user",
+                headers={"apikey": SUPABASE_ANON_KEY, "Authorization": f"Bearer {token}"}
+            )
+            if user_response.status_code == 200:
+                user_id = user_response.json().get("id")
+
+    if not user_id:
+        return {"success": False, "master_cv": None, "message": "Ej inloggad"}
 
     # Get profile
     profiles = await db_request("GET", "user_profiles", params={"user_id": f"eq.{user_id}"})
     profile = profiles[0] if profiles else None
 
     if not profile:
-        return {"success": True, "master_cv": None, "message": "Ingen CV uppladdad ännu"}
+        # Create empty profile for new users
+        profile = {"user_id": user_id, "full_name": "", "email": "", "phone": "", "location": ""}
 
     # Get all data
     education = await db_request("GET", "user_education", params={
@@ -928,12 +945,13 @@ async def get_master_cv(user_id: str = "default_user"):
 
     return {
         "success": True,
+        "user_id": user_id,
         "master_cv": {
             "profile": profile,
             "education": education,
             "experiences": experiences,
             "volunteer": volunteer,
-            "awards": [a.get("award_text") for a in awards],
+            "awards": [a.get("award_text") if isinstance(a, dict) else a for a in awards],
             "skills": skills
         }
     }
@@ -1049,21 +1067,43 @@ async def suggest_new_vibe(job_keywords: List[str], user_id: str = "default_user
 
 
 @app.post("/api/cv/generate-branscher")
-async def generate_cv_branscher(request: GenerateCVBranscherRequest = None):
+async def generate_cv_branscher(request: Request):
     """Generate all CV bransch versions from master CV"""
-    user_id = request.user_id if request and request.user_id else "default_user"
+    # Get user_id from auth token
+    auth_header = request.headers.get("Authorization", "")
+    user_id = None
 
-    # Get master CV
-    cvs = await db_request("GET", "master_cvs", params={
-        "user_id": f"eq.{user_id}",
-        "order": "created_at.desc",
-        "limit": "1"
-    })
+    if auth_header.startswith("Bearer "):
+        token = auth_header.replace("Bearer ", "")
+        async with httpx.AsyncClient() as client:
+            user_response = await client.get(
+                f"{SUPABASE_URL}/auth/v1/user",
+                headers={"apikey": SUPABASE_ANON_KEY, "Authorization": f"Bearer {token}"}
+            )
+            if user_response.status_code == 200:
+                user_id = user_response.json().get("id")
 
-    if not cvs:
-        raise HTTPException(status_code=404, detail="Ladda upp din CV först!")
+    if not user_id:
+        raise HTTPException(status_code=401, detail="Ej inloggad")
 
-    master_cv = cvs[0]
+    # Get user's profile and experiences
+    profiles = await db_request("GET", "user_profiles", params={"user_id": f"eq.{user_id}"})
+    experiences = await db_request("GET", "user_experiences", params={"user_id": f"eq.{user_id}", "order": "sort_order.asc"})
+    education = await db_request("GET", "user_education", params={"user_id": f"eq.{user_id}"})
+    skills = await db_request("GET", "user_skills", params={"user_id": f"eq.{user_id}"})
+
+    if not experiences or len(experiences) == 0:
+        return {"success": False, "message": "Lägg till erfarenheter i Master CV först!"}
+
+    profile = profiles[0] if profiles else {}
+
+    # Build master CV structure
+    master_cv = {
+        "profile": profile,
+        "experiences": experiences,
+        "education": education or [],
+        "skills": skills or []
+    }
 
     # Generate all vibes
     generated = await generate_all_cv_vibes(master_cv, user_id)
