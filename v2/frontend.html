@@ -556,6 +556,18 @@
             return (
                 <div className="min-h-screen bg-gradient-to-br from-indigo-50 to-slate-100 flex items-center justify-center p-4">
                     <div className="bg-white rounded-2xl shadow-xl max-w-2xl w-full p-8 max-h-[90vh] overflow-y-auto">
+                        {/* Skip button */}
+                        <div className="flex justify-end mb-4">
+                            <button
+                                onClick={() => {
+                                    localStorage.setItem('onboarding_complete', 'true');
+                                    onComplete();
+                                }}
+                                className="text-sm text-slate-400 hover:text-slate-600 transition"
+                            >
+                                Hoppa över →
+                            </button>
+                        </div>
                         {/* Progress */}
                         <div className="flex gap-2 mb-8">
                             {[1, 2, 3, 4].map(i => (
