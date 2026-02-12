@@ -831,6 +831,15 @@ async def get_stats():
     jobs = await get_jobs_from_db(1000)
     apps = await get_applications_from_db()
 
+    # Calculate deadline_today - count jobs with deadline today
+    today = datetime.now().strftime('%Y-%m-%d')
+    deadline_today = 0
+    if jobs:
+        for job in jobs:
+            deadline = job.get("deadline", "")
+            if deadline and deadline.startswith(today):
+                deadline_today += 1
+
     return {
         "success": True,
         "stats": {
@@ -838,7 +847,8 @@ async def get_stats():
             "total_applications": len(apps) if apps else 0,
             "drafts": len([a for a in (apps or []) if a.get("status") == "draft"]),
             "sent": len([a for a in (apps or []) if a.get("status") == "sent"]),
-            "interviews": len([a for a in (apps or []) if a.get("status") == "interview"])
+            "interviews": len([a for a in (apps or []) if a.get("status") == "interview"]),
+            "deadline_today": deadline_today
         }
     }
 
