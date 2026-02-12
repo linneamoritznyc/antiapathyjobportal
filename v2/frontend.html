@@ -184,6 +184,9 @@
         // Application modal
         const ApplyModal = ({ isOpen, job, result, onClose }) => {
             const [letter, setLetter] = useState('');
+            const [feedback, setFeedback] = useState('');
+            const [showFeedback, setShowFeedback] = useState(false);
+            const [savingFeedback, setSavingFeedback] = useState(false);
 
             useEffect(() => {
                 if (result?.cover_letter) setLetter(result.cover_letter);
@@ -192,7 +195,7 @@
             if (!isOpen || !job) return null;
 
             const openGmail = () => {
-                const subject = encodeURIComponent(`Ansökan: ${job.title}`);
+                const subject = encodeURIComponent(`Ansokan: ${job.title}`);
                 const body = encodeURIComponent(letter);
                 window.open(`https://mail.google.com/mail/?view=cm&fs=1&to=${job.contact_email}&su=${subject}&body=${body}`, '_blank');
             };
@@ -202,9 +205,35 @@
                 alert('Kopierat!');
             };
 
+            const saveFeedback = async () => {
+                if (!feedback.trim()) return;
+                setSavingFeedback(true);
+                try {
+                    const token = localStorage.getItem('auth_token');
+                    await fetch('/api/user/ai-feedback', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'Authorization': `Bearer ${token}`
+                        },
+                        body: JSON.stringify({
+                            feedback_text: feedback,
+                            feedback_type: 'cover_letter',
+                            applies_to_vibes: result?.matched_vibe ? [result.matched_vibe] : null
+                        })
+                    });
+                    setFeedback('');
+                    setShowFeedback(false);
+                    alert('Feedback sparad! AI kommer anvanda denna nasta gang.');
+                } catch (err) {
+                    console.error(err);
+                }
+                setSavingFeedback(false);
+            };
+
             return (
                 <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50">
-                    <div className="bg-white rounded-2xl max-w-2xl w-full max-h-[90vh] overflow-hidden">
+                    <div className="bg-white rounded-2xl max-w-3xl w-full max-h-[90vh] overflow-hidden">
                         <div className="gradient text-white p-5">
                             <h3 className="text-xl font-bold">{job.title}</h3>
                             <p className="opacity-90">{job.company}</p>
@@ -215,12 +244,38 @@
                             )}
                         </div>
                         <div className="p-5">
-                            <label className="block text-sm font-medium text-slate-700 mb-2">Personligt brev</label>
-                            <textarea
-                                value={letter}
-                                onChange={(e) => setLetter(e.target.value)}
-                                className="w-full h-48 p-3 border border-slate-200 rounded-lg text-sm"
-                            />
+                            <div className="flex gap-4">
+                                <div className="flex-1">
+                                    <label className="block text-sm font-medium text-slate-700 mb-2">Personligt brev</label>
+                                    <textarea
+                                        value={letter}
+                                        onChange={(e) => setLetter(e.target.value)}
+                                        className="w-full h-48 p-3 border border-slate-200 rounded-lg text-sm"
+                                    />
+                                </div>
+
+                                {showFeedback && (
+                                    <div className="w-64">
+                                        <label className="block text-sm font-medium text-slate-700 mb-2">Feedback till AI</label>
+                                        <textarea
+                                            value={feedback}
+                                            onChange={(e) => setFeedback(e.target.value)}
+                                            placeholder="Ex: Namna alltid min kundtjanst-erfarenhet for dessa jobb..."
+                                            className="w-full h-32 p-3 border border-amber-200 bg-amber-50 rounded-lg text-sm"
+                                        />
+                                        <button
+                                            onClick={saveFeedback}
+                                            disabled={savingFeedback || !feedback.trim()}
+                                            className="w-full mt-2 bg-amber-500 text-white py-2 rounded-lg text-sm font-medium hover:bg-amber-600 disabled:opacity-50"
+                                        >
+                                            {savingFeedback ? 'Sparar...' : 'Spara feedback'}
+                                        </button>
+                                        <p className="text-xs text-slate-500 mt-2">
+                                            AI anvander din feedback for framtida brev.
+                                        </p>
+                                    </div>
+                                )}
+                            </div>
 
                             {result?.cv && (
                                 <div className="mt-4 p-3 bg-slate-50 rounded-lg">
@@ -231,13 +286,19 @@
 
                             <div className="flex gap-3 mt-4">
                                 <button onClick={openGmail} className="flex-1 bg-green-600 text-white py-2.5 px-4 rounded-lg font-medium hover:bg-green-700">
-                                    📧 Öppna i Gmail
+                                    Oppna i Gmail
                                 </button>
                                 <button onClick={copyLetter} className="px-4 py-2.5 border border-slate-200 rounded-lg hover:bg-slate-50">
-                                    📋 Kopiera
+                                    Kopiera
+                                </button>
+                                <button
+                                    onClick={() => setShowFeedback(!showFeedback)}
+                                    className={`px-4 py-2.5 rounded-lg ${showFeedback ? 'bg-amber-100 border-amber-300 text-amber-700' : 'border border-slate-200 hover:bg-slate-50'}`}
+                                >
+                                    Feedback
                                 </button>
                                 <button onClick={onClose} className="px-4 py-2.5 border border-slate-200 rounded-lg hover:bg-slate-50">
-                                    Stäng
+                                    Stang
                                 </button>
                             </div>
                         </div>

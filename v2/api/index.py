@@ -3143,6 +3143,214 @@ async def privacy_policy_page():
     return "<h1>Integritetspolicy kunde inte laddas</h1>"
 
 
+# ============== AI FEEDBACK ==============
+
+class AIFeedback(BaseModel):
+    feedback_text: str
+    feedback_type: str = "cover_letter"  # cover_letter, new_vibe_request, exclude_jobs, general
+    applies_to_vibes: Optional[List[str]] = None
+
+
+@app.post("/api/user/ai-feedback")
+async def save_ai_feedback(request: Request, feedback: AIFeedback):
+    """Save user feedback for AI cover letter generation."""
+    auth_header = request.headers.get("Authorization", "")
+    if not auth_header.startswith("Bearer "):
+        raise HTTPException(status_code=401, detail="Ej inloggad")
+
+    token = auth_header.replace("Bearer ", "")
+
+    async with httpx.AsyncClient() as client:
+        user_response = await client.get(
+            f"{SUPABASE_URL}/auth/v1/user",
+            headers={"apikey": SUPABASE_ANON_KEY, "Authorization": f"Bearer {token}"}
+        )
+        if user_response.status_code != 200:
+            raise HTTPException(status_code=401, detail="Ogiltig session")
+        user_id = user_response.json().get("id")
+
+    feedback_data = {
+        "user_id": user_id,
+        "feedback_text": feedback.feedback_text,
+        "feedback_type": feedback.feedback_type,
+        "applies_to_vibes": feedback.applies_to_vibes,
+        "is_active": True,
+        "created_at": datetime.now().isoformat()
+    }
+
+    async with httpx.AsyncClient() as client:
+        response = await client.post(
+            f"{SUPABASE_URL}/rest/v1/user_ai_feedback",
+            headers={
+                "apikey": SUPABASE_KEY,
+                "Authorization": f"Bearer {SUPABASE_KEY}",
+                "Content-Type": "application/json",
+                "Prefer": "return=representation"
+            },
+            json=feedback_data
+        )
+
+        if response.status_code >= 400:
+            logger.error(f"Failed to save feedback: {response.text}")
+            return {"success": False, "message": "Kunde inte spara feedback"}
+
+    return {"success": True, "message": "Feedback sparad!"}
+
+
+@app.get("/api/user/ai-feedback")
+async def get_ai_feedback(request: Request):
+    """Get all AI feedback for user."""
+    auth_header = request.headers.get("Authorization", "")
+    if not auth_header.startswith("Bearer "):
+        raise HTTPException(status_code=401, detail="Ej inloggad")
+
+    token = auth_header.replace("Bearer ", "")
+
+    async with httpx.AsyncClient() as client:
+        user_response = await client.get(
+            f"{SUPABASE_URL}/auth/v1/user",
+            headers={"apikey": SUPABASE_ANON_KEY, "Authorization": f"Bearer {token}"}
+        )
+        if user_response.status_code != 200:
+            raise HTTPException(status_code=401, detail="Ogiltig session")
+        user_id = user_response.json().get("id")
+
+    async with httpx.AsyncClient() as client:
+        response = await client.get(
+            f"{SUPABASE_URL}/rest/v1/user_ai_feedback?user_id=eq.{user_id}&is_active=eq.true&order=created_at.desc",
+            headers={
+                "apikey": SUPABASE_KEY,
+                "Authorization": f"Bearer {SUPABASE_KEY}"
+            }
+        )
+
+        if response.status_code >= 400:
+            return {"success": False, "feedback": []}
+
+        return {"success": True, "feedback": response.json()}
+
+
+# ============== GDPR ==============
+
+@app.get("/api/user/export-data")
+async def export_user_data(request: Request):
+    """Export all user data as JSON (GDPR Article 20)."""
+    auth_header = request.headers.get("Authorization", "")
+    if not auth_header.startswith("Bearer "):
+        raise HTTPException(status_code=401, detail="Ej inloggad")
+
+    token = auth_header.replace("Bearer ", "")
+
+    async with httpx.AsyncClient() as client:
+        user_response = await client.get(
+            f"{SUPABASE_URL}/auth/v1/user",
+            headers={"apikey": SUPABASE_ANON_KEY, "Authorization": f"Bearer {token}"}
+        )
+        if user_response.status_code != 200:
+            raise HTTPException(status_code=401, detail="Ogiltig session")
+        user = user_response.json()
+        user_id = user.get("id")
+
+    headers = {
+        "apikey": SUPABASE_KEY,
+        "Authorization": f"Bearer {SUPABASE_KEY}"
+    }
+
+    export_data = {
+        "user": {"id": user_id, "email": user.get("email")},
+        "exported_at": datetime.now().isoformat()
+    }
+
+    async with httpx.AsyncClient() as client:
+        # Profile
+        res = await client.get(f"{SUPABASE_URL}/rest/v1/user_profiles?user_id=eq.{user_id}", headers=headers)
+        export_data["profile"] = res.json() if res.status_code < 400 else []
+
+        # Experiences
+        res = await client.get(f"{SUPABASE_URL}/rest/v1/user_experiences?user_id=eq.{user_id}", headers=headers)
+        export_data["experiences"] = res.json() if res.status_code < 400 else []
+
+        # Education
+        res = await client.get(f"{SUPABASE_URL}/rest/v1/user_education?user_id=eq.{user_id}", headers=headers)
+        export_data["education"] = res.json() if res.status_code < 400 else []
+
+        # Skills
+        res = await client.get(f"{SUPABASE_URL}/rest/v1/user_skills?user_id=eq.{user_id}", headers=headers)
+        export_data["skills"] = res.json() if res.status_code < 400 else []
+
+        # CVs
+        res = await client.get(f"{SUPABASE_URL}/rest/v1/user_cvs?user_id=eq.{user_id}", headers=headers)
+        export_data["cvs"] = res.json() if res.status_code < 400 else []
+
+        # Job preferences
+        res = await client.get(f"{SUPABASE_URL}/rest/v1/user_job_preferences?user_id=eq.{user_id}", headers=headers)
+        export_data["job_preferences"] = res.json() if res.status_code < 400 else []
+
+        # Applications
+        res = await client.get(f"{SUPABASE_URL}/rest/v1/applications?user_id=eq.{user_id}", headers=headers)
+        export_data["applications"] = res.json() if res.status_code < 400 else []
+
+        # AI Feedback
+        res = await client.get(f"{SUPABASE_URL}/rest/v1/user_ai_feedback?user_id=eq.{user_id}", headers=headers)
+        export_data["ai_feedback"] = res.json() if res.status_code < 400 else []
+
+    return {"success": True, "data": export_data}
+
+
+@app.delete("/api/user/delete-account")
+async def delete_user_account(request: Request):
+    """Delete all user data and account (GDPR Article 17)."""
+    auth_header = request.headers.get("Authorization", "")
+    if not auth_header.startswith("Bearer "):
+        raise HTTPException(status_code=401, detail="Ej inloggad")
+
+    token = auth_header.replace("Bearer ", "")
+
+    async with httpx.AsyncClient() as client:
+        user_response = await client.get(
+            f"{SUPABASE_URL}/auth/v1/user",
+            headers={"apikey": SUPABASE_ANON_KEY, "Authorization": f"Bearer {token}"}
+        )
+        if user_response.status_code != 200:
+            raise HTTPException(status_code=401, detail="Ogiltig session")
+        user_id = user_response.json().get("id")
+
+    headers = {
+        "apikey": SUPABASE_KEY,
+        "Authorization": f"Bearer {SUPABASE_KEY}"
+    }
+
+    deleted = []
+
+    async with httpx.AsyncClient() as client:
+        # Delete all user data from tables
+        tables = [
+            "user_ai_feedback",
+            "applications",
+            "user_cvs",
+            "user_skills",
+            "user_education",
+            "user_experiences",
+            "user_job_preferences",
+            "user_gmail_credentials",
+            "user_profiles"
+        ]
+
+        for table in tables:
+            res = await client.delete(
+                f"{SUPABASE_URL}/rest/v1/{table}?user_id=eq.{user_id}",
+                headers=headers
+            )
+            if res.status_code < 400:
+                deleted.append(table)
+
+    return {
+        "success": True,
+        "message": "Ditt konto och all data har raderats.",
+        "deleted_from": deleted
+    }
+
+
 @app.get("/account", response_class=HTMLResponse)
 async def account_page():
     """Account settings page"""
