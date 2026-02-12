@@ -1247,7 +1247,10 @@ async def sign_up(request: SignUpRequest):
             json={
                 "email": request.email,
                 "password": request.password,
-                "data": {"full_name": request.full_name} if request.full_name else {}
+                "data": {"full_name": request.full_name} if request.full_name else {},
+                "options": {
+                    "email_redirect_to": "https://platsbanken-ai.vercel.app/login"
+                }
             }
         )
 
@@ -1285,7 +1288,10 @@ async def resend_verification(request: ResendVerificationRequest):
             },
             json={
                 "type": "signup",
-                "email": request.email
+                "email": request.email,
+                "options": {
+                    "email_redirect_to": "https://platsbanken-ai.vercel.app/login"
+                }
             }
         )
 
