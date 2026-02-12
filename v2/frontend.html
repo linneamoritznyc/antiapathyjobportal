@@ -1878,82 +1878,89 @@
             if (!user) {
                 return (
                     <div className="min-h-screen bg-gradient-to-br from-indigo-600 via-purple-600 to-pink-500">
-                        {/* Hero Section */}
-                        <header className="px-4 py-6">
-                            <div className="max-w-6xl mx-auto flex justify-between items-center">
-                                <h1 className="text-2xl font-bold text-white">Anti-Apathy Portal</h1>
-                                <a href="/login" className="bg-white text-indigo-600 px-6 py-2 rounded-full font-semibold hover:bg-white/90 transition shadow-lg">
-                                    Logga in
+                        <header className="px-6 py-5">
+                            <div className="max-w-5xl mx-auto flex justify-between items-center">
+                                <span className="text-white/90 font-mono text-sm tracking-wide">anti-apathy</span>
+                                <a href="/login" className="text-white/70 hover:text-white text-sm transition">
+                                    Logga in →
                                 </a>
                             </div>
                         </header>
 
-                        <main className="px-4 py-16">
-                            <div className="max-w-4xl mx-auto text-center text-white">
-                                <h2 className="text-5xl font-bold mb-6 leading-tight">
-                                    Sök jobb utan apati.<br/>
-                                    <span className="text-yellow-300">En ansökan i taget.</span>
-                                </h2>
-                                <p className="text-xl opacity-90 mb-10 max-w-2xl mx-auto">
-                                    Sluta skicka samma CV överallt. Vi skapar skräddarsydda CV:n för varje bransch
-                                    och genererar personliga brev automatiskt.
-                                </p>
-                                <a href="/login" className="inline-block bg-white text-indigo-600 px-10 py-4 rounded-full text-xl font-bold hover:bg-yellow-300 hover:text-indigo-700 transition shadow-xl">
-                                    Kom igång gratis
-                                </a>
-                            </div>
+                        <main className="px-6">
+                            <div className="max-w-5xl mx-auto">
+                                {/* Hero - left aligned */}
+                                <div className="py-20 max-w-xl">
+                                    <h1 className="text-4xl md:text-5xl font-bold text-white leading-tight mb-6">
+                                        Jobbsökande<br/>
+                                        utan ångest.
+                                    </h1>
+                                    <p className="text-white/80 text-lg mb-8 leading-relaxed">
+                                        Skräddarsydda CV:n för olika branscher. AI-genererade personliga brev.
+                                        Allt på ett ställe så du kan fokusera på det som spelar roll.
+                                    </p>
+                                    <a href="/login" className="inline-block bg-white text-indigo-700 px-6 py-3 text-sm font-semibold hover:bg-white/90 transition">
+                                        Kom igång
+                                    </a>
+                                </div>
 
-                            {/* Features */}
-                            <div className="max-w-5xl mx-auto mt-24 grid md:grid-cols-3 gap-8">
-                                <div className="bg-white/10 backdrop-blur-sm rounded-2xl p-6 text-white">
-                                    <div className="text-4xl mb-4">📋</div>
-                                    <h3 className="text-xl font-bold mb-2">Master CV</h3>
-                                    <p className="opacity-80">En källa för all din info. Lägg till erfarenheter, utbildning och skills på ett ställe.</p>
+                                {/* Features - asymmetric grid */}
+                                <div className="border-t border-white/20 py-16">
+                                    <div className="grid md:grid-cols-2 gap-x-16 gap-y-10">
+                                        <div>
+                                            <h3 className="text-white font-semibold mb-2">Master CV</h3>
+                                            <p className="text-white/60 text-sm leading-relaxed">
+                                                All din erfarenhet, utbildning och kompetenser samlade.
+                                                Uppdatera en gång, använd överallt.
+                                            </p>
+                                        </div>
+                                        <div>
+                                            <h3 className="text-white font-semibold mb-2">Branschanpassade versioner</h3>
+                                            <p className="text-white/60 text-sm leading-relaxed">
+                                                Restaurang, kundtjänst, tech, butik, vård. Varje version
+                                                lyfter rätt erfarenheter för rätt jobb.
+                                            </p>
+                                        </div>
+                                        <div>
+                                            <h3 className="text-white font-semibold mb-2">Platsbanken-integration</h3>
+                                            <p className="text-white/60 text-sm leading-relaxed">
+                                                Hämta jobb direkt från Arbetsförmedlingen. Se vilka som
+                                                accepterar mail-ansökningar.
+                                            </p>
+                                        </div>
+                                        <div>
+                                            <h3 className="text-white font-semibold mb-2">Personliga brev</h3>
+                                            <p className="text-white/60 text-sm leading-relaxed">
+                                                AI skriver brevet baserat på ditt CV och jobbannonsen.
+                                                Granska, justera, skicka.
+                                            </p>
+                                        </div>
+                                    </div>
                                 </div>
-                                <div className="bg-white/10 backdrop-blur-sm rounded-2xl p-6 text-white">
-                                    <div className="text-4xl mb-4">✨</div>
-                                    <h3 className="text-xl font-bold mb-2">CV-vibes</h3>
-                                    <p className="opacity-80">Generera anpassade CV:n för restaurang, kundtjänst, tech, butik och fler branscher.</p>
-                                </div>
-                                <div className="bg-white/10 backdrop-blur-sm rounded-2xl p-6 text-white">
-                                    <div className="text-4xl mb-4">🚀</div>
-                                    <h3 className="text-xl font-bold mb-2">Snabb ansökan</h3>
-                                    <p className="opacity-80">Hitta jobb på Platsbanken, få AI-genererat personligt brev, ansök med ett klick.</p>
-                                </div>
-                            </div>
 
-                            {/* How it works */}
-                            <div className="max-w-4xl mx-auto mt-24 text-white text-center">
-                                <h3 className="text-3xl font-bold mb-12">Så funkar det</h3>
-                                <div className="grid md:grid-cols-4 gap-6">
-                                    <div>
-                                        <div className="w-12 h-12 bg-yellow-400 text-indigo-900 rounded-full flex items-center justify-center text-xl font-bold mx-auto mb-4">1</div>
-                                        <p className="font-medium">Skapa konto</p>
-                                    </div>
-                                    <div>
-                                        <div className="w-12 h-12 bg-yellow-400 text-indigo-900 rounded-full flex items-center justify-center text-xl font-bold mx-auto mb-4">2</div>
-                                        <p className="font-medium">Fyll i Master CV</p>
-                                    </div>
-                                    <div>
-                                        <div className="w-12 h-12 bg-yellow-400 text-indigo-900 rounded-full flex items-center justify-center text-xl font-bold mx-auto mb-4">3</div>
-                                        <p className="font-medium">Generera CV-vibes</p>
-                                    </div>
-                                    <div>
-                                        <div className="w-12 h-12 bg-yellow-400 text-indigo-900 rounded-full flex items-center justify-center text-xl font-bold mx-auto mb-4">4</div>
-                                        <p className="font-medium">Sök jobb!</p>
+                                {/* How it works - minimal */}
+                                <div className="border-t border-white/20 py-12">
+                                    <p className="text-white/50 text-sm mb-6">Så funkar det</p>
+                                    <div className="flex flex-wrap gap-6 text-white/80 text-sm">
+                                        <span>1. Skapa konto</span>
+                                        <span className="text-white/30">→</span>
+                                        <span>2. Fyll i Master CV</span>
+                                        <span className="text-white/30">→</span>
+                                        <span>3. Generera bransch-CV:n</span>
+                                        <span className="text-white/30">→</span>
+                                        <span>4. Sök jobb</span>
                                     </div>
                                 </div>
                             </div>
                         </main>
 
-                        <footer className="px-4 py-8 mt-16 border-t border-white/20">
-                            <div className="max-w-6xl mx-auto text-center text-white/60 text-sm">
-                                <div className="flex justify-center gap-4 mb-2">
-                                    <a href="/integritetspolicy" className="hover:text-white">Integritetspolicy</a>
-                                    <span>·</span>
-                                    <a href="/anvandarvillkor" className="hover:text-white">Användarvillkor</a>
+                        <footer className="px-6 py-8 border-t border-white/10 mt-12">
+                            <div className="max-w-5xl mx-auto flex flex-col sm:flex-row justify-between items-center gap-4 text-white/40 text-xs">
+                                <div className="flex gap-6">
+                                    <a href="/integritetspolicy" className="hover:text-white/70">Integritetspolicy</a>
+                                    <a href="/anvandarvillkor" className="hover:text-white/70">Användarvillkor</a>
                                 </div>
-                                <p>© 2026 Anti-Apathy Portal</p>
+                                <span>2026</span>
                             </div>
                         </footer>
                     </div>

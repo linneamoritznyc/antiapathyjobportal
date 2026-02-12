@@ -3,8 +3,7 @@ Migrera Linneas data till Supabase
 Kör med: python migrate_user_data.py
 """
 import os
-import httpx
-import asyncio
+import requests
 from datetime import datetime
 
 # Din user ID från Supabase
@@ -304,7 +303,7 @@ B-körkort
 ]
 
 
-async def db_request(method: str, table: str, data: dict = None, params: dict = None):
+def db_request(method: str, table: str, data: dict = None, params: dict = None):
     """Make request to Supabase"""
     url = f"{SUPABASE_URL}/rest/v1/{table}"
     headers = {
@@ -314,74 +313,77 @@ async def db_request(method: str, table: str, data: dict = None, params: dict = 
         "Prefer": "resolution=merge-duplicates,return=representation"
     }
 
-    async with httpx.AsyncClient() as client:
+    try:
         if method == "POST":
-            response = await client.post(url, headers=headers, json=data, timeout=10)
+            response = requests.post(url, headers=headers, json=data, timeout=10)
         elif method == "DELETE":
-            response = await client.delete(url, headers=headers, params=params, timeout=10)
+            response = requests.delete(url, headers=headers, params=params, timeout=10)
         else:
             return None
 
         if response.status_code >= 400:
-            print(f"  ⚠️  {table}: {response.status_code} - {response.text[:100]}")
+            print(f"  Warning {table}: {response.status_code} - {response.text[:100]}")
             return None
 
         return response.json() if response.text else []
+    except Exception as e:
+        print(f"  Error {table}: {e}")
+        return None
 
 
-async def migrate():
-    print(f"\n🚀 Migrerar data för användare: {USER_ID}")
+def migrate():
+    print(f"\nMigrerar data for anvandare: {USER_ID}")
     print(f"   Email: linneamoritz1@gmail.com")
     print(f"   Supabase: {SUPABASE_URL}\n")
 
     # 1. Profil
-    print("1️⃣  Sparar profil...")
-    result = await db_request("POST", "user_profiles", PROFILE_DATA)
+    print("1. Sparar profil...")
+    result = db_request("POST", "user_profiles", PROFILE_DATA)
     if result:
-        print("   ✓ Profil sparad")
+        print("   OK Profil sparad")
 
     # 2. Jobbpreferenser
-    print("2️⃣  Sparar jobbpreferenser...")
-    result = await db_request("POST", "user_job_preferences", JOB_PREFERENCES)
+    print("2. Sparar jobbpreferenser...")
+    result = db_request("POST", "user_job_preferences", JOB_PREFERENCES)
     if result:
-        print("   ✓ Preferenser sparade")
+        print("   OK Preferenser sparade")
 
     # 3. Erfarenheter
-    print("3️⃣  Sparar arbetslivserfarenhet...")
+    print("3. Sparar arbetslivserfarenhet...")
     for i, exp in enumerate(EXPERIENCES):
-        result = await db_request("POST", "user_experiences", exp)
+        result = db_request("POST", "user_experiences", exp)
         if result:
-            print(f"   ✓ {exp['company']} - {exp['title']}")
+            print(f"   OK {exp['company']} - {exp['title']}")
 
     # 4. Utbildning
-    print("4️⃣  Sparar utbildning...")
+    print("4. Sparar utbildning...")
     for edu in EDUCATION:
-        result = await db_request("POST", "user_education", edu)
+        result = db_request("POST", "user_education", edu)
         if result:
-            print(f"   ✓ {edu['school']}")
+            print(f"   OK {edu['school']}")
 
-    # 5. Färdigheter
-    print("5️⃣  Sparar färdigheter...")
+    # 5. Fardigheter
+    print("5. Sparar fardigheter...")
     for skill in SKILLS:
-        result = await db_request("POST", "user_skills", skill)
-    print(f"   ✓ {len(SKILLS)} färdigheter sparade")
+        result = db_request("POST", "user_skills", skill)
+    print(f"   OK {len(SKILLS)} fardigheter sparade")
 
     # 6. CV-versioner
-    print("6️⃣  Sparar CV-versioner...")
+    print("6. Sparar CV-versioner...")
     for cv in CV_VERSIONS:
         cv["created_at"] = datetime.now().isoformat()
-        result = await db_request("POST", "user_cvs", cv)
+        result = db_request("POST", "user_cvs", cv)
         if result:
-            print(f"   ✓ {cv['vibe_emoji']} {cv['vibe_name']}")
+            print(f"   OK {cv['vibe_name']}")
 
-    print("\n✅ Migration klar!")
-    print(f"   Profil: ✓")
-    print(f"   Preferenser: ✓")
+    print("\nMigration klar!")
+    print(f"   Profil: OK")
+    print(f"   Preferenser: OK")
     print(f"   Erfarenheter: {len(EXPERIENCES)} st")
     print(f"   Utbildning: {len(EDUCATION)} st")
-    print(f"   Färdigheter: {len(SKILLS)} st")
+    print(f"   Fardigheter: {len(SKILLS)} st")
     print(f"   CV-versioner: {len(CV_VERSIONS)} st")
 
 
 if __name__ == "__main__":
-    asyncio.run(migrate())
+    migrate()
