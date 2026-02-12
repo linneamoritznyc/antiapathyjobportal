@@ -413,11 +413,134 @@
                 });
             };
 
+            const [importStatus, setImportStatus] = useState(null);
+
+            // Parse LinkedIn CSV data
+            const parseLinkedInCSV = (csvText, type) => {
+                const lines = csvText.split('\n');
+                if (lines.length < 2) return [];
+
+                // Parse header
+                const headers = lines[0].split(',').map(h => h.trim().toLowerCase().replace(/"/g, ''));
+                const results = [];
+
+                for (let i = 1; i < lines.length; i++) {
+                    if (!lines[i].trim()) continue;
+
+                    // Handle CSV with quoted fields
+                    const values = [];
+                    let current = '';
+                    let inQuotes = false;
+                    for (const char of lines[i]) {
+                        if (char === '"') {
+                            inQuotes = !inQuotes;
+                        } else if (char === ',' && !inQuotes) {
+                            values.push(current.trim());
+                            current = '';
+                        } else {
+                            current += char;
+                        }
+                    }
+                    values.push(current.trim());
+
+                    const row = {};
+                    headers.forEach((h, idx) => {
+                        row[h] = values[idx] || '';
+                    });
+                    results.push(row);
+                }
+                return results;
+            };
+
+            // Handle LinkedIn file upload
+            const handleLinkedInUpload = async (e, type) => {
+                const file = e.target.files[0];
+                if (!file) return;
+
+                setImportStatus('importing');
+
+                try {
+                    const text = await file.text();
+
+                    if (type === 'positions') {
+                        const positions = parseLinkedInCSV(text, 'positions');
+                        const newExperiences = positions.map(p => ({
+                            company: p['company name'] || p['company'] || '',
+                            title: p['title'] || '',
+                            location: p['location'] || '',
+                            start_date: p['started on'] || '',
+                            end_date: p['finished on'] || '',
+                            description: p['description'] || '',
+                            categories: []
+                        })).filter(exp => exp.company || exp.title);
+
+                        setEditedCV(prev => ({
+                            ...prev,
+                            experiences: [...prev.experiences, ...newExperiences]
+                        }));
+                        setImportStatus(`Importerade ${newExperiences.length} erfarenheter!`);
+                    } else if (type === 'education') {
+                        const education = parseLinkedInCSV(text, 'education');
+                        const newEducation = education.map(e => ({
+                            school: e['school name'] || e['school'] || '',
+                            degree: e['degree name'] || e['degree'] || '',
+                            field_of_study: e['field of study'] || e['notes'] || '',
+                            location: '',
+                            start_date: e['start date'] || '',
+                            end_date: e['end date'] || ''
+                        })).filter(edu => edu.school);
+
+                        setEditedCV(prev => ({
+                            ...prev,
+                            education: [...prev.education, ...newEducation]
+                        }));
+                        setImportStatus(`Importerade ${newEducation.length} utbildningar!`);
+                    } else if (type === 'skills') {
+                        const skills = parseLinkedInCSV(text, 'skills');
+                        const newSkills = skills.map(s => ({
+                            category: 'all',
+                            skill_type: 'technical',
+                            skill_text: s['name'] || s['skill'] || ''
+                        })).filter(s => s.skill_text);
+
+                        setEditedCV(prev => ({
+                            ...prev,
+                            skills: [...prev.skills, ...newSkills]
+                        }));
+                        setImportStatus(`Importerade ${newSkills.length} kompetenser!`);
+                    } else if (type === 'profile') {
+                        const profiles = parseLinkedInCSV(text, 'profile');
+                        if (profiles.length > 0) {
+                            const p = profiles[0];
+                            setEditedCV(prev => ({
+                                ...prev,
+                                profile: {
+                                    ...prev.profile,
+                                    full_name: `${p['first name'] || ''} ${p['last name'] || ''}`.trim() || prev.profile.full_name,
+                                    email: p['email address'] || p['email'] || prev.profile.email,
+                                    location: p['geo location'] || p['location'] || prev.profile.location
+                                }
+                            }));
+                            setImportStatus('Profildata importerad!');
+                        }
+                    }
+
+                    setTimeout(() => setImportStatus(null), 3000);
+                } catch (err) {
+                    console.error('Import error:', err);
+                    setImportStatus('Fel vid import. Kontrollera filformatet.');
+                    setTimeout(() => setImportStatus(null), 3000);
+                }
+
+                e.target.value = '';
+            };
+
             const sections = [
                 { id: 'experiences', label: 'Erfarenheter', icon: '💼', count: editedCV.experiences?.length || 0 },
                 { id: 'education', label: 'Utbildning', icon: '🎓', count: editedCV.education?.length || 0 },
                 { id: 'skills', label: 'Kompetenser', icon: '⭐', count: editedCV.skills?.length || 0 },
-                { id: 'profile', label: 'Profil', icon: '👤', count: null }
+                { id: 'profile', label: 'Profil', icon: '👤', count: null },
+                { id: 'import', label: 'LinkedIn Import', icon: '📥', count: null }
             ];
 
             return (
@@ -630,6 +753,119 @@
                                 <p className="text-sm text-slate-500 mt-4">
                                     Profilinformation redigeras under <a href="/account" className="text-indigo-600 hover:underline">Mitt konto</a>.
                                 </p>
+                            </div>
+                        )}
+
+                        {/* LinkedIn Import Section */}
+                        {activeSection === 'import' && (
+                            <div>
+                                <h3 className="text-xl font-bold mb-4">📥 Importera från LinkedIn</h3>
+
+                                {importStatus && (
+                                    <div className={`mb-4 p-3 rounded-lg ${
+                                        importStatus === 'importing' ? 'bg-blue-50 text-blue-700' :
+                                        importStatus.includes('Fel') ? 'bg-red-50 text-red-700' :
+                                        'bg-green-50 text-green-700'
+                                    }`}>
+                                        {importStatus === 'importing' ? 'Importerar...' : importStatus}
+                                    </div>
+                                )}
+
+                                <div className="bg-indigo-50 border border-indigo-200 rounded-xl p-4 mb-6">
+                                    <h4 className="font-medium text-indigo-900 mb-2">Hur man exporterar från LinkedIn:</h4>
+                                    <ol className="text-sm text-indigo-800 space-y-1 list-decimal list-inside">
+                                        <li>Gå till LinkedIn → Inställningar → Datasekretess</li>
+                                        <li>Klicka på "Hämta en kopia av dina data"</li>
+                                        <li>Välj de filer du vill exportera</li>
+                                        <li>Ladda ner ZIP-filen och packa upp</li>
+                                        <li>Ladda upp CSV-filerna nedan</li>
+                                    </ol>
+                                </div>
+
+                                <div className="space-y-4">
+                                    {/* Positions/Experience */}
+                                    <div className="bg-slate-50 rounded-xl p-4 border border-slate-200">
+                                        <div className="flex items-center justify-between">
+                                            <div>
+                                                <h4 className="font-medium">💼 Arbetslivserfarenhet</h4>
+                                                <p className="text-sm text-slate-500">Positions.csv</p>
+                                            </div>
+                                            <label className="bg-indigo-600 text-white px-4 py-2 rounded-lg text-sm cursor-pointer hover:bg-indigo-700">
+                                                Välj fil
+                                                <input
+                                                    type="file"
+                                                    accept=".csv"
+                                                    className="hidden"
+                                                    onChange={(e) => handleLinkedInUpload(e, 'positions')}
+                                                />
+                                            </label>
+                                        </div>
+                                    </div>
+
+                                    {/* Education */}
+                                    <div className="bg-slate-50 rounded-xl p-4 border border-slate-200">
+                                        <div className="flex items-center justify-between">
+                                            <div>
+                                                <h4 className="font-medium">🎓 Utbildning</h4>
+                                                <p className="text-sm text-slate-500">Education.csv</p>
+                                            </div>
+                                            <label className="bg-indigo-600 text-white px-4 py-2 rounded-lg text-sm cursor-pointer hover:bg-indigo-700">
+                                                Välj fil
+                                                <input
+                                                    type="file"
+                                                    accept=".csv"
+                                                    className="hidden"
+                                                    onChange={(e) => handleLinkedInUpload(e, 'education')}
+                                                />
+                                            </label>
+                                        </div>
+                                    </div>
+
+                                    {/* Skills */}
+                                    <div className="bg-slate-50 rounded-xl p-4 border border-slate-200">
+                                        <div className="flex items-center justify-between">
+                                            <div>
+                                                <h4 className="font-medium">⭐ Kompetenser</h4>
+                                                <p className="text-sm text-slate-500">Skills.csv</p>
+                                            </div>
+                                            <label className="bg-indigo-600 text-white px-4 py-2 rounded-lg text-sm cursor-pointer hover:bg-indigo-700">
+                                                Välj fil
+                                                <input
+                                                    type="file"
+                                                    accept=".csv"
+                                                    className="hidden"
+                                                    onChange={(e) => handleLinkedInUpload(e, 'skills')}
+                                                />
+                                            </label>
+                                        </div>
+                                    </div>
+
+                                    {/* Profile */}
+                                    <div className="bg-slate-50 rounded-xl p-4 border border-slate-200">
+                                        <div className="flex items-center justify-between">
+                                            <div>
+                                                <h4 className="font-medium">👤 Profilinfo</h4>
+                                                <p className="text-sm text-slate-500">Profile.csv</p>
+                                            </div>
+                                            <label className="bg-indigo-600 text-white px-4 py-2 rounded-lg text-sm cursor-pointer hover:bg-indigo-700">
+                                                Välj fil
+                                                <input
+                                                    type="file"
+                                                    accept=".csv"
+                                                    className="hidden"
+                                                    onChange={(e) => handleLinkedInUpload(e, 'profile')}
+                                                />
+                                            </label>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <div className="mt-6 p-4 bg-amber-50 border border-amber-200 rounded-xl">
+                                    <p className="text-sm text-amber-800">
+                                        <strong>Tips:</strong> Efter import, gå till "Erfarenheter" eller "Utbildning" för att granska och redigera importerad data.
+                                        Glöm inte att spara ändringarna!
+                                    </p>
+                                </div>
                             </div>
                         )}
                     </div>
