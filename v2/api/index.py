@@ -1247,7 +1247,10 @@ async def sign_up(request: SignUpRequest):
             json={
                 "email": request.email,
                 "password": request.password,
-                "data": {"full_name": request.full_name} if request.full_name else {}
+                "data": {"full_name": request.full_name} if request.full_name else {},
+                "options": {
+                    "email_redirect_to": "https://platsbanken-ai.vercel.app/login"
+                }
             }
         )
 
@@ -1260,6 +1263,42 @@ async def sign_up(request: SignUpRequest):
             "success": True,
             "message": "Konto skapat! Kolla din e-post för att bekräfta.",
             "user_id": data.get("user", {}).get("id")
+        }
+
+
+class ResendVerificationRequest(BaseModel):
+    email: str
+
+
+@app.post("/api/auth/resend-verification")
+async def resend_verification(request: ResendVerificationRequest):
+    """
+    Resend email verification link.
+    Uses Supabase's resend endpoint.
+    """
+    if not SUPABASE_URL or not SUPABASE_ANON_KEY:
+        raise HTTPException(status_code=500, detail="Supabase not configured")
+
+    async with httpx.AsyncClient() as client:
+        response = await client.post(
+            f"{SUPABASE_URL}/auth/v1/resend",
+            headers={
+                "apikey": SUPABASE_ANON_KEY,
+                "Content-Type": "application/json"
+            },
+            json={
+                "type": "signup",
+                "email": request.email,
+                "options": {
+                    "email_redirect_to": "https://platsbanken-ai.vercel.app/login"
+                }
+            }
+        )
+
+        # Always return success to prevent email enumeration
+        return {
+            "success": True,
+            "message": "Om e-postadressen finns skickas en ny verifieringslänk."
         }
 
 
