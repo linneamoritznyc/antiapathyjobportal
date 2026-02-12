@@ -60,11 +60,19 @@
 
             <!-- Signup Form -->
             <form id="signup-form" onsubmit="handleSignup(event)" class="space-y-4 hidden">
-                <div>
-                    <label class="block text-sm font-medium text-slate-700 mb-1">Namn</label>
-                    <input type="text" id="signup-name"
-                        class="w-full px-4 py-3 border border-slate-200 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
-                        placeholder="Ditt namn">
+                <div class="grid grid-cols-2 gap-3">
+                    <div>
+                        <label class="block text-sm font-medium text-slate-700 mb-1">Förnamn</label>
+                        <input type="text" id="signup-firstname"
+                            class="w-full px-4 py-3 border border-slate-200 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
+                            placeholder="Förnamn">
+                    </div>
+                    <div>
+                        <label class="block text-sm font-medium text-slate-700 mb-1">Efternamn</label>
+                        <input type="text" id="signup-lastname"
+                            class="w-full px-4 py-3 border border-slate-200 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
+                            placeholder="Efternamn">
+                    </div>
                 </div>
                 <div>
                     <label class="block text-sm font-medium text-slate-700 mb-1">E-post</label>
@@ -185,7 +193,7 @@
                 tabSignup.classList.add('tab-active');
                 tabLogin.classList.remove('tab-active');
                 tabLogin.classList.add('text-slate-600');
-                document.getElementById('signup-name').focus();
+                document.getElementById('signup-firstname').focus();
             }
             hideStatus();
         }
@@ -325,7 +333,9 @@
             btn.disabled = true;
             btn.textContent = 'Skapar konto...';
 
-            const name = document.getElementById('signup-name').value;
+            const firstname = document.getElementById('signup-firstname').value.trim();
+            const lastname = document.getElementById('signup-lastname').value.trim();
+            const name = [firstname, lastname].filter(Boolean).join(' ');
             const email = document.getElementById('signup-email').value;
             const password = document.getElementById('signup-password').value;
 
