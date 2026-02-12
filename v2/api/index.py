@@ -560,7 +560,7 @@ INSTRUKTIONER:
    FÄRDIGHETER
    [Lista]
 
-VIKTIGT: Ta med ALLA jobb, ALLA utbildningar. Ett CV är en komplett översikt, inte ett urval.
+KRITISKT - Du MÅSTE inkludera VARJE jobb som listas ovan. Räkna jobben. Om det finns 5 jobb ovan måste det finnas 5 jobb i CV:t. INGA undantag. FILTRERA INTE.
 
 Skriv ENDAST CV-texten, inget annat."""
 
