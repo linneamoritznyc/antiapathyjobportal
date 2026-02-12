@@ -1588,6 +1588,191 @@ async def get_current_user(request: Request):
         }
 
 
+@app.post("/api/migrate-my-data")
+async def migrate_user_data(request: Request):
+    """Migrate pre-defined CV data for the logged-in user."""
+    auth_header = request.headers.get("Authorization", "")
+    if not auth_header.startswith("Bearer "):
+        raise HTTPException(status_code=401, detail="Ej inloggad")
+
+    token = auth_header.replace("Bearer ", "")
+
+    # Get user ID
+    async with httpx.AsyncClient() as client:
+        user_response = await client.get(
+            f"{SUPABASE_URL}/auth/v1/user",
+            headers={"apikey": SUPABASE_ANON_KEY, "Authorization": f"Bearer {token}"}
+        )
+        if user_response.status_code != 200:
+            raise HTTPException(status_code=401, detail="Ogiltig session")
+        user_id = user_response.json().get("id")
+
+    # Pre-defined data
+    EXPERIENCES = [
+        {"user_id": user_id, "company": "House of Beans", "title": "Barista/Forsaljare", "location": "Stockholm", "start_date": "2024-08", "end_date": "2025-02", "description": "Kaffe, te, forsaljning, ensam i butik, kundkontakt", "categories": ["restaurant", "retail"]},
+        {"user_id": user_id, "company": "Max Hamburgare", "title": "Restaurangbitrade", "location": "Stockholm", "start_date": "2024-04", "end_date": "2024-08", "description": "Drive-in, kok, servering, kassa, teamwork", "categories": ["restaurant"]},
+        {"user_id": user_id, "company": "Clubhouse", "title": "Innehallsmoderator - Trust & Safety", "location": "Remote", "start_date": "2021-06", "end_date": "2022-01", "description": "Trust & Safety, innehallsgranskning, community support, policy enforcement", "categories": ["tech", "customerservice", "content"]},
+        {"user_id": user_id, "company": "Minerva Project", "title": "Global Marketing Coordinator", "location": "San Francisco / Remote", "start_date": "2019-09", "end_date": "2020-04", "description": "Kundservice via Intercom, marknadsforing, internationell kommunikation", "categories": ["customerservice", "office"]},
+        {"user_id": user_id, "company": "Google Ads (via Cognizant)", "title": "Innehallsanalytiker", "location": "Dublin", "start_date": "2018-05", "end_date": "2019-04", "description": "100+ annonser/dag, policy compliance, kvalitetsgranskning, dataanalys", "categories": ["tech", "content"]},
+        {"user_id": user_id, "company": "Coffeehouse by George", "title": "Cafepersonal", "location": "Stockholm", "start_date": "2014", "end_date": "2015", "description": "Kassahantering, barista, kundservice", "categories": ["restaurant"]},
+        {"user_id": user_id, "company": "ICA Maxi", "title": "Kassapersonal", "location": "Stockholm", "start_date": "2015", "end_date": "2019", "description": "Kassa, sjalvscanning, frukt/gront (sommarjobb 2015, 2017, 2019)", "categories": ["retail"]}
+    ]
+
+    EDUCATION = [{"user_id": user_id, "school": "Minerva University", "degree": "Bachelor's Degree", "field_of_study": "Business, Arts & Humanities", "location": "San Francisco / Global", "start_date": "2016", "end_date": "2020"}]
+
+    PROFILE = {"user_id": user_id, "full_name": "Linnea Moritz", "email": "linneamoritz1@gmail.com", "phone": "0761166109", "location": "Sollentuna", "drivers_license": True, "languages": ["Svenska (Modersmal)", "Engelska (Flytande)"]}
+
+    CV_VERSIONS = [
+        {"user_id": user_id, "vibe_id": "restaurant", "vibe_name": "Restaurang & Cafe", "vibe_emoji": "", "cv_text": """LINNEA MORITZ
+Sollentuna | 0761166109 | linneamoritz1@gmail.com
+
+PROFIL
+Serviceinriktad och stresstalig person med bred erfarenhet fran restaurang och cafe. Trivs i hogt tempo och ar van vid att ge gaster en bra upplevelse. B-korkort och flexibel med arbetstider.
+
+ERFARENHET
+Barista/Forsaljare - House of Beans (Aug 2024 - Feb 2025)
+- Ansvarade for kaffe- och teservering
+- Arbetade ofta ensam i butik med fullt ansvar
+- Byggde upp kundrelationer och merforsaljning
+
+Restaurangbitrade - Max Hamburgare (Apr - Aug 2024)
+- Drive-in, kok och kassahantering
+- Effektiv i stressiga miljoer
+- Teamwork och snabb inlarning av nya system
+
+Cafepersonal - Coffeehouse by George (2014-2015)
+- Kassahantering och barista
+- Hog serviceniva i centralt lage
+
+UTBILDNING
+Minerva University - Bachelor's Degree (2016-2020)
+
+SPRAK & OVRIGT
+Svenska (modersmal), Engelska (flytande)
+B-korkort, Livsmedelshygien"""},
+        {"user_id": user_id, "vibe_id": "retail", "vibe_name": "Butik & Kassa", "vibe_emoji": "", "cv_text": """LINNEA MORITZ
+Sollentuna | 0761166109 | linneamoritz1@gmail.com
+
+PROFIL
+Serviceinriktad med erfarenhet fran bade butik och cafe. Van vid kassahantering, kundkontakt och att arbeta sjalvstandigt. Palitlig och flexibel med arbetstider.
+
+ERFARENHET
+Barista/Forsaljare - House of Beans (Aug 2024 - Feb 2025)
+- Forsaljning av kaffe, te och tillbehor
+- Arbetade ofta ensam med fullt butiksansvar
+- Kassahantering och lagerhantering
+- Byggde kundrelationer och merforsaljning
+
+Kassapersonal - ICA Maxi (Somrar 2015, 2017, 2019)
+- Kassahantering och sjalvscanning
+- Frukt- och grontavdelningen
+- Kundservice i hogt tempo
+
+Cafepersonal - Coffeehouse by George (2014-2015)
+- Kassa och kundservice
+- Barista i centralt lage
+
+UTBILDNING
+Minerva University - Bachelor's Degree (2016-2020)
+
+FARDIGHETER
+Kassasystem, Kortterminaler
+Lagerhantering, Varupafyllning
+Kundservice, Merforsaljning
+Svenska (modersmal), Engelska (flytande)
+B-korkort"""},
+        {"user_id": user_id, "vibe_id": "customerservice", "vibe_name": "Kundtjanst & Support", "vibe_emoji": "", "cv_text": """LINNEA MORITZ
+Sollentuna | 0761166109 | linneamoritz1@gmail.com
+
+PROFIL
+Kommunikativ och losningsorienterad med internationell erfarenhet inom kundservice och support. Van vid att hantera arenden via telefon, mail och chat. Flytande svenska och engelska.
+
+ERFARENHET
+Innehallsmoderator, Trust & Safety - Clubhouse (Jun 2021 - Jan 2022)
+- Hanterade anvandarrapporter och support-arenden
+- Tillampade community guidelines och policy
+- Arbetade i ett globalt, remote team
+
+Global Marketing Coordinator - Minerva Project (Sep 2019 - Apr 2020)
+- Kundservice via Intercom
+- Internationell kommunikation med studenter och partners
+- Marknadsforing och eventkoordinering
+
+Innehallsanalytiker - Google Ads (Maj 2018 - Apr 2019)
+- Granskade 100+ annonser dagligen
+- Policy compliance och kvalitetssakring
+- Datadriven analys och rapportering
+
+UTBILDNING
+Minerva University - Bachelor's Degree, Business & Humanities (2016-2020)
+
+FARDIGHETER
+Intercom, Zendesk, CRM-system
+Problemlosning, Multitasking
+Svenska (modersmal), Engelska (flytande)"""},
+        {"user_id": user_id, "vibe_id": "content", "vibe_name": "Content & Moderation", "vibe_emoji": "", "cv_text": """LINNEA MORITZ
+Sollentuna | 0761166109 | linneamoritz1@gmail.com
+
+PROFIL
+Erfaren innehallsgranskare med bakgrund inom Trust & Safety och policy compliance. Analytisk, noggrann och van vid att fatta snabba beslut baserat pa riktlinjer. Erfarenhet fran tech-bolag som Google och Clubhouse.
+
+ERFARENHET
+Innehallsmoderator, Trust & Safety - Clubhouse (Jun 2021 - Jan 2022)
+- Trust & Safety for social audio-plattform
+- Granskade rapporterat innehall enligt community guidelines
+- Eskalerade komplexa arenden till senior team
+- Remote-arbete i globalt team
+
+Innehallsanalytiker - Google Ads (Maj 2018 - Apr 2019)
+- Granskade 100+ annonser dagligen for policy compliance
+- Identifierade vilseledande och skadligt innehall
+- Hog accuracy och effektivitet under press
+- Bidrog till forbattring av granskningsprocesser
+
+UTBILDNING
+Minerva University - Bachelor's Degree (2016-2020)
+Tvarvetenskaplig utbildning i 7 lander
+
+FARDIGHETER
+Content Moderation, Trust & Safety
+Policy Compliance, Riktlinjetolkning
+Dataanalys, Kvalitetssakring
+Svenska (modersmal), Engelska (flytande)"""}
+    ]
+
+    results = {"profile": False, "experiences": 0, "education": 0, "cvs": 0}
+
+    # Save profile
+    saved = await db_request("POST", "user_profiles", data=PROFILE)
+    if saved:
+        results["profile"] = True
+
+    # Save experiences
+    for exp in EXPERIENCES:
+        saved = await db_request("POST", "user_experiences", data=exp)
+        if saved:
+            results["experiences"] += 1
+
+    # Save education
+    for edu in EDUCATION:
+        saved = await db_request("POST", "user_education", data=edu)
+        if saved:
+            results["education"] += 1
+
+    # Save CV versions
+    for cv in CV_VERSIONS:
+        cv["created_at"] = datetime.now().isoformat()
+        saved = await db_request("POST", "user_cvs", data=cv)
+        if saved:
+            results["cvs"] += 1
+
+    return {
+        "success": True,
+        "message": "Data migrerad!",
+        "results": results
+    }
+
+
 class UserPreferences(BaseModel):
     job_titles: str = ""
     locations: str = ""
