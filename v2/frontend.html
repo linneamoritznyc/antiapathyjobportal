@@ -480,6 +480,23 @@
                 setGenerating(false);
             };
 
+            // Check auth on mount
+            const [user, setUser] = useState(null);
+
+            useEffect(() => {
+                const storedUser = localStorage.getItem('user');
+                if (storedUser) {
+                    setUser(JSON.parse(storedUser));
+                }
+            }, []);
+
+            const handleLogout = () => {
+                localStorage.removeItem('auth_token');
+                localStorage.removeItem('refresh_token');
+                localStorage.removeItem('user');
+                setUser(null);
+            };
+
             return (
                 <div className="min-h-screen">
                     <header className="gradient text-white py-6 px-4">
@@ -488,6 +505,26 @@
                                 <div>
                                     <h1 className="text-2xl font-bold">Anti-Apathy Job Portal</h1>
                                     <p className="opacity-80 text-sm">Sök jobb utan apati. En ansökan i taget.</p>
+                                </div>
+                                <div className="flex items-center gap-3">
+                                    {user ? (
+                                        <>
+                                            <span className="text-white/80 text-sm">{user.email}</span>
+                                            <button
+                                                onClick={handleLogout}
+                                                className="bg-white/20 hover:bg-white/30 px-4 py-2 rounded-lg text-sm font-medium transition"
+                                            >
+                                                Logga ut
+                                            </button>
+                                        </>
+                                    ) : (
+                                        <a
+                                            href="/login"
+                                            className="bg-white text-indigo-600 px-4 py-2 rounded-lg text-sm font-medium hover:bg-white/90 transition"
+                                        >
+                                            Logga in
+                                        </a>
+                                    )}
                                 </div>
                             </div>
                             <NavTabs activeTab={activeTab} setActiveTab={setActiveTab} />
