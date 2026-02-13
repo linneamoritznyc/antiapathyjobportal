@@ -333,7 +333,7 @@ def db_request(method: str, table: str, data: dict = None, params: dict = None):
 
 def migrate():
     print(f"\nMigrerar data for anvandare: {USER_ID}")
-    print(f"   Email: linneamoritz1@gmail.com")
+    print("   Email: linneamoritz1@gmail.com")
     print(f"   Supabase: {SUPABASE_URL}\n")
 
     # 1. Profil
@@ -377,8 +377,8 @@ def migrate():
             print(f"   OK {cv['vibe_name']}")
 
     print("\nMigration klar!")
-    print(f"   Profil: OK")
-    print(f"   Preferenser: OK")
+    print("   Profil: OK")
+    print("   Preferenser: OK")
     print(f"   Erfarenheter: {len(EXPERIENCES)} st")
     print(f"   Utbildning: {len(EDUCATION)} st")
     print(f"   Fardigheter: {len(SKILLS)} st")

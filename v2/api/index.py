@@ -17,6 +17,7 @@ import base64
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 from urllib.parse import urlencode
+import pathlib
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -248,7 +249,7 @@ def calculate_priority(deadline: Optional[str]) -> str:
         elif days_left <= 7:
             return "soon"
         return "normal"
-    except:
+    except Exception:
         return "normal"
 
 
@@ -1505,15 +1506,13 @@ def _create_gmail_link(job: Dict, letter: str) -> str:
 
 # ============== FRONTEND ==============
 
-import pathlib
-
 def get_setup_guide_html():
     """Load Gmail setup guide HTML"""
     try:
         guide_path = pathlib.Path(__file__).parent.parent / "setup-guide.html"
         if guide_path.exists():
             return guide_path.read_text(encoding='utf-8')
-    except:
+    except Exception:
         pass
     return "<h1>Setup guide not found</h1>"
 
@@ -1524,7 +1523,7 @@ def get_login_html():
         login_path = pathlib.Path(__file__).parent.parent / "login.html"
         if login_path.exists():
             return login_path.read_text(encoding='utf-8')
-    except:
+    except Exception:
         pass
     return "<h1>Login page not found</h1>"
 
@@ -1535,7 +1534,7 @@ def get_frontend_html():
         frontend_path = pathlib.Path(__file__).parent.parent / "frontend.html"
         if frontend_path.exists():
             return frontend_path.read_text(encoding='utf-8')
-    except:
+    except Exception:
         pass
 
     # Fallback: minimal embedded version
@@ -1615,7 +1614,7 @@ async def resend_verification(request: ResendVerificationRequest):
         raise HTTPException(status_code=500, detail="Supabase not configured")
 
     async with httpx.AsyncClient() as client:
-        response = await client.post(
+        await client.post(
             f"{SUPABASE_URL}/auth/v1/resend",
             headers={
                 "apikey": SUPABASE_ANON_KEY,
@@ -1707,7 +1706,7 @@ async def reset_password(request: ResetPasswordRequest):
         raise HTTPException(status_code=500, detail="Supabase not configured")
 
     async with httpx.AsyncClient() as client:
-        response = await client.post(
+        await client.post(
             f"{SUPABASE_URL}/auth/v1/recover",
             headers={
                 "apikey": SUPABASE_ANON_KEY,
@@ -2104,7 +2103,7 @@ async def save_user_preferences(request: Request, prefs: UserPreferences):
     }
 
     async with httpx.AsyncClient() as client:
-        response = await client.post(
+        await client.post(
             f"{SUPABASE_URL}/rest/v1/user_job_preferences",
             headers={
                 "apikey": SUPABASE_KEY,
@@ -2667,7 +2666,7 @@ async def upload_and_analyze_cv(request: Request):
             # Try to decode as text (for plain text CVs)
             try:
                 cv_text = file_content.decode('utf-8')
-            except:
+            except (UnicodeDecodeError, AttributeError):
                 # For PDF, we'd need a PDF parser - for now return helpful message
                 cv_text = "[PDF-fil uppladdad - texten extraheras]"
     else:
@@ -3088,9 +3087,9 @@ async def save_google_credentials(request: GoogleCredentialsRequest, user_id: st
     # Upsert credentials
     existing = await db_request("GET", "user_google_credentials", params={"user_id": f"eq.{user_id}"})
     if existing:
-        result = await db_request("PATCH", f"user_google_credentials?user_id=eq.{user_id}", data=data)
+        await db_request("PATCH", f"user_google_credentials?user_id=eq.{user_id}", data=data)
     else:
-        result = await db_request("POST", "user_google_credentials", data=data)
+        await db_request("POST", "user_google_credentials", data=data)
 
     return {"success": True, "message": "Credentials saved. Now connect your Gmail."}
 
@@ -3156,7 +3155,7 @@ async def gmail_oauth_callback(code: str, state: str = "default_user"):
         )
 
         if response.status_code != 200:
-            logger.error(f"Token exchange failed: {response.text}")
+            logger.error(f"Token exchange failed with status {response.status_code}")
             raise HTTPException(status_code=400, detail="Failed to exchange code for tokens")
 
         tokens = response.json()
@@ -3224,7 +3223,7 @@ async def refresh_gmail_token(user_id: str) -> Optional[str]:
             exp_time = datetime.fromisoformat(expires_at.replace('Z', '+00:00'))
             if exp_time > datetime.now(exp_time.tzinfo):
                 return cred.get("access_token")
-        except:
+        except (ValueError, TypeError):
             pass
 
     # Refresh token
@@ -3334,7 +3333,7 @@ async def privacy_policy_page():
         policy_path = pathlib.Path(__file__).parent.parent / "integritetspolicy.html"
         if policy_path.exists():
             return policy_path.read_text(encoding='utf-8')
-    except:
+    except Exception:
         pass
     return "<h1>Integritetspolicy kunde inte laddas</h1>"
 
@@ -3429,7 +3428,7 @@ async def get_ai_feedback(request: Request):
 # ============== GDPR ==============
 
 @app.get("/api/user/export-data")
-async def export_user_data(request: Request):
+async def export_user_data_gdpr(request: Request):
     """Export all user data as JSON (GDPR Article 20)."""
     auth_header = request.headers.get("Authorization", "")
     if not auth_header.startswith("Bearer "):
@@ -3554,7 +3553,7 @@ async def account_page():
         account_path = pathlib.Path(__file__).parent.parent / "account.html"
         if account_path.exists():
             return account_path.read_text(encoding='utf-8')
-    except:
+    except Exception:
         pass
     return "<h1>Kontosidan kunde inte laddas</h1>"
 
