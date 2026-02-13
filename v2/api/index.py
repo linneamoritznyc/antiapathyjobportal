@@ -64,6 +64,17 @@ class SaveApplicationRequest(BaseModel):
     status: str = "draft"
 
 
+class UpdateApplicationRequest(BaseModel):
+    status: Optional[str] = None
+    notes: Optional[str] = None
+    cover_letter: Optional[str] = None
+
+
+class SaveJobRequest(BaseModel):
+    job_id: str
+    notes: Optional[str] = None
+
+
 # ============== AUTH MODELS ==============
 
 class SignUpRequest(BaseModel):
@@ -705,11 +716,30 @@ async def get_jobs_from_db(limit: int = 50) -> List[Dict]:
 
 
 async def get_applications_from_db() -> List[Dict]:
-    """Get all applications"""
-    apps = await db_request("GET", "applications", params={
-        "order": "created_at.desc"
-    })
-    return apps or []
+    """Get all applications with job details"""
+    # Use Supabase's select to embed job data
+    url = f"{SUPABASE_URL}/rest/v1/applications?select=*,jobs(id,title,company,contact_email,url,deadline)&order=created_at.desc"
+    async with httpx.AsyncClient() as client:
+        response = await client.get(
+            url,
+            headers={
+                "apikey": SUPABASE_KEY,
+                "Authorization": f"Bearer {SUPABASE_KEY}"
+            }
+        )
+        if response.status_code == 200:
+            apps = response.json()
+            # Flatten job details into application
+            for app in apps:
+                if app.get("jobs"):
+                    app["job_title"] = app["jobs"].get("title")
+                    app["company"] = app["jobs"].get("company")
+                    app["contact_email"] = app["jobs"].get("contact_email")
+                    app["job_url"] = app["jobs"].get("url")
+                    app["deadline"] = app["jobs"].get("deadline")
+                    del app["jobs"]
+            return apps
+    return []
 
 
 # ============== API ENDPOINTS ==============
@@ -803,10 +833,25 @@ async def create_letter(job_id: str, request: GenerateLetterRequest = None):
 
 
 @app.post("/api/applications")
-async def save_application(request: SaveApplicationRequest):
+async def save_application(request: SaveApplicationRequest, req: Request):
     """Save an application"""
+    # Get user_id from auth token
+    auth_header = req.headers.get("Authorization", "")
+    user_id = "default_user"
+
+    if auth_header.startswith("Bearer "):
+        token = auth_header.replace("Bearer ", "")
+        async with httpx.AsyncClient() as client:
+            user_response = await client.get(
+                f"{SUPABASE_URL}/auth/v1/user",
+                headers={"apikey": SUPABASE_ANON_KEY, "Authorization": f"Bearer {token}"}
+            )
+            if user_response.status_code == 200:
+                user_id = user_response.json().get("id", "default_user")
+
     data = {
         "job_id": request.job_id,
+        "user_id": user_id,
         "cover_letter": request.cover_letter,
         "status": request.status,
         "created_at": datetime.now().isoformat()
@@ -823,6 +868,147 @@ async def list_applications():
     """List all applications"""
     apps = await get_applications_from_db()
     return {"success": True, "applications": apps}
+
+
+@app.patch("/api/applications/{application_id}")
+async def update_application(application_id: str, request: UpdateApplicationRequest):
+    """Update an application's status, notes, or cover letter"""
+    update_data = {"updated_at": datetime.now().isoformat()}
+
+    if request.status is not None:
+        update_data["status"] = request.status
+        if request.status == "sent":
+            update_data["sent_at"] = datetime.now().isoformat()
+
+    if request.notes is not None:
+        update_data["notes"] = request.notes
+
+    if request.cover_letter is not None:
+        update_data["cover_letter"] = request.cover_letter
+
+    # Update via Supabase REST API
+    url = f"{SUPABASE_URL}/rest/v1/applications?id=eq.{application_id}"
+    async with httpx.AsyncClient() as client:
+        response = await client.patch(
+            url,
+            json=update_data,
+            headers={
+                "apikey": SUPABASE_KEY,
+                "Authorization": f"Bearer {SUPABASE_KEY}",
+                "Content-Type": "application/json",
+                "Prefer": "return=representation"
+            }
+        )
+        if response.status_code in [200, 201]:
+            result = response.json()
+            if result:
+                return {"success": True, "application": result[0]}
+
+    raise HTTPException(status_code=500, detail="Could not update application")
+
+
+@app.delete("/api/applications/{application_id}")
+async def delete_application(application_id: str):
+    """Delete an application"""
+    url = f"{SUPABASE_URL}/rest/v1/applications?id=eq.{application_id}"
+    async with httpx.AsyncClient() as client:
+        response = await client.delete(
+            url,
+            headers={
+                "apikey": SUPABASE_KEY,
+                "Authorization": f"Bearer {SUPABASE_KEY}"
+            }
+        )
+        if response.status_code in [200, 204]:
+            return {"success": True}
+
+    raise HTTPException(status_code=500, detail="Could not delete application")
+
+
+@app.post("/api/jobs/{job_id}/save")
+async def save_job(job_id: str, request: Request):
+    """Save/bookmark a job for later"""
+    # Get user_id from auth token if available
+    auth_header = request.headers.get("Authorization", "")
+    user_id = "default_user"
+
+    if auth_header.startswith("Bearer "):
+        token = auth_header.replace("Bearer ", "")
+        async with httpx.AsyncClient() as client:
+            user_response = await client.get(
+                f"{SUPABASE_URL}/auth/v1/user",
+                headers={"apikey": SUPABASE_ANON_KEY, "Authorization": f"Bearer {token}"}
+            )
+            if user_response.status_code == 200:
+                user_id = user_response.json().get("id", "default_user")
+
+    # Check if application already exists
+    existing = await db_request("GET", "applications", params={
+        "job_id": f"eq.{job_id}",
+        "user_id": f"eq.{user_id}"
+    })
+
+    if existing and len(existing) > 0:
+        # Update existing to saved
+        url = f"{SUPABASE_URL}/rest/v1/applications?id=eq.{existing[0]['id']}"
+        async with httpx.AsyncClient() as client:
+            response = await client.patch(
+                url,
+                json={"status": "saved", "updated_at": datetime.now().isoformat()},
+                headers={
+                    "apikey": SUPABASE_KEY,
+                    "Authorization": f"Bearer {SUPABASE_KEY}",
+                    "Content-Type": "application/json",
+                    "Prefer": "return=representation"
+                }
+            )
+            if response.status_code in [200, 201]:
+                return {"success": True, "application": response.json()[0]}
+    else:
+        # Create new saved application
+        data = {
+            "job_id": job_id,
+            "user_id": user_id,
+            "status": "saved",
+            "created_at": datetime.now().isoformat()
+        }
+        result = await db_request("POST", "applications", data=data)
+        if result:
+            return {"success": True, "application": result[0]}
+
+    raise HTTPException(status_code=500, detail="Could not save job")
+
+
+@app.delete("/api/jobs/{job_id}/save")
+async def unsave_job(job_id: str, request: Request):
+    """Remove a saved job"""
+    auth_header = request.headers.get("Authorization", "")
+    user_id = "default_user"
+
+    if auth_header.startswith("Bearer "):
+        token = auth_header.replace("Bearer ", "")
+        async with httpx.AsyncClient() as client:
+            user_response = await client.get(
+                f"{SUPABASE_URL}/auth/v1/user",
+                headers={"apikey": SUPABASE_ANON_KEY, "Authorization": f"Bearer {token}"}
+            )
+            if user_response.status_code == 200:
+                user_id = user_response.json().get("id", "default_user")
+
+    # Delete saved application
+    url = f"{SUPABASE_URL}/rest/v1/applications?job_id=eq.{job_id}&user_id=eq.{user_id}&status=eq.saved"
+    async with httpx.AsyncClient() as client:
+        response = await client.delete(
+            url,
+            headers={
+                "apikey": SUPABASE_KEY,
+                "Authorization": f"Bearer {SUPABASE_KEY}"
+            }
+        )
+        if response.status_code in [200, 204]:
+            return {"success": True}
+
+    raise HTTPException(status_code=500, detail="Could not unsave job")
 
 
 @app.get("/api/stats")

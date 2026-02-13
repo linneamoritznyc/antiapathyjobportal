@@ -116,12 +116,32 @@
             </div>
         );
 
-        // Job card
-        const JobCard = ({ job, onApply, loading }) => {
+        // Job card with save functionality
+        const JobCard = ({ job, onApply, onSave, loading, savedJobs = [] }) => {
+            const [saving, setSaving] = useState(false);
+            const isSaved = savedJobs.includes(job.id);
+
             const priorityColors = {
                 urgent: "bg-red-100 text-red-700",
                 soon: "bg-amber-100 text-amber-700",
                 normal: "bg-green-100 text-green-700"
+            };
+
+            const handleSave = async (e) => {
+                e.stopPropagation();
+                setSaving(true);
+                try {
+                    const token = localStorage.getItem('auth_token');
+                    const method = isSaved ? 'DELETE' : 'POST';
+                    await fetch(`/api/jobs/${job.id}/save`, {
+                        method,
+                        headers: { 'Authorization': `Bearer ${token}` }
+                    });
+                    if (onSave) onSave(job.id, !isSaved);
+                } catch (err) {
+                    console.error('Error saving job:', err);
+                }
+                setSaving(false);
             };
 
             return (
@@ -130,11 +150,21 @@
                         <span className={`text-xs px-2 py-1 rounded-full ${priorityColors[job.priority] || priorityColors.normal}`}>
                             {job.priority === 'urgent' ? '⚡ Akut' : job.priority === 'soon' ? '⏰ Snart' : '✓'}
                         </span>
-                        {job.deadline && (
-                            <span className="text-xs text-slate-400">
-                                {new Date(job.deadline).toLocaleDateString('sv-SE')}
-                            </span>
-                        )}
+                        <div className="flex items-center gap-2">
+                            <button
+                                onClick={handleSave}
+                                disabled={saving}
+                                className={`text-lg hover:scale-110 transition ${isSaved ? 'text-blue-500' : 'text-slate-300 hover:text-blue-400'}`}
+                                title={isSaved ? 'Ta bort från sparade' : 'Spara för senare'}
+                            >
+                                {saving ? '...' : isSaved ? '📌' : '📍'}
+                            </button>
+                            {job.deadline && (
+                                <span className="text-xs text-slate-400">
+                                    {new Date(job.deadline).toLocaleDateString('sv-SE')}
+                                </span>
+                            )}
+                        </div>
                     </div>
                     <h3 className="text-lg font-semibold text-slate-800">{job.title}</h3>
                     <p className="text-indigo-600 font-medium text-sm">{job.company}</p>
@@ -183,22 +213,55 @@
         };
 
         // Application modal
-        const ApplyModal = ({ isOpen, job, result, onClose }) => {
+        const ApplyModal = ({ isOpen, job, result, onClose, onSaveApplication }) => {
             const [letter, setLetter] = useState('');
             const [feedback, setFeedback] = useState('');
             const [showFeedback, setShowFeedback] = useState(false);
             const [savingFeedback, setSavingFeedback] = useState(false);
+            const [applicationSaved, setApplicationSaved] = useState(false);
 
             useEffect(() => {
                 if (result?.cover_letter) setLetter(result.cover_letter);
+                setApplicationSaved(false);
             }, [result]);
 
             if (!isOpen || !job) return null;
 
-            const openGmail = () => {
+            const saveApplication = async (status = 'draft') => {
+                if (applicationSaved && status === 'draft') return;
+                try {
+                    const token = localStorage.getItem('auth_token');
+                    await fetch('/api/applications', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'Authorization': `Bearer ${token}`
+                        },
+                        body: JSON.stringify({
+                            job_id: job.id,
+                            cover_letter: letter,
+                            status: status
+                        })
+                    });
+                    setApplicationSaved(true);
+                    if (onSaveApplication) onSaveApplication();
+                } catch (err) {
+                    console.error('Error saving application:', err);
+                }
+            };
+
+            const openGmail = async () => {
+                // Save as draft first
+                await saveApplication('draft');
                 const subject = encodeURIComponent(`Ansokan: ${job.title}`);
                 const body = encodeURIComponent(letter);
                 window.open(`https://mail.google.com/mail/?view=cm&fs=1&to=${job.contact_email}&su=${subject}&body=${body}`, '_blank');
+            };
+
+            const markAsSent = async () => {
+                await saveApplication('sent');
+                alert('Markerad som skickad!');
+                onClose();
             };
 
             const copyLetter = () => {
@@ -285,12 +348,32 @@
                                 </div>
                             )}
 
-                            <div className="flex gap-3 mt-4">
+                            <div className="flex gap-3 mt-4 flex-wrap">
                                 <button onClick={openGmail} className="flex-1 bg-green-600 text-white py-2.5 px-4 rounded-lg font-medium hover:bg-green-700">
                                     Oppna i Gmail
                                 </button>
+                                <button
+                                    onClick={markAsSent}
+                                    className="px-4 py-2.5 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700"
+                                >
+                                    Markera skickad
+                                </button>
                                 <button onClick={copyLetter} className="px-4 py-2.5 border border-slate-200 rounded-lg hover:bg-slate-50">
                                     Kopiera
+                                </button>
+                                <button
+                                    onClick={() => {
+                                        const blob = new Blob([letter], { type: 'text/plain;charset=utf-8' });
+                                        const url = URL.createObjectURL(blob);
+                                        const a = document.createElement('a');
+                                        a.href = url;
+                                        a.download = `personligt-brev-${job.title || 'jobb'}.txt`;
+                                        a.click();
+                                        URL.revokeObjectURL(url);
+                                    }}
+                                    className="px-4 py-2.5 border border-slate-200 rounded-lg hover:bg-slate-50"
+                                >
+                                    Ladda ner
                                 </button>
                                 <button
                                     onClick={() => setShowFeedback(!showFeedback)}
@@ -526,7 +609,7 @@
         };
 
         // Jobs page
-        const JobsPage = ({ jobs, onScrape, onApply, scraping, applyingJob }) => {
+        const JobsPage = ({ jobs, onScrape, onApply, scraping, applyingJob, savedJobs, onSaveJob }) => {
             const [keywords, setKeywords] = useState('');
             const [filterText, setFilterText] = useState('');
             const [filterPriority, setFilterPriority] = useState('all');
@@ -677,7 +760,9 @@
                                                     key={job.id}
                                                     job={job}
                                                     onApply={onApply}
+                                                    onSave={onSaveJob}
                                                     loading={applyingJob === job.id}
+                                                    savedJobs={savedJobs || []}
                                                 />
                                             ))}
                                         </div>
@@ -1390,39 +1475,278 @@
             </div>
         );
 
-        // Applications page
-        const ApplicationsPage = ({ applications }) => (
-            <div>
-                <h2 className="text-lg font-semibold mb-4">📬 Mina ansökningar</h2>
-                {applications.length === 0 ? (
-                    <div className="bg-white rounded-xl p-10 text-center shadow-sm">
-                        <p className="text-slate-500">Inga ansökningar ännu.</p>
+        // Applications page with status management
+        const ApplicationsPage = ({ applications, onUpdateApplication, onDeleteApplication, onRefresh }) => {
+            const [filter, setFilter] = useState('all');
+            const [editingNotes, setEditingNotes] = useState(null);
+            const [noteText, setNoteText] = useState('');
+            const [expandedApp, setExpandedApp] = useState(null);
+            const [updating, setUpdating] = useState(null);
+
+            const statusOptions = [
+                { value: 'saved', label: '📌 Sparad', color: 'bg-blue-100 text-blue-700' },
+                { value: 'draft', label: '📝 Utkast', color: 'bg-slate-100 text-slate-600' },
+                { value: 'sent', label: '✓ Skickad', color: 'bg-green-100 text-green-700' },
+                { value: 'interview', label: '🎉 Intervju', color: 'bg-purple-100 text-purple-700' },
+                { value: 'offer', label: '🎊 Erbjudande', color: 'bg-amber-100 text-amber-700' },
+                { value: 'rejected', label: '✗ Avslag', color: 'bg-red-100 text-red-700' },
+                { value: 'skipped', label: '⏭️ Hoppade över', color: 'bg-gray-100 text-gray-500' }
+            ];
+
+            const getStatusInfo = (status) => statusOptions.find(s => s.value === status) || statusOptions[1];
+
+            const handleStatusChange = async (appId, newStatus) => {
+                setUpdating(appId);
+                try {
+                    const token = localStorage.getItem('auth_token');
+                    const response = await fetch(`/api/applications/${appId}`, {
+                        method: 'PATCH',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'Authorization': `Bearer ${token}`
+                        },
+                        body: JSON.stringify({ status: newStatus })
+                    });
+                    if (response.ok && onRefresh) {
+                        await onRefresh();
+                    }
+                } catch (err) {
+                    console.error('Error updating status:', err);
+                }
+                setUpdating(null);
+            };
+
+            const handleSaveNotes = async (appId) => {
+                setUpdating(appId);
+                try {
+                    const token = localStorage.getItem('auth_token');
+                    await fetch(`/api/applications/${appId}`, {
+                        method: 'PATCH',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'Authorization': `Bearer ${token}`
+                        },
+                        body: JSON.stringify({ notes: noteText })
+                    });
+                    setEditingNotes(null);
+                    if (onRefresh) await onRefresh();
+                } catch (err) {
+                    console.error('Error saving notes:', err);
+                }
+                setUpdating(null);
+            };
+
+            const handleDelete = async (appId) => {
+                if (!confirm('Ta bort denna ansökan?')) return;
+                try {
+                    const token = localStorage.getItem('auth_token');
+                    await fetch(`/api/applications/${appId}`, {
+                        method: 'DELETE',
+                        headers: { 'Authorization': `Bearer ${token}` }
+                    });
+                    if (onRefresh) await onRefresh();
+                } catch (err) {
+                    console.error('Error deleting:', err);
+                }
+            };
+
+            const downloadCoverLetter = (app) => {
+                if (!app.cover_letter) return;
+                const blob = new Blob([app.cover_letter], { type: 'text/plain;charset=utf-8' });
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = `personligt-brev-${app.job_title || 'jobb'}.txt`;
+                a.click();
+                URL.revokeObjectURL(url);
+            };
+
+            const filteredApps = applications.filter(app => {
+                if (filter === 'all') return true;
+                if (filter === 'active') return ['saved', 'draft', 'sent'].includes(app.status);
+                return app.status === filter;
+            });
+
+            const counts = {
+                all: applications.length,
+                saved: applications.filter(a => a.status === 'saved').length,
+                sent: applications.filter(a => a.status === 'sent').length,
+                interview: applications.filter(a => a.status === 'interview').length
+            };
+
+            return (
+                <div>
+                    <div className="flex justify-between items-center mb-4">
+                        <h2 className="text-lg font-semibold">📬 Mina ansökningar</h2>
+                        <div className="flex gap-2">
+                            {[
+                                { id: 'all', label: `Alla (${counts.all})` },
+                                { id: 'saved', label: `📌 Sparade (${counts.saved})` },
+                                { id: 'sent', label: `✓ Skickade (${counts.sent})` },
+                                { id: 'interview', label: `🎉 Intervjuer (${counts.interview})` }
+                            ].map(f => (
+                                <button
+                                    key={f.id}
+                                    onClick={() => setFilter(f.id)}
+                                    className={`px-3 py-1 rounded-lg text-sm ${filter === f.id ? 'bg-indigo-600 text-white' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}`}
+                                >
+                                    {f.label}
+                                </button>
+                            ))}
+                        </div>
                     </div>
-                ) : (
-                    <div className="space-y-3">
-                        {applications.map(app => (
-                            <div key={app.id} className="bg-white rounded-xl p-4 shadow-sm flex justify-between items-center">
-                                <div>
-                                    <p className="font-medium text-slate-800">{app.job_title || 'Jobb'}</p>
-                                    <p className="text-sm text-slate-500">{new Date(app.created_at).toLocaleDateString('sv-SE')}</p>
-                                </div>
-                                <span className={`px-3 py-1 rounded-full text-xs font-medium ${
-                                    app.status === 'sent' ? 'bg-green-100 text-green-700' :
-                                    app.status === 'interview' ? 'bg-purple-100 text-purple-700' :
-                                    app.status === 'rejected' ? 'bg-red-100 text-red-700' :
-                                    'bg-slate-100 text-slate-600'
-                                }`}>
-                                    {app.status === 'sent' ? '✓ Skickad' :
-                                     app.status === 'interview' ? '🎉 Intervju' :
-                                     app.status === 'rejected' ? '✗ Avslag' :
-                                     'Utkast'}
-                                </span>
-                            </div>
-                        ))}
-                    </div>
-                )}
-            </div>
-        );
+
+                    {applications.length === 0 ? (
+                        <div className="bg-white rounded-xl p-10 text-center shadow-sm">
+                            <p className="text-slate-500 mb-2">Inga ansökningar ännu.</p>
+                            <p className="text-sm text-slate-400">Sök jobb och klicka "Ansök" för att komma igång!</p>
+                        </div>
+                    ) : filteredApps.length === 0 ? (
+                        <div className="bg-white rounded-xl p-10 text-center shadow-sm">
+                            <p className="text-slate-500">Inga ansökningar med denna status.</p>
+                        </div>
+                    ) : (
+                        <div className="space-y-3">
+                            {filteredApps.map(app => {
+                                const statusInfo = getStatusInfo(app.status);
+                                const isExpanded = expandedApp === app.id;
+
+                                return (
+                                    <div key={app.id} className="bg-white rounded-xl shadow-sm overflow-hidden">
+                                        <div
+                                            className="p-4 cursor-pointer hover:bg-slate-50"
+                                            onClick={() => setExpandedApp(isExpanded ? null : app.id)}
+                                        >
+                                            <div className="flex justify-between items-start">
+                                                <div className="flex-1">
+                                                    <p className="font-medium text-slate-800">{app.job_title || 'Jobb'}</p>
+                                                    <p className="text-sm text-indigo-600">{app.company || ''}</p>
+                                                    <p className="text-xs text-slate-400 mt-1">
+                                                        {new Date(app.created_at).toLocaleDateString('sv-SE')}
+                                                        {app.sent_at && ` • Skickad ${new Date(app.sent_at).toLocaleDateString('sv-SE')}`}
+                                                    </p>
+                                                </div>
+                                                <div className="flex items-center gap-2">
+                                                    <select
+                                                        value={app.status}
+                                                        onChange={(e) => {
+                                                            e.stopPropagation();
+                                                            handleStatusChange(app.id, e.target.value);
+                                                        }}
+                                                        onClick={(e) => e.stopPropagation()}
+                                                        disabled={updating === app.id}
+                                                        className={`px-3 py-1 rounded-full text-xs font-medium border-0 cursor-pointer ${statusInfo.color}`}
+                                                    >
+                                                        {statusOptions.map(opt => (
+                                                            <option key={opt.value} value={opt.value}>{opt.label}</option>
+                                                        ))}
+                                                    </select>
+                                                    <svg className={`w-5 h-5 text-slate-400 transition ${isExpanded ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                                                    </svg>
+                                                </div>
+                                            </div>
+                                            {app.notes && !isExpanded && (
+                                                <p className="text-sm text-slate-500 mt-2 line-clamp-1">📝 {app.notes}</p>
+                                            )}
+                                        </div>
+
+                                        {isExpanded && (
+                                            <div className="border-t border-slate-100 p-4 bg-slate-50">
+                                                {/* Notes section */}
+                                                <div className="mb-4">
+                                                    <label className="text-sm font-medium text-slate-700 block mb-2">Anteckningar</label>
+                                                    {editingNotes === app.id ? (
+                                                        <div>
+                                                            <textarea
+                                                                value={noteText}
+                                                                onChange={(e) => setNoteText(e.target.value)}
+                                                                className="w-full p-2 border border-slate-200 rounded-lg text-sm"
+                                                                rows={3}
+                                                                placeholder="T.ex. 'Ringde och pratade med Anna, ska höra av sig nästa vecka'"
+                                                            />
+                                                            <div className="flex gap-2 mt-2">
+                                                                <button
+                                                                    onClick={() => handleSaveNotes(app.id)}
+                                                                    disabled={updating === app.id}
+                                                                    className="px-3 py-1 bg-indigo-600 text-white rounded text-sm hover:bg-indigo-700 disabled:opacity-50"
+                                                                >
+                                                                    Spara
+                                                                </button>
+                                                                <button
+                                                                    onClick={() => setEditingNotes(null)}
+                                                                    className="px-3 py-1 border border-slate-200 rounded text-sm hover:bg-slate-100"
+                                                                >
+                                                                    Avbryt
+                                                                </button>
+                                                            </div>
+                                                        </div>
+                                                    ) : (
+                                                        <div
+                                                            onClick={() => { setEditingNotes(app.id); setNoteText(app.notes || ''); }}
+                                                            className="p-2 bg-white border border-slate-200 rounded-lg text-sm text-slate-600 cursor-pointer hover:border-indigo-300 min-h-[60px]"
+                                                        >
+                                                            {app.notes || <span className="text-slate-400">Klicka för att lägga till anteckningar...</span>}
+                                                        </div>
+                                                    )}
+                                                </div>
+
+                                                {/* Cover letter preview */}
+                                                {app.cover_letter && (
+                                                    <div className="mb-4">
+                                                        <label className="text-sm font-medium text-slate-700 block mb-2">Personligt brev</label>
+                                                        <div className="p-3 bg-white border border-slate-200 rounded-lg text-sm text-slate-600 max-h-32 overflow-y-auto">
+                                                            {app.cover_letter.slice(0, 300)}...
+                                                        </div>
+                                                    </div>
+                                                )}
+
+                                                {/* Actions */}
+                                                <div className="flex gap-2 flex-wrap">
+                                                    {app.contact_email && (
+                                                        <a
+                                                            href={`mailto:${app.contact_email}?subject=Angående min ansökan: ${app.job_title || 'Jobb'}`}
+                                                            className="px-3 py-1.5 bg-green-600 text-white rounded-lg text-sm hover:bg-green-700"
+                                                        >
+                                                            📧 Maila
+                                                        </a>
+                                                    )}
+                                                    {app.cover_letter && (
+                                                        <button
+                                                            onClick={() => downloadCoverLetter(app)}
+                                                            className="px-3 py-1.5 border border-slate-200 rounded-lg text-sm hover:bg-slate-100"
+                                                        >
+                                                            ⬇️ Ladda ner brev
+                                                        </button>
+                                                    )}
+                                                    {app.cover_letter && (
+                                                        <button
+                                                            onClick={() => {
+                                                                navigator.clipboard.writeText(app.cover_letter);
+                                                                alert('Kopierat!');
+                                                            }}
+                                                            className="px-3 py-1.5 border border-slate-200 rounded-lg text-sm hover:bg-slate-100"
+                                                        >
+                                                            📋 Kopiera brev
+                                                        </button>
+                                                    )}
+                                                    <button
+                                                        onClick={() => handleDelete(app.id)}
+                                                        className="px-3 py-1.5 border border-red-200 text-red-600 rounded-lg text-sm hover:bg-red-50"
+                                                    >
+                                                        🗑️ Ta bort
+                                                    </button>
+                                                </div>
+                                            </div>
+                                        )}
+                                    </div>
+                                );
+                            })}
+                        </div>
+                    )}
+                </div>
+            );
+        };
 
         // ============== ONBOARDING ==============
 
@@ -2067,7 +2391,26 @@
             const fetchApplications = async () => {
                 const res = await fetch('/api/applications');
                 const data = await res.json();
-                if (data.success) setApplications(data.applications || []);
+                if (data.success) {
+                    setApplications(data.applications || []);
+                    // Extract saved job IDs
+                    const saved = (data.applications || [])
+                        .filter(a => a.status === 'saved')
+                        .map(a => a.job_id);
+                    setSavedJobs(saved);
+                }
+            };
+
+            const [savedJobs, setSavedJobs] = useState([]);
+
+            const handleSaveJob = (jobId, isSaved) => {
+                if (isSaved) {
+                    setSavedJobs(prev => [...prev, jobId]);
+                } else {
+                    setSavedJobs(prev => prev.filter(id => id !== jobId));
+                }
+                // Refresh applications list
+                fetchApplications();
             };
 
             const fetchStats = async () => {
@@ -2437,6 +2780,8 @@
                                 onApply={handleApply}
                                 scraping={scraping}
                                 applyingJob={applyingJob}
+                                savedJobs={savedJobs}
+                                onSaveJob={handleSaveJob}
                             />
                         )}
 
@@ -2454,7 +2799,10 @@
                         )}
 
                         {activeTab === 'applications' && (
-                            <ApplicationsPage applications={applications} />
+                            <ApplicationsPage
+                                applications={applications}
+                                onRefresh={fetchApplications}
+                            />
                         )}
                     </main>
 
@@ -2462,7 +2810,8 @@
                         isOpen={showApplyModal}
                         job={selectedJob}
                         result={applyResult}
-                        onClose={() => setShowApplyModal(false)}
+                        onClose={() => { setShowApplyModal(false); fetchApplications(); fetchStats(); }}
+                        onSaveApplication={() => { fetchApplications(); fetchStats(); }}
                     />
 
                     <CVModal
