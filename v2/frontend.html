@@ -100,12 +100,13 @@
 
         // Stats dashboard
         const Stats = ({ stats }) => (
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
+            <div className="grid grid-cols-2 md:grid-cols-5 gap-4 mb-6">
                 {[
                     { label: "Jobb", value: stats.total_jobs, color: "text-indigo-600", bg: "bg-indigo-50" },
                     { label: "CV-vibes", value: stats.cv_vibes || 0, color: "text-purple-600", bg: "bg-purple-50" },
                     { label: "Skickade", value: stats.sent, color: "text-green-600", bg: "bg-green-50" },
-                    { label: "Intervjuer", value: stats.interviews, color: "text-amber-600", bg: "bg-amber-50" }
+                    { label: "Intervjuer", value: stats.interviews, color: "text-amber-600", bg: "bg-amber-50" },
+                    { label: "Deadline idag", value: stats.deadline_today || 0, color: "text-red-600", bg: "bg-red-50" }
                 ].map(({ label, value, color, bg }) => (
                     <div key={label} className={`${bg} rounded-xl p-4`}>
                         <div className={`text-3xl font-bold ${color}`}>{value || 0}</div>
@@ -115,12 +116,32 @@
             </div>
         );
 
-        // Job card
-        const JobCard = ({ job, onApply, loading }) => {
+        // Job card with save functionality
+        const JobCard = ({ job, onApply, onSave, loading, savedJobs = [] }) => {
+            const [saving, setSaving] = useState(false);
+            const isSaved = savedJobs.includes(job.id);
+
             const priorityColors = {
                 urgent: "bg-red-100 text-red-700",
                 soon: "bg-amber-100 text-amber-700",
                 normal: "bg-green-100 text-green-700"
+            };
+
+            const handleSave = async (e) => {
+                e.stopPropagation();
+                setSaving(true);
+                try {
+                    const token = localStorage.getItem('auth_token');
+                    const method = isSaved ? 'DELETE' : 'POST';
+                    await fetch(`/api/jobs/${job.id}/save`, {
+                        method,
+                        headers: { 'Authorization': `Bearer ${token}` }
+                    });
+                    if (onSave) onSave(job.id, !isSaved);
+                } catch (err) {
+                    console.error('Error saving job:', err);
+                }
+                setSaving(false);
             };
 
             return (
@@ -129,11 +150,21 @@
                         <span className={`text-xs px-2 py-1 rounded-full ${priorityColors[job.priority] || priorityColors.normal}`}>
                             {job.priority === 'urgent' ? '⚡ Akut' : job.priority === 'soon' ? '⏰ Snart' : '✓'}
                         </span>
-                        {job.deadline && (
-                            <span className="text-xs text-slate-400">
-                                {new Date(job.deadline).toLocaleDateString('sv-SE')}
-                            </span>
-                        )}
+                        <div className="flex items-center gap-2">
+                            <button
+                                onClick={handleSave}
+                                disabled={saving}
+                                className={`text-lg hover:scale-110 transition ${isSaved ? 'text-blue-500' : 'text-slate-300 hover:text-blue-400'}`}
+                                title={isSaved ? 'Ta bort från sparade' : 'Spara för senare'}
+                            >
+                                {saving ? '...' : isSaved ? '📌' : '📍'}
+                            </button>
+                            {job.deadline && (
+                                <span className="text-xs text-slate-400">
+                                    {new Date(job.deadline).toLocaleDateString('sv-SE')}
+                                </span>
+                            )}
+                        </div>
                     </div>
                     <h3 className="text-lg font-semibold text-slate-800">{job.title}</h3>
                     <p className="text-indigo-600 font-medium text-sm">{job.company}</p>
@@ -182,19 +213,55 @@
         };
 
         // Application modal
-        const ApplyModal = ({ isOpen, job, result, onClose }) => {
+        const ApplyModal = ({ isOpen, job, result, onClose, onSaveApplication }) => {
             const [letter, setLetter] = useState('');
+            const [feedback, setFeedback] = useState('');
+            const [showFeedback, setShowFeedback] = useState(false);
+            const [savingFeedback, setSavingFeedback] = useState(false);
+            const [applicationSaved, setApplicationSaved] = useState(false);
 
             useEffect(() => {
                 if (result?.cover_letter) setLetter(result.cover_letter);
+                setApplicationSaved(false);
             }, [result]);
 
             if (!isOpen || !job) return null;
 
-            const openGmail = () => {
-                const subject = encodeURIComponent(`Ansökan: ${job.title}`);
+            const saveApplication = async (status = 'draft') => {
+                if (applicationSaved && status === 'draft') return;
+                try {
+                    const token = localStorage.getItem('auth_token');
+                    await fetch('/api/applications', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'Authorization': `Bearer ${token}`
+                        },
+                        body: JSON.stringify({
+                            job_id: job.id,
+                            cover_letter: letter,
+                            status: status
+                        })
+                    });
+                    setApplicationSaved(true);
+                    if (onSaveApplication) onSaveApplication();
+                } catch (err) {
+                    console.error('Error saving application:', err);
+                }
+            };
+
+            const openGmail = async () => {
+                // Save as draft first
+                await saveApplication('draft');
+                const subject = encodeURIComponent(`Ansokan: ${job.title}`);
                 const body = encodeURIComponent(letter);
                 window.open(`https://mail.google.com/mail/?view=cm&fs=1&to=${job.contact_email}&su=${subject}&body=${body}`, '_blank');
+            };
+
+            const markAsSent = async () => {
+                await saveApplication('sent');
+                alert('Markerad som skickad!');
+                onClose();
             };
 
             const copyLetter = () => {
@@ -202,9 +269,35 @@
                 alert('Kopierat!');
             };
 
+            const saveFeedback = async () => {
+                if (!feedback.trim()) return;
+                setSavingFeedback(true);
+                try {
+                    const token = localStorage.getItem('auth_token');
+                    await fetch('/api/user/ai-feedback', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'Authorization': `Bearer ${token}`
+                        },
+                        body: JSON.stringify({
+                            feedback_text: feedback,
+                            feedback_type: 'cover_letter',
+                            applies_to_vibes: result?.matched_vibe ? [result.matched_vibe] : null
+                        })
+                    });
+                    setFeedback('');
+                    setShowFeedback(false);
+                    alert('Feedback sparad! AI kommer anvanda denna nasta gang.');
+                } catch (err) {
+                    console.error(err);
+                }
+                setSavingFeedback(false);
+            };
+
             return (
                 <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50">
-                    <div className="bg-white rounded-2xl max-w-2xl w-full max-h-[90vh] overflow-hidden">
+                    <div className="bg-white rounded-2xl max-w-3xl w-full max-h-[90vh] overflow-hidden">
                         <div className="gradient text-white p-5">
                             <h3 className="text-xl font-bold">{job.title}</h3>
                             <p className="opacity-90">{job.company}</p>
@@ -215,12 +308,38 @@
                             )}
                         </div>
                         <div className="p-5">
-                            <label className="block text-sm font-medium text-slate-700 mb-2">Personligt brev</label>
-                            <textarea
-                                value={letter}
-                                onChange={(e) => setLetter(e.target.value)}
-                                className="w-full h-48 p-3 border border-slate-200 rounded-lg text-sm"
-                            />
+                            <div className="flex gap-4">
+                                <div className="flex-1">
+                                    <label className="block text-sm font-medium text-slate-700 mb-2">Personligt brev</label>
+                                    <textarea
+                                        value={letter}
+                                        onChange={(e) => setLetter(e.target.value)}
+                                        className="w-full h-48 p-3 border border-slate-200 rounded-lg text-sm"
+                                    />
+                                </div>
+
+                                {showFeedback && (
+                                    <div className="w-64">
+                                        <label className="block text-sm font-medium text-slate-700 mb-2">Feedback till AI</label>
+                                        <textarea
+                                            value={feedback}
+                                            onChange={(e) => setFeedback(e.target.value)}
+                                            placeholder="Ex: Namna alltid min kundtjanst-erfarenhet for dessa jobb..."
+                                            className="w-full h-32 p-3 border border-amber-200 bg-amber-50 rounded-lg text-sm"
+                                        />
+                                        <button
+                                            onClick={saveFeedback}
+                                            disabled={savingFeedback || !feedback.trim()}
+                                            className="w-full mt-2 bg-amber-500 text-white py-2 rounded-lg text-sm font-medium hover:bg-amber-600 disabled:opacity-50"
+                                        >
+                                            {savingFeedback ? 'Sparar...' : 'Spara feedback'}
+                                        </button>
+                                        <p className="text-xs text-slate-500 mt-2">
+                                            AI anvander din feedback for framtida brev.
+                                        </p>
+                                    </div>
+                                )}
+                            </div>
 
                             {result?.cv && (
                                 <div className="mt-4 p-3 bg-slate-50 rounded-lg">
@@ -229,15 +348,41 @@
                                 </div>
                             )}
 
-                            <div className="flex gap-3 mt-4">
+                            <div className="flex gap-3 mt-4 flex-wrap">
                                 <button onClick={openGmail} className="flex-1 bg-green-600 text-white py-2.5 px-4 rounded-lg font-medium hover:bg-green-700">
-                                    📧 Öppna i Gmail
+                                    Oppna i Gmail
+                                </button>
+                                <button
+                                    onClick={markAsSent}
+                                    className="px-4 py-2.5 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700"
+                                >
+                                    Markera skickad
                                 </button>
                                 <button onClick={copyLetter} className="px-4 py-2.5 border border-slate-200 rounded-lg hover:bg-slate-50">
-                                    📋 Kopiera
+                                    Kopiera
+                                </button>
+                                <button
+                                    onClick={() => {
+                                        const blob = new Blob([letter], { type: 'text/plain;charset=utf-8' });
+                                        const url = URL.createObjectURL(blob);
+                                        const a = document.createElement('a');
+                                        a.href = url;
+                                        a.download = `personligt-brev-${job.title || 'jobb'}.txt`;
+                                        a.click();
+                                        URL.revokeObjectURL(url);
+                                    }}
+                                    className="px-4 py-2.5 border border-slate-200 rounded-lg hover:bg-slate-50"
+                                >
+                                    Ladda ner
+                                </button>
+                                <button
+                                    onClick={() => setShowFeedback(!showFeedback)}
+                                    className={`px-4 py-2.5 rounded-lg ${showFeedback ? 'bg-amber-100 border-amber-300 text-amber-700' : 'border border-slate-200 hover:bg-slate-50'}`}
+                                >
+                                    Feedback
                                 </button>
                                 <button onClick={onClose} className="px-4 py-2.5 border border-slate-200 rounded-lg hover:bg-slate-50">
-                                    Stäng
+                                    Stang
                                 </button>
                             </div>
                         </div>
@@ -287,9 +432,231 @@
 
         // ============== PAGES ==============
 
+        // Quiz page - step by step job preferences
+        const QuizPage = ({ onComplete, saving }) => {
+            const [step, setStep] = useState(0);
+            const [answers, setAnswers] = useState({
+                job_titles: [],
+                industries: [],
+                experience_level: '',
+                work_type: [],
+                locations: [],
+                salary_range: '',
+                company_size: [],
+                dealbreakers: []
+            });
+
+            const questions = [
+                {
+                    id: 'job_titles',
+                    question: 'Vilken typ av jobb soker du?',
+                    subtitle: 'Valj en eller flera',
+                    type: 'multi',
+                    options: [
+                        { value: 'servitor', label: 'Servitor/Restaurang' },
+                        { value: 'kundtjanst', label: 'Kundtjanst/Support' },
+                        { value: 'butik', label: 'Butik/Kassa' },
+                        { value: 'lager', label: 'Lager/Logistik' },
+                        { value: 'kontor', label: 'Kontor/Admin' },
+                        { value: 'tech', label: 'IT/Tech' },
+                        { value: 'vard', label: 'Vard/Omsorg' },
+                        { value: 'annat', label: 'Annat' }
+                    ]
+                },
+                {
+                    id: 'experience_level',
+                    question: 'Hur mycket erfarenhet har du?',
+                    type: 'single',
+                    options: [
+                        { value: 'entry', label: 'Nybörjare (0-1 år)' },
+                        { value: 'mid', label: 'Lite erfarenhet (1-3 år)' },
+                        { value: 'senior', label: 'Erfaren (3+ år)' }
+                    ]
+                },
+                {
+                    id: 'work_type',
+                    question: 'Vilken typ av anställning passar dig?',
+                    type: 'multi',
+                    options: [
+                        { value: 'heltid', label: 'Heltid' },
+                        { value: 'deltid', label: 'Deltid' },
+                        { value: 'extra', label: 'Extra/Timmar' },
+                        { value: 'sommar', label: 'Sommarjobb' }
+                    ]
+                },
+                {
+                    id: 'locations',
+                    question: 'Var vill du jobba?',
+                    type: 'multi',
+                    options: [
+                        { value: 'stockholm', label: 'Stockholm' },
+                        { value: 'goteborg', label: 'Goteborg' },
+                        { value: 'malmo', label: 'Malmo' },
+                        { value: 'remote', label: 'Distans/Remote' },
+                        { value: 'anywhere', label: 'Hela Sverige' }
+                    ]
+                },
+                {
+                    id: 'dealbreakers',
+                    question: 'Finns det något du INTE vill gora?',
+                    subtitle: 'Vi filtrerar bort dessa jobb',
+                    type: 'multi',
+                    options: [
+                        { value: 'natt', label: 'Nattarbete' },
+                        { value: 'helg', label: 'Helgarbete' },
+                        { value: 'kall', label: 'Utomhus/Kallt' },
+                        { value: 'telefon', label: 'Telefonforssaljning' },
+                        { value: 'aldrevard', label: 'Aldrevård' }
+                    ]
+                }
+            ];
+
+            const currentQ = questions[step];
+            const isLastStep = step === questions.length - 1;
+            const progress = ((step + 1) / questions.length) * 100;
+
+            const handleSelect = (value) => {
+                if (currentQ.type === 'single') {
+                    setAnswers({ ...answers, [currentQ.id]: value });
+                } else {
+                    const current = answers[currentQ.id] || [];
+                    if (current.includes(value)) {
+                        setAnswers({ ...answers, [currentQ.id]: current.filter(v => v !== value) });
+                    } else {
+                        setAnswers({ ...answers, [currentQ.id]: [...current, value] });
+                    }
+                }
+            };
+
+            const isSelected = (value) => {
+                if (currentQ.type === 'single') {
+                    return answers[currentQ.id] === value;
+                }
+                return (answers[currentQ.id] || []).includes(value);
+            };
+
+            const canProceed = currentQ.type === 'single'
+                ? !!answers[currentQ.id]
+                : (answers[currentQ.id] || []).length > 0;
+
+            return (
+                <div className="min-h-[60vh] flex flex-col">
+                    {/* Progress bar */}
+                    <div className="mb-8">
+                        <div className="h-2 bg-slate-200 rounded-full overflow-hidden">
+                            <div
+                                className="h-full bg-gradient-to-r from-indigo-500 to-purple-500 transition-all duration-500"
+                                style={{ width: `${progress}%` }}
+                            />
+                        </div>
+                        <p className="text-sm text-slate-500 mt-2">Steg {step + 1} av {questions.length}</p>
+                    </div>
+
+                    {/* Question */}
+                    <div className="flex-1">
+                        <h2 className="text-2xl font-bold text-slate-800 mb-2">{currentQ.question}</h2>
+                        {currentQ.subtitle && (
+                            <p className="text-slate-500 mb-6">{currentQ.subtitle}</p>
+                        )}
+
+                        <div className="grid grid-cols-2 md:grid-cols-3 gap-3 mt-6">
+                            {currentQ.options.map(opt => (
+                                <button
+                                    key={opt.value}
+                                    onClick={() => handleSelect(opt.value)}
+                                    className={`p-4 rounded-xl border-2 text-left transition ${
+                                        isSelected(opt.value)
+                                            ? 'border-indigo-500 bg-indigo-50 text-indigo-700'
+                                            : 'border-slate-200 hover:border-slate-300 text-slate-700'
+                                    }`}
+                                >
+                                    <span className="font-medium">{opt.label}</span>
+                                </button>
+                            ))}
+                        </div>
+                    </div>
+
+                    {/* Navigation */}
+                    <div className="flex justify-between mt-8 pt-6 border-t border-slate-200">
+                        <button
+                            onClick={() => setStep(Math.max(0, step - 1))}
+                            disabled={step === 0}
+                            className="px-6 py-3 text-slate-600 hover:text-slate-800 disabled:opacity-30 transition"
+                        >
+                            Tillbaka
+                        </button>
+
+                        {isLastStep ? (
+                            <button
+                                onClick={() => onComplete(answers)}
+                                disabled={!canProceed || saving}
+                                className="px-8 py-3 bg-indigo-600 text-white font-semibold rounded-lg hover:bg-indigo-700 disabled:opacity-50 transition"
+                            >
+                                {saving ? 'Sparar...' : 'Klar - Borja soka jobb!'}
+                            </button>
+                        ) : (
+                            <button
+                                onClick={() => setStep(step + 1)}
+                                disabled={!canProceed}
+                                className="px-8 py-3 bg-indigo-600 text-white font-semibold rounded-lg hover:bg-indigo-700 disabled:opacity-50 transition"
+                            >
+                                Nasta
+                            </button>
+                        )}
+                    </div>
+                </div>
+            );
+        };
+
         // Jobs page
-        const JobsPage = ({ jobs, onScrape, onApply, scraping, applyingJob }) => {
+        const JobsPage = ({ jobs, onScrape, onApply, scraping, applyingJob, savedJobs, onSaveJob }) => {
             const [keywords, setKeywords] = useState('');
+            const [filterText, setFilterText] = useState('');
+            const [filterPriority, setFilterPriority] = useState('all');
+            const [sortBy, setSortBy] = useState('deadline');
+            const [currentPage, setCurrentPage] = useState(1);
+            const jobsPerPage = 12;
+
+            // Reset to page 1 when filters change
+            useEffect(() => {
+                setCurrentPage(1);
+            }, [filterText, filterPriority, sortBy, jobs.length]);
+
+            // Filter and sort jobs
+            const filteredJobs = jobs
+                .filter(job => {
+                    // Text filter
+                    if (filterText) {
+                        const search = filterText.toLowerCase();
+                        const matchesText =
+                            job.title?.toLowerCase().includes(search) ||
+                            job.company?.toLowerCase().includes(search) ||
+                            job.location?.toLowerCase().includes(search);
+                        if (!matchesText) return false;
+                    }
+                    // Priority filter
+                    if (filterPriority !== 'all' && job.priority !== filterPriority) {
+                        return false;
+                    }
+                    return true;
+                })
+                .sort((a, b) => {
+                    if (sortBy === 'deadline') {
+                        // Urgent first, then by deadline date
+                        const priorityOrder = { urgent: 0, soon: 1, normal: 2 };
+                        const aPriority = priorityOrder[a.priority] ?? 2;
+                        const bPriority = priorityOrder[b.priority] ?? 2;
+                        if (aPriority !== bPriority) return aPriority - bPriority;
+                        return new Date(a.deadline || '2099-12-31') - new Date(b.deadline || '2099-12-31');
+                    }
+                    if (sortBy === 'company') {
+                        return (a.company || '').localeCompare(b.company || '');
+                    }
+                    if (sortBy === 'title') {
+                        return (a.title || '').localeCompare(b.title || '');
+                    }
+                    return 0;
+                });
 
             return (
                 <div>
@@ -315,23 +682,142 @@
                         <p className="text-xs text-slate-500 mt-2">Visar endast jobb med e-postansökan.</p>
                     </div>
 
-                    <h2 className="text-lg font-semibold mb-4">📋 Jobb ({jobs.length})</h2>
-                    {jobs.length === 0 ? (
-                        <div className="bg-white rounded-xl p-10 text-center shadow-sm">
-                            <p className="text-slate-500">Inga jobb ännu. Sök för att hitta nya!</p>
-                        </div>
-                    ) : (
-                        <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-4">
-                            {jobs.map(job => (
-                                <JobCard
-                                    key={job.id}
-                                    job={job}
-                                    onApply={onApply}
-                                    loading={applyingJob === job.id}
-                                />
-                            ))}
+                    {/* Filter bar */}
+                    {jobs.length > 0 && (
+                        <div className="bg-white rounded-xl p-4 shadow-sm mb-6">
+                            <div className="flex flex-wrap gap-3 items-center">
+                                <div className="flex-1 min-w-[200px]">
+                                    <input
+                                        type="text"
+                                        value={filterText}
+                                        onChange={(e) => setFilterText(e.target.value)}
+                                        placeholder="Filtrera: titel, företag, plats..."
+                                        className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm"
+                                    />
+                                </div>
+                                <select
+                                    value={filterPriority}
+                                    onChange={(e) => setFilterPriority(e.target.value)}
+                                    className="border border-slate-200 rounded-lg px-3 py-2 text-sm"
+                                >
+                                    <option value="all">Alla prioriteter</option>
+                                    <option value="urgent">⚡ Akut (3 dagar)</option>
+                                    <option value="soon">⏰ Snart (7 dagar)</option>
+                                    <option value="normal">✓ Normal</option>
+                                </select>
+                                <select
+                                    value={sortBy}
+                                    onChange={(e) => setSortBy(e.target.value)}
+                                    className="border border-slate-200 rounded-lg px-3 py-2 text-sm"
+                                >
+                                    <option value="deadline">Sortera: Deadline</option>
+                                    <option value="company">Sortera: Företag</option>
+                                    <option value="title">Sortera: Titel</option>
+                                </select>
+                                {(filterText || filterPriority !== 'all') && (
+                                    <button
+                                        onClick={() => { setFilterText(''); setFilterPriority('all'); }}
+                                        className="text-sm text-slate-500 hover:text-slate-700"
+                                    >
+                                        Rensa filter
+                                    </button>
+                                )}
+                            </div>
                         </div>
                     )}
+
+                    {/* Pagination calculation */}
+                    {(() => {
+                        const totalPages = Math.ceil(filteredJobs.length / jobsPerPage);
+                        const startIdx = (currentPage - 1) * jobsPerPage;
+                        const paginatedJobs = filteredJobs.slice(startIdx, startIdx + jobsPerPage);
+
+                        return (
+                            <>
+                                <h2 className="text-lg font-semibold mb-4">
+                                    📋 Jobb ({filteredJobs.length}{filteredJobs.length !== jobs.length ? ` av ${jobs.length}` : ''})
+                                    {totalPages > 1 && <span className="text-slate-400 font-normal text-sm ml-2">Sida {currentPage} av {totalPages}</span>}
+                                </h2>
+                                {jobs.length === 0 ? (
+                                    <div className="bg-white rounded-xl p-10 text-center shadow-sm">
+                                        <p className="text-slate-500">Inga jobb ännu. Sök för att hitta nya!</p>
+                                    </div>
+                                ) : filteredJobs.length === 0 ? (
+                                    <div className="bg-white rounded-xl p-10 text-center shadow-sm">
+                                        <p className="text-slate-500">Inga jobb matchar ditt filter.</p>
+                                        <button
+                                            onClick={() => { setFilterText(''); setFilterPriority('all'); }}
+                                            className="mt-2 text-indigo-600 hover:underline text-sm"
+                                        >
+                                            Rensa filter
+                                        </button>
+                                    </div>
+                                ) : (
+                                    <>
+                                        <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-4">
+                                            {paginatedJobs.map(job => (
+                                                <JobCard
+                                                    key={job.id}
+                                                    job={job}
+                                                    onApply={onApply}
+                                                    onSave={onSaveJob}
+                                                    loading={applyingJob === job.id}
+                                                    savedJobs={savedJobs || []}
+                                                />
+                                            ))}
+                                        </div>
+
+                                        {/* Pagination controls */}
+                                        {totalPages > 1 && (
+                                            <div className="flex justify-center items-center gap-2 mt-6">
+                                                <button
+                                                    onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
+                                                    disabled={currentPage === 1}
+                                                    className="px-4 py-2 border border-slate-200 rounded-lg text-sm hover:bg-slate-50 disabled:opacity-30 disabled:cursor-not-allowed"
+                                                >
+                                                    ← Föregående
+                                                </button>
+                                                <div className="flex gap-1">
+                                                    {Array.from({ length: Math.min(5, totalPages) }, (_, i) => {
+                                                        let pageNum;
+                                                        if (totalPages <= 5) {
+                                                            pageNum = i + 1;
+                                                        } else if (currentPage <= 3) {
+                                                            pageNum = i + 1;
+                                                        } else if (currentPage >= totalPages - 2) {
+                                                            pageNum = totalPages - 4 + i;
+                                                        } else {
+                                                            pageNum = currentPage - 2 + i;
+                                                        }
+                                                        return (
+                                                            <button
+                                                                key={pageNum}
+                                                                onClick={() => setCurrentPage(pageNum)}
+                                                                className={`w-10 h-10 rounded-lg text-sm font-medium ${
+                                                                    currentPage === pageNum
+                                                                        ? 'bg-indigo-600 text-white'
+                                                                        : 'border border-slate-200 hover:bg-slate-50'
+                                                                }`}
+                                                            >
+                                                                {pageNum}
+                                                            </button>
+                                                        );
+                                                    })}
+                                                </div>
+                                                <button
+                                                    onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
+                                                    disabled={currentPage === totalPages}
+                                                    className="px-4 py-2 border border-slate-200 rounded-lg text-sm hover:bg-slate-50 disabled:opacity-30 disabled:cursor-not-allowed"
+                                                >
+                                                    Nästa →
+                                                </button>
+                                            </div>
+                                        )}
+                                    </>
+                                )}
+                            </>
+                        );
+                    })()}
                 </div>
             );
         };
@@ -939,31 +1425,37 @@
         };
 
         // CVs page
-        const CVsPage = ({ vibes, userCVs, onSelectVibe, onGenerateVibes, generating, onOpenMasterCV }) => (
+        const CVsPage = ({ vibes, userCVs, onSelectVibe, onGenerateVibes, generating, onOpenMasterCV, onMigrate, migrating }) => (
             <div>
                 <div className="flex justify-between items-center mb-6">
-                    <h2 className="text-lg font-semibold">📄 Mina CV-versioner</h2>
+                    <h2 className="text-lg font-semibold">Mina CV-versioner</h2>
                     <div className="flex gap-2">
+                        <button
+                            onClick={onMigrate}
+                            disabled={migrating}
+                            className="bg-green-600 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-green-700 disabled:opacity-50"
+                        >
+                            {migrating ? 'Laddar...' : 'Ladda min data'}
+                        </button>
                         <button
                             onClick={onOpenMasterCV}
                             className="bg-slate-700 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-slate-800"
                         >
-                            📋 Redigera Master CV
+                            Redigera Master CV
                         </button>
                         <button
                             onClick={onGenerateVibes}
                             disabled={generating}
                             className="bg-purple-600 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-purple-700 disabled:opacity-50"
                         >
-                            {generating ? 'Genererar...' : '✨ Generera alla CV'}
+                            {generating ? 'Genererar...' : 'Generera alla CV'}
                         </button>
                     </div>
                 </div>
 
                 <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 mb-6">
                     <p className="text-sm text-amber-800">
-                        <strong>Tips:</strong> Klicka på en kategori för att se/redigera CV:t.
-                        "Generera alla CV" skapar AI-versioner baserat på ditt Master CV.
+                        <strong>Tips:</strong> Klicka "Ladda min data" for att hamta dina fardiga CV:n och erfarenheter.
                     </p>
                 </div>
 
@@ -983,39 +1475,278 @@
             </div>
         );
 
-        // Applications page
-        const ApplicationsPage = ({ applications }) => (
-            <div>
-                <h2 className="text-lg font-semibold mb-4">📬 Mina ansökningar</h2>
-                {applications.length === 0 ? (
-                    <div className="bg-white rounded-xl p-10 text-center shadow-sm">
-                        <p className="text-slate-500">Inga ansökningar ännu.</p>
+        // Applications page with status management
+        const ApplicationsPage = ({ applications, onUpdateApplication, onDeleteApplication, onRefresh }) => {
+            const [filter, setFilter] = useState('all');
+            const [editingNotes, setEditingNotes] = useState(null);
+            const [noteText, setNoteText] = useState('');
+            const [expandedApp, setExpandedApp] = useState(null);
+            const [updating, setUpdating] = useState(null);
+
+            const statusOptions = [
+                { value: 'saved', label: '📌 Sparad', color: 'bg-blue-100 text-blue-700' },
+                { value: 'draft', label: '📝 Utkast', color: 'bg-slate-100 text-slate-600' },
+                { value: 'sent', label: '✓ Skickad', color: 'bg-green-100 text-green-700' },
+                { value: 'interview', label: '🎉 Intervju', color: 'bg-purple-100 text-purple-700' },
+                { value: 'offer', label: '🎊 Erbjudande', color: 'bg-amber-100 text-amber-700' },
+                { value: 'rejected', label: '✗ Avslag', color: 'bg-red-100 text-red-700' },
+                { value: 'skipped', label: '⏭️ Hoppade över', color: 'bg-gray-100 text-gray-500' }
+            ];
+
+            const getStatusInfo = (status) => statusOptions.find(s => s.value === status) || statusOptions[1];
+
+            const handleStatusChange = async (appId, newStatus) => {
+                setUpdating(appId);
+                try {
+                    const token = localStorage.getItem('auth_token');
+                    const response = await fetch(`/api/applications/${appId}`, {
+                        method: 'PATCH',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'Authorization': `Bearer ${token}`
+                        },
+                        body: JSON.stringify({ status: newStatus })
+                    });
+                    if (response.ok && onRefresh) {
+                        await onRefresh();
+                    }
+                } catch (err) {
+                    console.error('Error updating status:', err);
+                }
+                setUpdating(null);
+            };
+
+            const handleSaveNotes = async (appId) => {
+                setUpdating(appId);
+                try {
+                    const token = localStorage.getItem('auth_token');
+                    await fetch(`/api/applications/${appId}`, {
+                        method: 'PATCH',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'Authorization': `Bearer ${token}`
+                        },
+                        body: JSON.stringify({ notes: noteText })
+                    });
+                    setEditingNotes(null);
+                    if (onRefresh) await onRefresh();
+                } catch (err) {
+                    console.error('Error saving notes:', err);
+                }
+                setUpdating(null);
+            };
+
+            const handleDelete = async (appId) => {
+                if (!confirm('Ta bort denna ansökan?')) return;
+                try {
+                    const token = localStorage.getItem('auth_token');
+                    await fetch(`/api/applications/${appId}`, {
+                        method: 'DELETE',
+                        headers: { 'Authorization': `Bearer ${token}` }
+                    });
+                    if (onRefresh) await onRefresh();
+                } catch (err) {
+                    console.error('Error deleting:', err);
+                }
+            };
+
+            const downloadCoverLetter = (app) => {
+                if (!app.cover_letter) return;
+                const blob = new Blob([app.cover_letter], { type: 'text/plain;charset=utf-8' });
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = `personligt-brev-${app.job_title || 'jobb'}.txt`;
+                a.click();
+                URL.revokeObjectURL(url);
+            };
+
+            const filteredApps = applications.filter(app => {
+                if (filter === 'all') return true;
+                if (filter === 'active') return ['saved', 'draft', 'sent'].includes(app.status);
+                return app.status === filter;
+            });
+
+            const counts = {
+                all: applications.length,
+                saved: applications.filter(a => a.status === 'saved').length,
+                sent: applications.filter(a => a.status === 'sent').length,
+                interview: applications.filter(a => a.status === 'interview').length
+            };
+
+            return (
+                <div>
+                    <div className="flex justify-between items-center mb-4">
+                        <h2 className="text-lg font-semibold">📬 Mina ansökningar</h2>
+                        <div className="flex gap-2">
+                            {[
+                                { id: 'all', label: `Alla (${counts.all})` },
+                                { id: 'saved', label: `📌 Sparade (${counts.saved})` },
+                                { id: 'sent', label: `✓ Skickade (${counts.sent})` },
+                                { id: 'interview', label: `🎉 Intervjuer (${counts.interview})` }
+                            ].map(f => (
+                                <button
+                                    key={f.id}
+                                    onClick={() => setFilter(f.id)}
+                                    className={`px-3 py-1 rounded-lg text-sm ${filter === f.id ? 'bg-indigo-600 text-white' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}`}
+                                >
+                                    {f.label}
+                                </button>
+                            ))}
+                        </div>
                     </div>
-                ) : (
-                    <div className="space-y-3">
-                        {applications.map(app => (
-                            <div key={app.id} className="bg-white rounded-xl p-4 shadow-sm flex justify-between items-center">
-                                <div>
-                                    <p className="font-medium text-slate-800">{app.job_title || 'Jobb'}</p>
-                                    <p className="text-sm text-slate-500">{new Date(app.created_at).toLocaleDateString('sv-SE')}</p>
-                                </div>
-                                <span className={`px-3 py-1 rounded-full text-xs font-medium ${
-                                    app.status === 'sent' ? 'bg-green-100 text-green-700' :
-                                    app.status === 'interview' ? 'bg-purple-100 text-purple-700' :
-                                    app.status === 'rejected' ? 'bg-red-100 text-red-700' :
-                                    'bg-slate-100 text-slate-600'
-                                }`}>
-                                    {app.status === 'sent' ? '✓ Skickad' :
-                                     app.status === 'interview' ? '🎉 Intervju' :
-                                     app.status === 'rejected' ? '✗ Avslag' :
-                                     'Utkast'}
-                                </span>
-                            </div>
-                        ))}
-                    </div>
-                )}
-            </div>
-        );
+
+                    {applications.length === 0 ? (
+                        <div className="bg-white rounded-xl p-10 text-center shadow-sm">
+                            <p className="text-slate-500 mb-2">Inga ansökningar ännu.</p>
+                            <p className="text-sm text-slate-400">Sök jobb och klicka "Ansök" för att komma igång!</p>
+                        </div>
+                    ) : filteredApps.length === 0 ? (
+                        <div className="bg-white rounded-xl p-10 text-center shadow-sm">
+                            <p className="text-slate-500">Inga ansökningar med denna status.</p>
+                        </div>
+                    ) : (
+                        <div className="space-y-3">
+                            {filteredApps.map(app => {
+                                const statusInfo = getStatusInfo(app.status);
+                                const isExpanded = expandedApp === app.id;
+
+                                return (
+                                    <div key={app.id} className="bg-white rounded-xl shadow-sm overflow-hidden">
+                                        <div
+                                            className="p-4 cursor-pointer hover:bg-slate-50"
+                                            onClick={() => setExpandedApp(isExpanded ? null : app.id)}
+                                        >
+                                            <div className="flex justify-between items-start">
+                                                <div className="flex-1">
+                                                    <p className="font-medium text-slate-800">{app.job_title || 'Jobb'}</p>
+                                                    <p className="text-sm text-indigo-600">{app.company || ''}</p>
+                                                    <p className="text-xs text-slate-400 mt-1">
+                                                        {new Date(app.created_at).toLocaleDateString('sv-SE')}
+                                                        {app.sent_at && ` • Skickad ${new Date(app.sent_at).toLocaleDateString('sv-SE')}`}
+                                                    </p>
+                                                </div>
+                                                <div className="flex items-center gap-2">
+                                                    <select
+                                                        value={app.status}
+                                                        onChange={(e) => {
+                                                            e.stopPropagation();
+                                                            handleStatusChange(app.id, e.target.value);
+                                                        }}
+                                                        onClick={(e) => e.stopPropagation()}
+                                                        disabled={updating === app.id}
+                                                        className={`px-3 py-1 rounded-full text-xs font-medium border-0 cursor-pointer ${statusInfo.color}`}
+                                                    >
+                                                        {statusOptions.map(opt => (
+                                                            <option key={opt.value} value={opt.value}>{opt.label}</option>
+                                                        ))}
+                                                    </select>
+                                                    <svg className={`w-5 h-5 text-slate-400 transition ${isExpanded ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                                                    </svg>
+                                                </div>
+                                            </div>
+                                            {app.notes && !isExpanded && (
+                                                <p className="text-sm text-slate-500 mt-2 line-clamp-1">📝 {app.notes}</p>
+                                            )}
+                                        </div>
+
+                                        {isExpanded && (
+                                            <div className="border-t border-slate-100 p-4 bg-slate-50">
+                                                {/* Notes section */}
+                                                <div className="mb-4">
+                                                    <label className="text-sm font-medium text-slate-700 block mb-2">Anteckningar</label>
+                                                    {editingNotes === app.id ? (
+                                                        <div>
+                                                            <textarea
+                                                                value={noteText}
+                                                                onChange={(e) => setNoteText(e.target.value)}
+                                                                className="w-full p-2 border border-slate-200 rounded-lg text-sm"
+                                                                rows={3}
+                                                                placeholder="T.ex. 'Ringde och pratade med Anna, ska höra av sig nästa vecka'"
+                                                            />
+                                                            <div className="flex gap-2 mt-2">
+                                                                <button
+                                                                    onClick={() => handleSaveNotes(app.id)}
+                                                                    disabled={updating === app.id}
+                                                                    className="px-3 py-1 bg-indigo-600 text-white rounded text-sm hover:bg-indigo-700 disabled:opacity-50"
+                                                                >
+                                                                    Spara
+                                                                </button>
+                                                                <button
+                                                                    onClick={() => setEditingNotes(null)}
+                                                                    className="px-3 py-1 border border-slate-200 rounded text-sm hover:bg-slate-100"
+                                                                >
+                                                                    Avbryt
+                                                                </button>
+                                                            </div>
+                                                        </div>
+                                                    ) : (
+                                                        <div
+                                                            onClick={() => { setEditingNotes(app.id); setNoteText(app.notes || ''); }}
+                                                            className="p-2 bg-white border border-slate-200 rounded-lg text-sm text-slate-600 cursor-pointer hover:border-indigo-300 min-h-[60px]"
+                                                        >
+                                                            {app.notes || <span className="text-slate-400">Klicka för att lägga till anteckningar...</span>}
+                                                        </div>
+                                                    )}
+                                                </div>
+
+                                                {/* Cover letter preview */}
+                                                {app.cover_letter && (
+                                                    <div className="mb-4">
+                                                        <label className="text-sm font-medium text-slate-700 block mb-2">Personligt brev</label>
+                                                        <div className="p-3 bg-white border border-slate-200 rounded-lg text-sm text-slate-600 max-h-32 overflow-y-auto">
+                                                            {app.cover_letter.slice(0, 300)}...
+                                                        </div>
+                                                    </div>
+                                                )}
+
+                                                {/* Actions */}
+                                                <div className="flex gap-2 flex-wrap">
+                                                    {app.contact_email && (
+                                                        <a
+                                                            href={`mailto:${app.contact_email}?subject=Angående min ansökan: ${app.job_title || 'Jobb'}`}
+                                                            className="px-3 py-1.5 bg-green-600 text-white rounded-lg text-sm hover:bg-green-700"
+                                                        >
+                                                            📧 Maila
+                                                        </a>
+                                                    )}
+                                                    {app.cover_letter && (
+                                                        <button
+                                                            onClick={() => downloadCoverLetter(app)}
+                                                            className="px-3 py-1.5 border border-slate-200 rounded-lg text-sm hover:bg-slate-100"
+                                                        >
+                                                            ⬇️ Ladda ner brev
+                                                        </button>
+                                                    )}
+                                                    {app.cover_letter && (
+                                                        <button
+                                                            onClick={() => {
+                                                                navigator.clipboard.writeText(app.cover_letter);
+                                                                alert('Kopierat!');
+                                                            }}
+                                                            className="px-3 py-1.5 border border-slate-200 rounded-lg text-sm hover:bg-slate-100"
+                                                        >
+                                                            📋 Kopiera brev
+                                                        </button>
+                                                    )}
+                                                    <button
+                                                        onClick={() => handleDelete(app.id)}
+                                                        className="px-3 py-1.5 border border-red-200 text-red-600 rounded-lg text-sm hover:bg-red-50"
+                                                    >
+                                                        🗑️ Ta bort
+                                                    </button>
+                                                </div>
+                                            </div>
+                                        )}
+                                    </div>
+                                );
+                            })}
+                        </div>
+                    )}
+                </div>
+            );
+        };
 
         // ============== ONBOARDING ==============
 
@@ -1660,7 +2391,26 @@
             const fetchApplications = async () => {
                 const res = await fetch('/api/applications');
                 const data = await res.json();
-                if (data.success) setApplications(data.applications || []);
+                if (data.success) {
+                    setApplications(data.applications || []);
+                    // Extract saved job IDs
+                    const saved = (data.applications || [])
+                        .filter(a => a.status === 'saved')
+                        .map(a => a.job_id);
+                    setSavedJobs(saved);
+                }
+            };
+
+            const [savedJobs, setSavedJobs] = useState([]);
+
+            const handleSaveJob = (jobId, isSaved) => {
+                if (isSaved) {
+                    setSavedJobs(prev => [...prev, jobId]);
+                } else {
+                    setSavedJobs(prev => prev.filter(id => id !== jobId));
+                }
+                // Refresh applications list
+                fetchApplications();
             };
 
             const fetchStats = async () => {
@@ -1672,13 +2422,27 @@
             };
 
             const fetchMasterCV = async () => {
-                const token = localStorage.getItem('auth_token');
-                const res = await fetch('/api/cv/master', {
-                    headers: { 'Authorization': `Bearer ${token}` }
-                });
-                const data = await res.json();
-                if (data.success && data.master_cv) {
-                    setMasterCV(data.master_cv);
+                try {
+                    const token = localStorage.getItem('auth_token');
+                    if (!token) {
+                        console.error('No auth token');
+                        return false;
+                    }
+                    const res = await fetch('/api/cv/master', {
+                        headers: { 'Authorization': `Bearer ${token}` }
+                    });
+                    if (!res.ok) {
+                        console.error('Fetch master CV failed:', res.status);
+                        return false;
+                    }
+                    const data = await res.json();
+                    if (data.success && data.master_cv) {
+                        setMasterCV(data.master_cv);
+                    }
+                    return true;
+                } catch (err) {
+                    console.error('Error fetching master CV:', err);
+                    return false;
                 }
             };
 
@@ -1850,6 +2614,30 @@
                 setGenerating(false);
             };
 
+            const [migrating, setMigrating] = useState(false);
+            const handleMigrateData = async () => {
+                if (!confirm('Vill du ladda in fardiga CV:n och erfarenheter?')) return;
+                setMigrating(true);
+                try {
+                    const token = localStorage.getItem('auth_token');
+                    const res = await fetch('/api/migrate-my-data', {
+                        method: 'POST',
+                        headers: { 'Authorization': `Bearer ${token}` }
+                    });
+                    const data = await res.json();
+                    if (data.success) {
+                        alert('Data inladdat! Laddar om...');
+                        window.location.reload();
+                    } else {
+                        alert(data.detail || 'Kunde inte ladda data.');
+                    }
+                } catch (err) {
+                    console.error(err);
+                    alert('Fel vid inladdning.');
+                }
+                setMigrating(false);
+            };
+
             // Check auth on mount
             const [user, setUser] = useState(null);
 
@@ -1878,82 +2666,89 @@
             if (!user) {
                 return (
                     <div className="min-h-screen bg-gradient-to-br from-indigo-600 via-purple-600 to-pink-500">
-                        {/* Hero Section */}
-                        <header className="px-4 py-6">
-                            <div className="max-w-6xl mx-auto flex justify-between items-center">
-                                <h1 className="text-2xl font-bold text-white">Anti-Apathy Portal</h1>
-                                <a href="/login" className="bg-white text-indigo-600 px-6 py-2 rounded-full font-semibold hover:bg-white/90 transition shadow-lg">
-                                    Logga in
+                        <header className="px-6 py-5">
+                            <div className="max-w-5xl mx-auto flex justify-between items-center">
+                                <span className="text-white/90 font-mono text-sm tracking-wide">anti-apathy</span>
+                                <a href="/login" className="text-white/70 hover:text-white text-sm transition">
+                                    Logga in →
                                 </a>
                             </div>
                         </header>
 
-                        <main className="px-4 py-16">
-                            <div className="max-w-4xl mx-auto text-center text-white">
-                                <h2 className="text-5xl font-bold mb-6 leading-tight">
-                                    Sök jobb utan apati.<br/>
-                                    <span className="text-yellow-300">En ansökan i taget.</span>
-                                </h2>
-                                <p className="text-xl opacity-90 mb-10 max-w-2xl mx-auto">
-                                    Sluta skicka samma CV överallt. Vi skapar skräddarsydda CV:n för varje bransch
-                                    och genererar personliga brev automatiskt.
-                                </p>
-                                <a href="/login" className="inline-block bg-white text-indigo-600 px-10 py-4 rounded-full text-xl font-bold hover:bg-yellow-300 hover:text-indigo-700 transition shadow-xl">
-                                    Kom igång gratis
-                                </a>
-                            </div>
+                        <main className="px-6">
+                            <div className="max-w-5xl mx-auto">
+                                {/* Hero - left aligned */}
+                                <div className="py-20 max-w-xl">
+                                    <h1 className="text-4xl md:text-5xl font-bold text-white leading-tight mb-6">
+                                        Jobbsökande<br/>
+                                        utan ångest.
+                                    </h1>
+                                    <p className="text-white/80 text-lg mb-8 leading-relaxed">
+                                        Skräddarsydda CV:n för olika branscher. AI-genererade personliga brev.
+                                        Allt på ett ställe så du kan fokusera på det som spelar roll.
+                                    </p>
+                                    <a href="/login" className="inline-block bg-white text-indigo-700 px-6 py-3 text-sm font-semibold hover:bg-white/90 transition">
+                                        Kom igång
+                                    </a>
+                                </div>
 
-                            {/* Features */}
-                            <div className="max-w-5xl mx-auto mt-24 grid md:grid-cols-3 gap-8">
-                                <div className="bg-white/10 backdrop-blur-sm rounded-2xl p-6 text-white">
-                                    <div className="text-4xl mb-4">📋</div>
-                                    <h3 className="text-xl font-bold mb-2">Master CV</h3>
-                                    <p className="opacity-80">En källa för all din info. Lägg till erfarenheter, utbildning och skills på ett ställe.</p>
+                                {/* Features - asymmetric grid */}
+                                <div className="border-t border-white/20 py-16">
+                                    <div className="grid md:grid-cols-2 gap-x-16 gap-y-10">
+                                        <div>
+                                            <h3 className="text-white font-semibold mb-2">Master CV</h3>
+                                            <p className="text-white/60 text-sm leading-relaxed">
+                                                All din erfarenhet, utbildning och kompetenser samlade.
+                                                Uppdatera en gång, använd överallt.
+                                            </p>
+                                        </div>
+                                        <div>
+                                            <h3 className="text-white font-semibold mb-2">Branschanpassade versioner</h3>
+                                            <p className="text-white/60 text-sm leading-relaxed">
+                                                Restaurang, kundtjänst, tech, butik, vård. Varje version
+                                                lyfter rätt erfarenheter för rätt jobb.
+                                            </p>
+                                        </div>
+                                        <div>
+                                            <h3 className="text-white font-semibold mb-2">Platsbanken-integration</h3>
+                                            <p className="text-white/60 text-sm leading-relaxed">
+                                                Hämta jobb direkt från Arbetsförmedlingen. Se vilka som
+                                                accepterar mail-ansökningar.
+                                            </p>
+                                        </div>
+                                        <div>
+                                            <h3 className="text-white font-semibold mb-2">Personliga brev</h3>
+                                            <p className="text-white/60 text-sm leading-relaxed">
+                                                AI skriver brevet baserat på ditt CV och jobbannonsen.
+                                                Granska, justera, skicka.
+                                            </p>
+                                        </div>
+                                    </div>
                                 </div>
-                                <div className="bg-white/10 backdrop-blur-sm rounded-2xl p-6 text-white">
-                                    <div className="text-4xl mb-4">✨</div>
-                                    <h3 className="text-xl font-bold mb-2">CV-vibes</h3>
-                                    <p className="opacity-80">Generera anpassade CV:n för restaurang, kundtjänst, tech, butik och fler branscher.</p>
-                                </div>
-                                <div className="bg-white/10 backdrop-blur-sm rounded-2xl p-6 text-white">
-                                    <div className="text-4xl mb-4">🚀</div>
-                                    <h3 className="text-xl font-bold mb-2">Snabb ansökan</h3>
-                                    <p className="opacity-80">Hitta jobb på Platsbanken, få AI-genererat personligt brev, ansök med ett klick.</p>
-                                </div>
-                            </div>
 
-                            {/* How it works */}
-                            <div className="max-w-4xl mx-auto mt-24 text-white text-center">
-                                <h3 className="text-3xl font-bold mb-12">Så funkar det</h3>
-                                <div className="grid md:grid-cols-4 gap-6">
-                                    <div>
-                                        <div className="w-12 h-12 bg-yellow-400 text-indigo-900 rounded-full flex items-center justify-center text-xl font-bold mx-auto mb-4">1</div>
-                                        <p className="font-medium">Skapa konto</p>
-                                    </div>
-                                    <div>
-                                        <div className="w-12 h-12 bg-yellow-400 text-indigo-900 rounded-full flex items-center justify-center text-xl font-bold mx-auto mb-4">2</div>
-                                        <p className="font-medium">Fyll i Master CV</p>
-                                    </div>
-                                    <div>
-                                        <div className="w-12 h-12 bg-yellow-400 text-indigo-900 rounded-full flex items-center justify-center text-xl font-bold mx-auto mb-4">3</div>
-                                        <p className="font-medium">Generera CV-vibes</p>
-                                    </div>
-                                    <div>
-                                        <div className="w-12 h-12 bg-yellow-400 text-indigo-900 rounded-full flex items-center justify-center text-xl font-bold mx-auto mb-4">4</div>
-                                        <p className="font-medium">Sök jobb!</p>
+                                {/* How it works - minimal */}
+                                <div className="border-t border-white/20 py-12">
+                                    <p className="text-white/50 text-sm mb-6">Så funkar det</p>
+                                    <div className="flex flex-wrap gap-6 text-white/80 text-sm">
+                                        <span>1. Skapa konto</span>
+                                        <span className="text-white/30">→</span>
+                                        <span>2. Fyll i Master CV</span>
+                                        <span className="text-white/30">→</span>
+                                        <span>3. Generera bransch-CV:n</span>
+                                        <span className="text-white/30">→</span>
+                                        <span>4. Sök jobb</span>
                                     </div>
                                 </div>
                             </div>
                         </main>
 
-                        <footer className="px-4 py-8 mt-16 border-t border-white/20">
-                            <div className="max-w-6xl mx-auto text-center text-white/60 text-sm">
-                                <div className="flex justify-center gap-4 mb-2">
-                                    <a href="/integritetspolicy" className="hover:text-white">Integritetspolicy</a>
-                                    <span>·</span>
-                                    <a href="/anvandarvillkor" className="hover:text-white">Användarvillkor</a>
+                        <footer className="px-6 py-8 border-t border-white/10 mt-12">
+                            <div className="max-w-5xl mx-auto flex flex-col sm:flex-row justify-between items-center gap-4 text-white/40 text-xs">
+                                <div className="flex gap-6">
+                                    <a href="/integritetspolicy" className="hover:text-white/70">Integritetspolicy</a>
+                                    <a href="/anvandarvillkor" className="hover:text-white/70">Användarvillkor</a>
                                 </div>
-                                <p>© 2026 Anti-Apathy Portal</p>
+                                <span>2026</span>
                             </div>
                         </footer>
                     </div>
@@ -1985,6 +2780,8 @@
                                 onApply={handleApply}
                                 scraping={scraping}
                                 applyingJob={applyingJob}
+                                savedJobs={savedJobs}
+                                onSaveJob={handleSaveJob}
                             />
                         )}
 
@@ -1996,11 +2793,16 @@
                                 onGenerateVibes={handleGenerateVibes}
                                 generating={generating}
                                 onOpenMasterCV={handleOpenMasterCV}
+                                onMigrate={handleMigrateData}
+                                migrating={migrating}
                             />
                         )}
 
                         {activeTab === 'applications' && (
-                            <ApplicationsPage applications={applications} />
+                            <ApplicationsPage
+                                applications={applications}
+                                onRefresh={fetchApplications}
+                            />
                         )}
                     </main>
 
@@ -2008,7 +2810,8 @@
                         isOpen={showApplyModal}
                         job={selectedJob}
                         result={applyResult}
-                        onClose={() => setShowApplyModal(false)}
+                        onClose={() => { setShowApplyModal(false); fetchApplications(); fetchStats(); }}
+                        onSaveApplication={() => { fetchApplications(); fetchStats(); }}
                     />
 
                     <CVModal

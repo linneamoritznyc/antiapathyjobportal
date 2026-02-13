@@ -17,6 +17,7 @@ import base64
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 from urllib.parse import urlencode
+import pathlib
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -62,6 +63,17 @@ class SaveApplicationRequest(BaseModel):
     cover_letter: str
     cv_id: Optional[str] = None
     status: str = "draft"
+
+
+class UpdateApplicationRequest(BaseModel):
+    status: Optional[str] = None
+    notes: Optional[str] = None
+    cover_letter: Optional[str] = None
+
+
+class SaveJobRequest(BaseModel):
+    job_id: str
+    notes: Optional[str] = None
 
 
 # ============== AUTH MODELS ==============
@@ -237,7 +249,7 @@ def calculate_priority(deadline: Optional[str]) -> str:
         elif days_left <= 7:
             return "soon"
         return "normal"
-    except:
+    except Exception:
         return "normal"
 
 
@@ -705,11 +717,30 @@ async def get_jobs_from_db(limit: int = 50) -> List[Dict]:
 
 
 async def get_applications_from_db() -> List[Dict]:
-    """Get all applications"""
-    apps = await db_request("GET", "applications", params={
-        "order": "created_at.desc"
-    })
-    return apps or []
+    """Get all applications with job details"""
+    # Use Supabase's select to embed job data
+    url = f"{SUPABASE_URL}/rest/v1/applications?select=*,jobs(id,title,company,contact_email,url,deadline)&order=created_at.desc"
+    async with httpx.AsyncClient() as client:
+        response = await client.get(
+            url,
+            headers={
+                "apikey": SUPABASE_KEY,
+                "Authorization": f"Bearer {SUPABASE_KEY}"
+            }
+        )
+        if response.status_code == 200:
+            apps = response.json()
+            # Flatten job details into application
+            for app in apps:
+                if app.get("jobs"):
+                    app["job_title"] = app["jobs"].get("title")
+                    app["company"] = app["jobs"].get("company")
+                    app["contact_email"] = app["jobs"].get("contact_email")
+                    app["job_url"] = app["jobs"].get("url")
+                    app["deadline"] = app["jobs"].get("deadline")
+                    del app["jobs"]
+            return apps
+    return []
 
 
 # ============== API ENDPOINTS ==============
@@ -803,10 +834,25 @@ async def create_letter(job_id: str, request: GenerateLetterRequest = None):
 
 
 @app.post("/api/applications")
-async def save_application(request: SaveApplicationRequest):
+async def save_application(request: SaveApplicationRequest, req: Request):
     """Save an application"""
+    # Get user_id from auth token
+    auth_header = req.headers.get("Authorization", "")
+    user_id = "default_user"
+
+    if auth_header.startswith("Bearer "):
+        token = auth_header.replace("Bearer ", "")
+        async with httpx.AsyncClient() as client:
+            user_response = await client.get(
+                f"{SUPABASE_URL}/auth/v1/user",
+                headers={"apikey": SUPABASE_ANON_KEY, "Authorization": f"Bearer {token}"}
+            )
+            if user_response.status_code == 200:
+                user_id = user_response.json().get("id", "default_user")
+
     data = {
         "job_id": request.job_id,
+        "user_id": user_id,
         "cover_letter": request.cover_letter,
         "status": request.status,
         "created_at": datetime.now().isoformat()
@@ -825,11 +871,161 @@ async def list_applications():
     return {"success": True, "applications": apps}
 
 
+@app.patch("/api/applications/{application_id}")
+async def update_application(application_id: str, request: UpdateApplicationRequest):
+    """Update an application's status, notes, or cover letter"""
+    update_data = {"updated_at": datetime.now().isoformat()}
+
+    if request.status is not None:
+        update_data["status"] = request.status
+        if request.status == "sent":
+            update_data["sent_at"] = datetime.now().isoformat()
+
+    if request.notes is not None:
+        update_data["notes"] = request.notes
+
+    if request.cover_letter is not None:
+        update_data["cover_letter"] = request.cover_letter
+
+    # Update via Supabase REST API
+    url = f"{SUPABASE_URL}/rest/v1/applications?id=eq.{application_id}"
+    async with httpx.AsyncClient() as client:
+        response = await client.patch(
+            url,
+            json=update_data,
+            headers={
+                "apikey": SUPABASE_KEY,
+                "Authorization": f"Bearer {SUPABASE_KEY}",
+                "Content-Type": "application/json",
+                "Prefer": "return=representation"
+            }
+        )
+        if response.status_code in [200, 201]:
+            result = response.json()
+            if result:
+                return {"success": True, "application": result[0]}
+
+    raise HTTPException(status_code=500, detail="Could not update application")
+
+
+@app.delete("/api/applications/{application_id}")
+async def delete_application(application_id: str):
+    """Delete an application"""
+    url = f"{SUPABASE_URL}/rest/v1/applications?id=eq.{application_id}"
+    async with httpx.AsyncClient() as client:
+        response = await client.delete(
+            url,
+            headers={
+                "apikey": SUPABASE_KEY,
+                "Authorization": f"Bearer {SUPABASE_KEY}"
+            }
+        )
+        if response.status_code in [200, 204]:
+            return {"success": True}
+
+    raise HTTPException(status_code=500, detail="Could not delete application")
+
+
+@app.post("/api/jobs/{job_id}/save")
+async def save_job(job_id: str, request: Request):
+    """Save/bookmark a job for later"""
+    # Get user_id from auth token if available
+    auth_header = request.headers.get("Authorization", "")
+    user_id = "default_user"
+
+    if auth_header.startswith("Bearer "):
+        token = auth_header.replace("Bearer ", "")
+        async with httpx.AsyncClient() as client:
+            user_response = await client.get(
+                f"{SUPABASE_URL}/auth/v1/user",
+                headers={"apikey": SUPABASE_ANON_KEY, "Authorization": f"Bearer {token}"}
+            )
+            if user_response.status_code == 200:
+                user_id = user_response.json().get("id", "default_user")
+
+    # Check if application already exists
+    existing = await db_request("GET", "applications", params={
+        "job_id": f"eq.{job_id}",
+        "user_id": f"eq.{user_id}"
+    })
+
+    if existing and len(existing) > 0:
+        # Update existing to saved
+        url = f"{SUPABASE_URL}/rest/v1/applications?id=eq.{existing[0]['id']}"
+        async with httpx.AsyncClient() as client:
+            response = await client.patch(
+                url,
+                json={"status": "saved", "updated_at": datetime.now().isoformat()},
+                headers={
+                    "apikey": SUPABASE_KEY,
+                    "Authorization": f"Bearer {SUPABASE_KEY}",
+                    "Content-Type": "application/json",
+                    "Prefer": "return=representation"
+                }
+            )
+            if response.status_code in [200, 201]:
+                return {"success": True, "application": response.json()[0]}
+    else:
+        # Create new saved application
+        data = {
+            "job_id": job_id,
+            "user_id": user_id,
+            "status": "saved",
+            "created_at": datetime.now().isoformat()
+        }
+        result = await db_request("POST", "applications", data=data)
+        if result:
+            return {"success": True, "application": result[0]}
+
+    raise HTTPException(status_code=500, detail="Could not save job")
+
+
+@app.delete("/api/jobs/{job_id}/save")
+async def unsave_job(job_id: str, request: Request):
+    """Remove a saved job"""
+    auth_header = request.headers.get("Authorization", "")
+    user_id = "default_user"
+
+    if auth_header.startswith("Bearer "):
+        token = auth_header.replace("Bearer ", "")
+        async with httpx.AsyncClient() as client:
+            user_response = await client.get(
+                f"{SUPABASE_URL}/auth/v1/user",
+                headers={"apikey": SUPABASE_ANON_KEY, "Authorization": f"Bearer {token}"}
+            )
+            if user_response.status_code == 200:
+                user_id = user_response.json().get("id", "default_user")
+
+    # Delete saved application
+    url = f"{SUPABASE_URL}/rest/v1/applications?job_id=eq.{job_id}&user_id=eq.{user_id}&status=eq.saved"
+    async with httpx.AsyncClient() as client:
+        response = await client.delete(
+            url,
+            headers={
+                "apikey": SUPABASE_KEY,
+                "Authorization": f"Bearer {SUPABASE_KEY}"
+            }
+        )
+        if response.status_code in [200, 204]:
+            return {"success": True}
+
+    raise HTTPException(status_code=500, detail="Could not unsave job")
+
+
 @app.get("/api/stats")
 async def get_stats():
     """Get statistics"""
     jobs = await get_jobs_from_db(1000)
     apps = await get_applications_from_db()
+
+    # Calculate deadline_today - count jobs with deadline today
+    today = datetime.now().strftime('%Y-%m-%d')
+    deadline_today = 0
+    if jobs:
+        for job in jobs:
+            deadline = job.get("deadline", "")
+            if deadline and deadline.startswith(today):
+                deadline_today += 1
 
     return {
         "success": True,
@@ -838,7 +1034,8 @@ async def get_stats():
             "total_applications": len(apps) if apps else 0,
             "drafts": len([a for a in (apps or []) if a.get("status") == "draft"]),
             "sent": len([a for a in (apps or []) if a.get("status") == "sent"]),
-            "interviews": len([a for a in (apps or []) if a.get("status") == "interview"])
+            "interviews": len([a for a in (apps or []) if a.get("status") == "interview"]),
+            "deadline_today": deadline_today
         }
     }
 
@@ -1309,15 +1506,13 @@ def _create_gmail_link(job: Dict, letter: str) -> str:
 
 # ============== FRONTEND ==============
 
-import pathlib
-
 def get_setup_guide_html():
     """Load Gmail setup guide HTML"""
     try:
         guide_path = pathlib.Path(__file__).parent.parent / "setup-guide.html"
         if guide_path.exists():
             return guide_path.read_text(encoding='utf-8')
-    except:
+    except Exception:
         pass
     return "<h1>Setup guide not found</h1>"
 
@@ -1328,7 +1523,7 @@ def get_login_html():
         login_path = pathlib.Path(__file__).parent.parent / "login.html"
         if login_path.exists():
             return login_path.read_text(encoding='utf-8')
-    except:
+    except Exception:
         pass
     return "<h1>Login page not found</h1>"
 
@@ -1339,7 +1534,7 @@ def get_frontend_html():
         frontend_path = pathlib.Path(__file__).parent.parent / "frontend.html"
         if frontend_path.exists():
             return frontend_path.read_text(encoding='utf-8')
-    except:
+    except Exception:
         pass
 
     # Fallback: minimal embedded version
@@ -1419,7 +1614,7 @@ async def resend_verification(request: ResendVerificationRequest):
         raise HTTPException(status_code=500, detail="Supabase not configured")
 
     async with httpx.AsyncClient() as client:
-        response = await client.post(
+        await client.post(
             f"{SUPABASE_URL}/auth/v1/resend",
             headers={
                 "apikey": SUPABASE_ANON_KEY,
@@ -1511,7 +1706,7 @@ async def reset_password(request: ResetPasswordRequest):
         raise HTTPException(status_code=500, detail="Supabase not configured")
 
     async with httpx.AsyncClient() as client:
-        response = await client.post(
+        await client.post(
             f"{SUPABASE_URL}/auth/v1/recover",
             headers={
                 "apikey": SUPABASE_ANON_KEY,
@@ -1586,6 +1781,240 @@ async def get_current_user(request: Request):
                 "full_name": user.get("user_metadata", {}).get("full_name")
             }
         }
+
+
+@app.post("/api/migrate-my-data")
+async def migrate_user_data(request: Request):
+    """Migrate pre-defined CV data for the logged-in user."""
+    auth_header = request.headers.get("Authorization", "")
+    if not auth_header.startswith("Bearer "):
+        raise HTTPException(status_code=401, detail="Ej inloggad")
+
+    token = auth_header.replace("Bearer ", "")
+
+    # Get user ID
+    async with httpx.AsyncClient() as client:
+        user_response = await client.get(
+            f"{SUPABASE_URL}/auth/v1/user",
+            headers={"apikey": SUPABASE_ANON_KEY, "Authorization": f"Bearer {token}"}
+        )
+        if user_response.status_code != 200:
+            raise HTTPException(status_code=401, detail="Ogiltig session")
+        user_id = user_response.json().get("id")
+
+    # Pre-defined data
+    EXPERIENCES = [
+        {"user_id": user_id, "company": "House of Beans", "title": "Barista/Forsaljare", "location": "Stockholm", "start_date": "2024-08", "end_date": "2025-02", "description": "Kaffe, te, forsaljning, ensam i butik, kundkontakt", "categories": ["restaurant", "retail"]},
+        {"user_id": user_id, "company": "Max Hamburgare", "title": "Restaurangbitrade", "location": "Stockholm", "start_date": "2024-04", "end_date": "2024-08", "description": "Drive-in, kok, servering, kassa, teamwork", "categories": ["restaurant"]},
+        {"user_id": user_id, "company": "Clubhouse", "title": "Innehallsmoderator - Trust & Safety", "location": "Remote", "start_date": "2021-06", "end_date": "2022-01", "description": "Trust & Safety, innehallsgranskning, community support, policy enforcement", "categories": ["tech", "customerservice", "content"]},
+        {"user_id": user_id, "company": "Minerva Project", "title": "Global Marketing Coordinator", "location": "San Francisco / Remote", "start_date": "2019-09", "end_date": "2020-04", "description": "Kundservice via Intercom, marknadsforing, internationell kommunikation", "categories": ["customerservice", "office"]},
+        {"user_id": user_id, "company": "Google Ads (via Cognizant)", "title": "Innehallsanalytiker", "location": "Dublin", "start_date": "2018-05", "end_date": "2019-04", "description": "100+ annonser/dag, policy compliance, kvalitetsgranskning, dataanalys", "categories": ["tech", "content"]},
+        {"user_id": user_id, "company": "Coffeehouse by George", "title": "Cafepersonal", "location": "Stockholm", "start_date": "2014", "end_date": "2015", "description": "Kassahantering, barista, kundservice", "categories": ["restaurant"]},
+        {"user_id": user_id, "company": "ICA Maxi", "title": "Kassapersonal", "location": "Stockholm", "start_date": "2015", "end_date": "2019", "description": "Kassa, sjalvscanning, frukt/gront (sommarjobb 2015, 2017, 2019)", "categories": ["retail"]}
+    ]
+
+    EDUCATION = [{"user_id": user_id, "school": "Minerva University", "degree": "Bachelor's Degree", "field_of_study": "Business, Arts & Humanities", "location": "San Francisco / Global", "start_date": "2016", "end_date": "2020"}]
+
+    PROFILE = {"user_id": user_id, "full_name": "Linnea Moritz", "email": "linneamoritz1@gmail.com", "phone": "0761166109", "location": "Sollentuna", "drivers_license": True, "languages": ["Svenska (Modersmal)", "Engelska (Flytande)"]}
+
+    CV_VERSIONS = [
+        {"user_id": user_id, "vibe_id": "restaurant", "vibe_name": "Restaurang & Cafe", "vibe_emoji": "", "cv_text": """LINNEA MORITZ
+Sollentuna | 0761166109 | linneamoritz1@gmail.com
+
+PROFIL
+Serviceinriktad och stresstalig person med bred erfarenhet fran restaurang och cafe. Trivs i hogt tempo och ar van vid att ge gaster en bra upplevelse. B-korkort och flexibel med arbetstider.
+
+ERFARENHET
+Barista/Forsaljare - House of Beans (Aug 2024 - Feb 2025)
+- Ansvarade for kaffe- och teservering
+- Arbetade ofta ensam i butik med fullt ansvar
+- Byggde upp kundrelationer och merforsaljning
+
+Restaurangbitrade - Max Hamburgare (Apr - Aug 2024)
+- Drive-in, kok och kassahantering
+- Effektiv i stressiga miljoer
+- Teamwork och snabb inlarning av nya system
+
+Cafepersonal - Coffeehouse by George (2014-2015)
+- Kassahantering och barista
+- Hog serviceniva i centralt lage
+
+UTBILDNING
+Minerva University - Bachelor's Degree (2016-2020)
+
+SPRAK & OVRIGT
+Svenska (modersmal), Engelska (flytande)
+B-korkort, Livsmedelshygien"""},
+        {"user_id": user_id, "vibe_id": "retail", "vibe_name": "Butik & Kassa", "vibe_emoji": "", "cv_text": """LINNEA MORITZ
+Sollentuna | 0761166109 | linneamoritz1@gmail.com
+
+PROFIL
+Serviceinriktad med erfarenhet fran bade butik och cafe. Van vid kassahantering, kundkontakt och att arbeta sjalvstandigt. Palitlig och flexibel med arbetstider.
+
+ERFARENHET
+Barista/Forsaljare - House of Beans (Aug 2024 - Feb 2025)
+- Forsaljning av kaffe, te och tillbehor
+- Arbetade ofta ensam med fullt butiksansvar
+- Kassahantering och lagerhantering
+- Byggde kundrelationer och merforsaljning
+
+Kassapersonal - ICA Maxi (Somrar 2015, 2017, 2019)
+- Kassahantering och sjalvscanning
+- Frukt- och grontavdelningen
+- Kundservice i hogt tempo
+
+Cafepersonal - Coffeehouse by George (2014-2015)
+- Kassa och kundservice
+- Barista i centralt lage
+
+UTBILDNING
+Minerva University - Bachelor's Degree (2016-2020)
+
+FARDIGHETER
+Kassasystem, Kortterminaler
+Lagerhantering, Varupafyllning
+Kundservice, Merforsaljning
+Svenska (modersmal), Engelska (flytande)
+B-korkort"""},
+        {"user_id": user_id, "vibe_id": "customerservice", "vibe_name": "Kundtjanst & Support", "vibe_emoji": "", "cv_text": """LINNEA MORITZ
+Sollentuna | 0761166109 | linneamoritz1@gmail.com
+
+PROFIL
+Kommunikativ och losningsorienterad med internationell erfarenhet inom kundservice och support. Van vid att hantera arenden via telefon, mail och chat. Flytande svenska och engelska.
+
+ERFARENHET
+Innehallsmoderator, Trust & Safety - Clubhouse (Jun 2021 - Jan 2022)
+- Hanterade anvandarrapporter och support-arenden
+- Tillampade community guidelines och policy
+- Arbetade i ett globalt, remote team
+
+Global Marketing Coordinator - Minerva Project (Sep 2019 - Apr 2020)
+- Kundservice via Intercom
+- Internationell kommunikation med studenter och partners
+- Marknadsforing och eventkoordinering
+
+Innehallsanalytiker - Google Ads (Maj 2018 - Apr 2019)
+- Granskade 100+ annonser dagligen
+- Policy compliance och kvalitetssakring
+- Datadriven analys och rapportering
+
+UTBILDNING
+Minerva University - Bachelor's Degree, Business & Humanities (2016-2020)
+
+FARDIGHETER
+Intercom, Zendesk, CRM-system
+Problemlosning, Multitasking
+Svenska (modersmal), Engelska (flytande)"""},
+        {"user_id": user_id, "vibe_id": "content", "vibe_name": "Content & Moderation", "vibe_emoji": "", "cv_text": """LINNEA MORITZ
+Sollentuna | 0761166109 | linneamoritz1@gmail.com
+
+PROFIL
+Erfaren innehallsgranskare med bakgrund inom Trust & Safety och policy compliance. Analytisk, noggrann och van vid att fatta snabba beslut baserat pa riktlinjer. Erfarenhet fran tech-bolag som Google och Clubhouse.
+
+ERFARENHET
+Innehallsmoderator, Trust & Safety - Clubhouse (Jun 2021 - Jan 2022)
+- Trust & Safety for social audio-plattform
+- Granskade rapporterat innehall enligt community guidelines
+- Eskalerade komplexa arenden till senior team
+- Remote-arbete i globalt team
+
+Innehallsanalytiker - Google Ads (Maj 2018 - Apr 2019)
+- Granskade 100+ annonser dagligen for policy compliance
+- Identifierade vilseledande och skadligt innehall
+- Hog accuracy och effektivitet under press
+- Bidrog till forbattring av granskningsprocesser
+
+UTBILDNING
+Minerva University - Bachelor's Degree (2016-2020)
+Tvarvetenskaplig utbildning i 7 lander
+
+FARDIGHETER
+Content Moderation, Trust & Safety
+Policy Compliance, Riktlinjetolkning
+Dataanalys, Kvalitetssakring
+Svenska (modersmal), Engelska (flytande)"""}
+    ]
+
+    results = {"profile": False, "experiences": 0, "education": 0, "cvs": 0, "errors": []}
+
+    headers = {
+        "apikey": SUPABASE_KEY,
+        "Authorization": f"Bearer {SUPABASE_KEY}",
+        "Content-Type": "application/json",
+        "Prefer": "return=representation"
+    }
+
+    async with httpx.AsyncClient(timeout=30) as client:
+        # 1. Upsert profile (on_conflict=user_id)
+        try:
+            res = await client.post(
+                f"{SUPABASE_URL}/rest/v1/user_profiles?on_conflict=user_id",
+                headers=headers,
+                json=PROFILE
+            )
+            if res.status_code < 400:
+                results["profile"] = True
+            else:
+                results["errors"].append(f"Profile: {res.status_code}")
+        except Exception as e:
+            results["errors"].append(f"Profile error: {str(e)}")
+
+        # 2. Delete old experiences, then insert new
+        try:
+            await client.delete(
+                f"{SUPABASE_URL}/rest/v1/user_experiences?user_id=eq.{user_id}",
+                headers=headers
+            )
+            for exp in EXPERIENCES:
+                res = await client.post(
+                    f"{SUPABASE_URL}/rest/v1/user_experiences",
+                    headers=headers,
+                    json=exp
+                )
+                if res.status_code < 400:
+                    results["experiences"] += 1
+        except Exception as e:
+            results["errors"].append(f"Experiences error: {str(e)}")
+
+        # 3. Delete old education, then insert new
+        try:
+            await client.delete(
+                f"{SUPABASE_URL}/rest/v1/user_education?user_id=eq.{user_id}",
+                headers=headers
+            )
+            for edu in EDUCATION:
+                res = await client.post(
+                    f"{SUPABASE_URL}/rest/v1/user_education",
+                    headers=headers,
+                    json=edu
+                )
+                if res.status_code < 400:
+                    results["education"] += 1
+        except Exception as e:
+            results["errors"].append(f"Education error: {str(e)}")
+
+        # 4. Upsert CV versions (on_conflict=user_id,vibe_id)
+        try:
+            for cv in CV_VERSIONS:
+                cv["created_at"] = datetime.now().isoformat()
+                res = await client.post(
+                    f"{SUPABASE_URL}/rest/v1/user_cvs?on_conflict=user_id,vibe_id",
+                    headers=headers,
+                    json=cv
+                )
+                if res.status_code < 400:
+                    results["cvs"] += 1
+                else:
+                    results["errors"].append(f"CV {cv['vibe_id']}: {res.status_code}")
+        except Exception as e:
+            results["errors"].append(f"CVs error: {str(e)}")
+
+    success = results["profile"] and results["experiences"] > 0 and results["cvs"] > 0
+    return {
+        "success": success,
+        "message": f"Migrerat! Profil: {'OK' if results['profile'] else 'FEL'}, Erfarenheter: {results['experiences']}, CV:n: {results['cvs']}",
+        "results": results
+    }
 
 
 class UserPreferences(BaseModel):
@@ -1674,7 +2103,7 @@ async def save_user_preferences(request: Request, prefs: UserPreferences):
     }
 
     async with httpx.AsyncClient() as client:
-        response = await client.post(
+        await client.post(
             f"{SUPABASE_URL}/rest/v1/user_job_preferences",
             headers={
                 "apikey": SUPABASE_KEY,
@@ -2237,7 +2666,7 @@ async def upload_and_analyze_cv(request: Request):
             # Try to decode as text (for plain text CVs)
             try:
                 cv_text = file_content.decode('utf-8')
-            except:
+            except (UnicodeDecodeError, AttributeError):
                 # For PDF, we'd need a PDF parser - for now return helpful message
                 cv_text = "[PDF-fil uppladdad - texten extraheras]"
     else:
@@ -2658,9 +3087,9 @@ async def save_google_credentials(request: GoogleCredentialsRequest, user_id: st
     # Upsert credentials
     existing = await db_request("GET", "user_google_credentials", params={"user_id": f"eq.{user_id}"})
     if existing:
-        result = await db_request("PATCH", f"user_google_credentials?user_id=eq.{user_id}", data=data)
+        await db_request("PATCH", f"user_google_credentials?user_id=eq.{user_id}", data=data)
     else:
-        result = await db_request("POST", "user_google_credentials", data=data)
+        await db_request("POST", "user_google_credentials", data=data)
 
     return {"success": True, "message": "Credentials saved. Now connect your Gmail."}
 
@@ -2726,7 +3155,7 @@ async def gmail_oauth_callback(code: str, state: str = "default_user"):
         )
 
         if response.status_code != 200:
-            logger.error(f"Token exchange failed: {response.text}")
+            logger.error(f"Token exchange failed with status {response.status_code}")
             raise HTTPException(status_code=400, detail="Failed to exchange code for tokens")
 
         tokens = response.json()
@@ -2794,7 +3223,7 @@ async def refresh_gmail_token(user_id: str) -> Optional[str]:
             exp_time = datetime.fromisoformat(expires_at.replace('Z', '+00:00'))
             if exp_time > datetime.now(exp_time.tzinfo):
                 return cred.get("access_token")
-        except:
+        except (ValueError, TypeError):
             pass
 
     # Refresh token
@@ -2904,9 +3333,217 @@ async def privacy_policy_page():
         policy_path = pathlib.Path(__file__).parent.parent / "integritetspolicy.html"
         if policy_path.exists():
             return policy_path.read_text(encoding='utf-8')
-    except:
+    except Exception:
         pass
     return "<h1>Integritetspolicy kunde inte laddas</h1>"
+
+
+# ============== AI FEEDBACK ==============
+
+class AIFeedback(BaseModel):
+    feedback_text: str
+    feedback_type: str = "cover_letter"  # cover_letter, new_vibe_request, exclude_jobs, general
+    applies_to_vibes: Optional[List[str]] = None
+
+
+@app.post("/api/user/ai-feedback")
+async def save_ai_feedback(request: Request, feedback: AIFeedback):
+    """Save user feedback for AI cover letter generation."""
+    auth_header = request.headers.get("Authorization", "")
+    if not auth_header.startswith("Bearer "):
+        raise HTTPException(status_code=401, detail="Ej inloggad")
+
+    token = auth_header.replace("Bearer ", "")
+
+    async with httpx.AsyncClient() as client:
+        user_response = await client.get(
+            f"{SUPABASE_URL}/auth/v1/user",
+            headers={"apikey": SUPABASE_ANON_KEY, "Authorization": f"Bearer {token}"}
+        )
+        if user_response.status_code != 200:
+            raise HTTPException(status_code=401, detail="Ogiltig session")
+        user_id = user_response.json().get("id")
+
+    feedback_data = {
+        "user_id": user_id,
+        "feedback_text": feedback.feedback_text,
+        "feedback_type": feedback.feedback_type,
+        "applies_to_vibes": feedback.applies_to_vibes,
+        "is_active": True,
+        "created_at": datetime.now().isoformat()
+    }
+
+    async with httpx.AsyncClient() as client:
+        response = await client.post(
+            f"{SUPABASE_URL}/rest/v1/user_ai_feedback",
+            headers={
+                "apikey": SUPABASE_KEY,
+                "Authorization": f"Bearer {SUPABASE_KEY}",
+                "Content-Type": "application/json",
+                "Prefer": "return=representation"
+            },
+            json=feedback_data
+        )
+
+        if response.status_code >= 400:
+            logger.error(f"Failed to save feedback: {response.text}")
+            return {"success": False, "message": "Kunde inte spara feedback"}
+
+    return {"success": True, "message": "Feedback sparad!"}
+
+
+@app.get("/api/user/ai-feedback")
+async def get_ai_feedback(request: Request):
+    """Get all AI feedback for user."""
+    auth_header = request.headers.get("Authorization", "")
+    if not auth_header.startswith("Bearer "):
+        raise HTTPException(status_code=401, detail="Ej inloggad")
+
+    token = auth_header.replace("Bearer ", "")
+
+    async with httpx.AsyncClient() as client:
+        user_response = await client.get(
+            f"{SUPABASE_URL}/auth/v1/user",
+            headers={"apikey": SUPABASE_ANON_KEY, "Authorization": f"Bearer {token}"}
+        )
+        if user_response.status_code != 200:
+            raise HTTPException(status_code=401, detail="Ogiltig session")
+        user_id = user_response.json().get("id")
+
+    async with httpx.AsyncClient() as client:
+        response = await client.get(
+            f"{SUPABASE_URL}/rest/v1/user_ai_feedback?user_id=eq.{user_id}&is_active=eq.true&order=created_at.desc",
+            headers={
+                "apikey": SUPABASE_KEY,
+                "Authorization": f"Bearer {SUPABASE_KEY}"
+            }
+        )
+
+        if response.status_code >= 400:
+            return {"success": False, "feedback": []}
+
+        return {"success": True, "feedback": response.json()}
+
+
+# ============== GDPR ==============
+
+@app.get("/api/user/export-data")
+async def export_user_data_gdpr(request: Request):
+    """Export all user data as JSON (GDPR Article 20)."""
+    auth_header = request.headers.get("Authorization", "")
+    if not auth_header.startswith("Bearer "):
+        raise HTTPException(status_code=401, detail="Ej inloggad")
+
+    token = auth_header.replace("Bearer ", "")
+
+    async with httpx.AsyncClient() as client:
+        user_response = await client.get(
+            f"{SUPABASE_URL}/auth/v1/user",
+            headers={"apikey": SUPABASE_ANON_KEY, "Authorization": f"Bearer {token}"}
+        )
+        if user_response.status_code != 200:
+            raise HTTPException(status_code=401, detail="Ogiltig session")
+        user = user_response.json()
+        user_id = user.get("id")
+
+    headers = {
+        "apikey": SUPABASE_KEY,
+        "Authorization": f"Bearer {SUPABASE_KEY}"
+    }
+
+    export_data = {
+        "user": {"id": user_id, "email": user.get("email")},
+        "exported_at": datetime.now().isoformat()
+    }
+
+    async with httpx.AsyncClient() as client:
+        # Profile
+        res = await client.get(f"{SUPABASE_URL}/rest/v1/user_profiles?user_id=eq.{user_id}", headers=headers)
+        export_data["profile"] = res.json() if res.status_code < 400 else []
+
+        # Experiences
+        res = await client.get(f"{SUPABASE_URL}/rest/v1/user_experiences?user_id=eq.{user_id}", headers=headers)
+        export_data["experiences"] = res.json() if res.status_code < 400 else []
+
+        # Education
+        res = await client.get(f"{SUPABASE_URL}/rest/v1/user_education?user_id=eq.{user_id}", headers=headers)
+        export_data["education"] = res.json() if res.status_code < 400 else []
+
+        # Skills
+        res = await client.get(f"{SUPABASE_URL}/rest/v1/user_skills?user_id=eq.{user_id}", headers=headers)
+        export_data["skills"] = res.json() if res.status_code < 400 else []
+
+        # CVs
+        res = await client.get(f"{SUPABASE_URL}/rest/v1/user_cvs?user_id=eq.{user_id}", headers=headers)
+        export_data["cvs"] = res.json() if res.status_code < 400 else []
+
+        # Job preferences
+        res = await client.get(f"{SUPABASE_URL}/rest/v1/user_job_preferences?user_id=eq.{user_id}", headers=headers)
+        export_data["job_preferences"] = res.json() if res.status_code < 400 else []
+
+        # Applications
+        res = await client.get(f"{SUPABASE_URL}/rest/v1/applications?user_id=eq.{user_id}", headers=headers)
+        export_data["applications"] = res.json() if res.status_code < 400 else []
+
+        # AI Feedback
+        res = await client.get(f"{SUPABASE_URL}/rest/v1/user_ai_feedback?user_id=eq.{user_id}", headers=headers)
+        export_data["ai_feedback"] = res.json() if res.status_code < 400 else []
+
+    return {"success": True, "data": export_data}
+
+
+@app.delete("/api/user/delete-account")
+async def delete_user_account(request: Request):
+    """Delete all user data and account (GDPR Article 17)."""
+    auth_header = request.headers.get("Authorization", "")
+    if not auth_header.startswith("Bearer "):
+        raise HTTPException(status_code=401, detail="Ej inloggad")
+
+    token = auth_header.replace("Bearer ", "")
+
+    async with httpx.AsyncClient() as client:
+        user_response = await client.get(
+            f"{SUPABASE_URL}/auth/v1/user",
+            headers={"apikey": SUPABASE_ANON_KEY, "Authorization": f"Bearer {token}"}
+        )
+        if user_response.status_code != 200:
+            raise HTTPException(status_code=401, detail="Ogiltig session")
+        user_id = user_response.json().get("id")
+
+    headers = {
+        "apikey": SUPABASE_KEY,
+        "Authorization": f"Bearer {SUPABASE_KEY}"
+    }
+
+    deleted = []
+
+    async with httpx.AsyncClient() as client:
+        # Delete all user data from tables
+        tables = [
+            "user_ai_feedback",
+            "applications",
+            "user_cvs",
+            "user_skills",
+            "user_education",
+            "user_experiences",
+            "user_job_preferences",
+            "user_gmail_credentials",
+            "user_profiles"
+        ]
+
+        for table in tables:
+            res = await client.delete(
+                f"{SUPABASE_URL}/rest/v1/{table}?user_id=eq.{user_id}",
+                headers=headers
+            )
+            if res.status_code < 400:
+                deleted.append(table)
+
+    return {
+        "success": True,
+        "message": "Ditt konto och all data har raderats.",
+        "deleted_from": deleted
+    }
 
 
 @app.get("/account", response_class=HTMLResponse)
@@ -2916,7 +3553,7 @@ async def account_page():
         account_path = pathlib.Path(__file__).parent.parent / "account.html"
         if account_path.exists():
             return account_path.read_text(encoding='utf-8')
-    except:
+    except Exception:
         pass
     return "<h1>Kontosidan kunde inte laddas</h1>"
 
