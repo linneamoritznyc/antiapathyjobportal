@@ -83,9 +83,10 @@
         const NavTabs = ({ activeTab, setActiveTab }) => (
             <div className="flex gap-6">
                 {[
+                    { id: 'today', label: 'Idag', icon: '🎯' },
                     { id: 'jobs', label: 'Jobb', icon: '🔍' },
                     { id: 'cvs', label: 'Mina CV', icon: '📄' },
-                    { id: 'applications', label: 'Ansökningar', icon: '📬' }
+                    { id: 'applications', label: 'Ansokningar', icon: '📬' }
                 ].map(tab => (
                     <button
                         key={tab.id}
@@ -2307,10 +2308,319 @@
             );
         };
 
+        // Today's Session Page
+        const TodayPage = ({ onScrape, scraping, onApply, applyingJob }) => {
+            const [session, setSession] = useState(null);
+            const [loading, setLoading] = useState(true);
+            const [quickApplying, setQuickApplying] = useState(null);
+            const [batchApplying, setBatchApplying] = useState(false);
+            const [readyJobs, setReadyJobs] = useState([]);
+            const [selectedForBatch, setSelectedForBatch] = useState([]);
+            const [batchResult, setBatchResult] = useState(null);
+
+            const fetchTodaySession = async () => {
+                try {
+                    const res = await fetch('/api/today');
+                    const data = await res.json();
+                    if (data.success) setSession(data);
+                } catch (err) {
+                    console.error('Error fetching today session:', err);
+                }
+                setLoading(false);
+            };
+
+            const fetchReadyJobs = async () => {
+                try {
+                    const res = await fetch('/api/jobs/ready?limit=20');
+                    const data = await res.json();
+                    if (data.success) setReadyJobs(data.jobs || []);
+                } catch (err) {
+                    console.error('Error fetching ready jobs:', err);
+                }
+            };
+
+            useEffect(() => {
+                fetchTodaySession();
+                fetchReadyJobs();
+            }, []);
+
+            const handleQuickApply = async (jobId) => {
+                setQuickApplying(jobId);
+                try {
+                    const res = await fetch(`/api/quick-apply/${jobId}`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({})
+                    });
+                    const data = await res.json();
+                    if (data.success) {
+                        alert(`${data.message}`);
+                        fetchTodaySession();
+                        fetchReadyJobs();
+                    } else {
+                        alert('Kunde inte skapa ansokan: ' + (data.detail || 'Okant fel'));
+                    }
+                } catch (err) {
+                    alert('Fel vid snabbansokan');
+                }
+                setQuickApplying(null);
+            };
+
+            const handleBatchApply = async () => {
+                if (selectedForBatch.length === 0) return;
+                setBatchApplying(true);
+                try {
+                    const res = await fetch('/api/batch-apply', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            job_ids: selectedForBatch,
+                            auto_draft: true
+                        })
+                    });
+                    const data = await res.json();
+                    setBatchResult(data);
+                    fetchTodaySession();
+                    fetchReadyJobs();
+                    setSelectedForBatch([]);
+                } catch (err) {
+                    alert('Fel vid batch-ansokan');
+                }
+                setBatchApplying(false);
+            };
+
+            const toggleBatchSelect = (jobId) => {
+                setSelectedForBatch(prev =>
+                    prev.includes(jobId)
+                        ? prev.filter(id => id !== jobId)
+                        : [...prev, jobId]
+                );
+            };
+
+            if (loading) {
+                return (
+                    <div className="flex justify-center py-20">
+                        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-indigo-600"></div>
+                    </div>
+                );
+            }
+
+            const s = session?.session || {};
+            const urgentJobs = session?.urgent_deadlines || [];
+            const goalToday = 5;
+            const progress = Math.min(100, Math.round((s.applied_today / goalToday) * 100));
+
+            return (
+                <div>
+                    {/* Today's Progress */}
+                    <div className="bg-white rounded-xl shadow-sm p-6 mb-6">
+                        <div className="flex justify-between items-start mb-4">
+                            <div>
+                                <h2 className="text-xl font-bold text-slate-800">Dagens session</h2>
+                                <p className="text-sm text-slate-500">{new Date().toLocaleDateString('sv-SE', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}</p>
+                            </div>
+                            <button
+                                onClick={() => { fetchTodaySession(); fetchReadyJobs(); }}
+                                className="text-sm text-indigo-600 hover:text-indigo-700"
+                            >
+                                Uppdatera
+                            </button>
+                        </div>
+
+                        {/* Progress bar */}
+                        <div className="mb-6">
+                            <div className="flex justify-between text-sm mb-2">
+                                <span className="text-slate-600 font-medium">Dagens mal: {goalToday} ansokningar</span>
+                                <span className="font-bold text-indigo-600">{s.applied_today || 0}/{goalToday}</span>
+                            </div>
+                            <div className="h-4 bg-slate-100 rounded-full overflow-hidden">
+                                <div
+                                    className="h-full bg-gradient-to-r from-indigo-500 to-purple-500 rounded-full transition-all duration-700"
+                                    style={{ width: `${progress}%` }}
+                                />
+                            </div>
+                            {s.applied_today >= goalToday && (
+                                <p className="text-green-600 text-sm font-medium mt-2">Bra jobbat! Du har natt dagens mal!</p>
+                            )}
+                        </div>
+
+                        {/* Today's stats grid */}
+                        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                            <div className="bg-indigo-50 rounded-xl p-4">
+                                <div className="text-2xl font-bold text-indigo-600">{s.applied_today || 0}</div>
+                                <div className="text-xs text-slate-500">Ansokningar idag</div>
+                            </div>
+                            <div className="bg-green-50 rounded-xl p-4">
+                                <div className="text-2xl font-bold text-green-600">{s.drafts_today || 0}</div>
+                                <div className="text-xs text-slate-500">Utkast skapade</div>
+                            </div>
+                            <div className="bg-amber-50 rounded-xl p-4">
+                                <div className="text-2xl font-bold text-amber-600">{s.pending_jobs || 0}</div>
+                                <div className="text-xs text-slate-500">Jobb att soka</div>
+                            </div>
+                            <div className="bg-red-50 rounded-xl p-4">
+                                <div className="text-2xl font-bold text-red-600">{s.urgent_jobs || 0}</div>
+                                <div className="text-xs text-slate-500">Deadline idag/imorgon</div>
+                            </div>
+                        </div>
+                    </div>
+
+                    {/* Urgent deadlines */}
+                    {urgentJobs.length > 0 && (
+                        <div className="bg-red-50 border border-red-200 rounded-xl p-5 mb-6">
+                            <h3 className="text-lg font-semibold text-red-800 mb-3">Akuta deadlines</h3>
+                            <div className="space-y-3">
+                                {urgentJobs.map(job => (
+                                    <div key={job.id} className="flex items-center justify-between bg-white rounded-lg p-3 border border-red-100">
+                                        <div>
+                                            <p className="font-medium text-slate-800">{job.title}</p>
+                                            <p className="text-sm text-slate-500">{job.company} - {job.location}</p>
+                                            <p className="text-xs text-red-600 font-medium">
+                                                Deadline: {new Date(job.deadline).toLocaleDateString('sv-SE')}
+                                            </p>
+                                        </div>
+                                        <div className="flex gap-2">
+                                            <a href={job.url} target="_blank" className="px-3 py-1.5 text-sm border border-slate-200 rounded-lg hover:bg-slate-50">Se annons</a>
+                                            <button
+                                                onClick={() => handleQuickApply(job.id)}
+                                                disabled={quickApplying === job.id}
+                                                className="px-3 py-1.5 text-sm bg-red-600 text-white rounded-lg hover:bg-red-700 disabled:opacity-50"
+                                            >
+                                                {quickApplying === job.id ? '...' : 'Snabbansokan'}
+                                            </button>
+                                        </div>
+                                    </div>
+                                ))}
+                            </div>
+                        </div>
+                    )}
+
+                    {/* Ready to apply (have email) */}
+                    <div className="bg-white rounded-xl shadow-sm p-5 mb-6">
+                        <div className="flex justify-between items-center mb-4">
+                            <h3 className="text-lg font-semibold text-slate-800">
+                                Redo att soka ({readyJobs.length} jobb med email)
+                            </h3>
+                            {selectedForBatch.length > 0 && (
+                                <button
+                                    onClick={handleBatchApply}
+                                    disabled={batchApplying}
+                                    className="bg-indigo-600 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-indigo-700 disabled:opacity-50"
+                                >
+                                    {batchApplying ? 'Skapar ansokningar...' : `Sok till ${selectedForBatch.length} jobb`}
+                                </button>
+                            )}
+                        </div>
+
+                        {batchResult && (
+                            <div className="bg-green-50 border border-green-200 rounded-lg p-3 mb-4">
+                                <p className="text-sm text-green-800 font-medium">{batchResult.message}</p>
+                                <div className="mt-2 space-y-1">
+                                    {batchResult.results?.filter(r => r.success).map(r => (
+                                        <p key={r.job_id} className="text-xs text-green-700">
+                                            {r.title} hos {r.company} {r.draft_created ? '(utkast skapat)' : '(brev genererat)'}
+                                        </p>
+                                    ))}
+                                </div>
+                                <button
+                                    onClick={() => setBatchResult(null)}
+                                    className="text-xs text-green-600 hover:underline mt-2"
+                                >
+                                    Stang
+                                </button>
+                            </div>
+                        )}
+
+                        {readyJobs.length === 0 ? (
+                            <div className="text-center py-8">
+                                <p className="text-slate-500 mb-3">Inga jobb med email-adress hittade.</p>
+                                <button
+                                    onClick={() => onScrape('')}
+                                    disabled={scraping}
+                                    className="bg-indigo-600 text-white px-6 py-2 rounded-lg text-sm font-medium hover:bg-indigo-700 disabled:opacity-50"
+                                >
+                                    {scraping ? 'Soker...' : 'Sok nya jobb'}
+                                </button>
+                            </div>
+                        ) : (
+                            <div className="space-y-2">
+                                {readyJobs.map(job => (
+                                    <div key={job.id} className="flex items-center gap-3 p-3 rounded-lg border border-slate-100 hover:border-slate-200 transition">
+                                        <input
+                                            type="checkbox"
+                                            checked={selectedForBatch.includes(job.id)}
+                                            onChange={() => toggleBatchSelect(job.id)}
+                                            className="w-4 h-4 text-indigo-600 rounded border-slate-300"
+                                        />
+                                        <div className="flex-1 min-w-0">
+                                            <p className="font-medium text-slate-800 truncate">{job.title}</p>
+                                            <p className="text-sm text-slate-500">{job.company} - {job.location}</p>
+                                            {job.deadline && (
+                                                <p className="text-xs text-slate-400">
+                                                    Deadline: {new Date(job.deadline).toLocaleDateString('sv-SE')}
+                                                </p>
+                                            )}
+                                        </div>
+                                        <div className="text-xs text-slate-400 hidden md:block">
+                                            {job.contact_email}
+                                        </div>
+                                        <div className="flex gap-2">
+                                            <a href={job.url} target="_blank" className="px-2 py-1 text-xs border border-slate-200 rounded hover:bg-slate-50">Se</a>
+                                            <button
+                                                onClick={() => handleQuickApply(job.id)}
+                                                disabled={quickApplying === job.id}
+                                                className="px-3 py-1 text-xs bg-indigo-600 text-white rounded hover:bg-indigo-700 disabled:opacity-50"
+                                            >
+                                                {quickApplying === job.id ? '...' : 'Snabbok'}
+                                            </button>
+                                        </div>
+                                    </div>
+                                ))}
+                            </div>
+                        )}
+                    </div>
+
+                    {/* Today's completed applications */}
+                    {s.today_applications && s.today_applications.length > 0 && (
+                        <div className="bg-white rounded-xl shadow-sm p-5">
+                            <h3 className="text-lg font-semibold text-slate-800 mb-3">Idag har du sokt</h3>
+                            <div className="space-y-2">
+                                {s.today_applications.map(app => (
+                                    <div key={app.id} className="flex items-center justify-between p-3 bg-green-50 rounded-lg">
+                                        <div>
+                                            <p className="font-medium text-slate-800">{app.title}</p>
+                                            <p className="text-sm text-slate-500">{app.company}</p>
+                                        </div>
+                                        <span className={`text-xs px-2 py-1 rounded-full ${
+                                            app.status === 'draft_saved' ? 'bg-blue-100 text-blue-700' :
+                                            app.status === 'sent' ? 'bg-green-100 text-green-700' :
+                                            'bg-slate-100 text-slate-600'
+                                        }`}>
+                                            {app.status === 'draft_saved' ? 'Utkast' :
+                                             app.status === 'sent' ? 'Skickad' :
+                                             app.status === 'letter_generated' ? 'Brev klart' :
+                                             app.status}
+                                        </span>
+                                    </div>
+                                ))}
+                            </div>
+                        </div>
+                    )}
+
+                    {/* Tip */}
+                    {session?.tip && (
+                        <div className="mt-6 p-4 bg-indigo-50 border border-indigo-200 rounded-xl">
+                            <p className="text-sm text-indigo-800">{session.tip}</p>
+                        </div>
+                    )}
+                </div>
+            );
+        };
+
         // ============== MAIN APP ==============
 
         const App = () => {
-            const [activeTab, setActiveTab] = useState('jobs');
+            const [activeTab, setActiveTab] = useState('today');
             const [jobs, setJobs] = useState([]);
             const [vibes, setVibes] = useState([]);
             const [userCVs, setUserCVs] = useState([]);
@@ -2772,6 +3082,15 @@
 
                     <main className="max-w-6xl mx-auto px-4 py-6">
                         <Stats stats={{...stats, cv_vibes: userCVs.length}} />
+
+                        {activeTab === 'today' && (
+                            <TodayPage
+                                onScrape={handleScrape}
+                                scraping={scraping}
+                                onApply={handleApply}
+                                applyingJob={applyingJob}
+                            />
+                        )}
 
                         {activeTab === 'jobs' && (
                             <JobsPage
