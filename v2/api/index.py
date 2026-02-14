@@ -1802,20 +1802,142 @@ async def migrate_user_data(request: Request):
             raise HTTPException(status_code=401, detail="Ogiltig session")
         user_id = user_response.json().get("id")
 
-    # Pre-defined data
+    # Pre-defined data — ALL experiences from Linnea's 8 CV PDFs
     EXPERIENCES = [
-        {"user_id": user_id, "company": "House of Beans", "title": "Barista/Forsaljare", "location": "Stockholm", "start_date": "2024-08", "end_date": "2025-02", "description": "Kaffe, te, forsaljning, ensam i butik, kundkontakt", "categories": ["restaurant", "retail"]},
-        {"user_id": user_id, "company": "Max Hamburgare", "title": "Restaurangbitrade", "location": "Stockholm", "start_date": "2024-04", "end_date": "2024-08", "description": "Drive-in, kok, servering, kassa, teamwork", "categories": ["restaurant"]},
-        {"user_id": user_id, "company": "Clubhouse", "title": "Innehallsmoderator - Trust & Safety", "location": "Remote", "start_date": "2021-06", "end_date": "2022-01", "description": "Trust & Safety, innehallsgranskning, community support, policy enforcement", "categories": ["tech", "customerservice", "content"]},
-        {"user_id": user_id, "company": "Minerva Project", "title": "Global Marketing Coordinator", "location": "San Francisco / Remote", "start_date": "2019-09", "end_date": "2020-04", "description": "Kundservice via Intercom, marknadsforing, internationell kommunikation", "categories": ["customerservice", "office"]},
-        {"user_id": user_id, "company": "Google Ads (via Cognizant)", "title": "Innehallsanalytiker", "location": "Dublin", "start_date": "2018-05", "end_date": "2019-04", "description": "100+ annonser/dag, policy compliance, kvalitetsgranskning, dataanalys", "categories": ["tech", "content"]},
-        {"user_id": user_id, "company": "Coffeehouse by George", "title": "Cafepersonal", "location": "Stockholm", "start_date": "2014", "end_date": "2015", "description": "Kassahantering, barista, kundservice", "categories": ["restaurant"]},
-        {"user_id": user_id, "company": "ICA Maxi", "title": "Kassapersonal", "location": "Stockholm", "start_date": "2015", "end_date": "2019", "description": "Kassa, sjalvscanning, frukt/gront (sommarjobb 2015, 2017, 2019)", "categories": ["retail"]}
+        {"user_id": user_id, "company": "Minerva University", "title": "Alumni Ambassador Western Europe", "location": "Stockholm", "dates": "Sep 2024 - Pagaende", "bullets": ["25% tjanst med sjalvstandig planering, cirka 40 timmar i manaden", "Genomfor strategisk marknadsforing genom resor till skolor och massor i Vasteuropa och Norden", "Bygger och underhaller databaser for skolkontakter, moten med SYO:er och studievagledare", "Ansvarar for logistik: bokning av flyg, hotell och transporter for stort geografiskt omrade"], "categories": ["office", "customerservice"], "sort_order": 1},
+        {"user_id": user_id, "company": "House of Beans, Hotorgshallen", "title": "Forsaljare/Barista", "location": "Stockholm", "dates": "Aug 2024 - Feb 2025", "bullets": ["Sjalvstandigt butiksansvar med forsaljning av te, kaffe och choklad", "Direktforsaljning till kunder och barista. Arbetade 8 timmar ensam, mycket eget ansvar", "Hanterade kassa, kundservice och lagerhantering"], "categories": ["restaurant", "retail"], "sort_order": 2},
+        {"user_id": user_id, "company": "Profilgruppen", "title": "Anodiseringsoperator (Feriearbete)", "location": "Aseda", "dates": "Juli 2024 - Aug 2024", "bullets": ["Utforde tungt fysiskt arbete med fokus pa armlyft och materialhantering", "Arbetade pa tvaskift (06.00-14.00 och 14.00-23.00)", "Genomgick utbildning i handtravers och samarbetade med dagligen roterande kollegor"], "categories": ["industry"], "sort_order": 3},
+        {"user_id": user_id, "company": "Max Hamburgare", "title": "Restaurangbitrade", "location": "Vetlanda", "dates": "April 2024 - Aug 2024", "bullets": ["Arbetade i hogt tempo med drive-in, fritos, kok, servering, kassa och stad", "Levererade god kundservice och samarbetade effektivt med teamet under rusningstid"], "categories": ["restaurant"], "sort_order": 4},
+        {"user_id": user_id, "company": "Keeping Tabs", "title": "Multimedia Technical Specialist", "location": "New York, USA", "dates": "Nov 2022 - Juni 2023", "bullets": ["Planerade och koordinerade konstsamling for Art Basel Hong Kong (70x30m skarm, Causeway Bay)", "Designade visuell merchandise och rullade ut forsaljnings- och logistikkampanj", "Utvecklade partnerskap med organisationer inom konstindustrin i USA", "Ansvarade for leadgenerering, orderleverans, fakturering och kundnojdhet"], "categories": ["art", "office"], "sort_order": 5},
+        {"user_id": user_id, "company": "30 Campos Eliseos", "title": "Kubistisk malare", "location": "New York, USA", "dates": "2022 - 2024", "bullets": ["Scoutad som professionell kubistmalare till prestigefylld konstsamlargrupp grundad i Florens", "En av endast fem konstnarer utvalda bland 500+ sokande", "Deltog i utstallningar i New York, Dubai, Seoul, Madrid och Florens"], "categories": ["art"], "sort_order": 6},
+        {"user_id": user_id, "company": "TikTok/ByteDance", "title": "Kvalitetsgranskare - Amerikanska marknaden", "location": "Nashville, USA", "dates": "Maj 2022 - Juni 2022", "bullets": ["Granskade innehallsmoderatörernas arbete for att sakerstalla att de foljer riktlinjer", "Kvalitetssakrade moderering och bidrog till forbattrade processer"], "categories": ["tech", "content"], "sort_order": 7},
+        {"user_id": user_id, "company": "YouTube Ads (via Vaco)", "title": "Innehallsmoderator - Svenska marknaden", "location": "San Francisco, USA", "dates": "Feb 2022 - Juni 2022", "bullets": ["Flaggade olamplig reklam och bidrog till att utoka databaser med markerat innehall", "Foljde noggrant alla riktlinjer och samarbetade med det svenska teamet", "Deltog i regelbundna moten for att sakerstalla korrekt granskning av material"], "categories": ["tech", "content"], "sort_order": 8},
+        {"user_id": user_id, "company": "Clubhouse (via Vaco)", "title": "Innehallsmoderator - Skandinaviska och amerikanska marknaden", "location": "Walnut Creek, USA", "dates": "Juni 2021 - Jan 2022", "bullets": ["Granskade Trust & Safety-arenden inom samtliga 16 kategorier for ljudbaserad social media", "Kategorier inkluderade hatiskt tal, sexuell exploatering, valdsbejakande extremism, CSAM och falsk information", "Hade fullt ansvar for att hantera alla arenden inom svenska, norska och danska marknaden", "Identifierade brister i standardiserade arbetsrutiner och drev policyforbttringar", "Okade produktiviteten med 98% samtidigt som alla dagliga kvalitetsmal uppfylldes"], "categories": ["tech", "customerservice", "content"], "sort_order": 9},
+        {"user_id": user_id, "company": "Svensk-amerikanska handelskammaren", "title": "Marknadsforing och forsaljningsutveckling", "location": "San Francisco, USA", "dates": "Juni 2021 - Sep 2021", "bullets": ["Byggde upp natverk med 100+ svenska startups, myndigheter och foretag genom konferenser och event", "Okade handelskammarens natverk med 20% genom effektiv e-post- och LinkedIn-marknadsforing", "Assisterade tva svenska konsultkunder med databas av 120 forsaljningsleads i USA", "Organiserade kraftskiva for 80 skandinaver och amerikaner i samarbete med Norska klubben"], "categories": ["office", "customerservice"], "sort_order": 10},
+        {"user_id": user_id, "company": "Minerva University", "title": "Handledare for examensprojekt", "location": "San Francisco, USA", "dates": "Sep 2020 - Maj 2021", "bullets": ["Handledde 45 studenter i deras capstone-projekt inom VR, hallbart mode, varumarkesanalys och historiska romaner", "Ledde workshops, undervisade i projektledning och gav omfattande akademiskt stod", "Gav kvalitativ och kvantitativ aterkoppling till over 90 uppgifter och 40 lektioner"], "categories": ["office", "art"], "sort_order": 11},
+        {"user_id": user_id, "company": "Kvarngarden aldreboende", "title": "Timvikarie", "location": "Vetlanda", "dates": "Maj 2020 - Sep 2020", "bullets": ["Omvardnad, medicinhantering, maltidsassistans, dokumentation och emotionellt stod", "Gav omsorg till aldre personer med demens och Alzheimers sjukdom", "Foljde noggrant covid-protokoll och arbetade bade morgon- och kvallspass"], "categories": ["healthcare"], "sort_order": 12},
+        {"user_id": user_id, "company": "Minerva Project", "title": "Marknadsforing/Kundservice - Global Marketing Team", "location": "Berlin & Buenos Aires", "dates": "Sep 2019 - April 2020", "bullets": ["Samarbetade med globala marknadsforingsteamet for att oka antagningen till Minerva University", "Vagledde och stottade over 2000 sokande elever via Intercom med hogkvalitativ kundservice", "Svarade pa fragor fran elever i over 40 lander genom Intercom och personliga moten", "Anordnade rekryteringsevenemang i Norge med presentation om utbildningsprogrammet"], "categories": ["customerservice", "office"], "sort_order": 13},
+        {"user_id": user_id, "company": "Google Ads (via Vaco)", "title": "Svensk innehallsanalytiker for gTech", "location": "Sunnyvale, USA / Seoul / Hyderabad", "dates": "Maj 2018 - April 2019", "bullets": ["Forbattrade och granskade svensk annonsering med expertkunskap inom svensk kultur och sprak", "Utforde extraktion och granskning av innehall for over 100 annonser per dag", "Arbetade i USA och pa distans i Indien, Sydkorea och Stockholm. Hanterade tidszonskoordinering", "Det svenska teamet uppnadde 100% mal for tjanstenivaavatalet"], "categories": ["tech", "content"], "sort_order": 14},
+        {"user_id": user_id, "company": "Minerva Project - Student Experience Team", "title": "Evenemangskoordinator och elevhemsvärd", "location": "San Francisco, USA", "dates": "Sep 2017 - Maj 2018", "bullets": ["Organiserade 60 evenemang for 210 internationella studenter, 2-3 per vecka", "Ansvarade for moten, budgetkontroll, narvaro, schemalggning och marknadsforing", "Organiserade stadsskattjakt dar studenter upptackte San Francisco", "Koordinerade gastforelasare och anvande mjukvara for eventlogistik"], "categories": ["office", "customerservice"], "sort_order": 15},
+        {"user_id": user_id, "company": "Wallby Sateri", "title": "Gardsvard/Receptionist", "location": "Vetlanda", "dates": "Juni 2016 - Aug 2016", "bullets": ["Arbetade i receptionen med bokningar, telefonsamtal, in- och utcheckning samt betalningar", "Assisterade vid cafeet och bidrog till allman service"], "categories": ["reception", "customerservice"], "sort_order": 16},
+        {"user_id": user_id, "company": "ICA Maxi Stormarknad", "title": "Kassapersonal, frukt och gront", "location": "Vetlanda & Varmdo", "dates": "2015, 2017, 2019", "bullets": ["Arbetade i kassan, sjalvscanningen, frukt och gront, charken och blomavdelningen", "ICA-certifierad inom kassahantering, Trygga mat och sakerhet i butik"], "categories": ["retail"], "sort_order": 17},
+        {"user_id": user_id, "company": "Coffeehouse by George", "title": "Cafepersonal", "location": "Stockholm", "dates": "2014 - 2015", "bullets": ["Kassahantering och barista", "Hog serviceeniva i centralt lage"], "categories": ["restaurant"], "sort_order": 18},
+        {"user_id": user_id, "company": "Siggesta Gard", "title": "Gardsvard/Tradgardsarbetare", "location": "Varmdo", "dates": "2014 - 2015", "bullets": ["Kundbemotande pa stor evenemangsanlaggning (minigolf, restauranger, konferenser, hotell)", "Overseende roll med kommunikation mellan avdelningar. Ansvarade for marknad med ~1000 besokare/sondag", "Tradgardsarbete: klippte gras, rensade ogras, planterade, skrapsortering. Korde golfbil"], "categories": ["industry", "reception"], "sort_order": 19},
     ]
 
-    EDUCATION = [{"user_id": user_id, "school": "Minerva University", "degree": "Bachelor's Degree", "field_of_study": "Business, Arts & Humanities", "location": "San Francisco / Global", "start_date": "2016", "end_date": "2020"}]
+    EDUCATION = [
+        {"user_id": user_id, "school": "Minerva University", "degree": "B.S in Social Science, Economics and Business Administration", "location": "San Francisco, USA", "dates": "Aug 2017 - Maj 2021", "bullets": ["Varldens mest innovativa universitet enligt WURI", "Antagningsgrad pa 1.8% - mest selektiva universitetet i USA", "Studerade i fem lander: USA, Sydkorea, Indien, Tyskland och Argentina", "Handledde 45 studenter i examensprojekt inom fem amnen och branscher"], "sort_order": 1},
+        {"user_id": user_id, "school": "United World College Red Cross Nordic", "degree": "International Baccalaureate Bilingual Diploma - Engelska och Svenska (GPA: 3.85)", "location": "Flekke, Norge", "dates": "Aug 2015 - Maj 2017", "bullets": ["Utvald som toppelev fran Sverige bland 120 sokande, fullt stipendium", "Bodde med 200 elever fran 96 olika lander med fokus pa internationell fred och forstaelse", "Roda Korsets diplom: Guldutmarkelse for teamwork, frivilligarbete och ledarskap (100+ timmar)"], "sort_order": 2},
+    ]
 
-    PROFILE = {"user_id": user_id, "full_name": "Linnea Moritz", "email": "linneamoritz1@gmail.com", "phone": "0761166109", "location": "Sollentuna", "drivers_license": True, "languages": ["Svenska (Modersmal)", "Engelska (Flytande)"]}
+    PROFILE = {
+        "user_id": user_id,
+        "full_name": "Linnea Moritz",
+        "email": "linneamoritz1@gmail.com",
+        "phone": "0761166109",
+        "location": "Sollentuna",
+        "drivers_license": True,
+        "languages": ["Svenska (Modersmal)", "Engelska (Flytande)", "Tyska (grundlaggande)", "Spanska (grundlaggande)", "Mandarin (HSK niva 3)"],
+        "certificates": ["B-korkort (automat)", "ICA kassahantering", "Trygga mat", "Roda Korset forsta hjalpen"],
+        "about_me": "Serviceinriktad och stresstalig med bred internationell erfarenhet. Minerva University (1.8% antagning). Jobbat i 7 lander. Flytande svenska och engelska.",
+    }
+
+    SKILLS = [
+        # General
+        {"user_id": user_id, "category": "all", "skill_type": "soft", "skill_text": "Kundservice"},
+        {"user_id": user_id, "category": "all", "skill_type": "soft", "skill_text": "Kommunikation"},
+        {"user_id": user_id, "category": "all", "skill_type": "soft", "skill_text": "Teamwork"},
+        {"user_id": user_id, "category": "all", "skill_type": "soft", "skill_text": "Stresshantering"},
+        {"user_id": user_id, "category": "all", "skill_type": "language", "skill_text": "Svenska (Modersmal)"},
+        {"user_id": user_id, "category": "all", "skill_type": "language", "skill_text": "Engelska (Flytande)"},
+        {"user_id": user_id, "category": "all", "skill_type": "language", "skill_text": "Tyska (grundlaggande)"},
+        {"user_id": user_id, "category": "all", "skill_type": "language", "skill_text": "Spanska (grundlaggande)"},
+        {"user_id": user_id, "category": "all", "skill_type": "language", "skill_text": "Mandarin (HSK niva 3)"},
+        {"user_id": user_id, "category": "all", "skill_type": "certificate", "skill_text": "B-korkort"},
+        {"user_id": user_id, "category": "all", "skill_type": "certificate", "skill_text": "ICA kassahantering"},
+        {"user_id": user_id, "category": "all", "skill_type": "certificate", "skill_text": "Trygga mat"},
+        {"user_id": user_id, "category": "all", "skill_type": "certificate", "skill_text": "Roda Korset forsta hjalpen"},
+        # Restaurant
+        {"user_id": user_id, "category": "restaurant", "skill_type": "technical", "skill_text": "Kassasystem"},
+        {"user_id": user_id, "category": "restaurant", "skill_type": "technical", "skill_text": "Barista"},
+        {"user_id": user_id, "category": "restaurant", "skill_type": "technical", "skill_text": "Servering"},
+        {"user_id": user_id, "category": "restaurant", "skill_type": "certificate", "skill_text": "Livsmedelshygien"},
+        # Tech/Content
+        {"user_id": user_id, "category": "tech", "skill_type": "technical", "skill_text": "Content Moderation"},
+        {"user_id": user_id, "category": "tech", "skill_type": "technical", "skill_text": "Trust & Safety"},
+        {"user_id": user_id, "category": "tech", "skill_type": "technical", "skill_text": "Policy Compliance"},
+        {"user_id": user_id, "category": "tech", "skill_type": "technical", "skill_text": "Data Analysis"},
+        {"user_id": user_id, "category": "tech", "skill_type": "technical", "skill_text": "Python"},
+        {"user_id": user_id, "category": "tech", "skill_type": "technical", "skill_text": "SQL"},
+        {"user_id": user_id, "category": "tech", "skill_type": "technical", "skill_text": "Tableau"},
+        {"user_id": user_id, "category": "tech", "skill_type": "technical", "skill_text": "Google Analytics"},
+        {"user_id": user_id, "category": "tech", "skill_type": "technical", "skill_text": "Google Ads"},
+        {"user_id": user_id, "category": "tech", "skill_type": "technical", "skill_text": "Facebook Ads"},
+        {"user_id": user_id, "category": "tech", "skill_type": "technical", "skill_text": "Adobe Creative Suite"},
+        {"user_id": user_id, "category": "tech", "skill_type": "technical", "skill_text": "Content SEO"},
+        {"user_id": user_id, "category": "tech", "skill_type": "technical", "skill_text": "Excel/Google Sheets"},
+        # Customer service
+        {"user_id": user_id, "category": "customerservice", "skill_type": "technical", "skill_text": "Intercom"},
+        {"user_id": user_id, "category": "customerservice", "skill_type": "technical", "skill_text": "Zendesk"},
+        {"user_id": user_id, "category": "customerservice", "skill_type": "technical", "skill_text": "CRM-system"},
+        {"user_id": user_id, "category": "customerservice", "skill_type": "soft", "skill_text": "Problemlosning"},
+        # Retail
+        {"user_id": user_id, "category": "retail", "skill_type": "technical", "skill_text": "Kassasystem"},
+        {"user_id": user_id, "category": "retail", "skill_type": "technical", "skill_text": "Lagerhantering"},
+        {"user_id": user_id, "category": "retail", "skill_type": "technical", "skill_text": "Merforsaljning"},
+    ]
+
+    VOLUNTEER = [
+        {"user_id": user_id, "organization": "LEAF (Living Environment and Future)", "dates": "2016 - 2017", "bullets": ["Ledde elevgrupp for att utbilda skolan i miljotank. Organiserade presentationer och kampanjer", "Skapade modemagasin for att sponsra hallbart jordbruksprojekt i Ghana. Samlade in 30,000 kr"], "sort_order": 1},
+        {"user_id": user_id, "organization": "The Right Solution Project", "dates": "Mars 2013 - April 2015", "bullets": ["Tog initiativ att finansiera NGO for kvinnors utbildning vid 15 ars alder", "Samlade in over 120,000 kr genom evenemang och forsaljning", "Tillhandaholl 400+ vardpaket med hygienprodukter till etiopiska skolor. Tacktes i media tva ganger"], "sort_order": 2},
+        {"user_id": user_id, "organization": "India Unlimited Utbytesprogram", "dates": "Nov 2014 - Feb 2015", "bullets": ["Deltog i EU-projekt for att framja fredliga relationer mellan Sverige och Indien", "Koordinerade hygienprojekt och fick kunskap om hallbar utveckling i utvecklingslander"], "sort_order": 3},
+        {"user_id": user_id, "organization": "Varmdo Forsamling", "dates": "2012 - 2014", "bullets": ["Ledare for 3 konfirmandgrupper under 2 ar. Ledare pa tre veckors sommarlager pa Angsholmen", "Svenska Kyrkan: Ledarskapskurs steg 1 och 2"], "sort_order": 4},
+    ]
+
+    AWARDS = [
+        {"user_id": user_id, "award_text": "1:a pris Stockholms Konstsalong 2024 - Jurybedomd utstallning, nominerad Publikens Favorit", "sort_order": 1},
+        {"user_id": user_id, "award_text": "1:a pris Greenpoint Gallery Brooklyn 2023 - Vann bland 60 konstnarer, fick soloutstallning", "sort_order": 2},
+        {"user_id": user_id, "award_text": "1:a pris Murrays Creative Contest 2022 - Detroit-baserad tavling med specialdesign", "sort_order": 3},
+        {"user_id": user_id, "award_text": "Global Startup Weekend Stockholm - Vinnare for Terra Finance (Google for Startups & Techstars)", "sort_order": 4},
+        {"user_id": user_id, "award_text": "Tredje pris Chinese Bridge - Nationell tavling i kinesiskt sprak, Bergen 2016", "sort_order": 5},
+        {"user_id": user_id, "award_text": "Roda Korsets diplom - Guldutmarkelse for teamwork och ledarskap (100+ volontartimmar)", "sort_order": 6},
+        {"user_id": user_id, "award_text": "Minerva University Award for Initiative 2018", "sort_order": 7},
+    ]
+
+    COVER_LETTER_PREFS = {
+        "user_id": user_id,
+        "tone": "professional_friendly",
+        "max_words": 200,
+        "greeting_style": "Hej!",
+        "signature_style": "Med vanliga halsningar",
+        "sign_off_name": "Linnea Moritz",
+        "sign_off_phone": "076-116 61 09",
+        "sign_off_email": "linneamoritz1@gmail.com",
+        "always_mention": ["flexibel med tider", "korkort", "flytande engelska"],
+        "never_mention": ["konst", "malning", "utstallningar", "Shopify", "e-handel", "oljemaalning", "linneamoritz.com"],
+        "custom_ai_instructions": "Skriv pa naturlig, flytande svenska. Undvik AI-floskler som 'gedigen', 'brinner for', 'vittnar om'. Beratta varfor jag vill ha just det jobbet.",
+    }
+
+    JOB_PREFS = {
+        "user_id": user_id,
+        "preferred_locations": ["Stockholm", "Sollentuna", "Sundbyberg", "Vetlanda"],
+        "search_keywords": ["servitor", "kundtjanst", "content moderator", "butik", "cafe", "reception", "lager"],
+        "excluded_keywords": [],
+        "excluded_companies": [],
+        "job_types": ["heltid", "deltid"],
+        "remote_only": False,
+    }
+
+    CV_BRANSCHER = [
+        {"user_id": user_id, "bransch_id": "restaurant", "bransch_name": "Restaurang & Cafe", "focus": "Service, tempo, kundkontakt", "keywords": ["servitor", "servitris", "restaurang", "cafe", "barista", "kok"], "is_active": True, "sort_order": 1},
+        {"user_id": user_id, "bransch_id": "retail", "bransch_name": "Butik & Kassa", "focus": "Forsaljning, kassa, kundservice", "keywords": ["butik", "kassa", "saljare", "ica", "coop"], "is_active": True, "sort_order": 2},
+        {"user_id": user_id, "bransch_id": "customerservice", "bransch_name": "Kundtjanst & Support", "focus": "Kommunikation, problemlosning, internationell erfarenhet", "keywords": ["kundtjanst", "support", "kundservice", "helpdesk"], "is_active": True, "sort_order": 3},
+        {"user_id": user_id, "bransch_id": "content", "bransch_name": "Content & Moderation", "focus": "Trust & Safety, policy, granskning", "keywords": ["moderator", "content", "review", "granskning", "trust"], "is_active": True, "sort_order": 4},
+        {"user_id": user_id, "bransch_id": "tech", "bransch_name": "Tech & Kontor", "focus": "Analytiskt arbete, data, tech-bolag", "keywords": ["tech", "IT", "data", "analyst", "kontor"], "is_active": True, "sort_order": 5},
+        {"user_id": user_id, "bransch_id": "industry", "bransch_name": "Industri & Tradgard", "focus": "Fysiskt arbete, skift, materialhantering", "keywords": ["industri", "lager", "produktion", "operator", "tradgard"], "is_active": True, "sort_order": 6},
+        {"user_id": user_id, "bransch_id": "healthcare", "bransch_name": "Vard & Omsorg", "focus": "Omvardnad, empati, medicinhantering", "keywords": ["vard", "omsorg", "aldre", "sjukvard"], "is_active": True, "sort_order": 7},
+        {"user_id": user_id, "bransch_id": "art", "bransch_name": "Konst & Kultur", "focus": "Konstnarligt arbete, utstallningar, projektledning", "keywords": ["konst", "kultur", "galleri", "museum", "kreativ"], "is_active": True, "sort_order": 8},
+    ]
 
     CV_VERSIONS = [
         {"user_id": user_id, "vibe_id": "restaurant", "vibe_name": "Restaurang & Cafe", "vibe_emoji": "", "cv_text": """LINNEA MORITZ
@@ -1932,7 +2054,168 @@ FARDIGHETER
 Content Moderation, Trust & Safety
 Policy Compliance, Riktlinjetolkning
 Dataanalys, Kvalitetssakring
-Svenska (modersmal), Engelska (flytande)"""}
+Svenska (modersmal), Engelska (flytande)"""},
+        {"user_id": user_id, "vibe_id": "tech", "vibe_name": "Tech & Kontor", "vibe_emoji": "", "cv_text": """LINNEA MORITZ
+Sollentuna | 0761166109 | linneamoritzcv@gmail.com
+Innehar B-Korkort
+
+UTBILDNING
+Minerva University - B.S in Social Science, Economics and Business Administration (GPA: 3.6)
+San Francisco, USA | Aug 2017 - Maj 2021
+- Varldens mest innovativa universitet enligt WURI. Antagningsgrad 1.8%
+- Studerade i fem lander: USA, Sydkorea, Indien, Tyskland och Argentina
+- Handledde 45 studenter i examensprojekt inom fem amnen och branscher
+
+United World College Red Cross Nordic - IB Bilingual Diploma (GPA: 3.85)
+Flekke, Norge | Aug 2015 - Maj 2017
+
+ERFARENHET
+Alumni Ambassador Western Europe - Minerva University (Sep 2024 - Pagaende)
+- 25% tjanst med sjalvstandig planering, cirka 40 timmar/manad
+- Strategisk marknadsforing, databashantering, logistik
+
+Kvalitetsgranskare - TikTok/ByteDance (Maj 2022 - Juni 2022)
+- Granskade innehallsmoderatörernas arbete for att sakerstalla riktlinjeföljning
+
+Innehallsmoderator, Svenska marknaden - YouTube Ads (Feb 2022 - Juni 2022)
+- Flaggade olamplig reklam och utokade databaser
+
+Innehallsmoderator, Trust & Safety - Clubhouse (Juni 2021 - Jan 2022)
+- Trust & Safety inom samtliga 16 kategorier for ljudbaserad social media
+- Fullt ansvar for svenska, norska och danska marknaden
+- Okade produktiviteten med 98%
+
+Marknadsforing - Svensk-amerikanska handelskammaren (Juni 2021 - Sep 2021)
+- Natverk med 100+ svenska startups. Okade natverket med 20%
+
+Svensk innehallsanalytiker for gTech - Google Ads (Maj 2018 - April 2019)
+- 100+ annonser per dag. Arbetade i USA, Indien, Sydkorea och Stockholm
+- Svenska teamet uppnadde 100% mal for tjanstenivaavatalet
+
+Marknadsforing/Kundservice - Minerva Project (Sep 2019 - April 2020)
+- Vagledde 2000+ sokande via Intercom i 40+ lander
+
+SPRAK & KVALIFIKATIONER
+Sprak: Svenska (Modersmal), Engelska (flytande), Tyska, Spanska, Mandarin (HSK 3)
+Tekniska fardigheter: Python, SQL, Tableau, Google Analytics, Google Ads, Facebook Ads, Adobe Creative Suite, Intercom, CRM-system, Canva, Content SEO, Excel/Google Sheets
+Certifikat: B-korkort, ICA kassahantering, Trygga mat, Roda Korset forsta hjalpen"""},
+        {"user_id": user_id, "vibe_id": "industry", "vibe_name": "Industri & Tradgard", "vibe_emoji": "", "cv_text": """LINNEA MORITZ
+Sollentuna | 0761166109 | linneamoritzcv@gmail.com
+Innehar B-Korkort
+
+UTBILDNING
+Minerva University - B.S in Social Science, Economics and Business Administration (GPA: 3.6)
+San Francisco, USA | Aug 2017 - Maj 2021
+
+United World College Red Cross Nordic - IB Bilingual Diploma (GPA: 3.85)
+Flekke, Norge | Aug 2015 - Maj 2017
+
+ERFARENHET
+Anodiseringsoperator (Feriearbete) - Profilgruppen, Aseda (Juli 2024 - Aug 2024)
+- Utforde tungt fysiskt arbete med fokus pa armlyft och materialhantering
+- Arbetade pa tvaskift (06.00-14.00 och 14.00-23.00)
+- Genomgick utbildning i handtravers
+
+Forsaljare/Barista - House of Beans (Aug 2024 - Feb 2025)
+- Sjalvstandigt butiksansvar, 8 timmar ensam
+- Kassahantering och lagerhantering
+
+Restaurangbitrade - Max Hamburgare (April 2024 - Aug 2024)
+- Hogt tempo med drive-in, fritos, kok, servering, kassa och stad
+
+Timvikarie - Kvarngarden aldreboende (Maj 2020 - Sep 2020)
+- Omvardnad, medicinhantering, maltidsassistans
+
+Kassapersonal - ICA Maxi Stormarknad (2015, 2017, 2019)
+- Kassa, sjalvscanning, frukt och gront, charken och blomavdelningen
+
+Gardsvard/Tradgardsarbetare - Siggesta Gard (2014 - 2015)
+- Evenemangsanlaggning med ~1000 besokare/sondag
+- Tradgardsarbete: grasklippning, ograsrensning, plantering, skrapsortering
+- Korde golfbil
+
+SPRAK & KVALIFIKATIONER
+Sprak: Svenska (Modersmal), Engelska (flytande), Tyska, Spanska, Mandarin (HSK 3)
+Certifikat: B-korkort (automat), ICA kassahantering, Trygga mat, Roda Korset forsta hjalpen
+Tekniska fardigheter: Python, SQL, Tableau, Google Analytics, Excel/Google Sheets"""},
+        {"user_id": user_id, "vibe_id": "healthcare", "vibe_name": "Vard & Omsorg", "vibe_emoji": "", "cv_text": """LINNEA MORITZ
+Sollentuna | 0761166109 | linneamoritzcv@gmail.com
+Innehar B-Korkort
+
+UTBILDNING
+Minerva University - B.S in Social Science, Economics and Business Administration (GPA: 3.6)
+San Francisco, USA | Aug 2017 - Maj 2021
+
+United World College Red Cross Nordic - IB Bilingual Diploma (GPA: 3.85)
+Flekke, Norge | Aug 2015 - Maj 2017
+
+ERFARENHET
+Forsaljare/Barista - House of Beans (Aug 2024 - Feb 2025)
+- Sjalvstandigt butiksansvar, kundkontakt, kassa och lagerhantering
+
+Restaurangbitrade - Max Hamburgare (April 2024 - Aug 2024)
+- Hogt tempo, kundservice, teamwork under rusningstid
+
+Timvikarie - Kvarngarden aldreboende, Vetlanda (Maj 2020 - Sep 2020)
+- Omvardnad, medicinhantering, maltidsassistans, dokumentation och emotionellt stod
+- Gav omsorg till aldre personer med demens och Alzheimers sjukdom
+- Foljde noggrant covid-protokoll och arbetade bade morgon- och kvallspass
+
+Kassapersonal - ICA Maxi Stormarknad (2015, 2017, 2019)
+- Kassa, sjalvscanning, frukt och gront
+- ICA-certifierad kassahantering, Trygga mat
+
+Gardsvard/Receptionist - Wallby Sateri (Juni 2016 - Aug 2016)
+- Reception med bokningar, telefonsamtal, in- och utcheckning, betalningar
+
+Gardsvard/Tradgardsarbetare - Siggesta Gard (2014 - 2015)
+- Kundbemotande pa stor evenemangsanlaggning
+
+SPRAK & KVALIFIKATIONER
+Sprak: Svenska (Modersmal), Engelska (flytande), Tyska, Spanska, Mandarin (HSK 3)
+Certifikat: B-korkort (automat), ICA kassahantering, Trygga mat, Roda Korset forsta hjalpen"""},
+        {"user_id": user_id, "vibe_id": "art", "vibe_name": "Konst & Kultur", "vibe_emoji": "", "cv_text": """LINNEA MORITZ
+Sollentuna | 0761166109 | linneamoritzcv@gmail.com
+Innehar B-Korkort
+
+UTBILDNING
+Minerva University - B.S in Social Science, Economics and Business Administration (GPA: 3.6)
+San Francisco, USA | Aug 2017 - Maj 2021
+
+United World College Red Cross Nordic - IB Bilingual Diploma (GPA: 3.85)
+Flekke, Norge | Aug 2015 - Maj 2017
+
+ERFARENHET
+Konstnar och Egenforetagare - Linnea Moritz (Jan 2024 - Pagaende)
+- Malar och saljer egna oljemalningar. 39 utstallningar i 21 stader, 10 lander, 4 kontinenter
+- Vunnit tre forsta pris i jurybedomda konstutstallningar
+- Driver all marknadsforing, bokforing, export, kundhantering och sociala medier
+- Forvaltar Shopify-butik med forsaljning av originalkonst och konsttryck internationellt
+
+Multimedia Technical Specialist - Keeping Tabs, New York (Nov 2022 - Juni 2023)
+- Planerade och koordinerade konstsamling for Art Basel Hong Kong (70x30m skarm)
+- Designade visuell merchandise och forsaljnings-/logistikkampanj
+- Utvecklade partnerskap med organisationer inom konstindustrin i USA
+
+Kubistisk malare - 30 Campos Eliseos, New York (2022 - 2024)
+- Scoutad till prestigefylld konstsamlargrupp grundad i Florens
+- En av fem konstnarer utvalda bland 500+ sokande
+- Utstallningar i New York, Dubai, Seoul, Madrid och Florens
+
+Handledare for examensprojekt - Minerva University (Sep 2020 - Maj 2021)
+- Handledde 45 studenter i capstone-projekt inom VR, hallbart mode, varumarkesanalys
+- Ledde workshops, undervisade i projektledning
+
+Marknadsforing/Kundservice - Minerva Project (Sep 2019 - April 2020)
+- Vagledde 2000+ sokande elever via Intercom i 40+ lander
+
+Evenemangskoordinator - Minerva Project Student Experience (Sep 2017 - Maj 2018)
+- Organiserade 60 evenemang for 210 internationella studenter
+- Budgetkontroll, schemalggning, gastforelasare
+
+SPRAK & KVALIFIKATIONER
+Sprak: Svenska (Modersmal), Engelska (flytande), Tyska, Spanska, Mandarin (HSK 3)
+Certifikat: B-korkort (automat), ICA kassahantering, Trygga mat, Roda Korset forsta hjalpen"""},
     ]
 
     results = {"profile": False, "experiences": 0, "education": 0, "cvs": 0, "errors": []}
@@ -2009,10 +2292,120 @@ Svenska (modersmal), Engelska (flytande)"""}
         except Exception as e:
             results["errors"].append(f"CVs error: {str(e)}")
 
-    success = results["profile"] and results["experiences"] > 0 and results["cvs"] > 0
+        # 5. Delete old skills, then insert new
+        results["skills"] = 0
+        try:
+            await client.delete(
+                f"{SUPABASE_URL}/rest/v1/user_skills?user_id=eq.{user_id}",
+                headers=headers
+            )
+            for skill in SKILLS:
+                res = await client.post(
+                    f"{SUPABASE_URL}/rest/v1/user_skills",
+                    headers=headers,
+                    json=skill
+                )
+                if res.status_code < 400:
+                    results["skills"] += 1
+        except Exception as e:
+            results["errors"].append(f"Skills error: {str(e)}")
+
+        # 6. Delete old volunteer, then insert new
+        results["volunteer"] = 0
+        try:
+            await client.delete(
+                f"{SUPABASE_URL}/rest/v1/user_volunteer?user_id=eq.{user_id}",
+                headers=headers
+            )
+            for vol in VOLUNTEER:
+                res = await client.post(
+                    f"{SUPABASE_URL}/rest/v1/user_volunteer",
+                    headers=headers,
+                    json=vol
+                )
+                if res.status_code < 400:
+                    results["volunteer"] += 1
+        except Exception as e:
+            results["errors"].append(f"Volunteer error: {str(e)}")
+
+        # 7. Delete old awards, then insert new
+        results["awards"] = 0
+        try:
+            await client.delete(
+                f"{SUPABASE_URL}/rest/v1/user_awards?user_id=eq.{user_id}",
+                headers=headers
+            )
+            for award in AWARDS:
+                res = await client.post(
+                    f"{SUPABASE_URL}/rest/v1/user_awards",
+                    headers=headers,
+                    json=award
+                )
+                if res.status_code < 400:
+                    results["awards"] += 1
+        except Exception as e:
+            results["errors"].append(f"Awards error: {str(e)}")
+
+        # 8. Upsert cover letter preferences
+        results["cover_letter_prefs"] = False
+        try:
+            res = await client.post(
+                f"{SUPABASE_URL}/rest/v1/user_cover_letter_preferences?on_conflict=user_id",
+                headers=headers,
+                json=COVER_LETTER_PREFS
+            )
+            if res.status_code < 400:
+                results["cover_letter_prefs"] = True
+            else:
+                results["errors"].append(f"Cover letter prefs: {res.status_code}")
+        except Exception as e:
+            results["errors"].append(f"Cover letter prefs error: {str(e)}")
+
+        # 9. Upsert job preferences
+        results["job_prefs"] = False
+        try:
+            res = await client.post(
+                f"{SUPABASE_URL}/rest/v1/user_job_preferences?on_conflict=user_id",
+                headers=headers,
+                json=JOB_PREFS
+            )
+            if res.status_code < 400:
+                results["job_prefs"] = True
+            else:
+                results["errors"].append(f"Job prefs: {res.status_code}")
+        except Exception as e:
+            results["errors"].append(f"Job prefs error: {str(e)}")
+
+        # 10. Delete old branscher, then insert new
+        results["branscher"] = 0
+        try:
+            await client.delete(
+                f"{SUPABASE_URL}/rest/v1/user_cv_branscher?user_id=eq.{user_id}",
+                headers=headers
+            )
+            for bransch in CV_BRANSCHER:
+                res = await client.post(
+                    f"{SUPABASE_URL}/rest/v1/user_cv_branscher",
+                    headers=headers,
+                    json=bransch
+                )
+                if res.status_code < 400:
+                    results["branscher"] += 1
+        except Exception as e:
+            results["errors"].append(f"Branscher error: {str(e)}")
+
+    success = (results["profile"] and results["experiences"] > 0 and results["cvs"] > 0
+               and results["skills"] > 0 and results["volunteer"] > 0 and results["awards"] > 0)
     return {
         "success": success,
-        "message": f"Migrerat! Profil: {'OK' if results['profile'] else 'FEL'}, Erfarenheter: {results['experiences']}, CV:n: {results['cvs']}",
+        "message": f"Migrerat! Profil: {'OK' if results['profile'] else 'FEL'}, "
+                   f"Erfarenheter: {results['experiences']}/19, "
+                   f"Utbildning: {results['education']}/2, "
+                   f"CV:n: {results['cvs']}/8, "
+                   f"Skills: {results['skills']}/37, "
+                   f"Volontar: {results['volunteer']}/4, "
+                   f"Utmarkelser: {results['awards']}/7, "
+                   f"Branscher: {results['branscher']}/8",
         "results": results
     }
 
@@ -3562,6 +3955,144 @@ async def account_page():
 async def root():
     """Serve frontend"""
     return get_frontend_html()
+
+
+# ============== ADMIN ENDPOINTS (for debugging Supabase data) ==============
+
+@app.get("/api/admin/schema")
+async def admin_schema():
+    """Check which tables exist in Supabase and their row counts."""
+    tables = [
+        "user_profiles", "user_experiences", "user_education", "user_skills",
+        "user_cvs", "user_cv_branscher", "user_cover_letter_preferences",
+        "user_job_preferences", "user_ai_feedback", "user_volunteer",
+        "user_awards", "user_experience_tags", "user_google_credentials",
+        "applications", "jobs", "master_cv_exports", "cv_industry_templates",
+        "artist_exhibitions", "artist_residencies", "artist_collections",
+        "tech_projects", "tech_certifications", "academic_publications"
+    ]
+    result = {}
+    for table in tables:
+        rows = await db_request("GET", table, params={"select": "count", "limit": "0"})
+        if rows is not None:
+            # Try to get actual count
+            all_rows = await db_request("GET", table, params={"select": "*"})
+            result[table] = {"exists": True, "row_count": len(all_rows) if all_rows else 0}
+        else:
+            result[table] = {"exists": False, "row_count": 0}
+    return {"tables": result, "supabase_connected": bool(SUPABASE_URL and SUPABASE_KEY)}
+
+
+@app.get("/api/admin/user/{email}")
+async def admin_user_data(email: str):
+    """Get ALL data for a user by email. Shows exactly what's in Supabase."""
+    # Find user profile by email
+    profiles = await db_request("GET", "user_profiles", params={"email": f"eq.{email}"})
+    if not profiles:
+        return {"error": f"No profile found for {email}", "profiles_table_check": await db_request("GET", "user_profiles", params={"select": "*"})}
+
+    profile = profiles[0]
+    user_id = profile.get("user_id")
+
+    # Fetch ALL related data
+    experiences = await db_request("GET", "user_experiences", params={"user_id": f"eq.{user_id}", "order": "sort_order"}) or []
+    education = await db_request("GET", "user_education", params={"user_id": f"eq.{user_id}", "order": "sort_order"}) or []
+    skills = await db_request("GET", "user_skills", params={"user_id": f"eq.{user_id}"}) or []
+    cvs = await db_request("GET", "user_cvs", params={"user_id": f"eq.{user_id}"}) or []
+    branscher = await db_request("GET", "user_cv_branscher", params={"user_id": f"eq.{user_id}"}) or []
+    cover_prefs = await db_request("GET", "user_cover_letter_preferences", params={"user_id": f"eq.{user_id}"}) or []
+    job_prefs = await db_request("GET", "user_job_preferences", params={"user_id": f"eq.{user_id}"}) or []
+    volunteer = await db_request("GET", "user_volunteer", params={"user_id": f"eq.{user_id}"}) or []
+    awards = await db_request("GET", "user_awards", params={"user_id": f"eq.{user_id}"}) or []
+    applications = await db_request("GET", "applications", params={"user_id": f"eq.{user_id}"}) or []
+    ai_feedback = await db_request("GET", "user_ai_feedback", params={"user_id": f"eq.{user_id}"}) or []
+
+    return {
+        "user_id": user_id,
+        "email": email,
+        "profile": profile,
+        "data_counts": {
+            "experiences": len(experiences),
+            "education": len(education),
+            "skills": len(skills),
+            "cvs": len(cvs),
+            "cv_vibes": [cv.get("vibe_id") for cv in cvs],
+            "branscher": len(branscher),
+            "cover_letter_prefs": len(cover_prefs),
+            "job_prefs": len(job_prefs),
+            "volunteer": len(volunteer),
+            "awards": len(awards),
+            "applications": len(applications),
+            "ai_feedback": len(ai_feedback),
+        },
+        "experiences": experiences,
+        "education": education,
+        "skills": skills,
+        "cvs": [{"vibe_id": cv.get("vibe_id"), "vibe_name": cv.get("vibe_name"), "text_length": len(cv.get("cv_text", ""))} for cv in cvs],
+        "branscher": branscher,
+        "cover_letter_prefs": cover_prefs,
+        "job_prefs": job_prefs,
+        "volunteer": volunteer,
+        "awards": awards,
+    }
+
+
+@app.get("/api/admin/migration-status")
+async def admin_migration_status():
+    """Quick check: is Linnea's data migrated? Returns what's missing."""
+    profiles = await db_request("GET", "user_profiles", params={"email": "eq.linneamoritz1@gmail.com"})
+    if not profiles:
+        return {
+            "migrated": False,
+            "status": "NO PROFILE FOUND",
+            "action_needed": "Run POST /api/migrate-my-data (with auth) or run v2/migrate_user_data.py"
+        }
+
+    user_id = profiles[0].get("user_id")
+    experiences = await db_request("GET", "user_experiences", params={"user_id": f"eq.{user_id}", "select": "company"}) or []
+    education = await db_request("GET", "user_education", params={"user_id": f"eq.{user_id}", "select": "school"}) or []
+    skills = await db_request("GET", "user_skills", params={"user_id": f"eq.{user_id}", "select": "skill_text"}) or []
+    cvs = await db_request("GET", "user_cvs", params={"user_id": f"eq.{user_id}", "select": "vibe_id"}) or []
+    volunteer = await db_request("GET", "user_volunteer", params={"user_id": f"eq.{user_id}", "select": "organization"}) or []
+    awards = await db_request("GET", "user_awards", params={"user_id": f"eq.{user_id}", "select": "award_text"}) or []
+
+    expected_cvs = {"restaurant", "retail", "customerservice", "content", "tech", "industry", "healthcare", "art"}
+    actual_cvs = {cv.get("vibe_id") for cv in cvs}
+    missing_cvs = expected_cvs - actual_cvs
+
+    expected_companies = {
+        "Minerva University", "House of Beans", "Max Hamburgare", "Clubhouse",
+        "Google Ads (via Vaco)", "Minerva Project", "ICA Maxi", "Coffeehouse by George",
+        "TikTok/ByteDance", "YouTube Ads (via Vaco)", "Profilgruppen",
+        "Kvarngarden aldreboende", "Wallby Sateri", "Siggesta Gard",
+        "Svensk-amerikanska handelskammaren", "Keeping Tabs", "30 Campos Eliseos",
+        "Minerva Project - Student Experience Team"
+    }
+    actual_companies = {exp.get("company") for exp in experiences}
+
+    return {
+        "migrated": True,
+        "user_id": user_id,
+        "profile": "OK",
+        "experiences": {"count": len(experiences), "companies": sorted(actual_companies)},
+        "education": {"count": len(education), "schools": [e.get("school") for e in education]},
+        "skills": {"count": len(skills)},
+        "cvs": {
+            "count": len(cvs),
+            "vibes": sorted(actual_cvs),
+            "missing": sorted(missing_cvs) if missing_cvs else "ALL 8 PRESENT"
+        },
+        "volunteer": {"count": len(volunteer)},
+        "awards": {"count": len(awards)},
+        "completeness": {
+            "has_all_8_cvs": len(missing_cvs) == 0,
+            "has_all_experiences": len(experiences) >= 18,
+            "has_uwc_education": any("United World College" in e.get("school", "") for e in education),
+            "has_skills": len(skills) >= 16,
+            "has_volunteer": len(volunteer) >= 4,
+            "has_awards": len(awards) >= 7,
+        }
+    }
 
 
 @app.exception_handler(Exception)
