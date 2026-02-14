@@ -1940,282 +1940,815 @@ async def migrate_user_data(request: Request):
     ]
 
     CV_VERSIONS = [
-        {"user_id": user_id, "vibe_id": "restaurant", "vibe_name": "Restaurang & Cafe", "vibe_emoji": "", "cv_text": """LINNEA MORITZ
-Sollentuna | 0761166109 | linneamoritz1@gmail.com
-
-PROFIL
-Serviceinriktad och stresstalig person med bred erfarenhet fran restaurang och cafe. Trivs i hogt tempo och ar van vid att ge gaster en bra upplevelse. B-korkort och flexibel med arbetstider.
-
-ERFARENHET
-Barista/Forsaljare - House of Beans (Aug 2024 - Feb 2025)
-- Ansvarade for kaffe- och teservering
-- Arbetade ofta ensam i butik med fullt ansvar
-- Byggde upp kundrelationer och merforsaljning
-
-Restaurangbitrade - Max Hamburgare (Apr - Aug 2024)
-- Drive-in, kok och kassahantering
-- Effektiv i stressiga miljoer
-- Teamwork och snabb inlarning av nya system
-
-Cafepersonal - Coffeehouse by George (2014-2015)
-- Kassahantering och barista
-- Hog serviceniva i centralt lage
+        {"user_id": user_id, "vibe_id": "restaurant", "vibe_name": "Restaurang & Cafe", "vibe_emoji": "", "cv_text": """Linnea Moritz
+Innehar B-Körkort | Sollentuna | 0761166109 | linneamoritzcv@gmail.com
 
 UTBILDNING
-Minerva University - Bachelor's Degree (2016-2020)
 
-SPRAK & OVRIGT
-Svenska (modersmal), Engelska (flytande)
-B-korkort, Livsmedelshygien"""},
-        {"user_id": user_id, "vibe_id": "retail", "vibe_name": "Butik & Kassa", "vibe_emoji": "", "cv_text": """LINNEA MORITZ
-Sollentuna | 0761166109 | linneamoritz1@gmail.com
+Minerva University - San Francisco, USA
+B.S in Social Science, Economics and Business Administration (GPA: 3.6) | Aug 2017 - Maj 2021
+● Världens mest innovativa universitet enligt World's Universities with Real Impact (WURI).
+● En antagningsgräns på 1.8% gör Minerva till det mest selektiva universitetet i USA.
+● Studerade i fem länder under fyra år; USA, Sydkorea, Indien, Tyskland och Argentina.
+● Handledde 45 studenter i deras examensprojekt inom fem olika ämnen och branscher.
 
-PROFIL
-Serviceinriktad med erfarenhet fran bade butik och cafe. Van vid kassahantering, kundkontakt och att arbeta sjalvstandigt. Palitlig och flexibel med arbetstider.
+United World College Red Cross Nordic - Flekke, Norge
+International Baccalaureate Bilingual Diploma - Engelska och Svenska (GPA: 3.85) | Aug 2015 - Maj 2017
+● Utvald som en toppelev från Sverige bland 120 sökande och fick fullt stipendium.
+● Bodde med 200 elever från 96 olika länder med fokus på internationell fred och förståelse.
+● Röda Korsets diplom; Guldutmärkelse för teamwork, frivilligarbete och ledarskap (100+ timmar).
 
-ERFARENHET
-Barista/Forsaljare - House of Beans (Aug 2024 - Feb 2025)
-- Forsaljning av kaffe, te och tillbehor
-- Arbetade ofta ensam med fullt butiksansvar
-- Kassahantering och lagerhantering
-- Byggde kundrelationer och merforsaljning
+ARBETSLIVSERFARENHET
 
-Kassapersonal - ICA Maxi (Somrar 2015, 2017, 2019)
-- Kassahantering och sjalvscanning
-- Frukt- och grontavdelningen
-- Kundservice i hogt tempo
+Minerva University - Stockholm
+Alumni Ambassador Western Europe | Sep 2024 – Pågående
+● 25% tjänst med självständig planering, cirka 40 timmar i månaden.
+● Genomför strategisk marknadsföring genom resor till skolor och mässor i Västeuropa och Norden.
+● Bygger och underhåller databaser för skolkontakter, möten med SYO:er och studievägledare.
+● Ansvarar för logistik: bokning av flyg, hotell och transporter för stort geografiskt område.
 
-Cafepersonal - Coffeehouse by George (2014-2015)
-- Kassa och kundservice
-- Barista i centralt lage
+Linnea Moritz (linneamoritz.com) - Stockholm
+Konstnär och Egenföretagare | Jan 2024 – Pågående
+● Målar och säljer egna oljemålningar. 39 utställningar i 21 städer, 10 länder och 4 kontinenter.
+● Vunnit tre första pris i jurybedömda konstutställningar (bl.a. Stockholms Konstsalong, Greenpoint Gallery Brooklyn).
+● Driver all marknadsföring, bokföring, export, kundhantering och sociala medier självständigt.
+● Förvaltar Shopify-butik med försäljning av originalkonst och konsttryck internationellt.
 
-UTBILDNING
-Minerva University - Bachelor's Degree (2016-2020)
+House of Beans, Hötorgshallen - Stockholm
+Försäljare/Barista | Aug 2024 – Feb 2025
+● Självständigt butiksansvar med försäljning av te, kaffe och choklad.
+● Direktförsäljning till kunder och barista. Arbetade 8 timmar ensam, mycket eget ansvar.
+● Hanterade kassa, kundservice och lagerhantering.
 
-FARDIGHETER
-Kassasystem, Kortterminaler
-Lagerhantering, Varupafyllning
-Kundservice, Merforsaljning
-Svenska (modersmal), Engelska (flytande)
-B-korkort"""},
-        {"user_id": user_id, "vibe_id": "customerservice", "vibe_name": "Kundtjanst & Support", "vibe_emoji": "", "cv_text": """LINNEA MORITZ
-Sollentuna | 0761166109 | linneamoritz1@gmail.com
+Max Hamburgare - Vetlanda
+Restaurangbiträde | April 2024 – Aug 2024
+● Arbetade i högt tempo med drive-in, fritös, kök, servering, kassa och städ.
+● Levererade god kundservice och samarbetade effektivt med teamet under rusningstid.
 
-PROFIL
-Kommunikativ och losningsorienterad med internationell erfarenhet inom kundservice och support. Van vid att hantera arenden via telefon, mail och chat. Flytande svenska och engelska.
+ICA Maxi Stormarknad - Vetlanda & Värmdö
+Kassapersonal, frukt och grönt | 2015, 2017, 2019
+● Arbetade i kassan, självscanningen, frukt och grönt, charken och blomavdelningen.
+● ICA-certifierad inom kassahantering, Trygga mat och säkerhet i butik.
 
-ERFARENHET
-Innehallsmoderator, Trust & Safety - Clubhouse (Jun 2021 - Jan 2022)
-- Hanterade anvandarrapporter och support-arenden
-- Tillampade community guidelines och policy
-- Arbetade i ett globalt, remote team
+Vetlanda Kommun, Ekenässjöns skola - Vetlanda
+Köksbiträde | Juli – Aug 2017
+● Assisterade vid matlagning och serverade mat till elever och personal.
 
-Global Marketing Coordinator - Minerva Project (Sep 2019 - Apr 2020)
-- Kundservice via Intercom
-- Internationell kommunikation med studenter och partners
-- Marknadsforing och eventkoordinering
+Wallby Säteri - Vetlanda
+Gårdsvärd/Receptionist | Juni 2016 – Aug 2016
+● Arbetade i receptionen med bokningar, telefonsamtal, in- och utcheckning samt betalningar.
+● Assisterade vid caféet och bidrog till allmän service.
 
-Innehallsanalytiker - Google Ads (Maj 2018 - Apr 2019)
-- Granskade 100+ annonser dagligen
-- Policy compliance och kvalitetssakring
-- Datadriven analys och rapportering
+Coffeehouse by George - Nacka
+Cafépersonal | 2014 - 2015
+● Kassahantering, kundbemötande, barista, matberedning och servering.
 
-UTBILDNING
-Minerva University - Bachelor's Degree, Business & Humanities (2016-2020)
+SPRÅK & KVALIFIKATIONER
+Språk: Svenska (Modersmål), Engelska (flytande), Tyska (grundläggande), Spanska (grundläggande), Mandarin (HSK nivå 3)
+Certifikat: B-körkort (automat), ICA kassahantering, Trygga mat, Röda Korset första hjälpen
 
-FARDIGHETER
-Intercom, Zendesk, CRM-system
-Problemlosning, Multitasking
-Svenska (modersmal), Engelska (flytande)"""},
-        {"user_id": user_id, "vibe_id": "content", "vibe_name": "Content & Moderation", "vibe_emoji": "", "cv_text": """LINNEA MORITZ
-Sollentuna | 0761166109 | linneamoritz1@gmail.com
+IDEELLT ENGAGEMANG
 
-PROFIL
-Erfaren innehallsgranskare med bakgrund inom Trust & Safety och policy compliance. Analytisk, noggrann och van vid att fatta snabba beslut baserat pa riktlinjer. Erfarenhet fran tech-bolag som Google och Clubhouse.
+LEAF (Living Environment and Future) | 2016 - 2017
+● Ledde elevgrupp för att utbilda skolan i miljötänk. Organiserade presentationer och kampanjer.
+● Skapade modemagasin för att sponsra hållbart jordbruksprojekt i Ghana. Samlade in 30,000 kr.
 
-ERFARENHET
-Innehallsmoderator, Trust & Safety - Clubhouse (Jun 2021 - Jan 2022)
-- Trust & Safety for social audio-plattform
-- Granskade rapporterat innehall enligt community guidelines
-- Eskalerade komplexa arenden till senior team
-- Remote-arbete i globalt team
+The Right Solution Project | Mars 2013 – April 2015
+● Tog initiativ att finansiera NGO för kvinnors utbildning vid 15 års ålder.
+● Samlade in över 120,000 kr genom evenemang, konstutställningar och försäljning.
+● Tillhandahöll 400+ vårdpaket med hygienprodukter till etiopiska skolor. Täcktes i media två gånger.
 
-Innehallsanalytiker - Google Ads (Maj 2018 - Apr 2019)
-- Granskade 100+ annonser dagligen for policy compliance
-- Identifierade vilseledande och skadligt innehall
-- Hog accuracy och effektivitet under press
-- Bidrog till forbattring av granskningsprocesser
+India Unlimited Utbytesprogram | Nov 2014 - Feb 2015
+● Deltog i EU-projekt för att främja fredliga relationer mellan Sverige och Indien.
+● Koordinerade hygienprojekt och fick kunskap om hållbar utveckling i utvecklingsländer.
 
-UTBILDNING
-Minerva University - Bachelor's Degree (2016-2020)
-Tvarvetenskaplig utbildning i 7 lander
+Värmdö Församling | 2012 - 2014
+● Ledare för 3 konfirmandgrupper under 2 år. Ledare på tre veckors sommarläger på Ängsholmen.
+● Svenska Kyrkan: Ledarskapskurs steg 1 och 2.
 
-FARDIGHETER
-Content Moderation, Trust & Safety
-Policy Compliance, Riktlinjetolkning
-Dataanalys, Kvalitetssakring
-Svenska (modersmal), Engelska (flytande)"""},
-        {"user_id": user_id, "vibe_id": "tech", "vibe_name": "Tech & Kontor", "vibe_emoji": "", "cv_text": """LINNEA MORITZ
-Sollentuna | 0761166109 | linneamoritzcv@gmail.com
-Innehar B-Korkort
+UTMÄRKELSER
+● 1:a pris Stockholms Konstsalong 2024 - Jurybedömd utställning, nominerad 'Publikens Favorit'.
+● 1:a pris Greenpoint Gallery Brooklyn 2023 - Vann bland 60 konstnärer, fick solouställning.
+● 1:a pris Murray's Creative Contest 2022 - Detroit-baserad tävling med specialdesign.
+● Global Startup Weekend Stockholm - Vinnare för Terra Finance (Google for Startups & Techstars).
+● Tredje pris Chinese Bridge - Nationell tävling i kinesiskt språk, Bergen 2016.
+● Röda Korsets diplom - Guldutmärkelse för teamwork och ledarskap (100+ volontärtimmar).
+● Minerva University Award for Initiative 2018."""},
+        {"user_id": user_id, "vibe_id": "retail", "vibe_name": "Butik & Kassa", "vibe_emoji": "", "cv_text": """Linnea Moritz
+Innehar B-Körkort | Sollentuna | 0761166109 | linneamoritzcv@gmail.com
 
 UTBILDNING
-Minerva University - B.S in Social Science, Economics and Business Administration (GPA: 3.6)
-San Francisco, USA | Aug 2017 - Maj 2021
-- Varldens mest innovativa universitet enligt WURI. Antagningsgrad 1.8%
-- Studerade i fem lander: USA, Sydkorea, Indien, Tyskland och Argentina
-- Handledde 45 studenter i examensprojekt inom fem amnen och branscher
 
-United World College Red Cross Nordic - IB Bilingual Diploma (GPA: 3.85)
-Flekke, Norge | Aug 2015 - Maj 2017
+Minerva University - San Francisco, USA
+B.S in Social Science, Economics and Business Administration (GPA: 3.6) | Aug 2017 - Maj 2021
+● Världens mest innovativa universitet enligt World's Universities with Real Impact (WURI).
+● En antagningsgräns på 1.8% gör Minerva till det mest selektiva universitetet i USA.
+● Studerade i fem länder under fyra år; USA, Sydkorea, Indien, Tyskland och Argentina.
+● Handledde 45 studenter i deras examensprojekt inom fem olika ämnen och branscher.
 
-ERFARENHET
-Alumni Ambassador Western Europe - Minerva University (Sep 2024 - Pagaende)
-- 25% tjanst med sjalvstandig planering, cirka 40 timmar/manad
-- Strategisk marknadsforing, databashantering, logistik
+United World College Red Cross Nordic - Flekke, Norge
+International Baccalaureate Bilingual Diploma - Engelska och Svenska (GPA: 3.85) | Aug 2015 - Maj 2017
+● Utvald som en toppelev från Sverige bland 120 sökande och fick fullt stipendium.
+● Bodde med 200 elever från 96 olika länder med fokus på internationell fred och förståelse.
+● Röda Korsets diplom; Guldutmärkelse för teamwork, frivilligarbete och ledarskap (100+ timmar).
 
-Kvalitetsgranskare - TikTok/ByteDance (Maj 2022 - Juni 2022)
-- Granskade innehallsmoderatörernas arbete for att sakerstalla riktlinjeföljning
+ARBETSLIVSERFARENHET
 
-Innehallsmoderator, Svenska marknaden - YouTube Ads (Feb 2022 - Juni 2022)
-- Flaggade olamplig reklam och utokade databaser
+Minerva University - Stockholm
+Alumni Ambassador Western Europe | Sep 2024 – Pågående
+● 25% tjänst med självständig planering, cirka 40 timmar i månaden.
+● Genomför strategisk marknadsföring genom resor till skolor och mässor i Västeuropa och Norden.
+● Bygger och underhåller databaser för skolkontakter, möten med SYO:er och studievägledare.
+● Ansvarar för logistik: bokning av flyg, hotell och transporter för stort geografiskt område.
 
-Innehallsmoderator, Trust & Safety - Clubhouse (Juni 2021 - Jan 2022)
-- Trust & Safety inom samtliga 16 kategorier for ljudbaserad social media
-- Fullt ansvar for svenska, norska och danska marknaden
-- Okade produktiviteten med 98%
+Linnea Moritz (linneamoritz.com) - Stockholm
+Konstnär och Egenföretagare | Jan 2024 – Pågående
+● Målar och säljer egna oljemålningar. 39 utställningar i 21 städer, 10 länder och 4 kontinenter.
+● Vunnit tre första pris i jurybedömda konstutställningar (bl.a. Stockholms Konstsalong, Greenpoint Gallery Brooklyn).
+● Driver all marknadsföring, bokföring, export, kundhantering och sociala medier självständigt.
+● Förvaltar Shopify-butik med försäljning av originalkonst och konsttryck internationellt.
 
-Marknadsforing - Svensk-amerikanska handelskammaren (Juni 2021 - Sep 2021)
-- Natverk med 100+ svenska startups. Okade natverket med 20%
+House of Beans, Hötorgshallen - Stockholm
+Försäljare/Barista | Aug 2024 – Feb 2025
+● Självständigt butiksansvar med försäljning av te, kaffe och choklad.
+● Direktförsäljning till kunder och barista. Arbetade 8 timmar ensam, mycket eget ansvar.
+● Hanterade kassa, kundservice och lagerhantering.
 
-Svensk innehallsanalytiker for gTech - Google Ads (Maj 2018 - April 2019)
-- 100+ annonser per dag. Arbetade i USA, Indien, Sydkorea och Stockholm
-- Svenska teamet uppnadde 100% mal for tjanstenivaavatalet
+Max Hamburgare - Vetlanda
+Restaurangbiträde | April 2024 – Aug 2024
+● Arbetade i högt tempo med drive-in, fritös, kök, servering, kassa och städ.
+● Levererade god kundservice och samarbetade effektivt med teamet under rusningstid.
 
-Marknadsforing/Kundservice - Minerva Project (Sep 2019 - April 2020)
-- Vagledde 2000+ sokande via Intercom i 40+ lander
+ICA Maxi Stormarknad - Vetlanda & Värmdö
+Kassapersonal, frukt och grönt | 2015, 2017, 2019
+● Arbetade i kassan, självscanningen, frukt och grönt, charken och blomavdelningen.
+● ICA-certifierad inom kassahantering, Trygga mat och säkerhet i butik.
 
-SPRAK & KVALIFIKATIONER
-Sprak: Svenska (Modersmal), Engelska (flytande), Tyska, Spanska, Mandarin (HSK 3)
-Tekniska fardigheter: Python, SQL, Tableau, Google Analytics, Google Ads, Facebook Ads, Adobe Creative Suite, Intercom, CRM-system, Canva, Content SEO, Excel/Google Sheets
-Certifikat: B-korkort, ICA kassahantering, Trygga mat, Roda Korset forsta hjalpen"""},
-        {"user_id": user_id, "vibe_id": "industry", "vibe_name": "Industri & Tradgard", "vibe_emoji": "", "cv_text": """LINNEA MORITZ
-Sollentuna | 0761166109 | linneamoritzcv@gmail.com
-Innehar B-Korkort
+Wallby Säteri - Vetlanda
+Gårdsvärd/Receptionist | Juni 2016 – Aug 2016
+● Arbetade i receptionen med bokningar, telefonsamtal, in- och utcheckning samt betalningar.
+● Assisterade vid caféet och bidrog till allmän service.
 
-UTBILDNING
-Minerva University - B.S in Social Science, Economics and Business Administration (GPA: 3.6)
-San Francisco, USA | Aug 2017 - Maj 2021
+Siggesta Gård - Värmdö
+Gårdsvärd/Trädgårdsarbetare | 2014 - 2015
+● Kundbemötande på stor evenemangsanläggning (minigolf, restauranger, konferenser, hotell).
+● Överseende roll med kommunikation mellan avdelningar. Ansvarade för marknad med ~1000 besökare/söndag.
+● Trädgårdsarbete: klippte gräs, rensade ogräs, planterade, skräpsortering. Körde golfbil.
 
-United World College Red Cross Nordic - IB Bilingual Diploma (GPA: 3.85)
-Flekke, Norge | Aug 2015 - Maj 2017
+Coffeehouse by George - Nacka
+Cafépersonal | 2014 - 2015
+● Kassahantering, kundbemötande, barista, matberedning och servering.
 
-ERFARENHET
-Anodiseringsoperator (Feriearbete) - Profilgruppen, Aseda (Juli 2024 - Aug 2024)
-- Utforde tungt fysiskt arbete med fokus pa armlyft och materialhantering
-- Arbetade pa tvaskift (06.00-14.00 och 14.00-23.00)
-- Genomgick utbildning i handtravers
+SPRÅK & KVALIFIKATIONER
+Språk: Svenska (Modersmål), Engelska (flytande), Tyska (grundläggande), Spanska (grundläggande), Mandarin (HSK nivå 3)
+Certifikat: B-körkort (automat), ICA kassahantering, Trygga mat, Röda Korset första hjälpen
 
-Forsaljare/Barista - House of Beans (Aug 2024 - Feb 2025)
-- Sjalvstandigt butiksansvar, 8 timmar ensam
-- Kassahantering och lagerhantering
+IDEELLT ENGAGEMANG
 
-Restaurangbitrade - Max Hamburgare (April 2024 - Aug 2024)
-- Hogt tempo med drive-in, fritos, kok, servering, kassa och stad
+LEAF (Living Environment and Future) | 2016 - 2017
+● Ledde elevgrupp för att utbilda skolan i miljötänk. Organiserade presentationer och kampanjer.
+● Skapade modemagasin för att sponsra hållbart jordbruksprojekt i Ghana. Samlade in 30,000 kr.
 
-Timvikarie - Kvarngarden aldreboende (Maj 2020 - Sep 2020)
-- Omvardnad, medicinhantering, maltidsassistans
+The Right Solution Project | Mars 2013 – April 2015
+● Tog initiativ att finansiera NGO för kvinnors utbildning vid 15 års ålder.
+● Samlade in över 120,000 kr genom evenemang, konstutställningar och försäljning.
+● Tillhandahöll 400+ vårdpaket med hygienprodukter till etiopiska skolor. Täcktes i media två gånger.
 
-Kassapersonal - ICA Maxi Stormarknad (2015, 2017, 2019)
-- Kassa, sjalvscanning, frukt och gront, charken och blomavdelningen
+India Unlimited Utbytesprogram | Nov 2014 - Feb 2015
+● Deltog i EU-projekt för att främja fredliga relationer mellan Sverige och Indien.
+● Koordinerade hygienprojekt och fick kunskap om hållbar utveckling i utvecklingsländer.
 
-Gardsvard/Tradgardsarbetare - Siggesta Gard (2014 - 2015)
-- Evenemangsanlaggning med ~1000 besokare/sondag
-- Tradgardsarbete: grasklippning, ograsrensning, plantering, skrapsortering
-- Korde golfbil
+Värmdö Församling | 2012 - 2014
+● Ledare för 3 konfirmandgrupper under 2 år. Ledare på tre veckors sommarläger på Ängsholmen.
+● Svenska Kyrkan: Ledarskapskurs steg 1 och 2.
 
-SPRAK & KVALIFIKATIONER
-Sprak: Svenska (Modersmal), Engelska (flytande), Tyska, Spanska, Mandarin (HSK 3)
-Certifikat: B-korkort (automat), ICA kassahantering, Trygga mat, Roda Korset forsta hjalpen
-Tekniska fardigheter: Python, SQL, Tableau, Google Analytics, Excel/Google Sheets"""},
-        {"user_id": user_id, "vibe_id": "healthcare", "vibe_name": "Vard & Omsorg", "vibe_emoji": "", "cv_text": """LINNEA MORITZ
-Sollentuna | 0761166109 | linneamoritzcv@gmail.com
-Innehar B-Korkort
-
-UTBILDNING
-Minerva University - B.S in Social Science, Economics and Business Administration (GPA: 3.6)
-San Francisco, USA | Aug 2017 - Maj 2021
-
-United World College Red Cross Nordic - IB Bilingual Diploma (GPA: 3.85)
-Flekke, Norge | Aug 2015 - Maj 2017
-
-ERFARENHET
-Forsaljare/Barista - House of Beans (Aug 2024 - Feb 2025)
-- Sjalvstandigt butiksansvar, kundkontakt, kassa och lagerhantering
-
-Restaurangbitrade - Max Hamburgare (April 2024 - Aug 2024)
-- Hogt tempo, kundservice, teamwork under rusningstid
-
-Timvikarie - Kvarngarden aldreboende, Vetlanda (Maj 2020 - Sep 2020)
-- Omvardnad, medicinhantering, maltidsassistans, dokumentation och emotionellt stod
-- Gav omsorg till aldre personer med demens och Alzheimers sjukdom
-- Foljde noggrant covid-protokoll och arbetade bade morgon- och kvallspass
-
-Kassapersonal - ICA Maxi Stormarknad (2015, 2017, 2019)
-- Kassa, sjalvscanning, frukt och gront
-- ICA-certifierad kassahantering, Trygga mat
-
-Gardsvard/Receptionist - Wallby Sateri (Juni 2016 - Aug 2016)
-- Reception med bokningar, telefonsamtal, in- och utcheckning, betalningar
-
-Gardsvard/Tradgardsarbetare - Siggesta Gard (2014 - 2015)
-- Kundbemotande pa stor evenemangsanlaggning
-
-SPRAK & KVALIFIKATIONER
-Sprak: Svenska (Modersmal), Engelska (flytande), Tyska, Spanska, Mandarin (HSK 3)
-Certifikat: B-korkort (automat), ICA kassahantering, Trygga mat, Roda Korset forsta hjalpen"""},
-        {"user_id": user_id, "vibe_id": "art", "vibe_name": "Konst & Kultur", "vibe_emoji": "", "cv_text": """LINNEA MORITZ
-Sollentuna | 0761166109 | linneamoritzcv@gmail.com
-Innehar B-Korkort
+UTMÄRKELSER
+● 1:a pris Stockholms Konstsalong 2024 - Jurybedömd utställning, nominerad 'Publikens Favorit'.
+● 1:a pris Greenpoint Gallery Brooklyn 2023 - Vann bland 60 konstnärer, fick solouställning.
+● 1:a pris Murray's Creative Contest 2022 - Detroit-baserad tävling med specialdesign.
+● Global Startup Weekend Stockholm - Vinnare för Terra Finance (Google for Startups & Techstars).
+● Tredje pris Chinese Bridge - Nationell tävling i kinesiskt språk, Bergen 2016.
+● Röda Korsets diplom - Guldutmärkelse för teamwork och ledarskap (100+ volontärtimmar).
+● Minerva University Award for Initiative 2018."""},
+        {"user_id": user_id, "vibe_id": "customerservice", "vibe_name": "Kundtjanst & Support", "vibe_emoji": "", "cv_text": """Linnea Moritz
+Innehar B-Körkort | Sollentuna | 0761166109 | linneamoritzcv@gmail.com
 
 UTBILDNING
-Minerva University - B.S in Social Science, Economics and Business Administration (GPA: 3.6)
-San Francisco, USA | Aug 2017 - Maj 2021
 
-United World College Red Cross Nordic - IB Bilingual Diploma (GPA: 3.85)
-Flekke, Norge | Aug 2015 - Maj 2017
+Minerva University - San Francisco, USA
+B.S in Social Science, Economics and Business Administration (GPA: 3.6) | Aug 2017 - Maj 2021
+● Världens mest innovativa universitet enligt World's Universities with Real Impact (WURI).
+● En antagningsgräns på 1.8% gör Minerva till det mest selektiva universitetet i USA.
+● Studerade i fem länder under fyra år; USA, Sydkorea, Indien, Tyskland och Argentina.
+● Handledde 45 studenter i deras examensprojekt inom fem olika ämnen och branscher.
 
-ERFARENHET
-Konstnar och Egenforetagare - Linnea Moritz (Jan 2024 - Pagaende)
-- Malar och saljer egna oljemalningar. 39 utstallningar i 21 stader, 10 lander, 4 kontinenter
-- Vunnit tre forsta pris i jurybedomda konstutstallningar
-- Driver all marknadsforing, bokforing, export, kundhantering och sociala medier
-- Forvaltar Shopify-butik med forsaljning av originalkonst och konsttryck internationellt
+United World College Red Cross Nordic - Flekke, Norge
+International Baccalaureate Bilingual Diploma - Engelska och Svenska (GPA: 3.85) | Aug 2015 - Maj 2017
+● Utvald som en toppelev från Sverige bland 120 sökande och fick fullt stipendium.
+● Bodde med 200 elever från 96 olika länder med fokus på internationell fred och förståelse.
+● Röda Korsets diplom; Guldutmärkelse för teamwork, frivilligarbete och ledarskap (100+ timmar).
 
-Multimedia Technical Specialist - Keeping Tabs, New York (Nov 2022 - Juni 2023)
-- Planerade och koordinerade konstsamling for Art Basel Hong Kong (70x30m skarm)
-- Designade visuell merchandise och forsaljnings-/logistikkampanj
-- Utvecklade partnerskap med organisationer inom konstindustrin i USA
+ARBETSLIVSERFARENHET
 
-Kubistisk malare - 30 Campos Eliseos, New York (2022 - 2024)
-- Scoutad till prestigefylld konstsamlargrupp grundad i Florens
-- En av fem konstnarer utvalda bland 500+ sokande
-- Utstallningar i New York, Dubai, Seoul, Madrid och Florens
+Minerva University - Stockholm
+Alumni Ambassador Western Europe | Sep 2024 – Pågående
+● 25% tjänst med självständig planering, cirka 40 timmar i månaden.
+● Genomför strategisk marknadsföring genom resor till skolor och mässor i Västeuropa och Norden.
+● Bygger och underhåller databaser för skolkontakter, möten med SYO:er och studievägledare.
+● Ansvarar för logistik: bokning av flyg, hotell och transporter för stort geografiskt område.
 
-Handledare for examensprojekt - Minerva University (Sep 2020 - Maj 2021)
-- Handledde 45 studenter i capstone-projekt inom VR, hallbart mode, varumarkesanalys
-- Ledde workshops, undervisade i projektledning
+Linnea Moritz (linneamoritz.com) - Stockholm
+Konstnär och Egenföretagare | Jan 2024 – Pågående
+● Målar och säljer egna oljemålningar. 39 utställningar i 21 städer, 10 länder och 4 kontinenter.
+● Vunnit tre första pris i jurybedömda konstutställningar (bl.a. Stockholms Konstsalong, Greenpoint Gallery Brooklyn).
+● Driver all marknadsföring, bokföring, export, kundhantering och sociala medier självständigt.
+● Förvaltar Shopify-butik med försäljning av originalkonst och konsttryck internationellt.
 
-Marknadsforing/Kundservice - Minerva Project (Sep 2019 - April 2020)
-- Vagledde 2000+ sokande elever via Intercom i 40+ lander
+House of Beans, Hötorgshallen - Stockholm
+Försäljare/Barista | Aug 2024 – Feb 2025
+● Självständigt butiksansvar med försäljning av te, kaffe och choklad.
+● Direktförsäljning till kunder och barista. Arbetade 8 timmar ensam, mycket eget ansvar.
+● Hanterade kassa, kundservice och lagerhantering.
 
-Evenemangskoordinator - Minerva Project Student Experience (Sep 2017 - Maj 2018)
-- Organiserade 60 evenemang for 210 internationella studenter
-- Budgetkontroll, schemalggning, gastforelasare
+Clubhouse (via Vaco) - Walnut Creek, USA
+Innehållsmoderator - Skandinaviska och amerikanska marknaden | Juni 2021 – Jan 2022
+● Granskade Trust & Safety-ärenden inom samtliga 16 kategorier för ljudbaserad social media.
+● Kategorier inkluderade hatiskt tal, sexuell exploatering, våldsbejakande extremism, CSAM och falsk information.
+● Hade fullt ansvar för att hantera alla ärenden inom svenska, norska och danska marknaden.
+● Identifierade brister i standardiserade arbetsrutiner och drev policyförbättringar.
+● Ökade produktiviteten med 98% samtidigt som jag uppfyllde alla dagliga kvalitetsmål.
 
-SPRAK & KVALIFIKATIONER
-Sprak: Svenska (Modersmal), Engelska (flytande), Tyska, Spanska, Mandarin (HSK 3)
-Certifikat: B-korkort (automat), ICA kassahantering, Trygga mat, Roda Korset forsta hjalpen"""},
+Minerva Project - Berlin & Buenos Aires
+Marknadsföring/Kundservice - Global Marketing Team | Sep 2019 – April 2020
+● Samarbetade med globala marknadsföringsteamet för att öka antagningen till Minerva University.
+● Vägledde och stöttade över 2000 sökande elever via Intercom med högkvalitativ kundservice.
+● Svarade på frågor från elever i över 40 länder genom Intercom och personliga möten.
+● Anordnade rekryteringsevenemang i Norge med presentation om utbildningsprogrammet.
+
+Google Ads (via Vaco) - Sunnyvale, USA / Seoul / Hyderabad
+Svensk innehållsanalytiker för gTech | Maj 2018 – April 2019
+● Förbättrade och granskade svensk annonsering med expertkunskap inom svensk kultur och språk.
+● Utförde extraktion och granskning av innehåll för över 100 annonser per dag.
+● Arbetade i USA och på distans i Indien, Sydkorea och Stockholm. Hanterade tidszonskoordinering.
+● Det svenska teamet uppnådde 100% mål för tjänstenivåavtalet; främjade positivt samarbete.
+
+ICA Maxi Stormarknad - Vetlanda & Värmdö
+Kassapersonal, frukt och grönt | 2015, 2017, 2019
+● Arbetade i kassan, självscanningen, frukt och grönt, charken och blomavdelningen.
+● ICA-certifierad inom kassahantering, Trygga mat och säkerhet i butik.
+
+Wallby Säteri - Vetlanda
+Gårdsvärd/Receptionist | Juni 2016 – Aug 2016
+● Arbetade i receptionen med bokningar, telefonsamtal, in- och utcheckning samt betalningar.
+● Assisterade vid caféet och bidrog till allmän service.
+
+SPRÅK & KVALIFIKATIONER
+Språk: Svenska (Modersmål), Engelska (flytande), Tyska (grundläggande), Spanska (grundläggande), Mandarin (HSK nivå 3)
+Certifikat: B-körkort (automat), ICA kassahantering, Trygga mat, Röda Korset första hjälpen
+Tekniska färdigheter: Python, SQL, Tableau, Google Analytics, Google Ads, Facebook Ads, Adobe Creative Suite, Intercom, CRM-system, Canva, Content SEO, Shopify, Excel/Google Sheets
+
+IDEELLT ENGAGEMANG
+
+LEAF (Living Environment and Future) | 2016 - 2017
+● Ledde elevgrupp för att utbilda skolan i miljötänk. Organiserade presentationer och kampanjer.
+● Skapade modemagasin för att sponsra hållbart jordbruksprojekt i Ghana. Samlade in 30,000 kr.
+
+The Right Solution Project | Mars 2013 – April 2015
+● Tog initiativ att finansiera NGO för kvinnors utbildning vid 15 års ålder.
+● Samlade in över 120,000 kr genom evenemang, konstutställningar och försäljning.
+● Tillhandahöll 400+ vårdpaket med hygienprodukter till etiopiska skolor. Täcktes i media två gånger.
+
+India Unlimited Utbytesprogram | Nov 2014 - Feb 2015
+● Deltog i EU-projekt för att främja fredliga relationer mellan Sverige och Indien.
+● Koordinerade hygienprojekt och fick kunskap om hållbar utveckling i utvecklingsländer.
+
+Värmdö Församling | 2012 - 2014
+● Ledare för 3 konfirmandgrupper under 2 år. Ledare på tre veckors sommarläger på Ängsholmen.
+● Svenska Kyrkan: Ledarskapskurs steg 1 och 2.
+
+UTMÄRKELSER
+● 1:a pris Stockholms Konstsalong 2024 - Jurybedömd utställning, nominerad 'Publikens Favorit'.
+● 1:a pris Greenpoint Gallery Brooklyn 2023 - Vann bland 60 konstnärer, fick solouställning.
+● 1:a pris Murray's Creative Contest 2022 - Detroit-baserad tävling med specialdesign.
+● Global Startup Weekend Stockholm - Vinnare för Terra Finance (Google for Startups & Techstars).
+● Tredje pris Chinese Bridge - Nationell tävling i kinesiskt språk, Bergen 2016.
+● Röda Korsets diplom - Guldutmärkelse för teamwork och ledarskap (100+ volontärtimmar).
+● Minerva University Award for Initiative 2018."""},
+        {"user_id": user_id, "vibe_id": "content", "vibe_name": "Content & Moderation", "vibe_emoji": "", "cv_text": """Linnea Moritz
+Innehar B-Körkort | Sollentuna | 0761166109 | linneamoritzcv@gmail.com
+
+UTBILDNING
+
+Minerva University - San Francisco, USA
+B.S in Social Science, Economics and Business Administration (GPA: 3.6) | Aug 2017 - Maj 2021
+● Världens mest innovativa universitet enligt World's Universities with Real Impact (WURI).
+● En antagningsgräns på 1.8% gör Minerva till det mest selektiva universitetet i USA.
+● Studerade i fem länder under fyra år; USA, Sydkorea, Indien, Tyskland och Argentina.
+● Handledde 45 studenter i deras examensprojekt inom fem olika ämnen och branscher.
+
+United World College Red Cross Nordic - Flekke, Norge
+International Baccalaureate Bilingual Diploma - Engelska och Svenska (GPA: 3.85) | Aug 2015 - Maj 2017
+● Utvald som en toppelev från Sverige bland 120 sökande och fick fullt stipendium.
+● Bodde med 200 elever från 96 olika länder med fokus på internationell fred och förståelse.
+● Röda Korsets diplom; Guldutmärkelse för teamwork, frivilligarbete och ledarskap (100+ timmar).
+
+ARBETSLIVSERFARENHET
+
+Minerva University - Stockholm
+Alumni Ambassador Western Europe | Sep 2024 – Pågående
+● 25% tjänst med självständig planering, cirka 40 timmar i månaden.
+● Genomför strategisk marknadsföring genom resor till skolor och mässor i Västeuropa och Norden.
+● Bygger och underhåller databaser för skolkontakter, möten med SYO:er och studievägledare.
+● Ansvarar för logistik: bokning av flyg, hotell och transporter för stort geografiskt område.
+
+Linnea Moritz (linneamoritz.com) - Stockholm
+Konstnär och Egenföretagare | Jan 2024 – Pågående
+● Målar och säljer egna oljemålningar. 39 utställningar i 21 städer, 10 länder och 4 kontinenter.
+● Vunnit tre första pris i jurybedömda konstutställningar (bl.a. Stockholms Konstsalong, Greenpoint Gallery Brooklyn).
+● Driver all marknadsföring, bokföring, export, kundhantering och sociala medier självständigt.
+● Förvaltar Shopify-butik med försäljning av originalkonst och konsttryck internationellt.
+
+TikTok/ByteDance - Nashville, USA
+Kvalitetsgranskare - Amerikanska marknaden | Maj 2022 – Juni 2022
+● Granskade innehållsmoderatorernas arbete för att säkerställa att de följer riktlinjer.
+● Kvalitetssäkrade moderering och bidrog till förbättrade processer.
+
+YouTube Ads (via Vaco) - San Francisco, USA
+Innehållsmoderator - Svenska marknaden | Feb 2022 – Juni 2022
+● Flaggade olämplig reklam och bidrog till att utöka databaser med markerat innehåll.
+● Följde noggrant alla riktlinjer och samarbetade med det svenska teamet.
+● Deltog i regelbundna möten för att säkerställa korrekt granskning av material.
+
+Clubhouse (via Vaco) - Walnut Creek, USA
+Innehållsmoderator - Skandinaviska och amerikanska marknaden | Juni 2021 – Jan 2022
+● Granskade Trust & Safety-ärenden inom samtliga 16 kategorier för ljudbaserad social media.
+● Kategorier inkluderade hatiskt tal, sexuell exploatering, våldsbejakande extremism, CSAM och falsk information.
+● Hade fullt ansvar för att hantera alla ärenden inom svenska, norska och danska marknaden.
+● Identifierade brister i standardiserade arbetsrutiner och drev policyförbättringar.
+● Ökade produktiviteten med 98% samtidigt som jag uppfyllde alla dagliga kvalitetsmål.
+
+Svensk-amerikanska handelskammaren i San Francisco och Silicon Valley - San Francisco, USA
+Marknadsföring och försäljningsutveckling | Juni 2021 – Sep 2021
+● Byggde upp nätverk med 100+ svenska startups, myndigheter och företag genom konferenser och event.
+● Ökade handelskammarens nätverk med 20% genom effektiv e-post- och LinkedIn-marknadsföring.
+● Assisterade två svenska konsultkunder med databas av 120 försäljningsleads i USA.
+● Organiserade kräftskiva för 80 skandinaver och amerikaner i samarbete med Norska klubben.
+
+Google Ads (via Vaco) - Sunnyvale, USA / Seoul / Hyderabad
+Svensk innehållsanalytiker för gTech | Maj 2018 – April 2019
+● Förbättrade och granskade svensk annonsering med expertkunskap inom svensk kultur och språk.
+● Utförde extraktion och granskning av innehåll för över 100 annonser per dag.
+● Arbetade i USA och på distans i Indien, Sydkorea och Stockholm. Hanterade tidszonskoordinering.
+● Det svenska teamet uppnådde 100% mål för tjänstenivåavtalet; främjade positivt samarbete.
+
+Minerva Project - Berlin & Buenos Aires
+Marknadsföring/Kundservice - Global Marketing Team | Sep 2019 – April 2020
+● Samarbetade med globala marknadsföringsteamet för att öka antagningen till Minerva University.
+● Vägledde och stöttade över 2000 sökande elever via Intercom med högkvalitativ kundservice.
+● Svarade på frågor från elever i över 40 länder genom Intercom och personliga möten.
+● Anordnade rekryteringsevenemang i Norge med presentation om utbildningsprogrammet.
+
+SPRÅK & KVALIFIKATIONER
+Språk: Svenska (Modersmål), Engelska (flytande), Tyska (grundläggande), Spanska (grundläggande), Mandarin (HSK nivå 3)
+Certifikat: B-körkort (automat), ICA kassahantering, Trygga mat, Röda Korset första hjälpen
+Tekniska färdigheter: Python, SQL, Tableau, Google Analytics, Google Ads, Facebook Ads, Adobe Creative Suite, Intercom, CRM-system, Canva, Content SEO, Shopify, Excel/Google Sheets
+
+IDEELLT ENGAGEMANG
+
+LEAF (Living Environment and Future) | 2016 - 2017
+● Ledde elevgrupp för att utbilda skolan i miljötänk. Organiserade presentationer och kampanjer.
+● Skapade modemagasin för att sponsra hållbart jordbruksprojekt i Ghana. Samlade in 30,000 kr.
+
+The Right Solution Project | Mars 2013 – April 2015
+● Tog initiativ att finansiera NGO för kvinnors utbildning vid 15 års ålder.
+● Samlade in över 120,000 kr genom evenemang, konstutställningar och försäljning.
+● Tillhandahöll 400+ vårdpaket med hygienprodukter till etiopiska skolor. Täcktes i media två gånger.
+
+India Unlimited Utbytesprogram | Nov 2014 - Feb 2015
+● Deltog i EU-projekt för att främja fredliga relationer mellan Sverige och Indien.
+● Koordinerade hygienprojekt och fick kunskap om hållbar utveckling i utvecklingsländer.
+
+Värmdö Församling | 2012 - 2014
+● Ledare för 3 konfirmandgrupper under 2 år. Ledare på tre veckors sommarläger på Ängsholmen.
+● Svenska Kyrkan: Ledarskapskurs steg 1 och 2.
+
+UTMÄRKELSER
+● 1:a pris Stockholms Konstsalong 2024 - Jurybedömd utställning, nominerad 'Publikens Favorit'.
+● 1:a pris Greenpoint Gallery Brooklyn 2023 - Vann bland 60 konstnärer, fick solouställning.
+● 1:a pris Murray's Creative Contest 2022 - Detroit-baserad tävling med specialdesign.
+● Global Startup Weekend Stockholm - Vinnare för Terra Finance (Google for Startups & Techstars).
+● Tredje pris Chinese Bridge - Nationell tävling i kinesiskt språk, Bergen 2016.
+● Röda Korsets diplom - Guldutmärkelse för teamwork och ledarskap (100+ volontärtimmar).
+● Minerva University Award for Initiative 2018."""},
+        {"user_id": user_id, "vibe_id": "tech", "vibe_name": "Tech & Kontor", "vibe_emoji": "", "cv_text": """Linnea Moritz
+Innehar B-Körkort | Sollentuna | 0761166109 | linneamoritzcv@gmail.com
+
+UTBILDNING
+
+Minerva University - San Francisco, USA
+B.S in Social Science, Economics and Business Administration (GPA: 3.6) | Aug 2017 - Maj 2021
+● Världens mest innovativa universitet enligt World's Universities with Real Impact (WURI).
+● En antagningsgräns på 1.8% gör Minerva till det mest selektiva universitetet i USA.
+● Studerade i fem länder under fyra år; USA, Sydkorea, Indien, Tyskland och Argentina.
+● Handledde 45 studenter i deras examensprojekt inom fem olika ämnen och branscher.
+
+United World College Red Cross Nordic - Flekke, Norge
+International Baccalaureate Bilingual Diploma - Engelska och Svenska (GPA: 3.85) | Aug 2015 - Maj 2017
+● Utvald som en toppelev från Sverige bland 120 sökande och fick fullt stipendium.
+● Bodde med 200 elever från 96 olika länder med fokus på internationell fred och förståelse.
+● Röda Korsets diplom; Guldutmärkelse för teamwork, frivilligarbete och ledarskap (100+ timmar).
+
+ARBETSLIVSERFARENHET
+
+Minerva University - Stockholm
+Alumni Ambassador Western Europe | Sep 2024 – Pågående
+● 25% tjänst med självständig planering, cirka 40 timmar i månaden.
+● Genomför strategisk marknadsföring genom resor till skolor och mässor i Västeuropa och Norden.
+● Bygger och underhåller databaser för skolkontakter, möten med SYO:er och studievägledare.
+● Ansvarar för logistik: bokning av flyg, hotell och transporter för stort geografiskt område.
+
+Linnea Moritz (linneamoritz.com) - Stockholm
+Konstnär och Egenföretagare | Jan 2024 – Pågående
+● Målar och säljer egna oljemålningar. 39 utställningar i 21 städer, 10 länder och 4 kontinenter.
+● Vunnit tre första pris i jurybedömda konstutställningar (bl.a. Stockholms Konstsalong, Greenpoint Gallery Brooklyn).
+● Driver all marknadsföring, bokföring, export, kundhantering och sociala medier självständigt.
+● Förvaltar Shopify-butik med försäljning av originalkonst och konsttryck internationellt.
+
+TikTok/ByteDance - Nashville, USA
+Kvalitetsgranskare - Amerikanska marknaden | Maj 2022 – Juni 2022
+● Granskade innehållsmoderatorernas arbete för att säkerställa att de följer riktlinjer.
+● Kvalitetssäkrade moderering och bidrog till förbättrade processer.
+
+YouTube Ads (via Vaco) - San Francisco, USA
+Innehållsmoderator - Svenska marknaden | Feb 2022 – Juni 2022
+● Flaggade olämplig reklam och bidrog till att utöka databaser med markerat innehåll.
+● Följde noggrant alla riktlinjer och samarbetade med det svenska teamet.
+● Deltog i regelbundna möten för att säkerställa korrekt granskning av material.
+
+Clubhouse (via Vaco) - Walnut Creek, USA
+Innehållsmoderator - Skandinaviska och amerikanska marknaden | Juni 2021 – Jan 2022
+● Granskade Trust & Safety-ärenden inom samtliga 16 kategorier för ljudbaserad social media.
+● Kategorier inkluderade hatiskt tal, sexuell exploatering, våldsbejakande extremism, CSAM och falsk information.
+● Hade fullt ansvar för att hantera alla ärenden inom svenska, norska och danska marknaden.
+● Identifierade brister i standardiserade arbetsrutiner och drev policyförbättringar.
+● Ökade produktiviteten med 98% samtidigt som jag uppfyllde alla dagliga kvalitetsmål.
+
+Svensk-amerikanska handelskammaren i San Francisco och Silicon Valley - San Francisco, USA
+Marknadsföring och försäljningsutveckling | Juni 2021 – Sep 2021
+● Byggde upp nätverk med 100+ svenska startups, myndigheter och företag genom konferenser och event.
+● Ökade handelskammarens nätverk med 20% genom effektiv e-post- och LinkedIn-marknadsföring.
+● Assisterade två svenska konsultkunder med databas av 120 försäljningsleads i USA.
+● Organiserade kräftskiva för 80 skandinaver och amerikaner i samarbete med Norska klubben.
+
+Google Ads (via Vaco) - Sunnyvale, USA / Seoul / Hyderabad
+Svensk innehållsanalytiker för gTech | Maj 2018 – April 2019
+● Förbättrade och granskade svensk annonsering med expertkunskap inom svensk kultur och språk.
+● Utförde extraktion och granskning av innehåll för över 100 annonser per dag.
+● Arbetade i USA och på distans i Indien, Sydkorea och Stockholm. Hanterade tidszonskoordinering.
+● Det svenska teamet uppnådde 100% mål för tjänstenivåavtalet; främjade positivt samarbete.
+
+Minerva Project - Berlin & Buenos Aires
+Marknadsföring/Kundservice - Global Marketing Team | Sep 2019 – April 2020
+● Samarbetade med globala marknadsföringsteamet för att öka antagningen till Minerva University.
+● Vägledde och stöttade över 2000 sökande elever via Intercom med högkvalitativ kundservice.
+● Svarade på frågor från elever i över 40 länder genom Intercom och personliga möten.
+● Anordnade rekryteringsevenemang i Norge med presentation om utbildningsprogrammet.
+
+SPRÅK & KVALIFIKATIONER
+Språk: Svenska (Modersmål), Engelska (flytande), Tyska (grundläggande), Spanska (grundläggande), Mandarin (HSK nivå 3)
+Certifikat: B-körkort (automat), ICA kassahantering, Trygga mat, Röda Korset första hjälpen
+Tekniska färdigheter: Python, SQL, Tableau, Google Analytics, Google Ads, Facebook Ads, Adobe Creative Suite, Intercom, CRM-system, Canva, Content SEO, Shopify, Excel/Google Sheets
+
+IDEELLT ENGAGEMANG
+
+LEAF (Living Environment and Future) | 2016 - 2017
+● Ledde elevgrupp för att utbilda skolan i miljötänk. Organiserade presentationer och kampanjer.
+● Skapade modemagasin för att sponsra hållbart jordbruksprojekt i Ghana. Samlade in 30,000 kr.
+
+The Right Solution Project | Mars 2013 – April 2015
+● Tog initiativ att finansiera NGO för kvinnors utbildning vid 15 års ålder.
+● Samlade in över 120,000 kr genom evenemang, konstutställningar och försäljning.
+● Tillhandahöll 400+ vårdpaket med hygienprodukter till etiopiska skolor. Täcktes i media två gånger.
+
+India Unlimited Utbytesprogram | Nov 2014 - Feb 2015
+● Deltog i EU-projekt för att främja fredliga relationer mellan Sverige och Indien.
+● Koordinerade hygienprojekt och fick kunskap om hållbar utveckling i utvecklingsländer.
+
+Värmdö Församling | 2012 - 2014
+● Ledare för 3 konfirmandgrupper under 2 år. Ledare på tre veckors sommarläger på Ängsholmen.
+● Svenska Kyrkan: Ledarskapskurs steg 1 och 2.
+
+UTMÄRKELSER
+● 1:a pris Stockholms Konstsalong 2024 - Jurybedömd utställning, nominerad 'Publikens Favorit'.
+● 1:a pris Greenpoint Gallery Brooklyn 2023 - Vann bland 60 konstnärer, fick solouställning.
+● 1:a pris Murray's Creative Contest 2022 - Detroit-baserad tävling med specialdesign.
+● Global Startup Weekend Stockholm - Vinnare för Terra Finance (Google for Startups & Techstars).
+● Tredje pris Chinese Bridge - Nationell tävling i kinesiskt språk, Bergen 2016.
+● Röda Korsets diplom - Guldutmärkelse för teamwork och ledarskap (100+ volontärtimmar).
+● Minerva University Award for Initiative 2018."""},
+        {"user_id": user_id, "vibe_id": "industry", "vibe_name": "Industri & Tradgard", "vibe_emoji": "", "cv_text": """Linnea Moritz
+Innehar B-Körkort | Sollentuna | 0761166109 | linneamoritzcv@gmail.com
+
+UTBILDNING
+
+Minerva University - San Francisco, USA
+B.S in Social Science, Economics and Business Administration (GPA: 3.6) | Aug 2017 - Maj 2021
+● Världens mest innovativa universitet enligt World's Universities with Real Impact (WURI).
+● En antagningsgräns på 1.8% gör Minerva till det mest selektiva universitetet i USA.
+● Studerade i fem länder under fyra år; USA, Sydkorea, Indien, Tyskland och Argentina.
+● Handledde 45 studenter i deras examensprojekt inom fem olika ämnen och branscher.
+
+United World College Red Cross Nordic - Flekke, Norge
+International Baccalaureate Bilingual Diploma - Engelska och Svenska (GPA: 3.85) | Aug 2015 - Maj 2017
+● Utvald som en toppelev från Sverige bland 120 sökande och fick fullt stipendium.
+● Bodde med 200 elever från 96 olika länder med fokus på internationell fred och förståelse.
+● Röda Korsets diplom; Guldutmärkelse för teamwork, frivilligarbete och ledarskap (100+ timmar).
+
+ARBETSLIVSERFARENHET
+
+Minerva University - Stockholm
+Alumni Ambassador Western Europe | Sep 2024 – Pågående
+● 25% tjänst med självständig planering, cirka 40 timmar i månaden.
+● Genomför strategisk marknadsföring genom resor till skolor och mässor i Västeuropa och Norden.
+● Bygger och underhåller databaser för skolkontakter, möten med SYO:er och studievägledare.
+● Ansvarar för logistik: bokning av flyg, hotell och transporter för stort geografiskt område.
+
+Linnea Moritz (linneamoritz.com) - Stockholm
+Konstnär och Egenföretagare | Jan 2024 – Pågående
+● Målar och säljer egna oljemålningar. 39 utställningar i 21 städer, 10 länder och 4 kontinenter.
+● Vunnit tre första pris i jurybedömda konstutställningar (bl.a. Stockholms Konstsalong, Greenpoint Gallery Brooklyn).
+● Driver all marknadsföring, bokföring, export, kundhantering och sociala medier självständigt.
+● Förvaltar Shopify-butik med försäljning av originalkonst och konsttryck internationellt.
+
+Profilgruppen - Åseda, Sverige
+Anodiseringsoperatör (Feriearbete) | Juli 2024 – Aug 2024
+● Utförde tungt fysiskt arbete med fokus på armlyft och materialhantering.
+● Arbetade på tvåskift (06.00-14.00 och 14.00-23.00), vilket visade flexibilitet och anpassningsförmåga.
+● Genomgick 3-timmarsutbildning i handtravers och hanterade material.
+● Samarbetade effektivt med dagligen roterande kollegor, vilket visade stark teamkänsla.
+
+House of Beans, Hötorgshallen - Stockholm
+Försäljare/Barista | Aug 2024 – Feb 2025
+● Självständigt butiksansvar med försäljning av te, kaffe och choklad.
+● Direktförsäljning till kunder och barista. Arbetade 8 timmar ensam, mycket eget ansvar.
+● Hanterade kassa, kundservice och lagerhantering.
+
+Max Hamburgare - Vetlanda
+Restaurangbiträde | April 2024 – Aug 2024
+● Arbetade i högt tempo med drive-in, fritös, kök, servering, kassa och städ.
+● Levererade god kundservice och samarbetade effektivt med teamet under rusningstid.
+
+Kvarngården äldreboende - Vetlanda
+Timvikarie | Maj 2020 – Sep 2020
+● Omvårdnad, medicinhantering, måltidsassistans, dokumentation och emotionellt stöd.
+● Gav omsorg till äldre personer med demens och Alzheimers sjukdom.
+● Följde noggrant covid-protokoll och arbetade både morgon- och kvällspass.
+
+ICA Maxi Stormarknad - Vetlanda & Värmdö
+Kassapersonal, frukt och grönt | 2015, 2017, 2019
+● Arbetade i kassan, självscanningen, frukt och grönt, charken och blomavdelningen.
+● ICA-certifierad inom kassahantering, Trygga mat och säkerhet i butik.
+
+Siggesta Gård - Värmdö
+Gårdsvärd/Trädgårdsarbetare | 2014 - 2015
+● Kundbemötande på stor evenemangsanläggning (minigolf, restauranger, konferenser, hotell).
+● Överseende roll med kommunikation mellan avdelningar. Ansvarade för marknad med ~1000 besökare/söndag.
+● Trädgårdsarbete: klippte gräs, rensade ogräs, planterade, skräpsortering. Körde golfbil.
+
+SPRÅK & KVALIFIKATIONER
+Språk: Svenska (Modersmål), Engelska (flytande), Tyska (grundläggande), Spanska (grundläggande), Mandarin (HSK nivå 3)
+Certifikat: B-körkort (automat), ICA kassahantering, Trygga mat, Röda Korset första hjälpen
+Tekniska färdigheter: Python, SQL, Tableau, Google Analytics, Excel/Google Sheets
+
+IDEELLT ENGAGEMANG
+
+LEAF (Living Environment and Future) | 2016 - 2017
+● Ledde elevgrupp för att utbilda skolan i miljötänk. Organiserade presentationer och kampanjer.
+● Skapade modemagasin för att sponsra hållbart jordbruksprojekt i Ghana. Samlade in 30,000 kr.
+
+The Right Solution Project | Mars 2013 – April 2015
+● Tog initiativ att finansiera NGO för kvinnors utbildning vid 15 års ålder.
+● Samlade in över 120,000 kr genom evenemang, konstutställningar och försäljning.
+● Tillhandahöll 400+ vårdpaket med hygienprodukter till etiopiska skolor. Täcktes i media två gånger.
+
+India Unlimited Utbytesprogram | Nov 2014 - Feb 2015
+● Deltog i EU-projekt för att främja fredliga relationer mellan Sverige och Indien.
+● Koordinerade hygienprojekt och fick kunskap om hållbar utveckling i utvecklingsländer.
+
+Värmdö Församling | 2012 - 2014
+● Ledare för 3 konfirmandgrupper under 2 år. Ledare på tre veckors sommarläger på Ängsholmen.
+● Svenska Kyrkan: Ledarskapskurs steg 1 och 2.
+
+UTMÄRKELSER
+● 1:a pris Stockholms Konstsalong 2024 - Jurybedömd utställning, nominerad 'Publikens Favorit'.
+● 1:a pris Greenpoint Gallery Brooklyn 2023 - Vann bland 60 konstnärer, fick solouställning.
+● 1:a pris Murray's Creative Contest 2022 - Detroit-baserad tävling med specialdesign.
+● Global Startup Weekend Stockholm - Vinnare för Terra Finance (Google for Startups & Techstars).
+● Tredje pris Chinese Bridge - Nationell tävling i kinesiskt språk, Bergen 2016.
+● Röda Korsets diplom - Guldutmärkelse för teamwork och ledarskap (100+ volontärtimmar).
+● Minerva University Award for Initiative 2018."""},
+        {"user_id": user_id, "vibe_id": "healthcare", "vibe_name": "Vard & Omsorg", "vibe_emoji": "", "cv_text": """Linnea Moritz
+Innehar B-Körkort | Sollentuna | 0761166109 | linneamoritzcv@gmail.com
+
+UTBILDNING
+
+Minerva University - San Francisco, USA
+B.S in Social Science, Economics and Business Administration (GPA: 3.6) | Aug 2017 - Maj 2021
+● Världens mest innovativa universitet enligt World's Universities with Real Impact (WURI).
+● En antagningsgräns på 1.8% gör Minerva till det mest selektiva universitetet i USA.
+● Studerade i fem länder under fyra år; USA, Sydkorea, Indien, Tyskland och Argentina.
+● Handledde 45 studenter i deras examensprojekt inom fem olika ämnen och branscher.
+
+United World College Red Cross Nordic - Flekke, Norge
+International Baccalaureate Bilingual Diploma - Engelska och Svenska (GPA: 3.85) | Aug 2015 - Maj 2017
+● Utvald som en toppelev från Sverige bland 120 sökande och fick fullt stipendium.
+● Bodde med 200 elever från 96 olika länder med fokus på internationell fred och förståelse.
+● Röda Korsets diplom; Guldutmärkelse för teamwork, frivilligarbete och ledarskap (100+ timmar).
+
+ARBETSLIVSERFARENHET
+
+Minerva University - Stockholm
+Alumni Ambassador Western Europe | Sep 2024 – Pågående
+● 25% tjänst med självständig planering, cirka 40 timmar i månaden.
+● Genomför strategisk marknadsföring genom resor till skolor och mässor i Västeuropa och Norden.
+● Bygger och underhåller databaser för skolkontakter, möten med SYO:er och studievägledare.
+● Ansvarar för logistik: bokning av flyg, hotell och transporter för stort geografiskt område.
+
+Linnea Moritz (linneamoritz.com) - Stockholm
+Konstnär och Egenföretagare | Jan 2024 – Pågående
+● Målar och säljer egna oljemålningar. 39 utställningar i 21 städer, 10 länder och 4 kontinenter.
+● Vunnit tre första pris i jurybedömda konstutställningar (bl.a. Stockholms Konstsalong, Greenpoint Gallery Brooklyn).
+● Driver all marknadsföring, bokföring, export, kundhantering och sociala medier självständigt.
+● Förvaltar Shopify-butik med försäljning av originalkonst och konsttryck internationellt.
+
+House of Beans, Hötorgshallen - Stockholm
+Försäljare/Barista | Aug 2024 – Feb 2025
+● Självständigt butiksansvar med försäljning av te, kaffe och choklad.
+● Direktförsäljning till kunder och barista. Arbetade 8 timmar ensam, mycket eget ansvar.
+● Hanterade kassa, kundservice och lagerhantering.
+
+Max Hamburgare - Vetlanda
+Restaurangbiträde | April 2024 – Aug 2024
+● Arbetade i högt tempo med drive-in, fritös, kök, servering, kassa och städ.
+● Levererade god kundservice och samarbetade effektivt med teamet under rusningstid.
+
+Kvarngården äldreboende - Vetlanda
+Timvikarie | Maj 2020 – Sep 2020
+● Omvårdnad, medicinhantering, måltidsassistans, dokumentation och emotionellt stöd.
+● Gav omsorg till äldre personer med demens och Alzheimers sjukdom.
+● Följde noggrant covid-protokoll och arbetade både morgon- och kvällspass.
+
+ICA Maxi Stormarknad - Vetlanda & Värmdö
+Kassapersonal, frukt och grönt | 2015, 2017, 2019
+● Arbetade i kassan, självscanningen, frukt och grönt, charken och blomavdelningen.
+● ICA-certifierad inom kassahantering, Trygga mat och säkerhet i butik.
+
+Wallby Säteri - Vetlanda
+Gårdsvärd/Receptionist | Juni 2016 – Aug 2016
+● Arbetade i receptionen med bokningar, telefonsamtal, in- och utcheckning samt betalningar.
+● Assisterade vid caféet och bidrog till allmän service.
+
+Siggesta Gård - Värmdö
+Gårdsvärd/Trädgårdsarbetare | 2014 - 2015
+● Kundbemötande på stor evenemangsanläggning (minigolf, restauranger, konferenser, hotell).
+● Överseende roll med kommunikation mellan avdelningar. Ansvarade för marknad med ~1000 besökare/söndag.
+● Trädgårdsarbete: klippte gräs, rensade ogräs, planterade, skräpsortering. Körde golfbil.
+
+SPRÅK & KVALIFIKATIONER
+Språk: Svenska (Modersmål), Engelska (flytande), Tyska (grundläggande), Spanska (grundläggande), Mandarin (HSK nivå 3)
+Certifikat: B-körkort (automat), ICA kassahantering, Trygga mat, Röda Korset första hjälpen
+
+IDEELLT ENGAGEMANG
+
+LEAF (Living Environment and Future) | 2016 - 2017
+● Ledde elevgrupp för att utbilda skolan i miljötänk. Organiserade presentationer och kampanjer.
+● Skapade modemagasin för att sponsra hållbart jordbruksprojekt i Ghana. Samlade in 30,000 kr.
+
+The Right Solution Project | Mars 2013 – April 2015
+● Tog initiativ att finansiera NGO för kvinnors utbildning vid 15 års ålder.
+● Samlade in över 120,000 kr genom evenemang, konstutställningar och försäljning.
+● Tillhandahöll 400+ vårdpaket med hygienprodukter till etiopiska skolor. Täcktes i media två gånger.
+
+India Unlimited Utbytesprogram | Nov 2014 - Feb 2015
+● Deltog i EU-projekt för att främja fredliga relationer mellan Sverige och Indien.
+● Koordinerade hygienprojekt och fick kunskap om hållbar utveckling i utvecklingsländer.
+
+Värmdö Församling | 2012 - 2014
+● Ledare för 3 konfirmandgrupper under 2 år. Ledare på tre veckors sommarläger på Ängsholmen.
+● Svenska Kyrkan: Ledarskapskurs steg 1 och 2.
+
+UTMÄRKELSER
+● 1:a pris Stockholms Konstsalong 2024 - Jurybedömd utställning, nominerad 'Publikens Favorit'.
+● 1:a pris Greenpoint Gallery Brooklyn 2023 - Vann bland 60 konstnärer, fick solouställning.
+● 1:a pris Murray's Creative Contest 2022 - Detroit-baserad tävling med specialdesign.
+● Global Startup Weekend Stockholm - Vinnare för Terra Finance (Google for Startups & Techstars).
+● Tredje pris Chinese Bridge - Nationell tävling i kinesiskt språk, Bergen 2016.
+● Röda Korsets diplom - Guldutmärkelse för teamwork och ledarskap (100+ volontärtimmar).
+● Minerva University Award for Initiative 2018."""},
+        {"user_id": user_id, "vibe_id": "art", "vibe_name": "Konst & Kultur", "vibe_emoji": "", "cv_text": """Linnea Moritz
+Innehar B-Körkort | Sollentuna | 0761166109 | linneamoritzcv@gmail.com
+
+UTBILDNING
+
+Minerva University - San Francisco, USA
+B.S in Social Science, Economics and Business Administration (GPA: 3.6) | Aug 2017 - Maj 2021
+● Världens mest innovativa universitet enligt World's Universities with Real Impact (WURI).
+● En antagningsgräns på 1.8% gör Minerva till det mest selektiva universitetet i USA.
+● Studerade i fem länder under fyra år; USA, Sydkorea, Indien, Tyskland och Argentina.
+● Handledde 45 studenter i deras examensprojekt inom fem olika ämnen och branscher.
+
+United World College Red Cross Nordic - Flekke, Norge
+International Baccalaureate Bilingual Diploma - Engelska och Svenska (GPA: 3.85) | Aug 2015 - Maj 2017
+● Utvald som en toppelev från Sverige bland 120 sökande och fick fullt stipendium.
+● Bodde med 200 elever från 96 olika länder med fokus på internationell fred och förståelse.
+● Röda Korsets diplom; Guldutmärkelse för teamwork, frivilligarbete och ledarskap (100+ timmar).
+
+ARBETSLIVSERFARENHET
+
+Linnea Moritz (linneamoritz.com) - Stockholm
+Konstnär och Egenföretagare | Jan 2024 – Pågående
+● Målar och säljer egna oljemålningar. 39 utställningar i 21 städer, 10 länder och 4 kontinenter.
+● Vunnit tre första pris i jurybedömda konstutställningar (bl.a. Stockholms Konstsalong, Greenpoint Gallery Brooklyn).
+● Driver all marknadsföring, bokföring, export, kundhantering och sociala medier självständigt.
+● Förvaltar Shopify-butik med försäljning av originalkonst och konsttryck internationellt.
+
+Minerva University - Stockholm
+Alumni Ambassador Western Europe | Sep 2024 – Pågående
+● 25% tjänst med självständig planering, cirka 40 timmar i månaden.
+● Genomför strategisk marknadsföring genom resor till skolor och mässor i Västeuropa och Norden.
+● Bygger och underhåller databaser för skolkontakter, möten med SYO:er och studievägledare.
+● Ansvarar för logistik: bokning av flyg, hotell och transporter för stort geografiskt område.
+
+Keeping Tabs - New York, USA
+Multimedia Technical Specialist | Nov 2022 – Juni 2023
+● Planerade och koordinerade konstsamling för Art Basel Hong Kong (70x30m skärm, Causeway Bay).
+● Designade visuell merchandise och rullade ut försäljnings- och logistikkampanj.
+● Utvecklade partnerskap med organisationer inom konstindustrin i USA.
+● Ansvarade för leadgenerering, orderleverans, fakturering och kundnöjdhet.
+
+30 Campos Eliseos - New York, USA
+Kubistisk målare | 2022 – 2024
+● Scoutad som professionell kubistmålare till prestigefylld konstsamlargrupp grundad i Florens.
+● En av endast fem konstnärer utvalda bland 500+ sökande.
+● Deltog i utställningar i New York, Dubai, Seoul, Madrid och Florens.
+
+Minerva University - San Francisco, USA
+Handledare för examensprojekt | Sep 2020 – Maj 2021
+● Handledde 45 studenter i deras capstone-projekt inom VR, hållbart mode, varumärkesanalys och historiska romaner.
+● Ledde workshops, undervisade i projektledning och gav omfattande akademiskt stöd.
+● Gav kvalitativ och kvantitativ återkoppling till över 90 uppgifter och 40 lektioner.
+
+Minerva Project - Berlin & Buenos Aires
+Marknadsföring/Kundservice - Global Marketing Team | Sep 2019 – April 2020
+● Samarbetade med globala marknadsföringsteamet för att öka antagningen till Minerva University.
+● Vägledde och stöttade över 2000 sökande elever via Intercom med högkvalitativ kundservice.
+● Svarade på frågor från elever i över 40 länder genom Intercom och personliga möten.
+● Anordnade rekryteringsevenemang i Norge med presentation om utbildningsprogrammet.
+
+Minerva Project - Student Experience Team - San Francisco, USA
+Evenemangskoordinator och elevhemsvärd | Sep 2017 – Maj 2018
+● Organiserade 60 evenemang för 210 internationella studenter, 2-3 per vecka.
+● Ansvarade för möten, budgetkontroll, närvaro, schemaläggning och marknadsföring.
+● Organiserade stadsskattjakt där studenter upptäckte San Francisco och utvidgade kontaktnät.
+● Koordinerade gästföreläsare och använde mjukvara för eventlogistik och närvarohantering.
+
+House of Beans, Hötorgshallen - Stockholm
+Försäljare/Barista | Aug 2024 – Feb 2025
+● Självständigt butiksansvar med försäljning av te, kaffe och choklad.
+● Direktförsäljning till kunder och barista. Arbetade 8 timmar ensam, mycket eget ansvar.
+● Hanterade kassa, kundservice och lagerhantering.
+
+SPRÅK & KVALIFIKATIONER
+Språk: Svenska (Modersmål), Engelska (flytande), Tyska (grundläggande), Spanska (grundläggande), Mandarin (HSK nivå 3)
+Certifikat: B-körkort (automat), ICA kassahantering, Trygga mat, Röda Korset första hjälpen
+
+IDEELLT ENGAGEMANG
+
+LEAF (Living Environment and Future) | 2016 - 2017
+● Ledde elevgrupp för att utbilda skolan i miljötänk. Organiserade presentationer och kampanjer.
+● Skapade modemagasin för att sponsra hållbart jordbruksprojekt i Ghana. Samlade in 30,000 kr.
+
+The Right Solution Project | Mars 2013 – April 2015
+● Tog initiativ att finansiera NGO för kvinnors utbildning vid 15 års ålder.
+● Samlade in över 120,000 kr genom evenemang, konstutställningar och försäljning.
+● Tillhandahöll 400+ vårdpaket med hygienprodukter till etiopiska skolor. Täcktes i media två gånger.
+
+India Unlimited Utbytesprogram | Nov 2014 - Feb 2015
+● Deltog i EU-projekt för att främja fredliga relationer mellan Sverige och Indien.
+● Koordinerade hygienprojekt och fick kunskap om hållbar utveckling i utvecklingsländer.
+
+Värmdö Församling | 2012 - 2014
+● Ledare för 3 konfirmandgrupper under 2 år. Ledare på tre veckors sommarläger på Ängsholmen.
+● Svenska Kyrkan: Ledarskapskurs steg 1 och 2.
+
+UTMÄRKELSER
+● 1:a pris Stockholms Konstsalong 2024 - Jurybedömd utställning, nominerad 'Publikens Favorit'.
+● 1:a pris Greenpoint Gallery Brooklyn 2023 - Vann bland 60 konstnärer, fick solouställning.
+● 1:a pris Murray's Creative Contest 2022 - Detroit-baserad tävling med specialdesign.
+● Global Startup Weekend Stockholm - Vinnare för Terra Finance (Google for Startups & Techstars).
+● Tredje pris Chinese Bridge - Nationell tävling i kinesiskt språk, Bergen 2016.
+● Röda Korsets diplom - Guldutmärkelse för teamwork och ledarskap (100+ volontärtimmar).
+● Minerva University Award for Initiative 2018."""},
     ]
 
     results = {"profile": False, "experiences": 0, "education": 0, "cvs": 0, "errors": []}
