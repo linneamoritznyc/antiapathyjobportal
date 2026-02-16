@@ -213,7 +213,7 @@
                             onClick={(e) => { e.stopPropagation(); onUploadCV(vibe); }}
                             className="w-full bg-indigo-600 text-white px-3 py-2 rounded-lg text-xs font-medium hover:bg-indigo-700"
                         >
-                            📤 Ladda upp PDF
+                            📤 Ladda upp CV
                         </button>
                         {hasPDF && (
                             <a
@@ -222,7 +222,7 @@
                                 onClick={(e) => e.stopPropagation()}
                                 className="w-full bg-slate-100 text-slate-700 px-3 py-2 rounded-lg text-xs font-medium hover:bg-slate-200 text-center"
                             >
-                                📄 Visa PDF
+                                📄 Visa fil
                             </a>
                         )}
                         <button
@@ -2676,10 +2676,18 @@
             const handleUploadCV = async (vibe) => {
                 const input = document.createElement('input');
                 input.type = 'file';
-                input.accept = '.pdf';
+                input.accept = '.pdf,.docx,.doc,.txt,.rtf,.odt';
                 input.onchange = async (e) => {
                     const file = e.target.files[0];
                     if (!file) return;
+
+                    // Validate file type
+                    const validExtensions = ['pdf', 'docx', 'doc', 'txt', 'rtf', 'odt'];
+                    const fileExt = file.name.split('.').pop().toLowerCase();
+                    if (!validExtensions.includes(fileExt)) {
+                        alert('Ogiltigt filformat! Använd PDF, DOCX, DOC, TXT, RTF eller ODT');
+                        return;
+                    }
 
                     setUploadingCV(true);
                     setUploadVibeId(vibe.id);
@@ -2702,7 +2710,7 @@
                             alert(`✓ CV för ${vibe.name} uppladdad!`);
                             await fetchUserCVs();
                         } else {
-                            alert('Kunde inte ladda upp CV. Försök igen.');
+                            alert(data.detail || 'Kunde inte ladda upp CV. Försök igen.');
                         }
                     } catch (err) {
                         console.error(err);

@@ -4686,7 +4686,7 @@ async def admin_migration_status():
 
 @app.post("/api/upload/cv/{vibe_id}")
 async def upload_cv(vibe_id: str, request: Request):
-    """Upload CV PDF for a specific vibe category"""
+    """Upload CV in various formats (PDF, DOCX, DOC, TXT, RTF, ODT)"""
     auth_header = request.headers.get("Authorization", "")
     if not auth_header.startswith("Bearer "):
         raise HTTPException(status_code=401, detail="Missing authorization")
@@ -4708,18 +4708,38 @@ async def upload_cv(vibe_id: str, request: Request):
     if not file:
         raise HTTPException(status_code=400, detail="No file provided")
 
+    # Determine file extension and content type
+    filename = file.filename.lower()
+    ext = "pdf"  # default
+    content_type = "application/pdf"
+
+    if filename.endswith(".pdf"):
+        ext, content_type = "pdf", "application/pdf"
+    elif filename.endswith(".docx"):
+        ext, content_type = "docx", "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+    elif filename.endswith(".doc"):
+        ext, content_type = "doc", "application/msword"
+    elif filename.endswith(".txt"):
+        ext, content_type = "txt", "text/plain"
+    elif filename.endswith(".rtf"):
+        ext, content_type = "rtf", "application/rtf"
+    elif filename.endswith(".odt"):
+        ext, content_type = "odt", "application/vnd.oasis.opendocument.text"
+    else:
+        raise HTTPException(status_code=400, detail="Unsupported file format. Use PDF, DOCX, DOC, TXT, RTF, or ODT")
+
     # Read file content
     file_content = await file.read()
 
     # Upload to Supabase Storage
-    file_path = f"{user_id}/{vibe_id}_cv.pdf"
+    file_path = f"{user_id}/{vibe_id}_cv.{ext}"
 
     async with httpx.AsyncClient() as client:
         upload_response = await client.post(
             f"{SUPABASE_URL}/storage/v1/object/cv-files/{file_path}",
             headers={
                 "Authorization": f"Bearer {SUPABASE_KEY}",
-                "Content-Type": "application/pdf"
+                "Content-Type": content_type
             },
             content=file_content,
             timeout=30
