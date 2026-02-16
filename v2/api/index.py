@@ -1562,6 +1562,18 @@ def get_frontend_html():
 
 # ============== AUTH ENDPOINTS ==============
 
+@app.get("/api/debug/env")
+async def debug_env():
+    """Debug endpoint to check if environment variables are loaded"""
+    return {
+        "supabase_url_exists": bool(SUPABASE_URL),
+        "supabase_url_length": len(SUPABASE_URL) if SUPABASE_URL else 0,
+        "supabase_anon_key_exists": bool(SUPABASE_ANON_KEY),
+        "supabase_anon_key_length": len(SUPABASE_ANON_KEY) if SUPABASE_ANON_KEY else 0,
+        "anthropic_key_exists": bool(ANTHROPIC_API_KEY),
+        "all_env_vars": list(os.environ.keys())[:10]  # First 10 env var names
+    }
+
 @app.post("/api/auth/signup")
 async def sign_up(request: SignUpRequest):
     """
