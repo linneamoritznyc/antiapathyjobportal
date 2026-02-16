@@ -2,31 +2,28 @@
 -- COMPLETE MIGRATION: All Linnea's Data to Supabase
 -- Paste this entire file into Supabase SQL Editor and run it
 -- ============================================
-DO $$
-DECLARE
-    v_user_id uuid := 'da8ed517-3b67-4456-8831-6ed3cb7114ad';
-BEGIN
-    -- ============================================
-    -- STEP 1: Delete all old data
-    -- ============================================
-    DELETE FROM public.user_experiences WHERE user_id = v_user_id;
-    DELETE FROM public.user_education WHERE user_id = v_user_id;
-    DELETE FROM public.user_skills WHERE user_id = v_user_id;
-    DELETE FROM public.user_cvs WHERE user_id = v_user_id;
-    DELETE FROM public.user_volunteer WHERE user_id = v_user_id::text;
-    DELETE FROM public.user_awards WHERE user_id = v_user_id::text;
-    DELETE FROM public.user_cover_letter_preferences WHERE user_id = v_user_id;
-    DELETE FROM public.user_job_preferences WHERE user_id = v_user_id;
-    DELETE FROM public.user_cv_branscher WHERE user_id = v_user_id::text;
-    DELETE FROM public.user_profiles WHERE user_id = v_user_id;
-    RAISE NOTICE 'Deleted old data';
-    -- ============================================
-    -- STEP 2: Insert complete data
-    -- ============================================
-    -- Profile
-    INSERT INTO public.user_profiles (user_id, full_name, email, phone, location, drivers_license, languages)
-    VALUES (
-        v_user_id,
+
+-- ============================================
+-- STEP 1: Delete all old data
+-- ============================================
+DELETE FROM public.user_experiences WHERE user_id = 'da8ed517-3b67-4456-8831-6ed3cb7114ad';
+DELETE FROM public.user_education WHERE user_id = 'da8ed517-3b67-4456-8831-6ed3cb7114ad';
+DELETE FROM public.user_skills WHERE user_id = 'da8ed517-3b67-4456-8831-6ed3cb7114ad';
+DELETE FROM public.user_cvs WHERE user_id = 'da8ed517-3b67-4456-8831-6ed3cb7114ad';
+DELETE FROM public.user_volunteer WHERE user_id = 'da8ed517-3b67-4456-8831-6ed3cb7114ad';
+DELETE FROM public.user_awards WHERE user_id = 'da8ed517-3b67-4456-8831-6ed3cb7114ad';
+DELETE FROM public.user_cover_letter_preferences WHERE user_id = 'da8ed517-3b67-4456-8831-6ed3cb7114ad';
+DELETE FROM public.user_job_preferences WHERE user_id = 'da8ed517-3b67-4456-8831-6ed3cb7114ad';
+DELETE FROM public.user_cv_branscher WHERE user_id = 'da8ed517-3b67-4456-8831-6ed3cb7114ad';
+DELETE FROM public.user_profiles WHERE user_id = 'da8ed517-3b67-4456-8831-6ed3cb7114ad';
+-- ============================================
+-- STEP 2: Insert complete data
+-- ============================================
+
+-- Profile
+INSERT INTO public.user_profiles (user_id, full_name, email, phone, location, drivers_license, languages)
+VALUES (
+    'da8ed517-3b67-4456-8831-6ed3cb7114ad',
         'Linnea Moritz',
         'linneamoritz1@gmail.com',
         '0761166109',
