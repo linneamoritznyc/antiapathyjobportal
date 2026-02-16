@@ -1792,14 +1792,39 @@ async def migrate_user_data(request: Request):
 
     token = auth_header.replace("Bearer ", "")
 
-    # Get user ID
+    # Try to get refresh_token from request body
+    refresh_token = None
+    try:
+        body = await request.json()
+        refresh_token = body.get("refresh_token")
+    except Exception:
+        pass
+
+    # Get user ID - try access token first, then refresh if expired
     async with httpx.AsyncClient() as client:
         user_response = await client.get(
             f"{SUPABASE_URL}/auth/v1/user",
             headers={"apikey": SUPABASE_ANON_KEY, "Authorization": f"Bearer {token}"}
         )
+
+        if user_response.status_code != 200 and refresh_token:
+            # Access token expired - try refreshing
+            refresh_response = await client.post(
+                f"{SUPABASE_URL}/auth/v1/token?grant_type=refresh_token",
+                headers={"apikey": SUPABASE_ANON_KEY, "Content-Type": "application/json"},
+                json={"refresh_token": refresh_token}
+            )
+            if refresh_response.status_code == 200:
+                refresh_data = refresh_response.json()
+                token = refresh_data.get("access_token", token)
+                # Re-validate with new token
+                user_response = await client.get(
+                    f"{SUPABASE_URL}/auth/v1/user",
+                    headers={"apikey": SUPABASE_ANON_KEY, "Authorization": f"Bearer {token}"}
+                )
+
         if user_response.status_code != 200:
-            raise HTTPException(status_code=401, detail="Ogiltig session")
+            raise HTTPException(status_code=401, detail="Ogiltig session - logga in igen")
         user_id = user_response.json().get("id")
 
     # Pre-defined data — ALL experiences from Linnea's 8 CV PDFs
@@ -2753,14 +2778,16 @@ UTMÄRKELSER
 
     results = {"profile": False, "experiences": 0, "education": 0, "cvs": 0, "errors": []}
 
+    # Use service role key for DB operations (bypasses RLS)
+    db_key = os.getenv("SUPABASE_SERVICE_ROLE_KEY") or SUPABASE_KEY
     headers = {
-        "apikey": SUPABASE_KEY,
-        "Authorization": f"Bearer {SUPABASE_KEY}",
+        "apikey": db_key,
+        "Authorization": f"Bearer {db_key}",
         "Content-Type": "application/json",
         "Prefer": "return=representation"
     }
 
-    async with httpx.AsyncClient(timeout=30) as client:
+    async with httpx.AsyncClient(timeout=60) as client:
         # 1. Upsert profile (on_conflict=user_id)
         try:
             res = await client.post(
@@ -2771,111 +2798,120 @@ UTMÄRKELSER
             if res.status_code < 400:
                 results["profile"] = True
             else:
-                results["errors"].append(f"Profile: {res.status_code}")
+                results["errors"].append(f"Profile: {res.status_code} {res.text[:200]}")
         except Exception as e:
             results["errors"].append(f"Profile error: {str(e)}")
 
-        # 2. Delete old experiences, then insert new
+        # 2. Delete old experiences, then batch insert
         try:
             await client.delete(
                 f"{SUPABASE_URL}/rest/v1/user_experiences?user_id=eq.{user_id}",
                 headers=headers
             )
-            for exp in EXPERIENCES:
-                res = await client.post(
-                    f"{SUPABASE_URL}/rest/v1/user_experiences",
-                    headers=headers,
-                    json=exp
-                )
-                if res.status_code < 400:
-                    results["experiences"] += 1
+            res = await client.post(
+                f"{SUPABASE_URL}/rest/v1/user_experiences",
+                headers=headers,
+                json=EXPERIENCES
+            )
+            if res.status_code < 400:
+                results["experiences"] = len(EXPERIENCES)
+            else:
+                results["errors"].append(f"Experiences: {res.status_code} {res.text[:200]}")
         except Exception as e:
             results["errors"].append(f"Experiences error: {str(e)}")
 
-        # 3. Delete old education, then insert new
+        # 3. Delete old education, then batch insert
         try:
             await client.delete(
                 f"{SUPABASE_URL}/rest/v1/user_education?user_id=eq.{user_id}",
                 headers=headers
             )
-            for edu in EDUCATION:
-                res = await client.post(
-                    f"{SUPABASE_URL}/rest/v1/user_education",
-                    headers=headers,
-                    json=edu
-                )
-                if res.status_code < 400:
-                    results["education"] += 1
+            res = await client.post(
+                f"{SUPABASE_URL}/rest/v1/user_education",
+                headers=headers,
+                json=EDUCATION
+            )
+            if res.status_code < 400:
+                results["education"] = len(EDUCATION)
+            else:
+                results["errors"].append(f"Education: {res.status_code} {res.text[:200]}")
         except Exception as e:
             results["errors"].append(f"Education error: {str(e)}")
 
-        # 4. Upsert CV versions (on_conflict=user_id,vibe_id)
+        # 4. Delete old CVs, then batch insert
         try:
+            await client.delete(
+                f"{SUPABASE_URL}/rest/v1/user_cvs?user_id=eq.{user_id}",
+                headers=headers
+            )
             for cv in CV_VERSIONS:
                 cv["created_at"] = datetime.now().isoformat()
-                res = await client.post(
-                    f"{SUPABASE_URL}/rest/v1/user_cvs?on_conflict=user_id,vibe_id",
-                    headers=headers,
-                    json=cv
-                )
-                if res.status_code < 400:
-                    results["cvs"] += 1
-                else:
-                    results["errors"].append(f"CV {cv['vibe_id']}: {res.status_code}")
+            res = await client.post(
+                f"{SUPABASE_URL}/rest/v1/user_cvs",
+                headers=headers,
+                json=CV_VERSIONS
+            )
+            if res.status_code < 400:
+                results["cvs"] = len(CV_VERSIONS)
+            else:
+                results["errors"].append(f"CVs: {res.status_code} {res.text[:200]}")
         except Exception as e:
             results["errors"].append(f"CVs error: {str(e)}")
 
-        # 5. Delete old skills, then insert new
+        # 5. Delete old skills, then batch insert
         results["skills"] = 0
         try:
             await client.delete(
                 f"{SUPABASE_URL}/rest/v1/user_skills?user_id=eq.{user_id}",
                 headers=headers
             )
-            for skill in SKILLS:
-                res = await client.post(
-                    f"{SUPABASE_URL}/rest/v1/user_skills",
-                    headers=headers,
-                    json=skill
-                )
-                if res.status_code < 400:
-                    results["skills"] += 1
+            res = await client.post(
+                f"{SUPABASE_URL}/rest/v1/user_skills",
+                headers=headers,
+                json=SKILLS
+            )
+            if res.status_code < 400:
+                results["skills"] = len(SKILLS)
+            else:
+                results["errors"].append(f"Skills: {res.status_code} {res.text[:200]}")
         except Exception as e:
             results["errors"].append(f"Skills error: {str(e)}")
 
-        # 6. Delete old volunteer, then insert new
+        # 6. Delete old volunteer, then batch insert
         results["volunteer"] = 0
         try:
             await client.delete(
                 f"{SUPABASE_URL}/rest/v1/user_volunteer?user_id=eq.{user_id}",
                 headers=headers
             )
-            for vol in VOLUNTEER:
-                res = await client.post(
-                    f"{SUPABASE_URL}/rest/v1/user_volunteer",
-                    headers=headers,
-                    json=vol
-                )
-                if res.status_code < 400:
-                    results["volunteer"] += 1
+            res = await client.post(
+                f"{SUPABASE_URL}/rest/v1/user_volunteer",
+                headers=headers,
+                json=VOLUNTEER
+            )
+            if res.status_code < 400:
+                results["volunteer"] = len(VOLUNTEER)
+            else:
+                results["errors"].append(f"Volunteer: {res.status_code} {res.text[:200]}")
         except Exception as e:
             results["errors"].append(f"Volunteer error: {str(e)}")
 
-        # 7. Delete old awards, then insert new
+        # 7. Delete old awards, then batch insert
         results["awards"] = 0
         try:
             await client.delete(
                 f"{SUPABASE_URL}/rest/v1/user_awards?user_id=eq.{user_id}",
                 headers=headers
             )
-            for award in AWARDS:
-                res = await client.post(
-                    f"{SUPABASE_URL}/rest/v1/user_awards",
-                    headers=headers,
-                    json=award
-                )
-                if res.status_code < 400:
-                    results["awards"] += 1
+            res = await client.post(
+                f"{SUPABASE_URL}/rest/v1/user_awards",
+                headers=headers,
+                json=AWARDS
+            )
+            if res.status_code < 400:
+                results["awards"] = len(AWARDS)
+            else:
+                results["errors"].append(f"Awards: {res.status_code} {res.text[:200]}")
         except Exception as e:
             results["errors"].append(f"Awards error: {str(e)}")
 
@@ -2890,7 +2926,7 @@ UTMÄRKELSER
             if res.status_code < 400:
                 results["cover_letter_prefs"] = True
             else:
-                results["errors"].append(f"Cover letter prefs: {res.status_code}")
+                results["errors"].append(f"Cover letter prefs: {res.status_code} {res.text[:200]}")
         except Exception as e:
             results["errors"].append(f"Cover letter prefs error: {str(e)}")
 
@@ -2905,42 +2941,48 @@ UTMÄRKELSER
             if res.status_code < 400:
                 results["job_prefs"] = True
             else:
-                results["errors"].append(f"Job prefs: {res.status_code}")
+                results["errors"].append(f"Job prefs: {res.status_code} {res.text[:200]}")
         except Exception as e:
             results["errors"].append(f"Job prefs error: {str(e)}")
 
-        # 10. Delete old branscher, then insert new
+        # 10. Delete old branscher, then batch insert
         results["branscher"] = 0
         try:
             await client.delete(
                 f"{SUPABASE_URL}/rest/v1/user_cv_branscher?user_id=eq.{user_id}",
                 headers=headers
             )
-            for bransch in CV_BRANSCHER:
-                res = await client.post(
-                    f"{SUPABASE_URL}/rest/v1/user_cv_branscher",
-                    headers=headers,
-                    json=bransch
-                )
-                if res.status_code < 400:
-                    results["branscher"] += 1
+            res = await client.post(
+                f"{SUPABASE_URL}/rest/v1/user_cv_branscher",
+                headers=headers,
+                json=CV_BRANSCHER
+            )
+            if res.status_code < 400:
+                results["branscher"] = len(CV_BRANSCHER)
+            else:
+                results["errors"].append(f"Branscher: {res.status_code} {res.text[:200]}")
         except Exception as e:
             results["errors"].append(f"Branscher error: {str(e)}")
 
     success = (results["profile"] and results["experiences"] > 0 and results["cvs"] > 0
                and results["skills"] > 0 and results["volunteer"] > 0 and results["awards"] > 0)
-    return {
+
+    # Include refreshed token so frontend can update its stored token
+    response_data = {
         "success": success,
         "message": f"Migrerat! Profil: {'OK' if results['profile'] else 'FEL'}, "
                    f"Erfarenheter: {results['experiences']}/19, "
                    f"Utbildning: {results['education']}/2, "
                    f"CV:n: {results['cvs']}/8, "
-                   f"Skills: {results['skills']}/37, "
+                   f"Skills: {results['skills']}/{len(SKILLS)}, "
                    f"Volontar: {results['volunteer']}/4, "
                    f"Utmarkelser: {results['awards']}/7, "
                    f"Branscher: {results['branscher']}/8",
         "results": results
     }
+    if not success and results["errors"]:
+        response_data["errors"] = results["errors"]
+    return response_data
 
 
 class UserPreferences(BaseModel):
