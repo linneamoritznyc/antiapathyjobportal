@@ -80,6 +80,28 @@ BEGIN
         ALTER TABLE user_education ADD COLUMN bullets JSONB;
     END IF;
 
+    -- Fix user_profiles table: add certificates, languages, about_me if they don't exist
+    IF NOT EXISTS (
+        SELECT 1 FROM information_schema.columns
+        WHERE table_name = 'user_profiles' AND column_name = 'certificates'
+    ) THEN
+        ALTER TABLE user_profiles ADD COLUMN certificates TEXT[] DEFAULT ARRAY[]::TEXT[];
+    END IF;
+
+    IF NOT EXISTS (
+        SELECT 1 FROM information_schema.columns
+        WHERE table_name = 'user_profiles' AND column_name = 'languages'
+    ) THEN
+        ALTER TABLE user_profiles ADD COLUMN languages TEXT[] DEFAULT ARRAY['Svenska (Modersmål)', 'Engelska (flytande)']::TEXT[];
+    END IF;
+
+    IF NOT EXISTS (
+        SELECT 1 FROM information_schema.columns
+        WHERE table_name = 'user_profiles' AND column_name = 'about_me'
+    ) THEN
+        ALTER TABLE user_profiles ADD COLUMN about_me TEXT;
+    END IF;
+
     -- ========================================================================
     -- STEP 2: DROP AND RECREATE TABLES (fixes type mismatches)
     -- ========================================================================
