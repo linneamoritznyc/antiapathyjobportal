@@ -1,6 +1,7 @@
 <!DOCTYPE html>
 <html lang="sv">
 <head>
+    <!-- VERSION: 2025-02-16-v4-debug-data-loading -->
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Anti-Apathy Job Portal</title>
@@ -2392,18 +2393,28 @@
             };
 
             const fetchVibes = async () => {
+                console.log('[DEBUG] Fetching CV vibes...');
                 const res = await fetch('/api/cv/vibes');
                 const data = await res.json();
-                if (data.success) setVibes(data.vibes || []);
+                console.log('[DEBUG] CV vibes response:', data);
+                if (data.success) {
+                    setVibes(data.vibes || []);
+                    console.log('[DEBUG] Vibes set:', data.vibes?.length || 0, 'vibes');
+                }
             };
 
             const fetchUserCVs = async () => {
                 const token = localStorage.getItem('auth_token');
+                console.log('[DEBUG] Fetching user CVs... Auth token exists:', !!token);
                 const res = await fetch('/api/cv/all', {
                     headers: token ? { 'Authorization': `Bearer ${token}` } : {}
                 });
                 const data = await res.json();
-                if (data.success) setUserCVs(data.cvs || []);
+                console.log('[DEBUG] User CVs response:', data);
+                if (data.success) {
+                    setUserCVs(data.cvs || []);
+                    console.log('[DEBUG] User CVs set:', data.cvs?.length || 0, 'CVs');
+                }
             };
 
             const fetchApplications = async () => {
@@ -2919,6 +2930,11 @@
                             <p>© 2026 Platsbanken AI</p>
                         </div>
                     </footer>
+
+                    {/* Version badge */}
+                    <div style={{position:'fixed',bottom:'10px',right:'10px',fontSize:'10px',color:'#999',background:'#fff',padding:'4px 8px',borderRadius:'4px',border:'1px solid #ddd',zIndex:9999}}>
+                        v4-debug-2025-02-16
+                    </div>
                 </div>
             );
         };
