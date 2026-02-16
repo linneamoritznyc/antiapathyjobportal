@@ -4,9 +4,10 @@
 -- ============================================
 
 -- CV 5: HEALTHCARE (VÅRD/OMSORG)
-INSERT INTO public.user_cvs (user_id, cv_name, cv_content, bransch, created_at) VALUES (
-'da8ed517-3b67-4456-8831-6ed3cb7114ad',
-'CV_Vard_Omsorg',
+INSERT INTO public.user_cvs (user_id, vibe_id, vibe_name, cv_text) VALUES (
+'da8ed517-3b67-4456-8831-6ed3cb7114ad'::uuid,
+'healthcare',
+'Vård & Omsorg',
 'Linnea Moritz
 Innehar B-Körkort | Sollentuna | 0761166109 | linneamoritzcv@gmail.com
 
@@ -33,13 +34,6 @@ Alumni Ambassador Western Europe                                                
 ● Genomför strategisk marknadsföring genom resor till skolor och mässor i Västeuropa och Norden.
 ● Bygger och underhåller databaser för skolkontakter, möten med SYO:er och studievägledare.
 ● Ansvarar för logistik: bokning av flyg, hotell och transporter för stort geografiskt område.
-
-Linnea Moritz (linneamoritz.com)                                                 Stockholm
-Konstnär och Egenföretagare                                                      Jan 2024 – Pågående
-● Målar och säljer egna oljemålningar. 39 utställningar i 21 städer, 10 länder och 4 kontinenter.
-● Vunnit tre första pris i jurybedömda konstutställningar (bl.a. Stockholms Konstsalong, Greenpoint Gallery Brooklyn).
-● Driver all marknadsföring, bokföring, export, kundhantering och sociala medier självständigt.
-● Förvaltar Shopify-butik med försäljning av originalkonst och konsttryck internationellt.
 
 House of Beans, Hötorgshallen                                                    Stockholm
 Försäljare/Barista                                                               Aug 2024 – Feb 2025
@@ -106,15 +100,14 @@ UTMÄRKELSER
 ● Global Startup Weekend Stockholm - Vinnare för Terra Finance (Google for Startups & Techstars).
 ● Tredje pris Chinese Bridge - Nationell tävling i kinesiskt språk, Bergen 2016.
 ● Röda Korsets diplom - Guldutmärkelse för teamwork och ledarskap (100+ volontärtimmar).
-● Minerva University Award for Initiative 2018.',
-'healthcare',
-NOW()
+● Minerva University Award for Initiative 2018.'
 );
 
 -- CV 6: TECH/OFFICE (TECH/KONTOR)
-INSERT INTO public.user_cvs (user_id, cv_name, cv_content, bransch, created_at) VALUES (
-'da8ed517-3b67-4456-8831-6ed3cb7114ad',
-'CV_Tech_Kontor',
+INSERT INTO public.user_cvs (user_id, vibe_id, vibe_name, cv_text) VALUES (
+'da8ed517-3b67-4456-8831-6ed3cb7114ad'::uuid,
+'tech',
+'Tech & Kontor',
 'Linnea Moritz
 Innehar B-Körkort | Sollentuna | 0761166109 | linneamoritzcv@gmail.com
 
@@ -141,13 +134,6 @@ Alumni Ambassador Western Europe                                                
 ● Genomför strategisk marknadsföring genom resor till skolor och mässor i Västeuropa och Norden.
 ● Bygger och underhåller databaser för skolkontakter, möten med SYO:er och studievägledare.
 ● Ansvarar för logistik: bokning av flyg, hotell och transporter för stort geografiskt område.
-
-Linnea Moritz (linneamoritz.com)                                                 Stockholm
-Konstnär och Egenföretagare                                                      Jan 2024 – Pågående
-● Målar och säljer egna oljemålningar. 39 utställningar i 21 städer, 10 länder och 4 kontinenter.
-● Vunnit tre första pris i jurybedömda konstutställningar (bl.a. Stockholms Konstsalong, Greenpoint Gallery Brooklyn).
-● Driver all marknadsföring, bokföring, export, kundhantering och sociala medier självständigt.
-● Förvaltar Shopify-butik med försäljning av originalkonst och konsttryck internationellt.
 
 TikTok/ByteDance                                                                 Nashville, USA
 Kvalitetsgranskare - Amerikanska marknaden                                       Maj 2022 – Juni 2022
@@ -222,15 +208,14 @@ UTMÄRKELSER
 ● Global Startup Weekend Stockholm - Vinnare för Terra Finance (Google for Startups & Techstars).
 ● Tredje pris Chinese Bridge - Nationell tävling i kinesiskt språk, Bergen 2016.
 ● Röda Korsets diplom - Guldutmärkelse för teamwork och ledarskap (100+ volontärtimmar).
-● Minerva University Award for Initiative 2018.',
-'tech',
-NOW()
+● Minerva University Award for Initiative 2018.'
 );
 
 -- CV 7: INDUSTRY/GARDEN (INDUSTRI/TRÄDGÅRD)
-INSERT INTO public.user_cvs (user_id, cv_name, cv_content, bransch, created_at) VALUES (
-'da8ed517-3b67-4456-8831-6ed3cb7114ad',
-'CV_Industri_Tradgard',
+INSERT INTO public.user_cvs (user_id, vibe_id, vibe_name, cv_text) VALUES (
+'da8ed517-3b67-4456-8831-6ed3cb7114ad'::uuid,
+'industry',
+'Industri & Trädgård',
 'Linnea Moritz
 Innehar B-Körkort | Sollentuna | 0761166109 | linneamoritzcv@gmail.com
 
@@ -257,13 +242,6 @@ Alumni Ambassador Western Europe                                                
 ● Genomför strategisk marknadsföring genom resor till skolor och mässor i Västeuropa och Norden.
 ● Bygger och underhåller databaser för skolkontakter, möten med SYO:er och studievägledare.
 ● Ansvarar för logistik: bokning av flyg, hotell och transporter för stort geografiskt område.
-
-Linnea Moritz (linneamoritz.com)                                                 Stockholm
-Konstnär och Egenföretagare                                                      Jan 2024 – Pågående
-● Målar och säljer egna oljemålningar. 39 utställningar i 21 städer, 10 länder och 4 kontinenter.
-● Vunnit tre första pris i jurybedömda konstutställningar (bl.a. Stockholms Konstsalong, Greenpoint Gallery Brooklyn).
-● Driver all marknadsföring, bokföring, export, kundhantering och sociala medier självständigt.
-● Förvaltar Shopify-butik med försäljning av originalkonst och konsttryck internationellt.
 
 Profilgruppen                                                                    Åseda
 Anodiseringsoperatör (Feriearbete)                                               Juli 2024 – Aug 2024
@@ -332,15 +310,14 @@ UTMÄRKELSER
 ● Global Startup Weekend Stockholm - Vinnare för Terra Finance (Google for Startups & Techstars).
 ● Tredje pris Chinese Bridge - Nationell tävling i kinesiskt språk, Bergen 2016.
 ● Röda Korsets diplom - Guldutmärkelse för teamwork och ledarskap (100+ volontärtimmar).
-● Minerva University Award for Initiative 2018.',
-'industry',
-NOW()
+● Minerva University Award for Initiative 2018.'
 );
 
 -- CV 8: ART/CULTURE (KONST/KULTUR)
-INSERT INTO public.user_cvs (user_id, cv_name, cv_content, bransch, created_at) VALUES (
-'da8ed517-3b67-4456-8831-6ed3cb7114ad',
-'CV_Konst_Kultur',
+INSERT INTO public.user_cvs (user_id, vibe_id, vibe_name, cv_text) VALUES (
+'da8ed517-3b67-4456-8831-6ed3cb7114ad'::uuid,
+'art',
+'Konst & Kultur',
 'Linnea Moritz
 Innehar B-Körkort | Sollentuna | 0761166109 | linneamoritzcv@gmail.com
 
@@ -446,7 +423,5 @@ UTMÄRKELSER
 ● Global Startup Weekend Stockholm - Vinnare för Terra Finance (Google for Startups & Techstars).
 ● Tredje pris Chinese Bridge - Nationell tävling i kinesiskt språk, Bergen 2016.
 ● Röda Korsets diplom - Guldutmärkelse för teamwork och ledarskap (100+ volontärtimmar).
-● Minerva University Award for Initiative 2018.',
-'art',
-NOW()
+● Minerva University Award for Initiative 2018.'
 );
