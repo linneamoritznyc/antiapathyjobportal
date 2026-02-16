@@ -476,30 +476,32 @@ class CoverLetterGenerator:
     
     def load_cv_summary(self) -> str:
         """Ladda CV-sammanfattning"""
-        # Hårdkodad sammanfattning baserat på Linneas profil
         return """
-        Linnea Moritz - Cubist Oil Painter & International Artist
-        
+        Linnea Moritz - Serviceproffs med bred erfarenhet
+
         Erfarenhet:
-        - Driver internationell konstverksamhet via Shopify (linneamoritz.com)
-        - 39 utställningar i 21 städer, 10 länder, 4 kontinenter
-        - Art Basel Hong Kong, Florence, Stockholm, Mexico City, Seoul, Dubai
-        - 3 första pris i konsttävlingar
-        - 5,800 Instagram-följare
-        
+        - Restaurangbiträde på Max Hamburgare (2024): Drive-in, fritös, kök, servering, kassa
+        - Försäljare/Barista på House of Beans, Hötorgshallen (2024-2025): Ensam i butik 8h
+        - Anodiseringsoperatör på Profilgruppen, Åseda (2024): Tungt fysiskt arbete, tvåskift
+        - Innehållsmoderator på YouTube Ads, Clubhouse, TikTok/ByteDance (2021-2022): Trust & Safety
+        - Innehållsanalytiker på Google Ads (2018-2019): 100+ annonser/dag, svenska marknaden
+        - Kassapersonal på ICA Maxi (2015-2019): Kassa, självscanning, frukt/grönt
+        - Timvikarie på Kvarngården äldreboende (2020): Omvårdnad, medicinhantering
+        - Examen från Minerva University (USA)
+
         Färdigheter:
-        - Projektledning och eventplanering
-        - Digital marknadsföring och e-handel
         - Kundrelationer och försäljning
-        - Flerspråkig: Svenska, Engelska, Norska, Danska
-        - Kreativ problemlösning
+        - Kassahantering och butiksarbete
+        - Flerspråkig: Svenska (modersmål), Engelska (flytande), Norska, Danska
         - Detaljorienterad och metodisk
-        
+        - Flexibel med arbetstider (kvällar, helger)
+
         Personlighet:
-        - Entreprenöriell och självgående
-        - Internationell erfarenhet
+        - Självgående och ansvarsfull
+        - Bred arbetslivserfarenhet
         - Stark arbetsmoral
         - Flexibel och anpassningsbar
+        - B-körkort, bor i Sollentuna
         """
     
     def generate_why_perfect(self, job: Job) -> str:
@@ -594,9 +596,18 @@ Skriv på svenska. Ingen inledning, bara meningen."""
 - Kvalitetsgranskare på TikTok/ByteDance (Maj-Jun 2022): Kvalitetskontroll, customer support""",
             
             "reception": """- Gårdsvärd på Wallby Säteri (Jun-Aug 2016): Reception, bokningar, telefon, betalningar, café
-- Global Marketing på Minerva Project (Sep 2019-Apr 2020): Kundservice via Intercom för 2000+ sökande"""
+- Global Marketing på Minerva Project (Sep 2019-Apr 2020): Kundservice via Intercom för 2000+ sökande""",
+
+            "contentmoderation": """- Kvalitetsgranskare på TikTok/ByteDance (Maj-Jun 2022): Granskade moderatorers arbete
+- Innehållsmoderator på YouTube Ads (Feb-Jun 2022): Svenska marknaden, flaggade olämplig reklam
+- Innehållsmoderator på Clubhouse (Jun 2021-Jan 2022): Trust & Safety, svenska/norska/danska marknaden, ökade produktivitet 98%
+- Innehållsanalytiker på Google Ads (Maj 2018-Apr 2019): 100+ annonser/dag, svenska marknaden""",
+
+            "art": """- Projektledning och eventplanering
+- Kundrelationer och försäljning
+- Internationell erfarenhet"""
         }
-        
+
         return experiences.get(category, experiences["restaurant"])
     
     def generate_email_body(self, job: Job, job_url: str = None) -> str:
@@ -774,7 +785,7 @@ class GmailDraftManager:
     
     def __init__(self):
         self.email = "linneamoritzCV@gmail.com"
-        self.app_password = os.environ.get('GMAIL_APP_PASSWORD', "xcwu agnn brcq unng")
+        self.app_password = os.environ.get('GMAIL_APP_PASSWORD')
         self.smtp_server = "smtp.gmail.com"
         self.smtp_port = 587
         self.imap_server = "imap.gmail.com"

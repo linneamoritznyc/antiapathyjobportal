@@ -370,7 +370,7 @@ async def get_applications():
 async def get_today_session():
     """Dagens jobbsokningssession - allt du behover for att borja soka"""
     p = get_portal()
-    from datetime import datetime
+    from datetime import datetime, timedelta
 
     today = datetime.now().strftime('%Y-%m-%d')
 
@@ -394,7 +394,7 @@ async def get_today_session():
     today_by_status = dict(c.fetchall())
 
     # Jobs with deadline today or tomorrow
-    tomorrow = (datetime.now() + __import__('datetime').timedelta(days=1)).strftime('%Y-%m-%d')
+    tomorrow = (datetime.now() + timedelta(days=1)).strftime('%Y-%m-%d')
     c.execute('''
         SELECT j.* FROM jobs j
         LEFT JOIN applications a ON j.id = a.job_id
