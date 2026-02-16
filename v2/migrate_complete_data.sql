@@ -81,11 +81,16 @@ BEGIN
     END IF;
 
     -- ========================================================================
-    -- STEP 2: CREATE MISSING TABLES
+    -- STEP 2: DROP AND RECREATE TABLES (fixes type mismatches)
     -- ========================================================================
 
+    -- Drop old tables if they exist (they have wrong user_id type)
+    DROP TABLE IF EXISTS user_volunteer CASCADE;
+    DROP TABLE IF EXISTS user_awards CASCADE;
+    DROP TABLE IF EXISTS user_cv_branscher CASCADE;
+
     -- Create user_volunteer table
-    CREATE TABLE IF NOT EXISTS user_volunteer (
+    CREATE TABLE user_volunteer (
         id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
         user_id UUID REFERENCES auth.users(id) ON DELETE CASCADE NOT NULL,
         organization TEXT NOT NULL,
@@ -97,7 +102,7 @@ BEGIN
     );
 
     -- Create user_awards table
-    CREATE TABLE IF NOT EXISTS user_awards (
+    CREATE TABLE user_awards (
         id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
         user_id UUID REFERENCES auth.users(id) ON DELETE CASCADE NOT NULL,
         award_text TEXT NOT NULL,
@@ -106,7 +111,7 @@ BEGIN
     );
 
     -- Create user_cv_branscher table
-    CREATE TABLE IF NOT EXISTS user_cv_branscher (
+    CREATE TABLE user_cv_branscher (
         id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
         user_id UUID REFERENCES auth.users(id) ON DELETE CASCADE NOT NULL,
         bransch_id TEXT NOT NULL,
