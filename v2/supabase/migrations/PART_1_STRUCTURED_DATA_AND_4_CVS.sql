@@ -34,7 +34,7 @@ INSERT INTO public.user_profiles (
     'linneamoritzcv@gmail.com',
     '0761166109',
     'Sollentuna',
-    'B-körkort (automat)',
+    TRUE,
     ARRAY['Svenska (Modersmål)', 'Engelska (flytande)', 'Tyska (grundläggande)', 'Spanska (grundläggande)', 'Mandarin (HSK nivå 3)']
 );
 
