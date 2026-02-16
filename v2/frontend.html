@@ -193,13 +193,12 @@
         };
 
         // CV Vibe card
-        const CVVibeCard = ({ vibe, userCV, onSelect }) => {
+        const CVVibeCard = ({ vibe, userCV, onSelect, onUploadCV }) => {
             const hasCV = !!userCV;
+            const hasPDF = userCV?.pdf_url;
+
             return (
-                <div
-                    className={`rounded-xl p-5 border-2 cursor-pointer transition ${hasCV ? 'bg-white border-green-200 hover:border-green-400' : 'bg-slate-50 border-slate-200 hover:border-indigo-300'}`}
-                    onClick={() => onSelect(vibe, userCV)}
-                >
+                <div className={`rounded-xl p-5 border-2 transition ${hasCV ? 'bg-white border-green-200' : 'bg-slate-50 border-slate-200'}`}>
                     <div className="text-3xl mb-2">{vibe.emoji}</div>
                     <h3 className="font-semibold text-slate-800">{vibe.name}</h3>
                     <p className="text-xs text-slate-500 mt-1">{vibe.focus}</p>
@@ -208,6 +207,31 @@
                     ) : (
                         <span className="inline-block mt-3 text-xs bg-slate-100 text-slate-500 px-2 py-1 rounded-full">Inte skapat</span>
                     )}
+
+                    <div className="mt-3 flex flex-col gap-2">
+                        <button
+                            onClick={(e) => { e.stopPropagation(); onUploadCV(vibe); }}
+                            className="w-full bg-indigo-600 text-white px-3 py-2 rounded-lg text-xs font-medium hover:bg-indigo-700"
+                        >
+                            📤 Ladda upp PDF
+                        </button>
+                        {hasPDF && (
+                            <a
+                                href={userCV.pdf_url}
+                                target="_blank"
+                                onClick={(e) => e.stopPropagation()}
+                                className="w-full bg-slate-100 text-slate-700 px-3 py-2 rounded-lg text-xs font-medium hover:bg-slate-200 text-center"
+                            >
+                                📄 Visa PDF
+                            </a>
+                        )}
+                        <button
+                            onClick={() => onSelect(vibe, userCV)}
+                            className="w-full bg-slate-600 text-white px-3 py-2 rounded-lg text-xs font-medium hover:bg-slate-700"
+                        >
+                            ✏️ Redigera
+                        </button>
+                    </div>
                 </div>
             );
         };
@@ -1425,7 +1449,7 @@
         };
 
         // CVs page
-        const CVsPage = ({ vibes, userCVs, onSelectVibe, onGenerateVibes, generating, onOpenMasterCV, onMigrate, migrating }) => (
+        const CVsPage = ({ vibes, userCVs, onSelectVibe, onGenerateVibes, generating, onOpenMasterCV, onMigrate, migrating, onUploadCV }) => (
             <div>
                 <div className="flex justify-between items-center mb-6">
                     <h2 className="text-lg font-semibold">Mina CV-versioner</h2>
@@ -1468,6 +1492,7 @@
                                 vibe={vibe}
                                 userCV={userCV}
                                 onSelect={onSelectVibe}
+                                onUploadCV={onUploadCV}
                             />
                         );
                     })}
@@ -2644,6 +2669,52 @@
                 setMigrating(false);
             };
 
+            // Upload CV PDF
+            const [uploadingCV, setUploadingCV] = useState(false);
+            const [uploadVibeId, setUploadVibeId] = useState(null);
+
+            const handleUploadCV = async (vibe) => {
+                const input = document.createElement('input');
+                input.type = 'file';
+                input.accept = '.pdf';
+                input.onchange = async (e) => {
+                    const file = e.target.files[0];
+                    if (!file) return;
+
+                    setUploadingCV(true);
+                    setUploadVibeId(vibe.id);
+
+                    try {
+                        const token = localStorage.getItem('auth_token');
+                        const formData = new FormData();
+                        formData.append('file', file);
+
+                        const res = await fetch(`/api/upload/cv/${vibe.id}`, {
+                            method: 'POST',
+                            headers: {
+                                'Authorization': `Bearer ${token}`
+                            },
+                            body: formData
+                        });
+
+                        const data = await res.json();
+                        if (data.success) {
+                            alert(`✓ CV för ${vibe.name} uppladdad!`);
+                            await fetchUserCVs();
+                        } else {
+                            alert('Kunde inte ladda upp CV. Försök igen.');
+                        }
+                    } catch (err) {
+                        console.error(err);
+                        alert('Något gick fel vid uppladdning.');
+                    }
+
+                    setUploadingCV(false);
+                    setUploadVibeId(null);
+                };
+                input.click();
+            };
+
             // Check auth on mount
             const [user, setUser] = useState(null);
 
@@ -2801,6 +2872,7 @@
                                 onOpenMasterCV={handleOpenMasterCV}
                                 onMigrate={handleMigrateData}
                                 migrating={migrating}
+                                onUploadCV={handleUploadCV}
                             />
                         )}
 

@@ -4682,6 +4682,328 @@ async def admin_migration_status():
     }
 
 
+# ============== FILE UPLOAD ENDPOINTS ==============
+
+@app.post("/api/upload/cv/{vibe_id}")
+async def upload_cv(vibe_id: str, request: Request):
+    """Upload CV PDF for a specific vibe category"""
+    auth_header = request.headers.get("Authorization", "")
+    if not auth_header.startswith("Bearer "):
+        raise HTTPException(status_code=401, detail="Missing authorization")
+
+    token = auth_header.replace("Bearer ", "")
+
+    # Verify user
+    user_response = await db_request("GET", "auth/v1/user", auth_token=token)
+    if user_response.status_code != 200:
+        raise HTTPException(status_code=401, detail="Invalid token")
+
+    user = user_response.json()
+    user_id = user.get("id")
+
+    # Get file from request
+    form = await request.form()
+    file = form.get("file")
+
+    if not file:
+        raise HTTPException(status_code=400, detail="No file provided")
+
+    # Read file content
+    file_content = await file.read()
+
+    # Upload to Supabase Storage
+    file_path = f"{user_id}/{vibe_id}_cv.pdf"
+
+    async with httpx.AsyncClient() as client:
+        upload_response = await client.post(
+            f"{SUPABASE_URL}/storage/v1/object/cv-files/{file_path}",
+            headers={
+                "Authorization": f"Bearer {SUPABASE_KEY}",
+                "Content-Type": "application/pdf"
+            },
+            content=file_content,
+            timeout=30
+        )
+
+        if upload_response.status_code not in [200, 201]:
+            logger.error(f"Storage upload failed: {upload_response.text}")
+            raise HTTPException(status_code=500, detail="Failed to upload file")
+
+    # Get public URL
+    pdf_url = f"{SUPABASE_URL}/storage/v1/object/public/cv-files/{file_path}"
+
+    # Update user_cvs table with pdf_url
+    update_response = await db_request(
+        "PATCH",
+        "user_cvs",
+        params={"user_id": f"eq.{user_id}", "vibe_id": f"eq.{vibe_id}"},
+        data={"pdf_url": pdf_url}
+    )
+
+    if update_response.status_code not in [200, 201, 204]:
+        # If no existing record, create one
+        vibe_names = {
+            "restaurant": "Restaurang & Café",
+            "retail": "Butik & Kassa",
+            "customerservice": "Kundtjänst & Support",
+            "tech": "Tech & Kontor",
+            "healthcare": "Vård & Omsorg",
+            "industry": "Trädgård & Industri",
+            "reception": "Hotell & Reception",
+            "contentmoderation": "Content & Moderation"
+        }
+
+        await db_request(
+            "POST",
+            "user_cvs",
+            data={
+                "user_id": user_id,
+                "vibe_id": vibe_id,
+                "vibe_name": vibe_names.get(vibe_id, vibe_id),
+                "pdf_url": pdf_url
+            }
+        )
+
+    return {
+        "success": True,
+        "pdf_url": pdf_url,
+        "vibe_id": vibe_id
+    }
+
+
+@app.post("/api/upload/profile-photo")
+async def upload_profile_photo(request: Request):
+    """Upload profile photo"""
+    auth_header = request.headers.get("Authorization", "")
+    if not auth_header.startswith("Bearer "):
+        raise HTTPException(status_code=401, detail="Missing authorization")
+
+    token = auth_header.replace("Bearer ", "")
+
+    # Verify user
+    user_response = await db_request("GET", "auth/v1/user", auth_token=token)
+    if user_response.status_code != 200:
+        raise HTTPException(status_code=401, detail="Invalid token")
+
+    user = user_response.json()
+    user_id = user.get("id")
+
+    # Get file from request
+    form = await request.form()
+    file = form.get("file")
+
+    if not file:
+        raise HTTPException(status_code=400, detail="No file provided")
+
+    # Read file content
+    file_content = await file.read()
+
+    # Determine file extension
+    filename = file.filename.lower()
+    ext = "jpg"
+    content_type = "image/jpeg"
+
+    if filename.endswith(".png"):
+        ext = "png"
+        content_type = "image/png"
+    elif filename.endswith(".jpeg") or filename.endswith(".jpg"):
+        ext = "jpg"
+        content_type = "image/jpeg"
+
+    # Upload to Supabase Storage
+    file_path = f"{user_id}/profile.{ext}"
+
+    async with httpx.AsyncClient() as client:
+        upload_response = await client.post(
+            f"{SUPABASE_URL}/storage/v1/object/profile-photos/{file_path}",
+            headers={
+                "Authorization": f"Bearer {SUPABASE_KEY}",
+                "Content-Type": content_type
+            },
+            content=file_content,
+            timeout=30
+        )
+
+        if upload_response.status_code not in [200, 201]:
+            logger.error(f"Storage upload failed: {upload_response.text}")
+            raise HTTPException(status_code=500, detail="Failed to upload photo")
+
+    # Get public URL
+    photo_url = f"{SUPABASE_URL}/storage/v1/object/public/profile-photos/{file_path}"
+
+    # Update user_profiles table
+    update_response = await db_request(
+        "PATCH",
+        "user_profiles",
+        params={"user_id": f"eq.{user_id}"},
+        data={"photo_url": photo_url}
+    )
+
+    return {
+        "success": True,
+        "photo_url": photo_url
+    }
+
+
+@app.post("/api/upload/training-letter")
+async def upload_training_letter(request: Request):
+    """Upload training letter PDF and analyze tone/style"""
+    auth_header = request.headers.get("Authorization", "")
+    if not auth_header.startswith("Bearer "):
+        raise HTTPException(status_code=401, detail="Missing authorization")
+
+    token = auth_header.replace("Bearer ", "")
+
+    # Verify user
+    user_response = await db_request("GET", "auth/v1/user", auth_token=token)
+    if user_response.status_code != 200:
+        raise HTTPException(status_code=401, detail="Invalid token")
+
+    user = user_response.json()
+    user_id = user.get("id")
+
+    # Get file from request
+    form = await request.form()
+    file = form.get("file")
+
+    if not file:
+        raise HTTPException(status_code=400, detail="No file provided")
+
+    # Read file content
+    file_content = await file.read()
+
+    # For PDF, we'd need to extract text - for now just store the file
+    # TODO: Add PDF text extraction library
+    letter_text = "[PDF-fil uppladdad - texten kommer att extraheras]"
+
+    # Try to decode as text if it's a .txt file
+    if file.filename.lower().endswith(".txt"):
+        try:
+            letter_text = file_content.decode('utf-8')
+        except:
+            pass
+
+    # Upload to Supabase Storage
+    import time
+    timestamp = int(time.time())
+    file_path = f"{user_id}/training_letter_{timestamp}.pdf"
+
+    async with httpx.AsyncClient() as client:
+        upload_response = await client.post(
+            f"{SUPABASE_URL}/storage/v1/object/training-letters/{file_path}",
+            headers={
+                "Authorization": f"Bearer {SUPABASE_KEY}",
+                "Content-Type": "application/pdf"
+            },
+            content=file_content,
+            timeout=30
+        )
+
+        if upload_response.status_code not in [200, 201]:
+            logger.error(f"Storage upload failed: {upload_response.text}")
+            raise HTTPException(status_code=500, detail="Failed to upload letter")
+
+    # Analyze tone/style with Claude if we have text
+    tone_analysis = None
+    if letter_text and not letter_text.startswith("[PDF-fil"):
+        tone_analysis = await analyze_writing_tone(letter_text)
+
+    # Get or create user preferences
+    prefs_response = await db_request(
+        "GET",
+        "user_cover_letter_preferences",
+        params={"user_id": f"eq.{user_id}"}
+    )
+
+    existing_prefs = None
+    if prefs_response.status_code == 200:
+        prefs_data = prefs_response.json()
+        if prefs_data:
+            existing_prefs = prefs_data[0]
+
+    # Update preferences with tone analysis
+    if tone_analysis:
+        if existing_prefs:
+            # Update existing
+            await db_request(
+                "PATCH",
+                "user_cover_letter_preferences",
+                params={"user_id": f"eq.{user_id}"},
+                data={
+                    "tone": tone_analysis.get("tone"),
+                    "always_mention": tone_analysis.get("favorite_phrases", [])
+                }
+            )
+        else:
+            # Create new
+            await db_request(
+                "POST",
+                "user_cover_letter_preferences",
+                data={
+                    "user_id": user_id,
+                    "tone": tone_analysis.get("tone"),
+                    "always_mention": tone_analysis.get("favorite_phrases", [])
+                }
+            )
+
+    return {
+        "success": True,
+        "file_path": file_path,
+        "tone_analysis": tone_analysis
+    }
+
+
+async def analyze_writing_tone(text: str) -> dict:
+    """Analyze writing tone and style using Claude API"""
+    if not ANTHROPIC_API_KEY:
+        return {"tone": "neutral", "favorite_phrases": []}
+
+    prompt = f"""Analysera tonen och stilen i detta personliga brev på svenska.
+
+Brev:
+{text}
+
+Returnera ett JSON-objekt med:
+- "tone": en kort beskrivning av tonen (t.ex. "professionell men personlig", "entusiastisk och energisk")
+- "writing_style": beskrivning av meningsstruktur och ordval
+- "favorite_phrases": lista med 3-5 fraser eller uttryck som personen använder
+
+Svara ENDAST med JSON, inget annat."""
+
+    try:
+        async with httpx.AsyncClient() as client:
+            response = await client.post(
+                "https://api.anthropic.com/v1/messages",
+                headers={
+                    "x-api-key": ANTHROPIC_API_KEY,
+                    "anthropic-version": "2023-06-01",
+                    "content-type": "application/json"
+                },
+                json={
+                    "model": "claude-sonnet-4-20250514",
+                    "max_tokens": 500,
+                    "messages": [{"role": "user", "content": prompt}]
+                },
+                timeout=30
+            )
+
+            if response.status_code == 200:
+                result = response.json()
+                text_response = result["content"][0]["text"].strip()
+
+                # Parse JSON from response
+                import json
+                start = text_response.find('{')
+                end = text_response.rfind('}') + 1
+                if start >= 0 and end > start:
+                    return json.loads(text_response[start:end])
+
+    except Exception as e:
+        logger.error(f"Tone analysis error: {e}")
+
+    return {"tone": "neutral", "favorite_phrases": []}
+
+
 @app.exception_handler(Exception)
 async def error_handler(request: Request, exc: Exception):
     logger.error(f"Error: {exc}")
