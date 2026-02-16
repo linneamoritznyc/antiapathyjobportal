@@ -251,20 +251,14 @@ INSERT INTO public.user_cover_letter_preferences (
     max_words,
     greeting_style,
     signature_style,
-    sign_off_name,
-    sign_off_phone,
-    sign_off_email,
     always_mention,
     never_mention
 ) VALUES (
-    'da8ed517-3b67-4456-8831-6ed3cb7114ad',
+    'da8ed517-3b67-4456-8831-6ed3cb7114ad'::uuid,
     'professional_friendly',
     200,
     'Hej!',
     'Med vänliga hälsningar',
-    'Linnea Moritz',
-    '0761166109',
-    'linneamoritzcv@gmail.com',
     ARRAY['flexibel med tider', 'körkort', 'självständig'],
     ARRAY['konst', 'målning', 'utställningar', 'shopify']
 );
