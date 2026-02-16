@@ -220,11 +220,10 @@ INSERT INTO public.user_cv_branscher (user_id, bransch_id, bransch_name, emoji, 
 -- ============================================
 
 -- CV 1: RESTAURANT/CAFÉ
-INSERT INTO public.user_cvs (user_id, vibe_id, vibe_name, vibe_emoji, cv_text) VALUES (
+INSERT INTO public.user_cvs (user_id, vibe_id, vibe_name, cv_text) VALUES (
 'da8ed517-3b67-4456-8831-6ed3cb7114ad'::uuid,
 'restaurant',
 'Restaurang & Café',
-'🍽️',
 'Linnea Moritz
 Innehar B-Körkort | Sollentuna | 0761166109 | linneamoritzcv@gmail.com
 
@@ -317,11 +316,10 @@ UTMÄRKELSER
 );
 
 -- CV 2: RETAIL (BUTIK/KASSA)
-INSERT INTO public.user_cvs (user_id, vibe_id, vibe_name, vibe_emoji, cv_text) VALUES (
+INSERT INTO public.user_cvs (user_id, vibe_id, vibe_name, cv_text) VALUES (
 'da8ed517-3b67-4456-8831-6ed3cb7114ad'::uuid,
 'retail',
 'Butik & Kassa',
-'🛒',
 'Linnea Moritz
 Innehar B-Körkort | Sollentuna | 0761166109 | linneamoritzcv@gmail.com
 
@@ -414,11 +412,10 @@ UTMÄRKELSER
 );
 
 -- CV 3: CUSTOMER SERVICE (KUNDTJÄNST)
-INSERT INTO public.user_cvs (user_id, vibe_id, vibe_name, vibe_emoji, cv_text) VALUES (
+INSERT INTO public.user_cvs (user_id, vibe_id, vibe_name, cv_text) VALUES (
 'da8ed517-3b67-4456-8831-6ed3cb7114ad'::uuid,
 'customerservice',
 'Kundtjänst',
-'📞',
 'Linnea Moritz
 Innehar B-Körkort | Sollentuna | 0761166109 | linneamoritzcv@gmail.com
 
@@ -517,11 +514,10 @@ UTMÄRKELSER
 );
 
 -- CV 4: CONTENT MODERATION
-INSERT INTO public.user_cvs (user_id, vibe_id, vibe_name, vibe_emoji, cv_text) VALUES (
+INSERT INTO public.user_cvs (user_id, vibe_id, vibe_name, cv_text) VALUES (
 'da8ed517-3b67-4456-8831-6ed3cb7114ad'::uuid,
 'contentmoderation',
 'Content Moderation',
-'🛡️',
 'Linnea Moritz
 Innehar B-Körkort | Sollentuna | 0761166109 | linneamoritzcv@gmail.com
 

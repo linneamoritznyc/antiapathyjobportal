@@ -4,11 +4,10 @@
 -- ============================================
 
 -- CV 5: HEALTHCARE (VÅRD/OMSORG)
-INSERT INTO public.user_cvs (user_id, vibe_id, vibe_name, vibe_emoji, cv_text) VALUES (
+INSERT INTO public.user_cvs (user_id, vibe_id, vibe_name, cv_text) VALUES (
 'da8ed517-3b67-4456-8831-6ed3cb7114ad'::uuid,
 'healthcare',
 'Vård & Omsorg',
-'🏥',
 'Linnea Moritz
 Innehar B-Körkort | Sollentuna | 0761166109 | linneamoritzcv@gmail.com
 
@@ -105,11 +104,10 @@ UTMÄRKELSER
 );
 
 -- CV 6: TECH/OFFICE (TECH/KONTOR)
-INSERT INTO public.user_cvs (user_id, vibe_id, vibe_name, vibe_emoji, cv_text) VALUES (
+INSERT INTO public.user_cvs (user_id, vibe_id, vibe_name, cv_text) VALUES (
 'da8ed517-3b67-4456-8831-6ed3cb7114ad'::uuid,
 'tech',
 'Tech & Kontor',
-'💻',
 'Linnea Moritz
 Innehar B-Körkort | Sollentuna | 0761166109 | linneamoritzcv@gmail.com
 
@@ -214,11 +212,10 @@ UTMÄRKELSER
 );
 
 -- CV 7: INDUSTRY/GARDEN (INDUSTRI/TRÄDGÅRD)
-INSERT INTO public.user_cvs (user_id, vibe_id, vibe_name, vibe_emoji, cv_text) VALUES (
+INSERT INTO public.user_cvs (user_id, vibe_id, vibe_name, cv_text) VALUES (
 'da8ed517-3b67-4456-8831-6ed3cb7114ad'::uuid,
 'industry',
 'Industri & Trädgård',
-'🏭',
 'Linnea Moritz
 Innehar B-Körkort | Sollentuna | 0761166109 | linneamoritzcv@gmail.com
 
@@ -317,11 +314,10 @@ UTMÄRKELSER
 );
 
 -- CV 8: ART/CULTURE (KONST/KULTUR)
-INSERT INTO public.user_cvs (user_id, vibe_id, vibe_name, vibe_emoji, cv_text) VALUES (
+INSERT INTO public.user_cvs (user_id, vibe_id, vibe_name, cv_text) VALUES (
 'da8ed517-3b67-4456-8831-6ed3cb7114ad'::uuid,
 'art',
 'Konst & Kultur',
-'🎨',
 'Linnea Moritz
 Innehar B-Körkort | Sollentuna | 0761166109 | linneamoritzcv@gmail.com
 
