@@ -44,5 +44,9 @@ Thumbs.db
 *.log
 logs/
 
-# Local data (optional - uncomment if you want to exclude)
-# data/jobs.db
+# Local data
+data/jobs.db
+
+# Environment files
+.env.local
+.env.production
