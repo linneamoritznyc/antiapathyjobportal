@@ -2620,20 +2620,26 @@
                 setMigrating(true);
                 try {
                     const token = localStorage.getItem('auth_token');
+                    const refreshToken = localStorage.getItem('refresh_token');
                     const res = await fetch('/api/migrate-my-data', {
                         method: 'POST',
-                        headers: { 'Authorization': `Bearer ${token}` }
+                        headers: {
+                            'Authorization': `Bearer ${token}`,
+                            'Content-Type': 'application/json'
+                        },
+                        body: JSON.stringify({ refresh_token: refreshToken })
                     });
                     const data = await res.json();
                     if (data.success) {
-                        alert('Data inladdat! Laddar om...');
+                        alert(`Data inladdat! ${data.message}`);
                         window.location.reload();
                     } else {
-                        alert(data.detail || 'Kunde inte ladda data.');
+                        alert(data.detail || data.message || 'Kunde inte ladda data.');
+                        if (data.errors) console.error('Migration errors:', data.errors);
                     }
                 } catch (err) {
                     console.error(err);
-                    alert('Fel vid inladdning.');
+                    alert('Fel vid inladdning. Testa att logga ut och in igen.');
                 }
                 setMigrating(false);
             };
