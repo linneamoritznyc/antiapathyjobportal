@@ -18,6 +18,9 @@ from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 from urllib.parse import urlencode
 import pathlib
+import io
+from PyPDF2 import PdfReader
+from docx import Document
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -4682,6 +4685,59 @@ async def admin_migration_status():
     }
 
 
+# ============== TEXT EXTRACTION HELPERS ==============
+
+def extract_text_from_pdf(file_content: bytes) -> str:
+    """Extract text from PDF file"""
+    try:
+        pdf_file = io.BytesIO(file_content)
+        reader = PdfReader(pdf_file)
+        text = ""
+        for page in reader.pages:
+            text += page.extract_text() + "\n"
+        return text.strip()
+    except Exception as e:
+        logger.error(f"PDF extraction error: {e}")
+        return ""
+
+
+def extract_text_from_docx(file_content: bytes) -> str:
+    """Extract text from DOCX file"""
+    try:
+        docx_file = io.BytesIO(file_content)
+        doc = Document(docx_file)
+        text = "\n".join([paragraph.text for paragraph in doc.paragraphs])
+        return text.strip()
+    except Exception as e:
+        logger.error(f"DOCX extraction error: {e}")
+        return ""
+
+
+def extract_text_from_file(file_content: bytes, filename: str) -> str:
+    """Extract text from file based on extension"""
+    filename_lower = filename.lower()
+
+    if filename_lower.endswith('.pdf'):
+        return extract_text_from_pdf(file_content)
+    elif filename_lower.endswith('.docx'):
+        return extract_text_from_docx(file_content)
+    elif filename_lower.endswith('.txt'):
+        try:
+            return file_content.decode('utf-8')
+        except:
+            return file_content.decode('latin-1', errors='ignore')
+    elif filename_lower.endswith('.rtf'):
+        # RTF is complex - for now just try to decode as text
+        # TODO: Add proper RTF parser
+        try:
+            return file_content.decode('utf-8', errors='ignore')
+        except:
+            return ""
+    else:
+        logger.warning(f"No text extraction for file type: {filename}")
+        return ""
+
+
 # ============== FILE UPLOAD ENDPOINTS ==============
 
 @app.post("/api/upload/cv/{vibe_id}")
@@ -4752,12 +4808,21 @@ async def upload_cv(vibe_id: str, request: Request):
     # Get public URL
     pdf_url = f"{SUPABASE_URL}/storage/v1/object/public/cv-files/{file_path}"
 
-    # Update user_cvs table with pdf_url
+    # Extract text from file
+    cv_text = extract_text_from_file(file_content, file.filename)
+
+    if not cv_text:
+        logger.warning(f"Could not extract text from {file.filename}")
+
+    # Update user_cvs table with pdf_url and cv_text
     update_response = await db_request(
         "PATCH",
         "user_cvs",
         params={"user_id": f"eq.{user_id}", "vibe_id": f"eq.{vibe_id}"},
-        data={"pdf_url": pdf_url}
+        data={
+            "pdf_url": pdf_url,
+            "cv_text": cv_text[:50000] if cv_text else None  # Limit text size
+        }
     )
 
     if update_response.status_code not in [200, 201, 204]:
@@ -4780,7 +4845,8 @@ async def upload_cv(vibe_id: str, request: Request):
                 "user_id": user_id,
                 "vibe_id": vibe_id,
                 "vibe_name": vibe_names.get(vibe_id, vibe_id),
-                "pdf_url": pdf_url
+                "pdf_url": pdf_url,
+                "cv_text": cv_text[:50000] if cv_text else None
             }
         )
 
@@ -4892,28 +4958,39 @@ async def upload_training_letter(request: Request):
     # Read file content
     file_content = await file.read()
 
-    # For PDF, we'd need to extract text - for now just store the file
-    # TODO: Add PDF text extraction library
-    letter_text = "[PDF-fil uppladdad - texten kommer att extraheras]"
+    # Extract text from file
+    letter_text = extract_text_from_file(file_content, file.filename)
 
-    # Try to decode as text if it's a .txt file
-    if file.filename.lower().endswith(".txt"):
-        try:
-            letter_text = file_content.decode('utf-8')
-        except:
-            pass
+    if not letter_text:
+        logger.warning(f"Could not extract text from training letter: {file.filename}")
+        letter_text = "[Kunde inte extrahera text från filen]"
 
     # Upload to Supabase Storage
     import time
     timestamp = int(time.time())
-    file_path = f"{user_id}/training_letter_{timestamp}.pdf"
+
+    # Determine file extension and content type
+    filename_lower = file.filename.lower()
+    file_ext = filename_lower.split('.')[-1] if '.' in filename_lower else 'pdf'
+
+    content_type_map = {
+        'pdf': 'application/pdf',
+        'docx': 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+        'doc': 'application/msword',
+        'txt': 'text/plain',
+        'rtf': 'application/rtf',
+        'odt': 'application/vnd.oasis.opendocument.text'
+    }
+    content_type = content_type_map.get(file_ext, 'application/pdf')
+
+    file_path = f"{user_id}/training_letter_{timestamp}.{file_ext}"
 
     async with httpx.AsyncClient() as client:
         upload_response = await client.post(
             f"{SUPABASE_URL}/storage/v1/object/training-letters/{file_path}",
             headers={
                 "Authorization": f"Bearer {SUPABASE_KEY}",
-                "Content-Type": "application/pdf"
+                "Content-Type": content_type
             },
             content=file_content,
             timeout=30
