@@ -31,6 +31,13 @@ SUPABASE_KEY = os.getenv("SUPABASE_SERVICE_ROLE_KEY") or os.getenv("SUPABASE_ANO
 SUPABASE_ANON_KEY = os.getenv("SUPABASE_ANON_KEY")  # For client-side auth
 ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY")
 
+# Server-level Gmail credentials (for linneamoritzCV@gmail.com)
+# Set these as Vercel env vars after one-time OAuth setup
+GMAIL_CLIENT_ID = os.getenv("GMAIL_CLIENT_ID")
+GMAIL_CLIENT_SECRET = os.getenv("GMAIL_CLIENT_SECRET")
+GMAIL_REFRESH_TOKEN = os.getenv("GMAIL_REFRESH_TOKEN")
+GMAIL_USER_EMAIL = os.getenv("GMAIL_USER_EMAIL", "linneamoritzCV@gmail.com")
+
 # Gmail API scopes (for user's own Google Cloud credentials)
 GMAIL_SCOPES = "https://www.googleapis.com/auth/gmail.compose https://www.googleapis.com/auth/gmail.modify"
 
@@ -1698,6 +1705,58 @@ async def download_bransch_cv_pdf(cv_id: str, request: Request):
     raise HTTPException(status_code=501, detail="PDF-generering kommer snart. CV-text finns i bransch-CV databasen.")
 
 
+async def get_server_gmail_access_token() -> Optional[str]:
+    """Get a fresh Gmail access token using the server-level refresh token."""
+    if not all([GMAIL_CLIENT_ID, GMAIL_CLIENT_SECRET, GMAIL_REFRESH_TOKEN]):
+        return None
+    try:
+        async with httpx.AsyncClient() as client:
+            resp = await client.post(
+                "https://oauth2.googleapis.com/token",
+                data={
+                    "client_id": GMAIL_CLIENT_ID,
+                    "client_secret": GMAIL_CLIENT_SECRET,
+                    "refresh_token": GMAIL_REFRESH_TOKEN,
+                    "grant_type": "refresh_token"
+                },
+                timeout=10
+            )
+            if resp.status_code == 200:
+                return resp.json().get("access_token")
+            logger.error(f"Gmail token refresh failed: {resp.text}")
+    except Exception as e:
+        logger.error(f"Gmail token refresh error: {e}")
+    return None
+
+
+async def create_gmail_draft_server(to_email: str, subject: str, body: str) -> Optional[str]:
+    """Create a Gmail draft in linneamoritzCV@gmail.com. Returns draft ID or None."""
+    access_token = await get_server_gmail_access_token()
+    if not access_token:
+        return None
+    try:
+        from email.mime.text import MIMEText
+        import base64
+        msg = MIMEText(body, "plain", "utf-8")
+        msg["to"] = to_email
+        msg["from"] = GMAIL_USER_EMAIL
+        msg["subject"] = subject
+        raw = base64.urlsafe_b64encode(msg.as_bytes()).decode("utf-8")
+        async with httpx.AsyncClient() as client:
+            resp = await client.post(
+                f"https://gmail.googleapis.com/gmail/v1/users/{GMAIL_USER_EMAIL}/drafts",
+                headers={"Authorization": f"Bearer {access_token}", "Content-Type": "application/json"},
+                json={"message": {"raw": raw}},
+                timeout=15
+            )
+            if resp.status_code in [200, 201]:
+                return resp.json().get("id")
+            logger.error(f"Gmail draft creation failed: {resp.status_code} {resp.text}")
+    except Exception as e:
+        logger.error(f"Gmail draft error: {e}")
+    return None
+
+
 @app.post("/api/jobs/{job_id}/apply-with-cv")
 async def apply_with_cv(request: Request, job_id: str):
     """
@@ -1749,18 +1808,26 @@ async def apply_with_cv(request: Request, job_id: str):
     cv_text_for_letter = cv.get("cv_text") if cv else None
     cover_letter = await generate_cover_letter(job, cv_text_for_letter, user_profile)
 
+    # Try to automatically create a Gmail draft
+    draft_id = None
+    contact_email = job.get("contact_email")
+    if contact_email:
+        subject = f"Ansökan: {job.get('title', 'Tjänst')} – {job.get('company', '')}"
+        draft_id = await create_gmail_draft_server(contact_email, subject, cover_letter)
+
     return {
         "success": True,
         "job": {
             "id": job.get("id"),
             "title": job.get("title"),
             "company": job.get("company"),
-            "contact_email": job.get("contact_email"),
+            "contact_email": contact_email,
             "contact_name": job.get("contact_name")
         },
         "matched_vibe": best_vibe,
         "cv": cv,
         "cover_letter": cover_letter,
+        "draft_created": draft_id is not None,
         "gmail_link": _create_gmail_link(job, cover_letter)
     }
 

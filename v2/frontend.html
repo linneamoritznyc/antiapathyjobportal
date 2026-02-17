@@ -288,15 +288,18 @@
                 window.open(`https://mail.google.com/mail/?view=cm&fs=1&to=${job.contact_email}&su=${subject}&body=${body}`, '_blank');
             };
 
+            const [copied, setCopied] = React.useState(false);
+            const [feedbackSaved, setFeedbackSaved] = React.useState(false);
+
             const markAsSent = async () => {
                 await saveApplication('sent');
-                alert('Markerad som skickad!');
                 onClose();
             };
 
             const copyLetter = () => {
                 navigator.clipboard.writeText(letter);
-                alert('Kopierat!');
+                setCopied(true);
+                setTimeout(() => setCopied(false), 2000);
             };
 
             const saveFeedback = async () => {
@@ -318,7 +321,8 @@
                     });
                     setFeedback('');
                     setShowFeedback(false);
-                    alert('Feedback sparad! AI kommer använda denna nästa gång.');
+                    setFeedbackSaved(true);
+                    setTimeout(() => setFeedbackSaved(false), 3000);
                 } catch (err) {
                     console.error(err);
                 }
@@ -371,17 +375,43 @@
                                 )}
                             </div>
 
+                            {/* Gmail draft status */}
+                            {result?.draft_created ? (
+                                <div className="mt-3 p-3 bg-green-50 border border-green-200 rounded-lg flex items-center gap-2">
+                                    <span className="text-green-600 text-lg">✓</span>
+                                    <div>
+                                        <p className="text-sm font-medium text-green-800">Utkast sparat i Gmail!</p>
+                                        <p className="text-xs text-green-600">Kolla dina utkast i linneamoritzCV@gmail.com</p>
+                                    </div>
+                                </div>
+                            ) : job?.contact_email ? (
+                                <div className="mt-3 p-3 bg-amber-50 border border-amber-200 rounded-lg flex items-center gap-2">
+                                    <span className="text-amber-600">📬</span>
+                                    <p className="text-xs text-amber-800">Gmail inte kopplad — öppna compose-länken för att skicka</p>
+                                </div>
+                            ) : (
+                                <div className="mt-3 p-3 bg-slate-50 border border-slate-200 rounded-lg">
+                                    <p className="text-xs text-slate-600">Ingen e-postadress hittades för det här jobbet. Skicka via deras hemsida eller klipp ut brevet.</p>
+                                </div>
+                            )}
+
+                            {feedbackSaved && (
+                                <div className="mt-2 text-sm text-green-600">✓ Feedback sparad! AI använder den nästa gång.</div>
+                            )}
+
                             {result?.cv && (
-                                <div className="mt-4 p-3 bg-slate-50 rounded-lg">
+                                <div className="mt-3 p-3 bg-slate-50 rounded-lg">
                                     <p className="text-sm font-medium text-slate-700 mb-1">Bifogat CV: {result.cv.vibe_name}</p>
                                     <p className="text-xs text-slate-500 line-clamp-2">{result.cv.cv_text?.slice(0, 150)}...</p>
                                 </div>
                             )}
 
                             <div className="flex gap-3 mt-4 flex-wrap">
-                                <button onClick={openGmail} className="flex-1 bg-green-600 text-white py-2.5 px-4 rounded-lg font-medium hover:bg-green-700">
-                                    Oppna i Gmail
-                                </button>
+                                {!result?.draft_created && job?.contact_email && (
+                                    <button onClick={openGmail} className="flex-1 bg-green-600 text-white py-2.5 px-4 rounded-lg font-medium hover:bg-green-700">
+                                        Öppna i Gmail
+                                    </button>
+                                )}
                                 <button
                                     onClick={markAsSent}
                                     className="px-4 py-2.5 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700"
@@ -389,7 +419,7 @@
                                     Markera skickad
                                 </button>
                                 <button onClick={copyLetter} className="px-4 py-2.5 border border-slate-200 rounded-lg hover:bg-slate-50">
-                                    Kopiera
+                                    {copied ? '✓ Kopierat' : 'Kopiera'}
                                 </button>
                                 <button
                                     onClick={() => {
@@ -412,7 +442,7 @@
                                     Feedback
                                 </button>
                                 <button onClick={onClose} className="px-4 py-2.5 border border-slate-200 rounded-lg hover:bg-slate-50">
-                                    Stang
+                                    Stäng
                                 </button>
                             </div>
                         </div>
