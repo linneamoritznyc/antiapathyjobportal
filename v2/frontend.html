@@ -2713,10 +2713,30 @@
             // Check auth on mount
             const [user, setUser] = useState(null);
 
+            // Auto-refresh token on app load
             useEffect(() => {
                 const storedUser = localStorage.getItem('user');
                 if (storedUser) {
                     setUser(JSON.parse(storedUser));
+                }
+
+                // Refresh token silently
+                const refreshToken = localStorage.getItem('refresh_token');
+                if (refreshToken) {
+                    fetch('/api/auth/refresh', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ refresh_token: refreshToken })
+                    })
+                    .then(r => r.json())
+                    .then(data => {
+                        if (data.success && data.access_token) {
+                            localStorage.setItem('auth_token', data.access_token);
+                            if (data.refresh_token) localStorage.setItem('refresh_token', data.refresh_token);
+                            if (data.user) localStorage.setItem('user', JSON.stringify(data.user));
+                        }
+                    })
+                    .catch(() => {});
                 }
             }, []);
 
