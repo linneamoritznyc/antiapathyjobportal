@@ -312,20 +312,20 @@ async def scrape_platsbanken(keyword: str, location: str = "Stockholm", max_jobs
                 if not contact_email and app_details.get("email"):
                     contact_email = app_details.get("email")
 
-                # Skip jobs without email (portal-only applications)
-                if not contact_email:
-                    continue
+                # NOTE: Allowing portal jobs too (email optional)
+                # if not contact_email:
+                #     continue
 
                 # Extract contact name
                 contact_name = extract_contact_name(description)
                 if not contact_name and app_details.get("name"):
                     contact_name = app_details.get("name")
 
-                # Check location match (fuzzy)
-                if location.lower() not in job_location.lower() and job_location.lower() not in location.lower():
-                    # Allow "Sverige" as fallback
-                    if "sverige" not in job_location.lower():
-                        continue
+                # Check location match (fuzzy) - DISABLED for now to show all jobs
+                # if location.lower() not in job_location.lower() and job_location.lower() not in location.lower():
+                #     # Allow "Sverige" as fallback
+                #     if "sverige" not in job_location.lower():
+                #         continue
 
                 job = {
                     "id": job_id,
