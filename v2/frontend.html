@@ -8,7 +8,7 @@
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
     <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
-    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    <script src="https://unpkg.com/@babel/standalone@7.23.9/babel.min.js"></script>
     <style>
         * { font-family: system-ui, -apple-system, sans-serif; }
         .gradient { background: linear-gradient(135deg, #ec4899 0%, #f472b6 50%, #fb7185 100%); }
@@ -974,7 +974,7 @@
                             if (d2.connected) setMsg({ type: 'success', text: 'Gmail kopplat!' });
                         }
                     }, 1000);
-                } catch {
+                } catch (e) {
                     setMsg({ type: 'error', text: 'Något gick fel. Försök igen.' });
                     setConnecting(false);
                 }
@@ -996,7 +996,7 @@
                     } else {
                         setMsg({ type: 'error', text: 'Kunde inte koppla bort. Försök igen.' });
                     }
-                } catch {
+                } catch (e) {
                     setMsg({ type: 'error', text: 'Något gick fel.' });
                 }
                 setDisconnecting(false);
@@ -3920,7 +3920,7 @@
                         } else {
                             setStatus('idle');
                         }
-                    } catch {
+                    } catch (e) {
                         setStatus('idle');
                     }
                 };
@@ -3959,7 +3959,7 @@
                     } else {
                         setStatus('error');
                     }
-                } catch {
+                } catch (e) {
                     setStatus('error');
                 }
             };
@@ -5418,7 +5418,7 @@
 
                     {/* Version badge */}
                     <div style={{position:'fixed',bottom:'10px',right:'10px',fontSize:'10px',color:'#999',background:'#fff',padding:'4px 8px',borderRadius:'4px',border:'1px solid #ddd',zIndex:9999}}>
-                        v6-bigger-jobs-2026-02-17
+                        v8-catch-fix-2026-02-17
                     </div>
                 </div>
             );
