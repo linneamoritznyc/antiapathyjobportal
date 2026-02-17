@@ -250,7 +250,8 @@
                     if (!res.ok) {
                         const errorData = await res.json().catch(() => ({}));
                         const errorMsg = errorData.detail || 'Kunde inte ladda upp CV';
-                        showToast(errorMsg, 'error');
+                        console.error('CV upload server error:', res.status, errorData);
+                        alert('CV Upload Error: ' + res.status + ' - ' + errorMsg);
                         setUploadingCV(false);
                         return;
                     }
