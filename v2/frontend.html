@@ -60,7 +60,7 @@
         }, 3000);
     </script>
     <div id="root"></div>
-    <script type="text/babel">
+    <script type="text/plain" id="app-source">
         const { useState, useEffect, useMemo } = React;
 
         // ============== COMPONENTS ==============
@@ -5481,6 +5481,48 @@
                 msgEl.textContent = 'React render-fel:\n' + (renderErr.stack || renderErr);
             }
         }
+    </script>
+    <script>
+        // Manual Babel compilation with full error reporting
+        (function() {
+            var showError = function(title, err) {
+                var el = document.getElementById('js-error');
+                var msgEl = document.getElementById('js-error-msg');
+                if (el && msgEl) {
+                    el.style.display = 'block';
+                    var root = document.getElementById('root');
+                    if (root) root.style.display = 'none';
+                    msgEl.textContent = title + ':\n' + (err.stack || err.message || String(err));
+                }
+            };
+
+            // Check dependencies
+            if (typeof React === 'undefined') return showError('Saknar beroende', new Error('React laddades inte från CDN'));
+            if (typeof ReactDOM === 'undefined') return showError('Saknar beroende', new Error('ReactDOM laddades inte från CDN'));
+            if (typeof Babel === 'undefined') return showError('Saknar beroende', new Error('Babel laddades inte från CDN'));
+
+            var source = document.getElementById('app-source');
+            if (!source) return showError('Intern fel', new Error('Hittade inte app-source element'));
+
+            var code = source.textContent;
+
+            // Step 1: Babel compile
+            var compiled;
+            try {
+                compiled = Babel.transform(code, { presets: ['react'] });
+            } catch(babelErr) {
+                return showError('Babel kompileringsfel (JSX-syntax)', babelErr);
+            }
+
+            // Step 2: Execute compiled code
+            try {
+                var script = document.createElement('script');
+                script.textContent = compiled.code;
+                document.body.appendChild(script);
+            } catch(execErr) {
+                return showError('Körningsfel efter kompilering', execErr);
+            }
+        })();
     </script>
 </body>
 </html>
