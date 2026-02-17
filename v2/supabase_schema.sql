@@ -521,9 +521,21 @@ COMMENT ON TABLE user_cv_uploads IS 'User-uploaded CVs as PDFs (max 20 per user)
 COMMENT ON TABLE bransch_cvs IS 'Industry-specific CV variants shown in MinaCVPage';
 
 -- ============== SUPABASE STORAGE BUCKETS ==============
--- These buckets are created via Supabase Dashboard (not SQL).
--- All three are PUBLIC buckets.
+-- These are created automatically on app startup via the API.
+-- If they don't exist, run this in Supabase SQL Editor:
 --
+-- INSERT INTO storage.buckets (id, name, public) VALUES ('profile-photos', 'profile-photos', true) ON CONFLICT (id) DO NOTHING;
+-- INSERT INTO storage.buckets (id, name, public) VALUES ('training-letters', 'training-letters', true) ON CONFLICT (id) DO NOTHING;
+-- INSERT INTO storage.buckets (id, name, public) VALUES ('cv-files', 'cv-files', true) ON CONFLICT (id) DO NOTHING;
+--
+-- Also add permissive storage policies so service_role can upload:
+--
+-- CREATE POLICY "Allow public read" ON storage.objects FOR SELECT USING (bucket_id IN ('profile-photos', 'training-letters', 'cv-files'));
+-- CREATE POLICY "Allow service upload" ON storage.objects FOR INSERT WITH CHECK (true);
+-- CREATE POLICY "Allow service update" ON storage.objects FOR UPDATE USING (true);
+-- CREATE POLICY "Allow service delete" ON storage.objects FOR DELETE USING (true);
+--
+-- Bucket details:
 -- 1. profile-photos    — User profile photos (one per user)
 --    Path: {user_id}/profile.{ext}
 --    URL:  {SUPABASE_URL}/storage/v1/object/public/profile-photos/{path}

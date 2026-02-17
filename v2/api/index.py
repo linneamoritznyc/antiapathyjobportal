@@ -54,6 +54,47 @@ app.add_middleware(
 )
 
 
+# ============== STORAGE BUCKET INIT ==============
+
+async def ensure_storage_buckets():
+    """Create required storage buckets if they don't exist"""
+    if not SUPABASE_URL or not SUPABASE_KEY:
+        return
+
+    buckets = [
+        {"id": "profile-photos", "name": "profile-photos", "public": True},
+        {"id": "training-letters", "name": "training-letters", "public": True},
+        {"id": "cv-files", "name": "cv-files", "public": True},
+    ]
+
+    async with httpx.AsyncClient() as client:
+        for bucket in buckets:
+            try:
+                resp = await client.post(
+                    f"{SUPABASE_URL}/storage/v1/bucket",
+                    headers={
+                        "apikey": SUPABASE_KEY,
+                        "Authorization": f"Bearer {SUPABASE_KEY}",
+                        "Content-Type": "application/json"
+                    },
+                    json=bucket,
+                    timeout=10
+                )
+                if resp.status_code in [200, 201]:
+                    logger.info(f"Created storage bucket: {bucket['id']}")
+                elif resp.status_code == 409:
+                    logger.debug(f"Storage bucket already exists: {bucket['id']}")
+                else:
+                    logger.warning(f"Bucket {bucket['id']}: {resp.status_code} - {resp.text[:100]}")
+            except Exception as e:
+                logger.warning(f"Could not create bucket {bucket['id']}: {e}")
+
+
+@app.on_event("startup")
+async def startup_event():
+    await ensure_storage_buckets()
+
+
 # ============== MODELS ==============
 
 class JobSearchRequest(BaseModel):
@@ -829,6 +870,8 @@ async def db_request(method: str, table: str, data: dict = None, params: dict = 
                 response = await client.post(url, headers=headers, json=data, timeout=10)
             elif method == "PATCH":
                 response = await client.patch(url, headers=headers, json=data, params=params, timeout=10)
+            elif method == "DELETE":
+                response = await client.delete(url, headers=headers, params=params, timeout=10)
             else:
                 return None
 
@@ -5527,7 +5570,8 @@ async def upload_profile_photo(request: Request):
     # Get public URL
     photo_url = f"{SUPABASE_URL}/storage/v1/object/public/profile-photos/{file_path}"
 
-    # Update user_profiles table
+    # Upsert user_profiles table (create row if not exists)
+    # First try PATCH
     update_response = await db_request(
         "PATCH",
         "user_profiles",
@@ -5535,9 +5579,57 @@ async def upload_profile_photo(request: Request):
         data={"photo_url": photo_url}
     )
 
+    # If PATCH returned empty (no row existed), create one
+    if not update_response or len(update_response) == 0:
+        await db_request(
+            "POST",
+            "user_profiles",
+            data={"user_id": user_id, "photo_url": photo_url}
+        )
+
     return {
         "success": True,
         "photo_url": photo_url
+    }
+
+
+@app.get("/api/profile")
+async def get_profile(request: Request):
+    """Get user profile data (photo URL, training letter status)"""
+    auth_header = request.headers.get("Authorization", "")
+    if not auth_header.startswith("Bearer "):
+        raise HTTPException(status_code=401, detail="Ej inloggad")
+
+    token = auth_header.replace("Bearer ", "")
+
+    async with httpx.AsyncClient() as client:
+        user_response = await client.get(
+            f"{SUPABASE_URL}/auth/v1/user",
+            headers={"apikey": SUPABASE_ANON_KEY, "Authorization": f"Bearer {token}"}
+        )
+        if user_response.status_code != 200:
+            raise HTTPException(status_code=401, detail="Ogiltig token")
+        user_data = user_response.json()
+        user_id = user_data.get("id")
+        user_email = user_data.get("email")
+
+    # Get profile from user_profiles
+    profiles = await db_request("GET", "user_profiles", params={"user_id": f"eq.{user_id}"})
+    profile = profiles[0] if profiles else {}
+
+    # Check if any training letters exist
+    letters = await db_request("GET", "user_training_letters", params={
+        "user_id": f"eq.{user_id}", "select": "id"
+    }) or []
+
+    return {
+        "profile_photo_url": profile.get("photo_url"),
+        "full_name": profile.get("full_name", ""),
+        "email": user_email or profile.get("email", ""),
+        "phone": profile.get("phone", ""),
+        "location": profile.get("location", ""),
+        "training_letter_analyzed": len(letters) > 0,
+        "training_letter_count": len(letters)
     }
 
 
