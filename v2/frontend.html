@@ -249,6 +249,8 @@
             const [showFeedback, setShowFeedback] = useState(false);
             const [savingFeedback, setSavingFeedback] = useState(false);
             const [applicationSaved, setApplicationSaved] = useState(false);
+            const [copied, setCopied] = useState(false);
+            const [feedbackSaved, setFeedbackSaved] = useState(false);
 
             useEffect(() => {
                 if (result?.cover_letter) setLetter(result.cover_letter);
@@ -287,9 +289,6 @@
                 const body = encodeURIComponent(letter);
                 window.open(`https://mail.google.com/mail/?view=cm&fs=1&to=${job.contact_email}&su=${subject}&body=${body}`, '_blank');
             };
-
-            const [copied, setCopied] = React.useState(false);
-            const [feedbackSaved, setFeedbackSaved] = React.useState(false);
 
             const markAsSent = async () => {
                 await saveApplication('sent');
