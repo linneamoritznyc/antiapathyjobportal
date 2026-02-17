@@ -86,7 +86,8 @@
                 {[
                     { id: 'jobs', label: 'Jobb', icon: '🔍' },
                     { id: 'cvs', label: 'Mina CV', icon: '📄' },
-                    { id: 'applications', label: 'Ansökningar', icon: '📬' }
+                    { id: 'applications', label: 'Ansökningar', icon: '📬' },
+                    { id: 'metrics', label: 'Statistik', icon: '📊' }
                 ].map(tab => (
                     <button
                         key={tab.id}
@@ -2898,7 +2899,6 @@
                     </header>
 
                     <main className="max-w-6xl mx-auto px-4 py-6">
-                        <Stats stats={{...stats, cv_vibes: userCVs.length}} />
 
                         {activeTab === 'jobs' && (
                             <JobsPage
@@ -2931,6 +2931,41 @@
                                 applications={applications}
                                 onRefresh={fetchApplications}
                             />
+                        )}
+
+                        {activeTab === 'metrics' && (
+                            <div className="max-w-3xl mx-auto space-y-6">
+                                <h2 className="text-lg font-semibold">Din statistik</h2>
+
+                                <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                                    <div className="bg-white rounded-xl p-5 border border-slate-100">
+                                        <div className="text-3xl font-bold text-pink-600">{stats.total_jobs || 0}</div>
+                                        <div className="text-slate-500 text-sm mt-1">Jobb hittade</div>
+                                    </div>
+                                    <div className="bg-white rounded-xl p-5 border border-slate-100">
+                                        <div className="text-3xl font-bold text-green-600">{stats.sent || 0}</div>
+                                        <div className="text-slate-500 text-sm mt-1">Ansokningar skickade</div>
+                                    </div>
+                                    <div className="bg-white rounded-xl p-5 border border-slate-100">
+                                        <div className="text-3xl font-bold text-amber-600">{stats.interviews || 0}</div>
+                                        <div className="text-slate-500 text-sm mt-1">Intervjuer</div>
+                                    </div>
+                                    <div className="bg-white rounded-xl p-5 border border-slate-100">
+                                        <div className="text-3xl font-bold text-purple-600">{userCVs.length || 0}</div>
+                                        <div className="text-slate-500 text-sm mt-1">CV-versioner</div>
+                                    </div>
+                                </div>
+
+                                <div className="bg-white rounded-xl p-5 border border-slate-100">
+                                    <h3 className="font-semibold text-slate-700 mb-3">Sparade jobb</h3>
+                                    <div className="text-3xl font-bold text-blue-600">{(savedJobs || []).length}</div>
+                                </div>
+
+                                <div className="bg-white rounded-xl p-5 border border-slate-100">
+                                    <h3 className="font-semibold text-slate-700 mb-3">Deadline idag</h3>
+                                    <div className="text-3xl font-bold text-red-600">{stats.deadline_today || 0}</div>
+                                </div>
+                            </div>
                         )}
                     </main>
 
