@@ -827,7 +827,7 @@
             // Load quiz preferences for filtering
             const quizPrefs = useMemo(() => {
                 try { return JSON.parse(localStorage.getItem('job_preferences') || '{}'); }
-                catch { return {}; }
+                catch(e) { return {}; }
             }, [jobs]);
 
             // Filter and sort jobs
