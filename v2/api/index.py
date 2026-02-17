@@ -304,40 +304,85 @@ async def scrape_platsbanken(keyword: str, location: str = "Stockholm", max_jobs
                 description = ad.get("description", "") or ""
                 deadline = ad.get("lastApplicationDate")
 
-                # Try to get email from description
-                contact_email = extract_email(description)
-
-                # Also check application details
+                # Extract more fields from the ad
                 app_details = ad.get("applicationDetails", {}) or {}
+                conditions = ad.get("conditions", {}) or {}
+                employment_type = ad.get("employmentType", "") or conditions.get("employmentType", "")
+                duration = ad.get("duration", "") or conditions.get("duration", "")
+                working_hours = ad.get("workingHoursType", "") or conditions.get("workingHoursType", "")
+                salary_type = conditions.get("salaryType", "")
+                salary_description = conditions.get("salaryDescription", "")
+
+                # Application details
+                contact_email = extract_email(description)
                 if not contact_email and app_details.get("email"):
                     contact_email = app_details.get("email")
+                apply_url = app_details.get("url", "")
 
-                # NOTE: Allowing portal jobs too (email optional)
-                # if not contact_email:
-                #     continue
-
-                # Extract contact name
+                # Contact info
                 contact_name = extract_contact_name(description)
                 if not contact_name and app_details.get("name"):
                     contact_name = app_details.get("name")
+                contact_phone = app_details.get("phoneNumber", "")
 
-                # Check location match (fuzzy) - DISABLED for now to show all jobs
-                # if location.lower() not in job_location.lower() and job_location.lower() not in location.lower():
-                #     # Allow "Sverige" as fallback
-                #     if "sverige" not in job_location.lower():
-                #         continue
+                # Try to fetch full job details for longer description
+                if len(description) < 200:
+                    try:
+                        detail_res = await client.get(
+                            f"https://platsbanken-api.arbetsformedlingen.se/jobs/v1/job/{job_id}",
+                            headers={"Content-Type": "application/json"},
+                            timeout=5
+                        )
+                        if detail_res.status_code == 200:
+                            detail = detail_res.json()
+                            full_desc = detail.get("description", "")
+                            if full_desc and len(full_desc) > len(description):
+                                description = full_desc
+                            # Also grab any missing fields
+                            if not contact_email:
+                                contact_email = extract_email(full_desc)
+                            d_app = detail.get("applicationDetails", {}) or {}
+                            if not contact_email and d_app.get("email"):
+                                contact_email = d_app.get("email")
+                            if not contact_name and d_app.get("name"):
+                                contact_name = d_app.get("name")
+                            if not contact_phone and d_app.get("phoneNumber"):
+                                contact_phone = d_app.get("phoneNumber")
+                            if not apply_url and d_app.get("url"):
+                                apply_url = d_app.get("url")
+                            # Employment details
+                            d_cond = detail.get("conditions", {}) or {}
+                            if not employment_type:
+                                employment_type = detail.get("employmentType", "") or d_cond.get("employmentType", "")
+                            if not duration:
+                                duration = detail.get("duration", "") or d_cond.get("duration", "")
+                            if not working_hours:
+                                working_hours = detail.get("workingHoursType", "") or d_cond.get("workingHoursType", "")
+                    except Exception:
+                        pass  # Detail fetch is best-effort
+
+                # Strip HTML tags from description
+                description = re.sub(r'<[^>]+>', ' ', description)
+                description = re.sub(r'\s+', ' ', description).strip()
 
                 job = {
                     "id": job_id,
                     "title": title,
                     "company": company,
                     "location": job_location,
-                    "description": description[:3000],
+                    "description": description[:5000],
                     "url": f"https://arbetsformedlingen.se/platsbanken/annonser/{job_id}",
                     "deadline": deadline,
                     "priority": calculate_priority(deadline),
                     "contact_email": contact_email,
                     "contact_name": contact_name,
+                    "contact_phone": contact_phone,
+                    "employment_type": employment_type,
+                    "duration": duration,
+                    "working_hours": working_hours,
+                    "salary_type": salary_type,
+                    "salary_description": salary_description,
+                    "apply_url": apply_url,
                     "source": "platsbanken",
                     "scraped_at": datetime.now().isoformat()
                 }
@@ -394,7 +439,7 @@ def detect_job_category(title: str, description: str) -> str:
     return "default"
 
 
-async def generate_cover_letter(job: Dict, user_cv_text: Optional[str] = None) -> str:
+async def generate_cover_letter(job: Dict, user_cv_text: Optional[str] = None, user_profile: Optional[Dict] = None) -> str:
     """Generate personalized cover letter using Claude"""
 
     if not ANTHROPIC_API_KEY:
@@ -404,7 +449,41 @@ async def generate_cover_letter(job: Dict, user_cv_text: Optional[str] = None) -
     category = detect_job_category(job.get("title", ""), job.get("description", ""))
     experience = user_cv_text or DEFAULT_EXPERIENCE.get(category, DEFAULT_EXPERIENCE["default"])
 
+    # Use profile data from database, fall back to defaults
+    p = user_profile or {}
+    name = p.get("full_name", "Linnea Moritz")
+    phone = p.get("phone", "0761166109")
+    email = p.get("email", "linneamoritzCV@gmail.com")
+    location = p.get("location", "Sollentuna")
+    has_license = p.get("drivers_license", True)
+    linkedin = p.get("linkedin", "")
+
     contact_greeting = f"Hej {job.get('contact_name', '')}!" if job.get('contact_name') else "Hej!"
+
+    # Build extra job details for the prompt
+    job_extras = []
+    if job.get("employment_type"):
+        job_extras.append(f"- Anställningsform: {job['employment_type']}")
+    if job.get("working_hours"):
+        job_extras.append(f"- Omfattning: {job['working_hours']}")
+    if job.get("duration"):
+        job_extras.append(f"- Varaktighet: {job['duration']}")
+    if job.get("salary_type") or job.get("salary_description"):
+        sal = job.get("salary_description") or job.get("salary_type", "")
+        job_extras.append(f"- Lön: {sal}")
+    extras_text = "\n".join(job_extras) if job_extras else ""
+
+    # Build user info section
+    user_info = f"- {name}"
+    user_info += f", bor i {location}"
+    if has_license:
+        user_info += f"\n- Har B-körkort, egen bil, flexibel med arbetstider"
+    else:
+        user_info += f"\n- Flexibel med arbetstider"
+    user_info += f"\n- Telefon: {phone}"
+    user_info += f"\n- Svenska (modersmål), Engelska (flytande)"
+    if linkedin:
+        user_info += f"\n- LinkedIn: {linkedin}"
 
     prompt = f"""Skriv ett personligt brev på svenska för denna jobbansökan.
 
@@ -412,27 +491,26 @@ JOBBET:
 - Titel: {job.get('title')}
 - Företag: {job.get('company')}
 - Plats: {job.get('location')}
-- Beskrivning: {job.get('description', '')[:1500]}
+{extras_text}
+- Beskrivning: {job.get('description', '')[:2500]}
 
 MIN ERFARENHET:
 {experience}
 
 OM MIG:
-- Linnea Moritz, 28 år, bor i Sollentuna
-- B-körkort, flexibel med arbetstider
-- Telefon: 0761166109
-- Svenska (modersmål), Engelska (flytande)
+{user_info}
 
 INSTRUKTIONER:
 1. Börja med: {contact_greeting}
 2. Skriv 150-200 ord på naturlig, varm svenska
 3. Lyft fram 2-3 specifika erfarenheter som matchar jobbet
-4. Nämn att jag bor i Sollentuna, har B-körkort och är flexibel
-5. Avsluta med:
+4. VIKTIGT: Om annonsen nämner specifika krav (t.ex. körkort, bil, språk, kvällar, helger, fysiska krav), bekräfta att jag uppfyller dem
+5. Nämn var jag bor och att jag är flexibel med arbetstider
+6. Avsluta med:
    Med vänlig hälsning,
-   Linnea Moritz
-   0761166109
-   linneamoritzCV@gmail.com
+   {name}
+   {phone}
+   {email}
 
 Skriv ENDAST brevet, inget annat."""
 
@@ -702,9 +780,29 @@ async def save_jobs_to_db(jobs: List[Dict]) -> int:
     if not SUPABASE_URL:
         return 0
 
+    # Only send columns that exist in the jobs table
+    db_columns = {"id", "title", "company", "location", "description", "url",
+                  "deadline", "priority", "contact_email", "contact_name",
+                  "source", "scraped_at", "link_status"}
+
     saved = 0
     for job in jobs:
-        result = await db_request("POST", "jobs", data=job)
+        db_job = {k: v for k, v in job.items() if k in db_columns}
+        # Store extra fields in description as fallback
+        extras = []
+        if job.get("employment_type"):
+            extras.append(f"Anstallningsform: {job['employment_type']}")
+        if job.get("working_hours"):
+            extras.append(f"Omfattning: {job['working_hours']}")
+        if job.get("duration"):
+            extras.append(f"Varaktighet: {job['duration']}")
+        if job.get("contact_phone"):
+            extras.append(f"Telefon: {job['contact_phone']}")
+        if job.get("salary_description"):
+            extras.append(f"Lon: {job['salary_description']}")
+        if extras and db_job.get("description"):
+            db_job["description"] = "\n".join(extras) + "\n\n" + db_job["description"]
+        result = await db_request("POST", "jobs", data=db_job)
         if result:
             saved += 1
     return saved
@@ -1436,6 +1534,155 @@ async def update_cv(vibe_id: str, cv_text: str, user_id: str = "default_user"):
     raise HTTPException(status_code=500, detail="Kunde inte uppdatera CV")
 
 
+# ============== MASTER CV & BRANSCH-CVS ENDPOINTS ==============
+
+@app.get("/api/master-cv")
+async def get_full_master_cv(request: Request):
+    """Get complete Master CV data including all sections (experiences, education, projects, certifications, awards, volunteer, skills)"""
+    auth_header = request.headers.get("Authorization", "")
+    user_id = None
+
+    if auth_header.startswith("Bearer "):
+        token = auth_header.replace("Bearer ", "")
+        async with httpx.AsyncClient() as client:
+            user_response = await client.get(
+                f"{SUPABASE_URL}/auth/v1/user",
+                headers={"apikey": SUPABASE_ANON_KEY, "Authorization": f"Bearer {token}"}
+            )
+            if user_response.status_code == 200:
+                user_id = user_response.json().get("id")
+
+    if not user_id:
+        return {"success": False, "message": "Ej inloggad"}
+
+    # Fetch all data from Supabase
+    experiences = await db_request("GET", "user_experiences", params={
+        "user_id": f"eq.{user_id}", "order": "sort_order.asc"
+    }) or []
+
+    education = await db_request("GET", "user_education", params={
+        "user_id": f"eq.{user_id}", "order": "sort_order.asc"
+    }) or []
+
+    projects = await db_request("GET", "tech_projects", params={
+        "user_id": f"eq.{user_id}", "order": "sort_order.asc"
+    }) or []
+
+    certifications = await db_request("GET", "user_certifications", params={
+        "user_id": f"eq.{user_id}", "order": "sort_order.asc"
+    }) or []
+
+    tech_certs = await db_request("GET", "tech_certifications", params={
+        "user_id": f"eq.{user_id}", "order": "sort_order.asc"
+    }) or []
+
+    awards = await db_request("GET", "user_awards", params={
+        "user_id": f"eq.{user_id}", "order": "sort_order.asc"
+    }) or []
+
+    volunteer = await db_request("GET", "user_volunteer", params={
+        "user_id": f"eq.{user_id}", "order": "sort_order.asc"
+    }) or []
+
+    skills = await db_request("GET", "user_skills", params={
+        "user_id": f"eq.{user_id}"
+    }) or []
+
+    return {
+        "experiences": experiences,
+        "education": education,
+        "projects": projects,
+        "certifications": certifications + tech_certs,
+        "awards": awards,
+        "volunteer": volunteer,
+        "skills": skills
+    }
+
+
+@app.get("/api/bransch-cvs")
+async def get_bransch_cvs(request: Request):
+    """Get all Bransch-CVs (industry-specific CV templates)"""
+    auth_header = request.headers.get("Authorization", "")
+    user_id = None
+
+    if auth_header.startswith("Bearer "):
+        token = auth_header.replace("Bearer ", "")
+        async with httpx.AsyncClient() as client:
+            user_response = await client.get(
+                f"{SUPABASE_URL}/auth/v1/user",
+                headers={"apikey": SUPABASE_ANON_KEY, "Authorization": f"Bearer {token}"}
+            )
+            if user_response.status_code == 200:
+                user_id = user_response.json().get("id")
+
+    if not user_id:
+        return {"success": False, "bransch_cvs": []}
+
+    # Fetch bransch-CVs from database
+    bransch_cvs = await db_request("GET", "bransch_cvs", params={
+        "user_id": f"eq.{user_id}", "order": "created_at.desc"
+    }) or []
+
+    return {"bransch_cvs": bransch_cvs}
+
+
+@app.get("/api/master-cv/download-pdf")
+async def download_master_cv_pdf(request: Request):
+    """Generate and download Master CV as PDF"""
+    auth_header = request.headers.get("Authorization", "")
+    user_id = None
+
+    if auth_header.startswith("Bearer "):
+        token = auth_header.replace("Bearer ", "")
+        async with httpx.AsyncClient() as client:
+            user_response = await client.get(
+                f"{SUPABASE_URL}/auth/v1/user",
+                headers={"apikey": SUPABASE_ANON_KEY, "Authorization": f"Bearer {token}"}
+            )
+            if user_response.status_code == 200:
+                user_id = user_response.json().get("id")
+
+    if not user_id:
+        raise HTTPException(status_code=401, detail="Ej inloggad")
+
+    # For now, return a simple text response indicating this feature is coming soon
+    # In production, this would generate a formatted PDF using a library like ReportLab or WeasyPrint
+    raise HTTPException(status_code=501, detail="PDF-generering kommer snart. Använd Bransch-CVs för nu.")
+
+
+@app.get("/api/bransch-cvs/{cv_id}/download-pdf")
+async def download_bransch_cv_pdf(cv_id: str, request: Request):
+    """Generate and download a specific Bransch-CV as PDF"""
+    auth_header = request.headers.get("Authorization", "")
+    user_id = None
+
+    if auth_header.startswith("Bearer "):
+        token = auth_header.replace("Bearer ", "")
+        async with httpx.AsyncClient() as client:
+            user_response = await client.get(
+                f"{SUPABASE_URL}/auth/v1/user",
+                headers={"apikey": SUPABASE_ANON_KEY, "Authorization": f"Bearer {token}"}
+            )
+            if user_response.status_code == 200:
+                user_id = user_response.json().get("id")
+
+    if not user_id:
+        raise HTTPException(status_code=401, detail="Ej inloggad")
+
+    # Fetch the specific Bransch-CV
+    cv_result = await db_request("GET", "bransch_cvs", params={
+        "id": f"eq.{cv_id}",
+        "user_id": f"eq.{user_id}"
+    })
+
+    if not cv_result or len(cv_result) == 0:
+        raise HTTPException(status_code=404, detail="Bransch-CV hittades inte")
+
+    # For now, return a simple text response indicating this feature is coming soon
+    # In production, this would generate a formatted PDF
+    raise HTTPException(status_code=501, detail="PDF-generering kommer snart. CV-text finns i bransch-CV databasen.")
+
+
 @app.post("/api/jobs/{job_id}/apply-with-cv")
 async def apply_with_cv(request: Request, job_id: str):
     """
@@ -1470,18 +1717,22 @@ async def apply_with_cv(request: Request, job_id: str):
     best_vibe = match_job_to_cv_vibe(job.get("title", ""), job.get("description", ""))
     logger.info(f"Job '{job.get('title')}' matched to CV vibe: {best_vibe}")
 
-    # Try to get matching CV if user is logged in
+    # Try to get matching CV and user profile if logged in
     cv = None
+    user_profile = None
     if user_id:
         cvs = await db_request("GET", "user_cvs", params={
             "user_id": f"eq.{user_id}",
             "vibe_id": f"eq.{best_vibe}"
         })
         cv = cvs[0] if cvs else None
+        # Fetch user profile for cover letter personalization
+        profiles = await db_request("GET", "user_profiles", params={"user_id": f"eq.{user_id}"})
+        user_profile = profiles[0] if profiles else None
 
-    # Generate cover letter (works with or without CV)
+    # Generate cover letter (works with or without CV/profile)
     cv_text_for_letter = cv.get("cv_text") if cv else None
-    cover_letter = await generate_cover_letter(job, cv_text_for_letter)
+    cover_letter = await generate_cover_letter(job, cv_text_for_letter, user_profile)
 
     return {
         "success": True,
@@ -3032,22 +3283,105 @@ UTMÄRKELSER
     return response_data
 
 
+class QuizProfileData(BaseModel):
+    full_name: Optional[str] = None
+    phone: Optional[str] = None
+    age: Optional[str] = None
+    drivers_license: Optional[str] = None
+    linkedin: Optional[str] = None
+    earliest_start: Optional[str] = None
+    education_level: Optional[str] = None
+
+
 class UserPreferences(BaseModel):
-    # New quiz format
+    # Quiz fields (maps to Platsbanken data)
+    search_terms: Optional[list] = None
+    custom_search: Optional[str] = None
+    location: Optional[list] = None
+    working_hours: Optional[str] = None
+    employment_form: Optional[list] = None
+    duration: Optional[str] = None
+    salary: Optional[str] = None
+    dealbreakers: Optional[list] = None
+    # Legacy fields (backwards compat)
     role_type: Optional[list] = None
     industry: Optional[list] = None
     experience_level: Optional[str] = None
-    location: Optional[list] = None
     salary_range: Optional[str] = None
     skills: Optional[list] = None
     culture: Optional[list] = None
-    dealbreakers: Optional[list] = None
-    # Legacy fields
     job_titles: Optional[str] = None
     locations: Optional[str] = None
     job_types: Optional[list] = None
     gmail_client_id: Optional[str] = None
     gmail_client_secret: Optional[str] = None
+
+
+@app.post("/api/user/profile-from-quiz")
+async def save_profile_from_quiz(request: Request, profile: QuizProfileData):
+    """Save personal info from onboarding quiz to user_profiles."""
+    auth_header = request.headers.get("Authorization", "")
+    if not auth_header.startswith("Bearer "):
+        # Still save locally if not logged in - data stored in localStorage
+        return {"success": True, "saved_to_db": False, "reason": "not_logged_in"}
+
+    token = auth_header.replace("Bearer ", "")
+
+    # Get user ID
+    async with httpx.AsyncClient() as client:
+        user_response = await client.get(
+            f"{SUPABASE_URL}/auth/v1/user",
+            headers={"apikey": SUPABASE_ANON_KEY, "Authorization": f"Bearer {token}"}
+        )
+        if user_response.status_code != 200:
+            return {"success": True, "saved_to_db": False, "reason": "invalid_token"}
+
+        user = user_response.json()
+        user_id = user.get("id")
+        user_email = user.get("email", "")
+
+    # Build profile data for upsert
+    profile_data = {
+        "user_id": user_id,
+        "email": user_email,
+        "updated_at": datetime.now().isoformat()
+    }
+    if profile.full_name:
+        profile_data["full_name"] = profile.full_name
+    if profile.phone:
+        profile_data["phone"] = profile.phone
+    if profile.drivers_license:
+        profile_data["drivers_license"] = profile.drivers_license != "no"
+    if profile.linkedin:
+        profile_data["linkedin"] = profile.linkedin
+
+    # Store extra quiz fields in a JSONB column or as individual fields
+    # age, earliest_start, education_level go into quiz_profile JSONB
+    quiz_profile = {}
+    if profile.age:
+        quiz_profile["age"] = profile.age
+    if profile.earliest_start:
+        quiz_profile["earliest_start"] = profile.earliest_start
+    if profile.education_level:
+        quiz_profile["education_level"] = profile.education_level
+    if profile.drivers_license:
+        quiz_profile["drivers_license_type"] = profile.drivers_license
+
+    # Upsert to user_profiles
+    async with httpx.AsyncClient() as client:
+        res = await client.post(
+            f"{SUPABASE_URL}/rest/v1/user_profiles",
+            headers={
+                "apikey": SUPABASE_KEY,
+                "Authorization": f"Bearer {SUPABASE_KEY}",
+                "Content-Type": "application/json",
+                "Prefer": "resolution=merge-duplicates"
+            },
+            json=profile_data
+        )
+        logger.info(f"Profile save: {res.status_code}")
+
+    return {"success": True, "saved_to_db": True}
 
 
 @app.get("/api/user/preferences")
@@ -3119,18 +3453,20 @@ async def save_user_preferences(request: Request, prefs: UserPreferences):
     # Upsert preferences - store all quiz answers as JSONB
     prefs_data = {
         "user_id": user_id,
-        "job_titles": ','.join(prefs.role_type or []) if prefs.role_type else (prefs.job_titles or ''),
+        "job_titles": prefs.custom_search if hasattr(prefs, 'custom_search') and prefs.custom_search else (
+            ','.join(prefs.search_terms or prefs.role_type or []) if (prefs.search_terms or prefs.role_type) else (prefs.job_titles or '')
+        ),
         "locations": ','.join(prefs.location or []) if prefs.location else (prefs.locations or ''),
-        "job_types": prefs.role_type or prefs.job_types or [],
+        "job_types": prefs.search_terms or prefs.role_type or prefs.job_types or [],
         "experience_level": prefs.experience_level or '',
         "quiz_answers": {
-            "role_type": prefs.role_type,
-            "industry": prefs.industry,
-            "experience_level": prefs.experience_level,
+            "search_terms": prefs.search_terms,
+            "custom_search": getattr(prefs, 'custom_search', None),
             "location": prefs.location,
-            "salary_range": prefs.salary_range,
-            "skills": prefs.skills,
-            "culture": prefs.culture,
+            "working_hours": prefs.working_hours,
+            "employment_form": prefs.employment_form,
+            "duration": prefs.duration,
+            "salary": prefs.salary,
             "dealbreakers": prefs.dealbreakers
         },
         "updated_at": "now()"
@@ -4799,13 +5135,15 @@ async def upload_cv(vibe_id: str, request: Request):
 
     token = auth_header.replace("Bearer ", "")
 
-    # Verify user
-    user_response = await db_request("GET", "auth/v1/user", auth_token=token)
-    if user_response.status_code != 200:
-        raise HTTPException(status_code=401, detail="Invalid token")
-
-    user = user_response.json()
-    user_id = user.get("id")
+    # Verify user via Supabase auth
+    async with httpx.AsyncClient() as client:
+        user_response = await client.get(
+            f"{SUPABASE_URL}/auth/v1/user",
+            headers={"apikey": SUPABASE_ANON_KEY, "Authorization": f"Bearer {token}"}
+        )
+        if user_response.status_code != 200:
+            raise HTTPException(status_code=401, detail="Invalid token")
+        user_id = user_response.json().get("id")
 
     # Get file from request
     form = await request.form()
@@ -4845,14 +5183,15 @@ async def upload_cv(vibe_id: str, request: Request):
             f"{SUPABASE_URL}/storage/v1/object/cv-files/{file_path}",
             headers={
                 "Authorization": f"Bearer {SUPABASE_KEY}",
-                "Content-Type": content_type
+                "Content-Type": content_type,
+                "x-upsert": "true"
             },
             content=file_content,
             timeout=30
         )
 
         if upload_response.status_code not in [200, 201]:
-            logger.error(f"Storage upload failed: {upload_response.text}")
+            logger.error(f"Storage upload failed: {upload_response.status_code} - {upload_response.text}")
             raise HTTPException(status_code=500, detail="Failed to upload file")
 
     # Get public URL
@@ -4865,7 +5204,7 @@ async def upload_cv(vibe_id: str, request: Request):
         logger.warning(f"Could not extract text from {file.filename}")
 
     # Update user_cvs table with pdf_url and cv_text
-    update_response = await db_request(
+    update_result = await db_request(
         "PATCH",
         "user_cvs",
         params={"user_id": f"eq.{user_id}", "vibe_id": f"eq.{vibe_id}"},
@@ -4875,7 +5214,7 @@ async def upload_cv(vibe_id: str, request: Request):
         }
     )
 
-    if update_response.status_code not in [200, 201, 204]:
+    if not update_result or len(update_result) == 0:
         # If no existing record, create one
         vibe_names = {
             "restaurant": "Restaurang & Café",
@@ -4916,13 +5255,15 @@ async def upload_profile_photo(request: Request):
 
     token = auth_header.replace("Bearer ", "")
 
-    # Verify user
-    user_response = await db_request("GET", "auth/v1/user", auth_token=token)
-    if user_response.status_code != 200:
-        raise HTTPException(status_code=401, detail="Invalid token")
-
-    user = user_response.json()
-    user_id = user.get("id")
+    # Verify user via Supabase auth
+    async with httpx.AsyncClient() as client:
+        user_response = await client.get(
+            f"{SUPABASE_URL}/auth/v1/user",
+            headers={"apikey": SUPABASE_ANON_KEY, "Authorization": f"Bearer {token}"}
+        )
+        if user_response.status_code != 200:
+            raise HTTPException(status_code=401, detail="Invalid token")
+        user_id = user_response.json().get("id")
 
     # Get file from request
     form = await request.form()
@@ -4946,7 +5287,7 @@ async def upload_profile_photo(request: Request):
         ext = "jpg"
         content_type = "image/jpeg"
 
-    # Upload to Supabase Storage
+    # Upload to Supabase Storage (upsert to handle re-uploads)
     file_path = f"{user_id}/profile.{ext}"
 
     async with httpx.AsyncClient() as client:
@@ -4954,15 +5295,16 @@ async def upload_profile_photo(request: Request):
             f"{SUPABASE_URL}/storage/v1/object/profile-photos/{file_path}",
             headers={
                 "Authorization": f"Bearer {SUPABASE_KEY}",
-                "Content-Type": content_type
+                "Content-Type": content_type,
+                "x-upsert": "true"
             },
             content=file_content,
             timeout=30
         )
 
         if upload_response.status_code not in [200, 201]:
-            logger.error(f"Storage upload failed: {upload_response.text}")
-            raise HTTPException(status_code=500, detail="Failed to upload photo")
+            logger.error(f"Storage upload failed: {upload_response.status_code} - {upload_response.text}")
+            raise HTTPException(status_code=500, detail=f"Failed to upload photo: {upload_response.text[:200]}")
 
     # Get public URL
     photo_url = f"{SUPABASE_URL}/storage/v1/object/public/profile-photos/{file_path}"
@@ -4990,13 +5332,15 @@ async def upload_training_letter(request: Request):
 
     token = auth_header.replace("Bearer ", "")
 
-    # Verify user
-    user_response = await db_request("GET", "auth/v1/user", auth_token=token)
-    if user_response.status_code != 200:
-        raise HTTPException(status_code=401, detail="Invalid token")
-
-    user = user_response.json()
-    user_id = user.get("id")
+    # Verify user via Supabase auth
+    async with httpx.AsyncClient() as client:
+        user_response = await client.get(
+            f"{SUPABASE_URL}/auth/v1/user",
+            headers={"apikey": SUPABASE_ANON_KEY, "Authorization": f"Bearer {token}"}
+        )
+        if user_response.status_code != 200:
+            raise HTTPException(status_code=401, detail="Invalid token")
+        user_id = user_response.json().get("id")
 
     # Get file from request
     form = await request.form()
@@ -5040,15 +5384,16 @@ async def upload_training_letter(request: Request):
             f"{SUPABASE_URL}/storage/v1/object/training-letters/{file_path}",
             headers={
                 "Authorization": f"Bearer {SUPABASE_KEY}",
-                "Content-Type": content_type
+                "Content-Type": content_type,
+                "x-upsert": "true"
             },
             content=file_content,
             timeout=30
         )
 
         if upload_response.status_code not in [200, 201]:
-            logger.error(f"Storage upload failed: {upload_response.text}")
-            raise HTTPException(status_code=500, detail="Failed to upload letter")
+            logger.error(f"Storage upload failed: {upload_response.status_code} - {upload_response.text}")
+            raise HTTPException(status_code=500, detail=f"Failed to upload letter: {upload_response.text[:200]}")
 
     # Analyze tone/style with Claude if we have text
     tone_analysis = None
@@ -5056,17 +5401,13 @@ async def upload_training_letter(request: Request):
         tone_analysis = await analyze_writing_tone(letter_text)
 
     # Get or create user preferences
-    prefs_response = await db_request(
+    prefs_data = await db_request(
         "GET",
         "user_cover_letter_preferences",
         params={"user_id": f"eq.{user_id}"}
     )
 
-    existing_prefs = None
-    if prefs_response.status_code == 200:
-        prefs_data = prefs_response.json()
-        if prefs_data:
-            existing_prefs = prefs_data[0]
+    existing_prefs = prefs_data[0] if prefs_data and len(prefs_data) > 0 else None
 
     # Update preferences with tone analysis
     if tone_analysis:
@@ -5098,6 +5439,178 @@ async def upload_training_letter(request: Request):
         "file_path": file_path,
         "tone_analysis": tone_analysis
     }
+
+
+@app.get("/api/user/letter-style")
+async def get_letter_style(request: Request):
+    """Get the user's analyzed cover letter style summary"""
+    auth_header = request.headers.get("Authorization", "")
+    user_id = None
+
+    if auth_header.startswith("Bearer "):
+        token = auth_header.replace("Bearer ", "")
+        async with httpx.AsyncClient() as client:
+            user_response = await client.get(
+                f"{SUPABASE_URL}/auth/v1/user",
+                headers={"apikey": SUPABASE_ANON_KEY, "Authorization": f"Bearer {token}"}
+            )
+            if user_response.status_code == 200:
+                user_id = user_response.json().get("id")
+
+    if not user_id:
+        return {"style_summary": None}
+
+    prefs = await db_request("GET", "user_cover_letter_preferences", params={"user_id": f"eq.{user_id}"})
+
+    if not prefs or len(prefs) == 0:
+        return {"style_summary": None}
+
+    p = prefs[0]
+    # Map DB fields to rich style_summary format for the frontend
+    style_summary = {
+        "tone": p.get("tone"),
+        "structure": p.get("writing_style"),
+        "phrases": p.get("always_mention") if isinstance(p.get("always_mention"), list) else [],
+        "avoid": p.get("avoid_phrases") if isinstance(p.get("avoid_phrases"), list) else [],
+        "length_preference": p.get("length_preference"),
+        "opening_style": p.get("opening_style")
+    }
+    return {"style_summary": style_summary}
+
+
+@app.post("/api/user/upload-training-letter")
+async def upload_user_training_letter(request: Request):
+    """Upload a training letter file and analyze the writing style"""
+    auth_header = request.headers.get("Authorization", "")
+    user_id = None
+
+    if auth_header.startswith("Bearer "):
+        token = auth_header.replace("Bearer ", "")
+        async with httpx.AsyncClient() as client:
+            user_response = await client.get(
+                f"{SUPABASE_URL}/auth/v1/user",
+                headers={"apikey": SUPABASE_ANON_KEY, "Authorization": f"Bearer {token}"}
+            )
+            if user_response.status_code == 200:
+                user_id = user_response.json().get("id")
+
+    if not user_id:
+        raise HTTPException(status_code=401, detail="Ej inloggad")
+
+    form = await request.form()
+    file = form.get("file")
+    if not file:
+        raise HTTPException(status_code=400, detail="Ingen fil bifogad")
+
+    file_content = await file.read()
+    letter_text = extract_text_from_file(file_content, file.filename)
+
+    if not letter_text:
+        letter_text = "[Kunde inte extrahera text från filen]"
+
+    tone_analysis = await analyze_writing_tone_rich(letter_text)
+    await save_letter_style(user_id, tone_analysis)
+
+    return {"success": True, "tone_analysis": tone_analysis}
+
+
+@app.post("/api/user/analyze-letter-text")
+async def analyze_pasted_letter_text(request: Request):
+    """Analyze pasted cover letter text to extract writing style"""
+    auth_header = request.headers.get("Authorization", "")
+    user_id = None
+
+    if auth_header.startswith("Bearer "):
+        token = auth_header.replace("Bearer ", "")
+        async with httpx.AsyncClient() as client:
+            user_response = await client.get(
+                f"{SUPABASE_URL}/auth/v1/user",
+                headers={"apikey": SUPABASE_ANON_KEY, "Authorization": f"Bearer {token}"}
+            )
+            if user_response.status_code == 200:
+                user_id = user_response.json().get("id")
+
+    if not user_id:
+        raise HTTPException(status_code=401, detail="Ej inloggad")
+
+    body = await request.json()
+    text = body.get("text", "").strip()
+    if not text:
+        raise HTTPException(status_code=400, detail="Ingen text angiven")
+
+    tone_analysis = await analyze_writing_tone_rich(text)
+    await save_letter_style(user_id, tone_analysis)
+
+    return {"success": True, "tone_analysis": tone_analysis}
+
+
+async def save_letter_style(user_id: str, analysis: dict):
+    """Save or update letter style analysis in DB"""
+    existing = await db_request("GET", "user_cover_letter_preferences", params={"user_id": f"eq.{user_id}"})
+    data = {
+        "tone": analysis.get("tone"),
+        "writing_style": analysis.get("structure"),
+        "always_mention": analysis.get("phrases", []),
+        "avoid_phrases": analysis.get("avoid", []),
+        "length_preference": analysis.get("length_preference"),
+        "opening_style": analysis.get("opening_style")
+    }
+    if existing and len(existing) > 0:
+        await db_request("PATCH", "user_cover_letter_preferences",
+            params={"user_id": f"eq.{user_id}"}, data=data)
+    else:
+        await db_request("POST", "user_cover_letter_preferences",
+            data={"user_id": user_id, **data})
+
+
+async def analyze_writing_tone_rich(text: str) -> dict:
+    """Analyze writing tone and style using Claude API — returns rich structured summary"""
+    if not ANTHROPIC_API_KEY:
+        return {}
+
+    prompt = f"""Du analyserar ett personligt brev på svenska och skapar en strukturerad sammanfattning av skrivarens stil.
+
+Brev:
+{text[:3000]}
+
+Returnera ett JSON-objekt med dessa exakta nycklar:
+- "tone": En mening om tonen, t.ex. "Varm och personlig, men professionell"
+- "structure": En mening om hur brevet är uppbyggt, t.ex. "Börjar med varför företaget, sedan erfarenhet, avslutar med konkret nästa steg"
+- "phrases": Lista med 3-6 fraser eller uttryck som personen faktiskt använder
+- "avoid": Lista med ord eller fraser som personen INTE använder (t.ex. klichéer som de aktivt undviker)
+- "length_preference": En mening om brevets längd och takt, t.ex. "Kortfattat, max 3 stycken, ingen onödig utfyllnad"
+- "opening_style": En mening om hur personen brukar inleda, t.ex. "Börjar alltid med vad som drog dem till just det företaget"
+
+Svara ENDAST med JSON."""
+
+    try:
+        async with httpx.AsyncClient() as client:
+            response = await client.post(
+                "https://api.anthropic.com/v1/messages",
+                headers={
+                    "x-api-key": ANTHROPIC_API_KEY,
+                    "anthropic-version": "2023-06-01",
+                    "content-type": "application/json"
+                },
+                json={
+                    "model": "claude-sonnet-4-5-20250929",
+                    "max_tokens": 700,
+                    "messages": [{"role": "user", "content": prompt}]
+                },
+                timeout=30
+            )
+            if response.status_code == 200:
+                result = response.json()
+                raw = result["content"][0]["text"].strip()
+                import json as json_lib
+                start = raw.find('{')
+                end = raw.rfind('}') + 1
+                if start >= 0 and end > start:
+                    return json_lib.loads(raw[start:end])
+    except Exception as e:
+        logger.error(f"Rich tone analysis error: {e}")
+
+    return {}
 
 
 async def analyze_writing_tone(text: str) -> dict:
