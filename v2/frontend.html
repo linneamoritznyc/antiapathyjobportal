@@ -2001,6 +2001,7 @@
                 localStorage.setItem('job_preferences', JSON.stringify(updated));
                 setPrefs(updated);
                 setSaved(true);
+                window.dispatchEvent(new Event('prefsUpdated'));
                 setTimeout(() => setSaved(false), 2000);
             };
 
@@ -2634,6 +2635,14 @@
             const [sortBy, setSortBy] = useState('deadline');
             const [currentPage, setCurrentPage] = useState(1);
             const jobsPerPage = 12;
+            const [prefsKey, setPrefsKey] = useState(0);
+
+            // Re-read preferences when saved from Preferenser tab
+            useEffect(() => {
+                const handler = () => setPrefsKey(k => k + 1);
+                window.addEventListener('prefsUpdated', handler);
+                return () => window.removeEventListener('prefsUpdated', handler);
+            }, []);
 
             // Reset to page 1 when filters change
             useEffect(() => {
@@ -2644,7 +2653,7 @@
             const quizPrefs = useMemo(() => {
                 try { return JSON.parse(localStorage.getItem('job_preferences') || '{}'); }
                 catch(e) { return {}; }
-            }, [jobs]);
+            }, [jobs, prefsKey]);
 
             // Filter and sort jobs
             const filteredJobs = jobs
@@ -5417,7 +5426,7 @@
 
                     {/* Version badge */}
                     <div style={{position:'fixed',bottom:'10px',right:'10px',fontSize:'10px',color:'#999',background:'#fff',padding:'4px 8px',borderRadius:'4px',border:'1px solid #ddd',zIndex:9999}}>
-                        v10-2026-02-17
+                        v11-2026-02-17
                     </div>
                 </div>
             );
