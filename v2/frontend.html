@@ -463,25 +463,84 @@
         const QuizPage = ({ onComplete, saving }) => {
             const [step, setStep] = useState(0);
             const [customSearch, setCustomSearch] = useState('');
-            const [answers, setAnswers] = useState({
-                // Personal info
-                full_name: '',
-                phone: '',
-                age: '',
-                drivers_license: '',
-                linkedin: '',
-                earliest_start: '',
-                education_level: '',
-                // Job preferences
-                search_terms: [],
-                custom_search: '',
-                location: [],
-                working_hours: '',
-                employment_form: [],
-                duration: '',
-                salary: '',
-                dealbreakers: []
-            });
+
+            // Load saved answers from localStorage if they exist
+            const getSavedAnswers = () => {
+                try {
+                    const saved = localStorage.getItem('job_preferences');
+                    if (saved) {
+                        const parsed = JSON.parse(saved);
+                        // Ensure working_hours is an array for multi-select
+                        if (parsed.working_hours && typeof parsed.working_hours === 'string') {
+                            parsed.working_hours = [parsed.working_hours];
+                        }
+                        return {
+                            full_name: parsed.full_name || '',
+                            phone: parsed.phone || '',
+                            age: parsed.age || '',
+                            drivers_license: parsed.drivers_license || '',
+                            linkedin: parsed.linkedin || '',
+                            earliest_start: parsed.earliest_start || '',
+                            education_level: parsed.education_level || '',
+                            search_terms: parsed.search_terms || [],
+                            custom_search: parsed.custom_search || '',
+                            location: parsed.location || [],
+                            working_hours: parsed.working_hours || [],
+                            employment_form: parsed.employment_form || [],
+                            duration: parsed.duration || '',
+                            salary: parsed.salary || '',
+                            dealbreakers: parsed.dealbreakers || []
+                        };
+                    }
+                } catch(e) {
+                    console.error('Error loading saved answers:', e);
+                }
+                return {
+                    full_name: '',
+                    phone: '',
+                    age: '',
+                    drivers_license: '',
+                    linkedin: '',
+                    earliest_start: '',
+                    education_level: '',
+                    search_terms: [],
+                    custom_search: '',
+                    location: [],
+                    working_hours: [],
+                    employment_form: [],
+                    duration: '',
+                    salary: '',
+                    dealbreakers: []
+                };
+            };
+
+            const [answers, setAnswers] = useState(getSavedAnswers());
+
+            // Reset quiz function
+            const resetQuiz = () => {
+                if (confirm('Är du säker på att du vill börja om från början?')) {
+                    localStorage.removeItem('job_preferences');
+                    setStep(0);
+                    setAnswers({
+                        full_name: '',
+                        phone: '',
+                        age: '',
+                        drivers_license: '',
+                        linkedin: '',
+                        earliest_start: '',
+                        education_level: '',
+                        search_terms: [],
+                        custom_search: '',
+                        location: [],
+                        working_hours: [],
+                        employment_form: [],
+                        duration: '',
+                        salary: '',
+                        dealbreakers: []
+                    });
+                    setCustomSearch('');
+                }
+            };
 
             const questions = [
                 // === PERSONAL INFO (for applications & cover letters) ===
@@ -596,8 +655,8 @@
                 {
                     id: 'working_hours',
                     question: 'Hur mycket vill du jobba?',
-                    subtitle: 'Matchar Platsbanken-fältet "Omfattning"',
-                    type: 'single',
+                    subtitle: 'Välj alla som funkar - matchar Platsbanken-fältet "Omfattning"',
+                    type: 'multi',
                     options: [
                         { value: 'heltid', label: 'Heltid' },
                         { value: 'deltid', label: 'Deltid' },
@@ -696,12 +755,20 @@
                         {/* Header */}
                         <div className="flex justify-between items-center mb-8">
                             <span className="text-white/40 font-mono text-xs tracking-wide">anti-apathy</span>
-                            <button
-                                onClick={() => onComplete(answers)}
-                                className="text-white/30 hover:text-white/60 text-sm transition"
-                            >
-                                Hoppa över
-                            </button>
+                            <div className="flex gap-4">
+                                <button
+                                    onClick={resetQuiz}
+                                    className="text-white/30 hover:text-white/60 text-sm transition"
+                                >
+                                    Gör om quizzet
+                                </button>
+                                <button
+                                    onClick={() => onComplete(answers)}
+                                    className="text-white/30 hover:text-white/60 text-sm transition"
+                                >
+                                    Hoppa över
+                                </button>
+                            </div>
                         </div>
 
                         {/* Progress dots */}
