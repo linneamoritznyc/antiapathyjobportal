@@ -838,22 +838,58 @@
 
                                             <h3 className="text-xl font-bold text-slate-800 mb-1">{currentJob.title}</h3>
                                             <p className="text-pink-600 font-semibold mb-1">{currentJob.company}</p>
-                                            <p className="text-slate-400 text-sm mb-4">{currentJob.location}</p>
+                                            <p className="text-slate-400 text-sm mb-3">{currentJob.location}</p>
 
+                                            {/* Job details: type, duration, hours */}
+                                            <div className="flex flex-wrap gap-2 mb-4">
+                                                {currentJob.working_hours && (
+                                                    <span className="text-xs bg-indigo-50 text-indigo-700 px-2.5 py-1 rounded-full font-medium">
+                                                        {currentJob.working_hours}
+                                                    </span>
+                                                )}
+                                                {currentJob.duration && (
+                                                    <span className="text-xs bg-slate-100 text-slate-600 px-2.5 py-1 rounded-full">
+                                                        {currentJob.duration}
+                                                    </span>
+                                                )}
+                                                {currentJob.employment_type && (
+                                                    <span className="text-xs bg-slate-100 text-slate-600 px-2.5 py-1 rounded-full">
+                                                        {currentJob.employment_type}
+                                                    </span>
+                                                )}
+                                                {currentJob.salary_description && (
+                                                    <span className="text-xs bg-green-50 text-green-700 px-2.5 py-1 rounded-full">
+                                                        {currentJob.salary_description}
+                                                    </span>
+                                                )}
+                                            </div>
+
+                                            {/* Description */}
                                             {currentJob.description && (
-                                                <div className="bg-slate-50 rounded-lg p-4 mb-4 max-h-48 overflow-y-auto">
-                                                    <p className="text-sm text-slate-600 leading-relaxed">
-                                                        {currentJob.description.substring(0, 500)}
-                                                        {currentJob.description.length > 500 ? '...' : ''}
+                                                <div className="bg-slate-50 rounded-lg p-4 mb-4 max-h-64 overflow-y-auto">
+                                                    <p className="text-sm text-slate-600 leading-relaxed whitespace-pre-line">
+                                                        {currentJob.description.substring(0, 1500)}
+                                                        {currentJob.description.length > 1500 ? '...' : ''}
                                                     </p>
                                                 </div>
                                             )}
 
-                                            {currentJob.contact_email && (
-                                                <div className="bg-pink-50 rounded-lg p-3 mb-4">
-                                                    <p className="text-sm text-slate-600">
-                                                        Kontakt: <a href={`mailto:${currentJob.contact_email}`} className="text-pink-600 font-medium">{currentJob.contact_email}</a>
-                                                    </p>
+                                            {/* Contact info */}
+                                            {(currentJob.contact_email || currentJob.contact_name || currentJob.contact_phone) && (
+                                                <div className="bg-pink-50 rounded-lg p-3 mb-4 space-y-1">
+                                                    {currentJob.contact_name && (
+                                                        <p className="text-sm text-slate-700 font-medium">{currentJob.contact_name}</p>
+                                                    )}
+                                                    {currentJob.contact_email && (
+                                                        <p className="text-sm text-slate-600">
+                                                            E-post: <a href={`mailto:${currentJob.contact_email}`} className="text-pink-600 font-medium">{currentJob.contact_email}</a>
+                                                        </p>
+                                                    )}
+                                                    {currentJob.contact_phone && (
+                                                        <p className="text-sm text-slate-600">
+                                                            Tel: <span className="font-medium">{currentJob.contact_phone}</span>
+                                                        </p>
+                                                    )}
                                                 </div>
                                             )}
 

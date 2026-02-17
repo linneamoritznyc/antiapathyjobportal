@@ -304,40 +304,81 @@ async def scrape_platsbanken(keyword: str, location: str = "Stockholm", max_jobs
                 description = ad.get("description", "") or ""
                 deadline = ad.get("lastApplicationDate")
 
-                # Try to get email from description
-                contact_email = extract_email(description)
-
-                # Also check application details
+                # Extract more fields from the ad
                 app_details = ad.get("applicationDetails", {}) or {}
+                conditions = ad.get("conditions", {}) or {}
+                employment_type = ad.get("employmentType", "") or conditions.get("employmentType", "")
+                duration = ad.get("duration", "") or conditions.get("duration", "")
+                working_hours = ad.get("workingHoursType", "") or conditions.get("workingHoursType", "")
+                salary_type = conditions.get("salaryType", "")
+                salary_description = conditions.get("salaryDescription", "")
+
+                # Application details
+                contact_email = extract_email(description)
                 if not contact_email and app_details.get("email"):
                     contact_email = app_details.get("email")
+                apply_url = app_details.get("url", "")
 
-                # NOTE: Allowing portal jobs too (email optional)
-                # if not contact_email:
-                #     continue
-
-                # Extract contact name
+                # Contact info
                 contact_name = extract_contact_name(description)
                 if not contact_name and app_details.get("name"):
                     contact_name = app_details.get("name")
+                contact_phone = app_details.get("phoneNumber", "")
 
-                # Check location match (fuzzy) - DISABLED for now to show all jobs
-                # if location.lower() not in job_location.lower() and job_location.lower() not in location.lower():
-                #     # Allow "Sverige" as fallback
-                #     if "sverige" not in job_location.lower():
-                #         continue
+                # Try to fetch full job details for longer description
+                if len(description) < 200:
+                    try:
+                        detail_res = await client.get(
+                            f"https://platsbanken-api.arbetsformedlingen.se/jobs/v1/job/{job_id}",
+                            headers={"Content-Type": "application/json"},
+                            timeout=5
+                        )
+                        if detail_res.status_code == 200:
+                            detail = detail_res.json()
+                            full_desc = detail.get("description", "")
+                            if full_desc and len(full_desc) > len(description):
+                                description = full_desc
+                            # Also grab any missing fields
+                            if not contact_email:
+                                contact_email = extract_email(full_desc)
+                            d_app = detail.get("applicationDetails", {}) or {}
+                            if not contact_email and d_app.get("email"):
+                                contact_email = d_app.get("email")
+                            if not contact_name and d_app.get("name"):
+                                contact_name = d_app.get("name")
+                            if not contact_phone and d_app.get("phoneNumber"):
+                                contact_phone = d_app.get("phoneNumber")
+                            if not apply_url and d_app.get("url"):
+                                apply_url = d_app.get("url")
+                            # Employment details
+                            d_cond = detail.get("conditions", {}) or {}
+                            if not employment_type:
+                                employment_type = detail.get("employmentType", "") or d_cond.get("employmentType", "")
+                            if not duration:
+                                duration = detail.get("duration", "") or d_cond.get("duration", "")
+                            if not working_hours:
+                                working_hours = detail.get("workingHoursType", "") or d_cond.get("workingHoursType", "")
+                    except Exception:
+                        pass  # Detail fetch is best-effort
 
                 job = {
                     "id": job_id,
                     "title": title,
                     "company": company,
                     "location": job_location,
-                    "description": description[:3000],
+                    "description": description[:5000],
                     "url": f"https://arbetsformedlingen.se/platsbanken/annonser/{job_id}",
                     "deadline": deadline,
                     "priority": calculate_priority(deadline),
                     "contact_email": contact_email,
                     "contact_name": contact_name,
+                    "contact_phone": contact_phone,
+                    "employment_type": employment_type,
+                    "duration": duration,
+                    "working_hours": working_hours,
+                    "salary_type": salary_type,
+                    "salary_description": salary_description,
+                    "apply_url": apply_url,
                     "source": "platsbanken",
                     "scraped_at": datetime.now().isoformat()
                 }
