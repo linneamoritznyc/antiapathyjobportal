@@ -743,9 +743,29 @@ async def save_jobs_to_db(jobs: List[Dict]) -> int:
     if not SUPABASE_URL:
         return 0
 
+    # Only send columns that exist in the jobs table
+    db_columns = {"id", "title", "company", "location", "description", "url",
+                  "deadline", "priority", "contact_email", "contact_name",
+                  "source", "scraped_at", "link_status"}
+
     saved = 0
     for job in jobs:
-        result = await db_request("POST", "jobs", data=job)
+        db_job = {k: v for k, v in job.items() if k in db_columns}
+        # Store extra fields in description as fallback
+        extras = []
+        if job.get("employment_type"):
+            extras.append(f"Anstallningsform: {job['employment_type']}")
+        if job.get("working_hours"):
+            extras.append(f"Omfattning: {job['working_hours']}")
+        if job.get("duration"):
+            extras.append(f"Varaktighet: {job['duration']}")
+        if job.get("contact_phone"):
+            extras.append(f"Telefon: {job['contact_phone']}")
+        if job.get("salary_description"):
+            extras.append(f"Lon: {job['salary_description']}")
+        if extras and db_job.get("description"):
+            db_job["description"] = "\n".join(extras) + "\n\n" + db_job["description"]
+        result = await db_request("POST", "jobs", data=db_job)
         if result:
             saved += 1
     return saved
