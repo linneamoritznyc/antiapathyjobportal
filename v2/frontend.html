@@ -1064,6 +1064,618 @@
             );
         };
 
+        // Stat Card Component
+        const StatCard = ({ icon, label, value }) => (
+            <div className="bg-white rounded-lg p-4 text-center border border-slate-200">
+                <div className="text-3xl mb-2">{icon}</div>
+                <div className="text-2xl font-bold text-slate-800">{value}</div>
+                <div className="text-xs text-slate-500 mt-1">{label}</div>
+            </div>
+        );
+
+        // Master CV Summary Component
+        const MasterCVSummary = ({ stats, onUploadCV }) => (
+            <div className="bg-gradient-to-br from-indigo-50 to-purple-50 rounded-xl p-6 border border-indigo-100 mb-6">
+                <h2 className="text-2xl font-bold mb-2">Master CV</h2>
+                <p className="text-slate-600 text-sm mb-6">
+                    Din kompletta CV-databas - alla LEGO-bitar
+                </p>
+
+                <div className="grid grid-cols-5 gap-4 mb-6">
+                    <StatCard icon="📊" label="Jobb" value={stats.experiences || 0} />
+                    <StatCard icon="🎓" label="Skolor" value={stats.education || 0} />
+                    <StatCard icon="🏆" label="Priser" value={stats.awards || 0} />
+                    <StatCard icon="💻" label="Projekt" value={stats.projects || 0} />
+                    <StatCard icon="🗣️" label="Språk" value={stats.languages || 0} />
+                </div>
+
+                <button
+                    onClick={onUploadCV}
+                    className="w-full bg-indigo-600 text-white py-3 rounded-lg hover:bg-indigo-700 transition"
+                >
+                    📥 Ladda upp CV för att lägga till data
+                </button>
+            </div>
+        );
+
+        // Experience Card Component
+        const ExperienceCard = ({ exp, onEdit, onDelete }) => {
+            const iconMap = {
+                restaurant: '🍽️', retail: '🛒', tech: '💻', healthcare: '🏥',
+                art: '🎨', marketing: '📢', education: '📚', industry: '🏭',
+                customerservice: '📞', contentmoderation: '👁️', reception: '🏨'
+            };
+
+            const categories = exp.categories || [];
+            const firstCategory = categories[0] || 'restaurant';
+
+            return (
+                <div className="bg-slate-50 rounded-lg p-4 border border-slate-200 hover:border-indigo-300 transition">
+                    <div className="flex justify-between items-start">
+                        <div className="flex-1">
+                            <div className="flex items-center gap-2 mb-1">
+                                <span className="text-2xl">{iconMap[firstCategory] || '📍'}</span>
+                                <h4 className="font-semibold">{exp.company}</h4>
+                            </div>
+                            <p className="text-sm text-slate-600">{exp.title}</p>
+                            <p className="text-xs text-slate-500 mb-2">
+                                {exp.start_date} - {exp.end_date || 'Pågående'}
+                            </p>
+
+                            <p className="text-sm text-slate-700 line-clamp-2 mb-2">
+                                {exp.description}
+                            </p>
+
+                            <div className="flex gap-2 flex-wrap">
+                                {categories.map((cat, i) => (
+                                    <span key={i} className="px-2 py-1 bg-indigo-100 text-indigo-700 text-xs rounded-full">
+                                        {cat}
+                                    </span>
+                                ))}
+                            </div>
+                        </div>
+
+                        <div className="flex gap-2 ml-4">
+                            <button
+                                onClick={() => onEdit(exp)}
+                                className="text-indigo-600 hover:text-indigo-800 text-sm"
+                            >
+                                ✏️
+                            </button>
+                            <button
+                                onClick={() => onDelete(exp)}
+                                className="text-red-600 hover:text-red-800 text-sm"
+                            >
+                                🗑️
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            );
+        };
+
+        // Education Card Component
+        const EducationCard = ({ item, onEdit, onDelete }) => (
+            <div className="bg-slate-50 rounded-lg p-4 border border-slate-200 hover:border-indigo-300 transition">
+                <div className="flex justify-between items-start">
+                    <div className="flex-1">
+                        <div className="flex items-center gap-2 mb-1">
+                            <span className="text-2xl">🎓</span>
+                            <h4 className="font-semibold">{item.school}</h4>
+                        </div>
+                        <p className="text-sm text-slate-600">{item.degree}</p>
+                        <p className="text-xs text-slate-500 mb-2">
+                            {item.start_date} - {item.end_date || 'Pågående'}
+                        </p>
+                        {item.description && (
+                            <p className="text-sm text-slate-700 line-clamp-2">{item.description}</p>
+                        )}
+                    </div>
+                    <div className="flex gap-2 ml-4">
+                        <button onClick={() => onEdit(item)} className="text-indigo-600 hover:text-indigo-800 text-sm">✏️</button>
+                        <button onClick={() => onDelete(item)} className="text-red-600 hover:text-red-800 text-sm">🗑️</button>
+                    </div>
+                </div>
+            </div>
+        );
+
+        // Project Card Component
+        const ProjectCard = ({ item, onEdit, onDelete }) => (
+            <div className="bg-slate-50 rounded-lg p-4 border border-slate-200 hover:border-indigo-300 transition">
+                <div className="flex justify-between items-start">
+                    <div className="flex-1">
+                        <div className="flex items-center gap-2 mb-1">
+                            <span className="text-2xl">💻</span>
+                            <h4 className="font-semibold">{item.project_name}</h4>
+                        </div>
+                        <p className="text-sm text-slate-600">{item.tech_stack}</p>
+                        {item.live_url && (
+                            <a href={item.live_url} target="_blank" rel="noopener noreferrer" className="text-xs text-blue-600 hover:underline">
+                                {item.live_url}
+                            </a>
+                        )}
+                        <p className="text-sm text-slate-700 mt-2 line-clamp-2">{item.description}</p>
+                    </div>
+                    <div className="flex gap-2 ml-4">
+                        <button onClick={() => onEdit(item)} className="text-indigo-600 hover:text-indigo-800 text-sm">✏️</button>
+                        <button onClick={() => onDelete(item)} className="text-red-600 hover:text-red-800 text-sm">🗑️</button>
+                    </div>
+                </div>
+            </div>
+        );
+
+        // Generic Card for other types
+        const GenericCard = ({ item, icon, title, subtitle, onEdit, onDelete }) => (
+            <div className="bg-slate-50 rounded-lg p-4 border border-slate-200 hover:border-indigo-300 transition">
+                <div className="flex justify-between items-start">
+                    <div className="flex-1">
+                        <div className="flex items-center gap-2 mb-1">
+                            <span className="text-2xl">{icon}</span>
+                            <h4 className="font-semibold">{title}</h4>
+                        </div>
+                        {subtitle && <p className="text-sm text-slate-600">{subtitle}</p>}
+                        {item.description && <p className="text-sm text-slate-700 mt-2 line-clamp-2">{item.description}</p>}
+                    </div>
+                    <div className="flex gap-2 ml-4">
+                        <button onClick={() => onEdit(item)} className="text-indigo-600 hover:text-indigo-800 text-sm">✏️</button>
+                        <button onClick={() => onDelete(item)} className="text-red-600 hover:text-red-800 text-sm">🗑️</button>
+                    </div>
+                </div>
+            </div>
+        );
+
+        // CV Block Accordion Component
+        const CVBlockAccordion = ({ title, count, icon, items, ItemCard, onAdd, onEdit, onDelete }) => {
+            const [isExpanded, setIsExpanded] = useState(false);
+
+            return (
+                <div className="bg-white rounded-xl p-4 border border-slate-200 mb-3">
+                    <div
+                        className="flex justify-between items-center cursor-pointer"
+                        onClick={() => setIsExpanded(!isExpanded)}
+                    >
+                        <div className="flex items-center gap-3">
+                            <span className="text-slate-400">{isExpanded ? '▼' : '▶'}</span>
+                            <h3 className="font-semibold">{icon} {title} ({count})</h3>
+                        </div>
+                        <button
+                            onClick={(e) => { e.stopPropagation(); onAdd(); }}
+                            className="text-indigo-600 text-sm hover:text-indigo-800"
+                        >
+                            + Ny
+                        </button>
+                    </div>
+
+                    {isExpanded && items.length > 0 && (
+                        <div className="mt-4 space-y-3">
+                            {items.map((item, idx) => (
+                                <ItemCard
+                                    key={item.id || idx}
+                                    item={item}
+                                    exp={item}
+                                    onEdit={() => onEdit(item)}
+                                    onDelete={() => onDelete(item)}
+                                />
+                            ))}
+                        </div>
+                    )}
+
+                    {isExpanded && items.length === 0 && (
+                        <div className="mt-4 text-center text-slate-400 text-sm py-6">
+                            Inga objekt ännu. Klicka "+ Ny" för att lägga till.
+                        </div>
+                    )}
+                </div>
+            );
+        };
+
+        // Bransch-CV Card Component
+        const BranschCVCard = ({ cv, onView, onEdit }) => {
+            const iconMap = {
+                'Restaurant & Café': '🍽️',
+                'Butik & Kassa': '🛒',
+                'Tech & Kontor': '💻',
+                'Vård & Omsorg': '🏥',
+                'Content Moderation': '👁️',
+                'Kundtjänst': '📞',
+                'Industri & Trädgård': '🏭',
+                'Konst & Kultur': '🎨'
+            };
+
+            return (
+                <div className="bg-gradient-to-br from-white to-slate-50 rounded-xl p-4 border-2 border-slate-200 hover:border-indigo-400 transition">
+                    <div className="text-center">
+                        <div className="text-4xl mb-2">{iconMap[cv.category] || '📄'}</div>
+                        <h4 className="font-semibold text-sm mb-1">{cv.category}</h4>
+
+                        <div className="bg-indigo-100 rounded-full px-3 py-1 mb-3 inline-block">
+                            <span className="text-indigo-700 text-xs font-medium">
+                                Använd: {cv.times_used || 0}x
+                            </span>
+                        </div>
+
+                        <div className="flex flex-col gap-2">
+                            <button
+                                onClick={() => onView(cv)}
+                                className="text-xs bg-white border border-slate-300 py-2 rounded hover:bg-slate-50"
+                            >
+                                👁️ Visa
+                            </button>
+                            <button
+                                onClick={() => onEdit(cv)}
+                                className="text-xs bg-indigo-600 text-white py-2 rounded hover:bg-indigo-700"
+                            >
+                                ✏️ Redigera
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            );
+        };
+
+        // Bransch-CV Preview Modal
+        const BranschCVPreviewModal = ({ cv, onClose, onEdit, onDownloadPDF }) => {
+            if (!cv) return null;
+
+            const iconMap = {
+                'Restaurant & Café': '🍽️',
+                'Butik & Kassa': '🛒',
+                'Tech & Kontor': '💻',
+                'Vård & Omsorg': '🏥',
+                'Content Moderation': '👁️',
+                'Kundtjänst': '📞',
+                'Industri & Trädgård': '🏭',
+                'Konst & Kultur': '🎨'
+            };
+
+            return (
+                <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4" onClick={onClose}>
+                    <div className="bg-white rounded-xl max-w-4xl w-full max-h-[90vh] overflow-hidden" onClick={(e) => e.stopPropagation()}>
+                        {/* Header */}
+                        <div className="flex justify-between items-center p-6 border-b">
+                            <div className="flex items-center gap-3">
+                                <span className="text-4xl">{iconMap[cv.category] || '📄'}</span>
+                                <div>
+                                    <h2 className="text-2xl font-bold">{cv.category}</h2>
+                                    <p className="text-sm text-slate-500">Använd {cv.times_used || 0} gånger</p>
+                                </div>
+                            </div>
+
+                            <div className="flex gap-2">
+                                <button
+                                    onClick={() => onDownloadPDF(cv)}
+                                    className="px-4 py-2 bg-white border border-slate-300 rounded-lg hover:bg-slate-50"
+                                >
+                                    📥 Ladda ner PDF
+                                </button>
+                                <button
+                                    onClick={() => { onClose(); onEdit(cv); }}
+                                    className="px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700"
+                                >
+                                    ✏️ Redigera
+                                </button>
+                                <button
+                                    onClick={onClose}
+                                    className="px-4 py-2 bg-slate-200 text-slate-700 rounded-lg hover:bg-slate-300"
+                                >
+                                    ✕
+                                </button>
+                            </div>
+                        </div>
+
+                        {/* CV Content */}
+                        <div className="p-8 overflow-y-auto max-h-[60vh]">
+                            <div className="bg-white rounded-lg border border-slate-200 p-6">
+                                <pre className="whitespace-pre-wrap font-sans text-sm text-slate-700 leading-relaxed">
+                                    {cv.cv_text || 'CV-text saknas'}
+                                </pre>
+                            </div>
+                        </div>
+
+                        {/* Footer Stats */}
+                        <div className="border-t p-6">
+                            <div className="grid grid-cols-3 gap-4 text-center">
+                                <div>
+                                    <div className="text-2xl font-bold text-indigo-600">
+                                        {cv.last_used || 'Aldrig'}
+                                    </div>
+                                    <div className="text-xs text-slate-500">Senast använd</div>
+                                </div>
+                                <div>
+                                    <div className="text-2xl font-bold text-green-600">{cv.times_used || 0}</div>
+                                    <div className="text-xs text-slate-500">Totalt använd</div>
+                                </div>
+                                <div>
+                                    <div className="text-2xl font-bold text-purple-600">
+                                        {cv.created_at ? new Date(cv.created_at).toLocaleDateString('sv-SE') : 'N/A'}
+                                    </div>
+                                    <div className="text-xs text-slate-500">Skapad</div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            );
+        };
+
+        // Main Mina CV Page Component
+        const MinaCVPage = () => {
+            const [stats, setStats] = useState({});
+            const [experiences, setExperiences] = useState([]);
+            const [education, setEducation] = useState([]);
+            const [projects, setProjects] = useState([]);
+            const [certifications, setCertifications] = useState([]);
+            const [awards, setAwards] = useState([]);
+            const [volunteer, setVolunteer] = useState([]);
+            const [skills, setSkills] = useState([]);
+            const [branschCVs, setBranschCVs] = useState([]);
+            const [viewingCV, setViewingCV] = useState(null);
+
+            useEffect(() => {
+                fetchMasterCVData();
+                fetchBranschCVs();
+            }, []);
+
+            const fetchMasterCVData = async () => {
+                const token = localStorage.getItem('supabase_token');
+                if (!token) return;
+
+                try {
+                    const res = await fetch('/api/master-cv', {
+                        headers: { 'Authorization': `Bearer ${token}` }
+                    });
+                    const data = await res.json();
+
+                    setStats({
+                        experiences: data.experiences?.length || 0,
+                        education: data.education?.length || 0,
+                        awards: data.awards?.length || 0,
+                        projects: data.projects?.length || 0,
+                        languages: data.skills?.filter(s => s.skill_type === 'language').length || 0
+                    });
+
+                    setExperiences(data.experiences || []);
+                    setEducation(data.education || []);
+                    setProjects(data.projects || []);
+                    setCertifications(data.certifications || []);
+                    setAwards(data.awards || []);
+                    setVolunteer(data.volunteer || []);
+                    setSkills(data.skills || []);
+                } catch (err) {
+                    console.error('Error fetching master CV:', err);
+                }
+            };
+
+            const fetchBranschCVs = async () => {
+                const token = localStorage.getItem('supabase_token');
+                if (!token) return;
+
+                try {
+                    const res = await fetch('/api/bransch-cvs', {
+                        headers: { 'Authorization': `Bearer ${token}` }
+                    });
+                    const data = await res.json();
+                    setBranschCVs(data.bransch_cvs || []);
+                } catch (err) {
+                    console.error('Error fetching bransch-CVs:', err);
+                }
+            };
+
+            const handleDownloadMasterCV = async () => {
+                const token = localStorage.getItem('supabase_token');
+                if (!token) return;
+
+                try {
+                    const res = await fetch('/api/master-cv/download-pdf', {
+                        headers: { 'Authorization': `Bearer ${token}` }
+                    });
+                    const blob = await res.blob();
+                    const url = window.URL.createObjectURL(blob);
+                    const a = document.createElement('a');
+                    a.href = url;
+                    a.download = 'Master_CV_Linnea_Moritz.pdf';
+                    a.click();
+                    window.URL.revokeObjectURL(url);
+                } catch (err) {
+                    console.error('Error downloading Master CV:', err);
+                    alert('Kunde inte ladda ner Master CV');
+                }
+            };
+
+            const handleDownloadBranschCV = async (cv) => {
+                const token = localStorage.getItem('supabase_token');
+                if (!token) return;
+
+                try {
+                    const res = await fetch(`/api/bransch-cvs/${cv.id}/download-pdf`, {
+                        headers: { 'Authorization': `Bearer ${token}` }
+                    });
+                    const blob = await res.blob();
+                    const url = window.URL.createObjectURL(blob);
+                    const a = document.createElement('a');
+                    a.href = url;
+                    a.download = `CV_${cv.category.replace(/\s+/g, '_')}.pdf`;
+                    a.click();
+                    window.URL.revokeObjectURL(url);
+                } catch (err) {
+                    console.error('Error downloading Bransch-CV:', err);
+                    alert('Kunde inte ladda ner Bransch-CV');
+                }
+            };
+
+            return (
+                <div className="max-w-6xl mx-auto space-y-6">
+                    {/* Section 1: Master CV Summary */}
+                    <MasterCVSummary
+                        stats={stats}
+                        onUploadCV={() => alert('CV upload kommer snart!')}
+                    />
+
+                    {/* Download Master CV Button */}
+                    <div className="flex justify-end">
+                        <button
+                            onClick={handleDownloadMasterCV}
+                            className="bg-slate-700 text-white px-6 py-2 rounded-lg hover:bg-slate-800 transition"
+                        >
+                            📥 Ladda ner Master CV som PDF
+                        </button>
+                    </div>
+
+                    {/* Section 2: Expandable CV Blocks */}
+                    <div className="space-y-3">
+                        <CVBlockAccordion
+                            title="Arbetslivserfarenhet"
+                            count={experiences.length}
+                            icon="📊"
+                            items={experiences}
+                            ItemCard={ExperienceCard}
+                            onAdd={() => alert('Lägg till ny erfarenhet kommer snart!')}
+                            onEdit={(exp) => alert('Redigera erfarenhet kommer snart!')}
+                            onDelete={(exp) => alert('Ta bort erfarenhet kommer snart!')}
+                        />
+
+                        <CVBlockAccordion
+                            title="Utbildning"
+                            count={education.length}
+                            icon="🎓"
+                            items={education}
+                            ItemCard={EducationCard}
+                            onAdd={() => alert('Lägg till ny utbildning kommer snart!')}
+                            onEdit={(edu) => alert('Redigera utbildning kommer snart!')}
+                            onDelete={(edu) => alert('Ta bort utbildning kommer snart!')}
+                        />
+
+                        <CVBlockAccordion
+                            title="Tech-projekt"
+                            count={projects.length}
+                            icon="💻"
+                            items={projects}
+                            ItemCard={ProjectCard}
+                            onAdd={() => alert('Lägg till nytt projekt kommer snart!')}
+                            onEdit={(proj) => alert('Redigera projekt kommer snart!')}
+                            onDelete={(proj) => alert('Ta bort projekt kommer snart!')}
+                        />
+
+                        <CVBlockAccordion
+                            title="Certifieringar"
+                            count={certifications.length}
+                            icon="🏅"
+                            items={certifications}
+                            ItemCard={({ item, onEdit, onDelete }) => (
+                                <GenericCard
+                                    item={item}
+                                    icon="🏅"
+                                    title={item.certification_name || item.name}
+                                    subtitle={item.organization}
+                                    onEdit={onEdit}
+                                    onDelete={onDelete}
+                                />
+                            )}
+                            onAdd={() => alert('Lägg till ny certifiering kommer snart!')}
+                            onEdit={(cert) => alert('Redigera certifiering kommer snart!')}
+                            onDelete={(cert) => alert('Ta bort certifiering kommer snart!')}
+                        />
+
+                        <CVBlockAccordion
+                            title="Priser"
+                            count={awards.length}
+                            icon="🏆"
+                            items={awards}
+                            ItemCard={({ item, onEdit, onDelete }) => (
+                                <GenericCard
+                                    item={item}
+                                    icon="🏆"
+                                    title={item.award_name}
+                                    subtitle={item.organization}
+                                    onEdit={onEdit}
+                                    onDelete={onDelete}
+                                />
+                            )}
+                            onAdd={() => alert('Lägg till nytt pris kommer snart!')}
+                            onEdit={(award) => alert('Redigera pris kommer snart!')}
+                            onDelete={(award) => alert('Ta bort pris kommer snart!')}
+                        />
+
+                        <CVBlockAccordion
+                            title="Volontärarbete"
+                            count={volunteer.length}
+                            icon="🤝"
+                            items={volunteer}
+                            ItemCard={({ item, onEdit, onDelete }) => (
+                                <GenericCard
+                                    item={item}
+                                    icon="🤝"
+                                    title={item.organization_name}
+                                    subtitle={item.role}
+                                    onEdit={onEdit}
+                                    onDelete={onDelete}
+                                />
+                            )}
+                            onAdd={() => alert('Lägg till nytt volontärarbete kommer snart!')}
+                            onEdit={(vol) => alert('Redigera volontärarbete kommer snart!')}
+                            onDelete={(vol) => alert('Ta bort volontärarbete kommer snart!')}
+                        />
+
+                        <CVBlockAccordion
+                            title="Språk"
+                            count={skills.filter(s => s.skill_type === 'language').length}
+                            icon="🗣️"
+                            items={skills.filter(s => s.skill_type === 'language')}
+                            ItemCard={({ item, onEdit, onDelete }) => (
+                                <GenericCard
+                                    item={item}
+                                    icon="🗣️"
+                                    title={item.skill_name}
+                                    subtitle={item.proficiency_level}
+                                    onEdit={onEdit}
+                                    onDelete={onDelete}
+                                />
+                            )}
+                            onAdd={() => alert('Lägg till nytt språk kommer snart!')}
+                            onEdit={(lang) => alert('Redigera språk kommer snart!')}
+                            onDelete={(lang) => alert('Ta bort språk kommer snart!')}
+                        />
+                    </div>
+
+                    {/* Section 3: Bransch-CVs Grid */}
+                    <div className="bg-white rounded-xl p-6 border border-slate-200">
+                        <h3 className="text-xl font-bold mb-2">Bransch-CVs (8 mallar)</h3>
+                        <p className="text-slate-600 text-sm mb-6">
+                            Återanvändbara CV-mallar för olika branscher
+                        </p>
+
+                        <div className="grid grid-cols-4 gap-4">
+                            {branschCVs.map((cv, idx) => (
+                                <BranschCVCard
+                                    key={cv.id || idx}
+                                    cv={cv}
+                                    onView={(cv) => setViewingCV(cv)}
+                                    onEdit={(cv) => alert('Redigera Bransch-CV kommer snart!')}
+                                />
+                            ))}
+                        </div>
+
+                        <button
+                            onClick={() => alert('Skapa nytt Bransch-CV kommer snart!')}
+                            className="w-full mt-6 bg-indigo-600 text-white py-3 rounded-lg hover:bg-indigo-700"
+                        >
+                            + Skapa nytt bransch-CV
+                        </button>
+                    </div>
+
+                    {/* Bransch-CV Preview Modal */}
+                    {viewingCV && (
+                        <BranschCVPreviewModal
+                            cv={viewingCV}
+                            onClose={() => setViewingCV(null)}
+                            onEdit={(cv) => alert('Redigera Bransch-CV kommer snart!')}
+                            onDownloadPDF={handleDownloadBranschCV}
+                        />
+                    )}
+                </div>
+            );
+        };
+
         // Jobs page
         const JobsPage = ({ jobs, onScrape, onApply, scraping, applyingJob, savedJobs, onSaveJob, onOpenQuiz }) => {
             const [keywords, setKeywords] = useState('');
@@ -3367,17 +3979,7 @@
                         )}
 
                         {activeTab === 'cvs' && (
-                            <CVsPage
-                                vibes={vibes}
-                                userCVs={userCVs}
-                                onSelectVibe={handleSelectVibe}
-                                onGenerateVibes={handleGenerateVibes}
-                                generating={generating}
-                                onOpenMasterCV={handleOpenMasterCV}
-                                onMigrate={handleMigrateData}
-                                migrating={migrating}
-                                onUploadCV={handleUploadCV}
-                            />
+                            <MinaCVPage />
                         )}
 
                         {activeTab === 'applications' && (

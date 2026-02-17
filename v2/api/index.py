@@ -1534,6 +1534,155 @@ async def update_cv(vibe_id: str, cv_text: str, user_id: str = "default_user"):
     raise HTTPException(status_code=500, detail="Kunde inte uppdatera CV")
 
 
+# ============== MASTER CV & BRANSCH-CVS ENDPOINTS ==============
+
+@app.get("/api/master-cv")
+async def get_full_master_cv(request: Request):
+    """Get complete Master CV data including all sections (experiences, education, projects, certifications, awards, volunteer, skills)"""
+    auth_header = request.headers.get("Authorization", "")
+    user_id = None
+
+    if auth_header.startswith("Bearer "):
+        token = auth_header.replace("Bearer ", "")
+        async with httpx.AsyncClient() as client:
+            user_response = await client.get(
+                f"{SUPABASE_URL}/auth/v1/user",
+                headers={"apikey": SUPABASE_ANON_KEY, "Authorization": f"Bearer {token}"}
+            )
+            if user_response.status_code == 200:
+                user_id = user_response.json().get("id")
+
+    if not user_id:
+        return {"success": False, "message": "Ej inloggad"}
+
+    # Fetch all data from Supabase
+    experiences = await db_request("GET", "user_experiences", params={
+        "user_id": f"eq.{user_id}", "order": "sort_order.asc"
+    }) or []
+
+    education = await db_request("GET", "user_education", params={
+        "user_id": f"eq.{user_id}", "order": "sort_order.asc"
+    }) or []
+
+    projects = await db_request("GET", "tech_projects", params={
+        "user_id": f"eq.{user_id}", "order": "sort_order.asc"
+    }) or []
+
+    certifications = await db_request("GET", "user_certifications", params={
+        "user_id": f"eq.{user_id}", "order": "sort_order.asc"
+    }) or []
+
+    tech_certs = await db_request("GET", "tech_certifications", params={
+        "user_id": f"eq.{user_id}", "order": "sort_order.asc"
+    }) or []
+
+    awards = await db_request("GET", "user_awards", params={
+        "user_id": f"eq.{user_id}", "order": "sort_order.asc"
+    }) or []
+
+    volunteer = await db_request("GET", "user_volunteer", params={
+        "user_id": f"eq.{user_id}", "order": "sort_order.asc"
+    }) or []
+
+    skills = await db_request("GET", "user_skills", params={
+        "user_id": f"eq.{user_id}"
+    }) or []
+
+    return {
+        "experiences": experiences,
+        "education": education,
+        "projects": projects,
+        "certifications": certifications + tech_certs,
+        "awards": awards,
+        "volunteer": volunteer,
+        "skills": skills
+    }
+
+
+@app.get("/api/bransch-cvs")
+async def get_bransch_cvs(request: Request):
+    """Get all Bransch-CVs (industry-specific CV templates)"""
+    auth_header = request.headers.get("Authorization", "")
+    user_id = None
+
+    if auth_header.startswith("Bearer "):
+        token = auth_header.replace("Bearer ", "")
+        async with httpx.AsyncClient() as client:
+            user_response = await client.get(
+                f"{SUPABASE_URL}/auth/v1/user",
+                headers={"apikey": SUPABASE_ANON_KEY, "Authorization": f"Bearer {token}"}
+            )
+            if user_response.status_code == 200:
+                user_id = user_response.json().get("id")
+
+    if not user_id:
+        return {"success": False, "bransch_cvs": []}
+
+    # Fetch bransch-CVs from database
+    bransch_cvs = await db_request("GET", "bransch_cvs", params={
+        "user_id": f"eq.{user_id}", "order": "created_at.desc"
+    }) or []
+
+    return {"bransch_cvs": bransch_cvs}
+
+
+@app.get("/api/master-cv/download-pdf")
+async def download_master_cv_pdf(request: Request):
+    """Generate and download Master CV as PDF"""
+    auth_header = request.headers.get("Authorization", "")
+    user_id = None
+
+    if auth_header.startswith("Bearer "):
+        token = auth_header.replace("Bearer ", "")
+        async with httpx.AsyncClient() as client:
+            user_response = await client.get(
+                f"{SUPABASE_URL}/auth/v1/user",
+                headers={"apikey": SUPABASE_ANON_KEY, "Authorization": f"Bearer {token}"}
+            )
+            if user_response.status_code == 200:
+                user_id = user_response.json().get("id")
+
+    if not user_id:
+        raise HTTPException(status_code=401, detail="Ej inloggad")
+
+    # For now, return a simple text response indicating this feature is coming soon
+    # In production, this would generate a formatted PDF using a library like ReportLab or WeasyPrint
+    raise HTTPException(status_code=501, detail="PDF-generering kommer snart. Använd Bransch-CVs för nu.")
+
+
+@app.get("/api/bransch-cvs/{cv_id}/download-pdf")
+async def download_bransch_cv_pdf(cv_id: str, request: Request):
+    """Generate and download a specific Bransch-CV as PDF"""
+    auth_header = request.headers.get("Authorization", "")
+    user_id = None
+
+    if auth_header.startswith("Bearer "):
+        token = auth_header.replace("Bearer ", "")
+        async with httpx.AsyncClient() as client:
+            user_response = await client.get(
+                f"{SUPABASE_URL}/auth/v1/user",
+                headers={"apikey": SUPABASE_ANON_KEY, "Authorization": f"Bearer {token}"}
+            )
+            if user_response.status_code == 200:
+                user_id = user_response.json().get("id")
+
+    if not user_id:
+        raise HTTPException(status_code=401, detail="Ej inloggad")
+
+    # Fetch the specific Bransch-CV
+    cv_result = await db_request("GET", "bransch_cvs", params={
+        "id": f"eq.{cv_id}",
+        "user_id": f"eq.{user_id}"
+    })
+
+    if not cv_result or len(cv_result) == 0:
+        raise HTTPException(status_code=404, detail="Bransch-CV hittades inte")
+
+    # For now, return a simple text response indicating this feature is coming soon
+    # In production, this would generate a formatted PDF
+    raise HTTPException(status_code=501, detail="PDF-generering kommer snart. CV-text finns i bransch-CV databasen.")
+
+
 @app.post("/api/jobs/{job_id}/apply-with-cv")
 async def apply_with_cv(request: Request, job_id: str):
     """
