@@ -2217,6 +2217,7 @@
             const [letterStyle, setLetterStyle] = useState(null);
             const [loadingStyle, setLoadingStyle] = useState(true);
             const [saveStatus, setSaveStatus] = useState('');
+            const [dragOver, setDragOver] = useState(false);
 
             useEffect(() => {
                 fetchLetterStyle();
@@ -2237,39 +2238,46 @@
                 setLoadingStyle(false);
             };
 
-            const handleUpload = async () => {
+            const uploadFile = async (file) => {
                 const token = localStorage.getItem('auth_token');
-                if (!token) return;
+                if (!token || !file) return;
+                setUploading(true);
+                setSaveStatus('Analyserar brev...');
+                const formData = new FormData();
+                formData.append('file', file);
+                formData.append('type', 'cover_letter');
+                try {
+                    const res = await fetch('/api/user/upload-training-letter', {
+                        method: 'POST',
+                        headers: { 'Authorization': `Bearer ${token}` },
+                        body: formData
+                    });
+                    const data = await res.json();
+                    if (data.success) {
+                        setSaveStatus('✓ AI har analyserat ditt brev!');
+                        await fetchLetterStyle();
+                    } else {
+                        setSaveStatus('Något gick fel. Försök igen.');
+                    }
+                } catch(e) {
+                    setSaveStatus('Något gick fel. Försök igen.');
+                }
+                setUploading(false);
+            };
+
+            const handleUpload = () => {
                 const input = document.createElement('input');
                 input.type = 'file';
                 input.accept = '.pdf,.docx,.doc,.txt,.rtf,.odt';
-                input.onchange = async (e) => {
-                    const file = e.target.files[0];
-                    if (!file) return;
-                    setUploading(true);
-                    setSaveStatus('Analyserar brev...');
-                    const formData = new FormData();
-                    formData.append('file', file);
-                    formData.append('type', 'cover_letter');
-                    try {
-                        const res = await fetch('/api/user/upload-training-letter', {
-                            method: 'POST',
-                            headers: { 'Authorization': `Bearer ${token}` },
-                            body: formData
-                        });
-                        const data = await res.json();
-                        if (data.success) {
-                            setSaveStatus('✓ AI har analyserat ditt brev!');
-                            await fetchLetterStyle();
-                        } else {
-                            setSaveStatus('Något gick fel. Försök igen.');
-                        }
-                    } catch(e) {
-                        setSaveStatus('Något gick fel. Försök igen.');
-                    }
-                    setUploading(false);
-                };
+                input.onchange = (e) => uploadFile(e.target.files[0]);
                 input.click();
+            };
+
+            const handleDrop = (e) => {
+                e.preventDefault();
+                setDragOver(false);
+                const file = e.dataTransfer.files[0];
+                if (file) uploadFile(file);
             };
 
             const handlePasteSubmit = async () => {
@@ -2318,7 +2326,11 @@
 
                     {/* Upload or paste */}
                     <div className="bg-white rounded-xl p-6 border border-slate-200">
-                        <h3 className="text-lg font-semibold mb-4">📤 Ladda upp eller klistra in ett brev</h3>
+                        <h3 className="text-lg font-semibold mb-1">📤 Träna din AI</h3>
+                        <p className="text-sm text-slate-500 mb-4">
+                            Vi säljer aldrig din data. Brevet används enbart för att göra dina ansökningar bättre.{' '}
+                            <a href="https://gdpr.eu/what-is-gdpr/" target="_blank" rel="noopener noreferrer" className="text-indigo-500 underline hover:text-indigo-700">Läs mer om GDPR</a>.
+                        </p>
 
                         {/* Mode toggle */}
                         <div className="flex gap-2 mb-5 p-1 bg-slate-100 rounded-lg w-fit">
@@ -2337,16 +2349,22 @@
                         </div>
 
                         {mode === 'upload' && (
-                            <div>
-                                <button
-                                    onClick={handleUpload}
-                                    disabled={uploading}
-                                    className="w-full border-2 border-dashed border-slate-300 hover:border-indigo-400 rounded-xl py-10 text-center text-slate-500 hover:text-indigo-600 transition disabled:opacity-50"
-                                >
-                                    <div className="text-4xl mb-2">📂</div>
-                                    <div className="font-medium">{uploading ? 'Analyserar...' : 'Klicka för att välja fil'}</div>
-                                    <div className="text-xs mt-1">PDF, DOCX, DOC, TXT, RTF, ODT</div>
-                                </button>
+                            <div
+                                onDragOver={(e) => { e.preventDefault(); setDragOver(true); }}
+                                onDragLeave={() => setDragOver(false)}
+                                onDrop={handleDrop}
+                                onClick={!uploading ? handleUpload : undefined}
+                                className={`w-full border-2 border-dashed rounded-xl py-12 text-center transition cursor-pointer select-none ${
+                                    uploading ? 'opacity-50 cursor-default' :
+                                    dragOver ? 'border-indigo-500 bg-indigo-50 text-indigo-600 scale-[1.01]' :
+                                    'border-slate-300 hover:border-indigo-400 text-slate-500 hover:text-indigo-600'
+                                }`}
+                            >
+                                <div className="text-4xl mb-2">{dragOver ? '📥' : uploading ? '⏳' : '📂'}</div>
+                                <div className="font-medium text-base">
+                                    {uploading ? 'Analyserar...' : dragOver ? 'Släpp filen här' : 'Dra hit en fil, eller klicka för att välja'}
+                                </div>
+                                <div className="text-xs mt-1 text-slate-400">PDF, DOCX, DOC, TXT, RTF, ODT</div>
                             </div>
                         )}
 
@@ -2442,7 +2460,7 @@
                             <div className="text-center py-10 text-slate-400">
                                 <div className="text-4xl mb-3">📭</div>
                                 <div className="font-medium mb-1">Inget brev analyserat ännu</div>
-                                <div className="text-sm">Ladda upp eller klistra in ett brev ovan för att träna AI</div>
+                                <div className="text-sm">Ladda upp eller klistra in ett brev ovan för att träna din AI</div>
                             </div>
                         )}
                     </div>
