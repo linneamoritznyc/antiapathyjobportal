@@ -5,6 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Mitt konto - Platsbanken AI</title>
     <script src="https://cdn.tailwindcss.com"></script>
+    <!-- VERSION: 2025-02-16-v3-with-uploads -->
 </head>
 <body class="bg-slate-50 min-h-screen">
     <div id="root"></div>
@@ -43,6 +44,14 @@
             const [savingPassword, setSavingPassword] = useState(false);
             const [exporting, setExporting] = useState(false);
             const [deleting, setDeleting] = useState(false);
+
+            // File upload states
+            const [uploadingCV, setUploadingCV] = useState(false);
+            const [uploadingPhoto, setUploadingPhoto] = useState(false);
+            const [uploadingLetter, setUploadingLetter] = useState(false);
+            const [cvFile, setCVFile] = useState(null);
+            const [photoPreview, setPhotoPreview] = useState(null);
+            const [letterFile, setLetterFile] = useState(null);
 
             useEffect(() => {
                 checkAuth();
@@ -220,6 +229,131 @@
                 }
             };
 
+            const handleCVUpload = async (e) => {
+                const file = e.target.files[0];
+                if (!file) return;
+
+                setCVFile(file.name);
+                setUploadingCV(true);
+
+                const formData = new FormData();
+                formData.append('file', file);
+
+                try {
+                    const token = localStorage.getItem('auth_token');
+                    const res = await fetch('/api/cv/upload-and-analyze', {
+                        method: 'POST',
+                        headers: { 'Authorization': `Bearer ${token}` },
+                        body: formData
+                    });
+
+                    if (!res.ok) {
+                        const errorData = await res.json().catch(() => ({}));
+                        const errorMsg = errorData.detail || 'Kunde inte ladda upp CV';
+                        showToast(errorMsg, 'error');
+                        setUploadingCV(false);
+                        return;
+                    }
+
+                    const data = await res.json();
+
+                    if (data.profile_data) {
+                        // Auto-fill profile with extracted data
+                        if (data.profile_data.full_name) {
+                            const nameParts = data.profile_data.full_name.split(' ');
+                            const firstName = nameParts[0] || '';
+                            const lastName = nameParts.slice(1).join(' ') || '';
+                            setProfile(prev => ({
+                                ...prev,
+                                first_name: firstName,
+                                last_name: lastName
+                            }));
+                        }
+                        if (data.profile_data.phone) {
+                            setProfile(prev => ({ ...prev, phone: data.profile_data.phone }));
+                        }
+                        showToast('CV uppladdad! Profil uppdaterad automatiskt.');
+                    } else {
+                        showToast('CV uppladdad men kunde inte extrahera data.', 'error');
+                    }
+                } catch (err) {
+                    console.error('CV upload error:', err);
+                    showToast('Nätverksfel. Försök igen.', 'error');
+                } finally {
+                    setUploadingCV(false);
+                }
+            };
+
+            const handlePhotoUpload = async (e) => {
+                const file = e.target.files[0];
+                if (!file) return;
+
+                // Show preview
+                const reader = new FileReader();
+                reader.onload = (e) => setPhotoPreview(e.target.result);
+                reader.readAsDataURL(file);
+
+                setUploadingPhoto(true);
+
+                const formData = new FormData();
+                formData.append('file', file);
+
+                try {
+                    const token = localStorage.getItem('auth_token');
+                    const res = await fetch('/api/upload/profile-photo', {
+                        method: 'POST',
+                        headers: { 'Authorization': `Bearer ${token}` },
+                        body: formData
+                    });
+
+                    const data = await res.json();
+
+                    if (res.ok) {
+                        showToast('Profilbild uppladdad!');
+                    } else {
+                        showToast('Kunde inte ladda upp bild.', 'error');
+                    }
+                } catch (err) {
+                    console.error('Photo upload error:', err);
+                    showToast('Kunde inte ladda upp bild.', 'error');
+                } finally {
+                    setUploadingPhoto(false);
+                }
+            };
+
+            const handleLetterUpload = async (e) => {
+                const file = e.target.files[0];
+                if (!file) return;
+
+                setLetterFile(file.name);
+                setUploadingLetter(true);
+
+                const formData = new FormData();
+                formData.append('file', file);
+
+                try {
+                    const token = localStorage.getItem('auth_token');
+                    const res = await fetch('/api/upload/training-letter', {
+                        method: 'POST',
+                        headers: { 'Authorization': `Bearer ${token}` },
+                        body: formData
+                    });
+
+                    const data = await res.json();
+
+                    if (res.ok) {
+                        showToast('Praktikbrev uppladdad! Din skrivstil har analyserats.');
+                    } else {
+                        showToast('Kunde inte ladda upp praktikbrev.', 'error');
+                    }
+                } catch (err) {
+                    console.error('Letter upload error:', err);
+                    showToast('Kunde inte ladda upp praktikbrev.', 'error');
+                } finally {
+                    setUploadingLetter(false);
+                }
+            };
+
             const handleLogout = () => {
                 localStorage.removeItem('auth_token');
                 localStorage.removeItem('refresh_token');
@@ -367,6 +501,106 @@
                                 </button>
                             </form>
                         </section>
+                        )}
+
+                        {/* File Uploads Section - only show on profile tab */}
+                        {activeTab === 'profile' && (
+                        <>
+                        {/* CV Upload */}
+                        <section className="bg-white rounded-xl border border-slate-200 p-6">
+                            <h2 className="text-lg font-semibold text-slate-800 mb-4">📄 CV</h2>
+                            <p className="text-sm text-slate-600 mb-4">
+                                Ladda upp ditt CV så fyller vi i din profil automatiskt med AI.
+                            </p>
+                            <div className="space-y-4">
+                                <div className="flex items-center gap-4">
+                                    <input
+                                        type="file"
+                                        id="cv-upload"
+                                        accept=".pdf,.doc,.docx,.txt,.rtf,.odt"
+                                        onChange={handleCVUpload}
+                                        className="hidden"
+                                    />
+                                    <label
+                                        htmlFor="cv-upload"
+                                        className="px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 cursor-pointer"
+                                    >
+                                        Välj CV-fil
+                                    </label>
+                                    {uploadingCV && <span className="text-sm text-slate-600">Laddar upp...</span>}
+                                </div>
+                                {cvFile && (
+                                    <div className="flex items-center gap-2 text-sm text-slate-700 bg-slate-50 p-3 rounded-lg">
+                                        <span>📎 {cvFile}</span>
+                                        <button onClick={() => setCVFile(null)} className="text-red-600 hover:text-red-800 ml-auto">✕</button>
+                                    </div>
+                                )}
+                            </div>
+                        </section>
+
+                        {/* Profile Photo Upload */}
+                        <section className="bg-white rounded-xl border border-slate-200 p-6">
+                            <h2 className="text-lg font-semibold text-slate-800 mb-4">📸 Profilbild</h2>
+                            <p className="text-sm text-slate-600 mb-4">
+                                Ladda upp en profilbild (valfritt).
+                            </p>
+                            <div className="space-y-4">
+                                <div className="flex items-center gap-4">
+                                    <input
+                                        type="file"
+                                        id="photo-upload"
+                                        accept="image/jpeg,image/png,image/jpg,image/webp"
+                                        onChange={handlePhotoUpload}
+                                        className="hidden"
+                                    />
+                                    <label
+                                        htmlFor="photo-upload"
+                                        className="px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 cursor-pointer"
+                                    >
+                                        Välj bild
+                                    </label>
+                                    {uploadingPhoto && <span className="text-sm text-slate-600">Laddar upp...</span>}
+                                </div>
+                                {photoPreview && (
+                                    <div className="mt-4">
+                                        <img src={photoPreview} alt="Profilbild" className="w-32 h-32 rounded-full object-cover border-2 border-slate-200" />
+                                    </div>
+                                )}
+                            </div>
+                        </section>
+
+                        {/* Training Letter Upload */}
+                        <section className="bg-white rounded-xl border border-slate-200 p-6">
+                            <h2 className="text-lg font-semibold text-slate-800 mb-4">✍️ Praktikbrev</h2>
+                            <p className="text-sm text-slate-600 mb-4">
+                                Ladda upp ett tidigare personligt brev så kan AI matcha din skrivstil.
+                            </p>
+                            <div className="space-y-4">
+                                <div className="flex items-center gap-4">
+                                    <input
+                                        type="file"
+                                        id="letter-upload"
+                                        accept=".pdf,.doc,.docx,.txt"
+                                        onChange={handleLetterUpload}
+                                        className="hidden"
+                                    />
+                                    <label
+                                        htmlFor="letter-upload"
+                                        className="px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 cursor-pointer"
+                                    >
+                                        Välj praktikbrev
+                                    </label>
+                                    {uploadingLetter && <span className="text-sm text-slate-600">Laddar upp...</span>}
+                                </div>
+                                {letterFile && (
+                                    <div className="flex items-center gap-2 text-sm text-slate-700 bg-slate-50 p-3 rounded-lg">
+                                        <span>📎 {letterFile}</span>
+                                        <button onClick={() => setLetterFile(null)} className="text-red-600 hover:text-red-800 ml-auto">✕</button>
+                                    </div>
+                                )}
+                            </div>
+                        </section>
+                        </>
                         )}
 
                         {/* Settings Tab Content */}
@@ -519,5 +753,8 @@
             animation: slide-in 0.3s ease-out;
         }
     </style>
+    <div style="position:fixed;bottom:10px;right:10px;font-size:10px;color:#999;background:#fff;padding:4px 8px;border-radius:4px;border:1px solid #ddd;">
+        v3-uploads-2025-02-16
+    </div>
 </body>
 </html>

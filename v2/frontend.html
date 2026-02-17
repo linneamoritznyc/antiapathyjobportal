@@ -1,6 +1,7 @@
 <!DOCTYPE html>
 <html lang="sv">
 <head>
+    <!-- VERSION: 2025-02-16-v4-debug-data-loading -->
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Anti-Apathy Job Portal</title>
@@ -193,13 +194,12 @@
         };
 
         // CV Vibe card
-        const CVVibeCard = ({ vibe, userCV, onSelect }) => {
+        const CVVibeCard = ({ vibe, userCV, onSelect, onUploadCV }) => {
             const hasCV = !!userCV;
+            const hasPDF = userCV?.pdf_url;
+
             return (
-                <div
-                    className={`rounded-xl p-5 border-2 cursor-pointer transition ${hasCV ? 'bg-white border-green-200 hover:border-green-400' : 'bg-slate-50 border-slate-200 hover:border-indigo-300'}`}
-                    onClick={() => onSelect(vibe, userCV)}
-                >
+                <div className={`rounded-xl p-5 border-2 transition ${hasCV ? 'bg-white border-green-200' : 'bg-slate-50 border-slate-200'}`}>
                     <div className="text-3xl mb-2">{vibe.emoji}</div>
                     <h3 className="font-semibold text-slate-800">{vibe.name}</h3>
                     <p className="text-xs text-slate-500 mt-1">{vibe.focus}</p>
@@ -208,6 +208,31 @@
                     ) : (
                         <span className="inline-block mt-3 text-xs bg-slate-100 text-slate-500 px-2 py-1 rounded-full">Inte skapat</span>
                     )}
+
+                    <div className="mt-3 flex flex-col gap-2">
+                        <button
+                            onClick={(e) => { e.stopPropagation(); onUploadCV(vibe); }}
+                            className="w-full bg-indigo-600 text-white px-3 py-2 rounded-lg text-xs font-medium hover:bg-indigo-700"
+                        >
+                            📤 Ladda upp CV
+                        </button>
+                        {hasPDF && (
+                            <a
+                                href={userCV.pdf_url}
+                                target="_blank"
+                                onClick={(e) => e.stopPropagation()}
+                                className="w-full bg-slate-100 text-slate-700 px-3 py-2 rounded-lg text-xs font-medium hover:bg-slate-200 text-center"
+                            >
+                                📄 Visa fil
+                            </a>
+                        )}
+                        <button
+                            onClick={() => onSelect(vibe, userCV)}
+                            className="w-full bg-slate-600 text-white px-3 py-2 rounded-lg text-xs font-medium hover:bg-slate-700"
+                        >
+                            ✏️ Redigera
+                        </button>
+                    </div>
                 </div>
             );
         };
@@ -1425,18 +1450,11 @@
         };
 
         // CVs page
-        const CVsPage = ({ vibes, userCVs, onSelectVibe, onGenerateVibes, generating, onOpenMasterCV, onMigrate, migrating }) => (
+        const CVsPage = ({ vibes, userCVs, onSelectVibe, onGenerateVibes, generating, onOpenMasterCV, onUploadCV }) => (
             <div>
                 <div className="flex justify-between items-center mb-6">
                     <h2 className="text-lg font-semibold">Mina CV-versioner</h2>
                     <div className="flex gap-2">
-                        <button
-                            onClick={onMigrate}
-                            disabled={migrating}
-                            className="bg-green-600 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-green-700 disabled:opacity-50"
-                        >
-                            {migrating ? 'Laddar...' : 'Ladda min data'}
-                        </button>
                         <button
                             onClick={onOpenMasterCV}
                             className="bg-slate-700 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-slate-800"
@@ -1468,6 +1486,7 @@
                                 vibe={vibe}
                                 userCV={userCV}
                                 onSelect={onSelectVibe}
+                                onUploadCV={onUploadCV}
                             />
                         );
                     })}
@@ -2374,18 +2393,28 @@
             };
 
             const fetchVibes = async () => {
+                console.log('[DEBUG] Fetching CV vibes...');
                 const res = await fetch('/api/cv/vibes');
                 const data = await res.json();
-                if (data.success) setVibes(data.vibes || []);
+                console.log('[DEBUG] CV vibes response:', data);
+                if (data.success) {
+                    setVibes(data.vibes || []);
+                    console.log('[DEBUG] Vibes set:', data.vibes?.length || 0, 'vibes');
+                }
             };
 
             const fetchUserCVs = async () => {
                 const token = localStorage.getItem('auth_token');
+                console.log('[DEBUG] Fetching user CVs... Auth token exists:', !!token);
                 const res = await fetch('/api/cv/all', {
                     headers: token ? { 'Authorization': `Bearer ${token}` } : {}
                 });
                 const data = await res.json();
-                if (data.success) setUserCVs(data.cvs || []);
+                console.log('[DEBUG] User CVs response:', data);
+                if (data.success) {
+                    setUserCVs(data.cvs || []);
+                    console.log('[DEBUG] User CVs set:', data.cvs?.length || 0, 'CVs');
+                }
             };
 
             const fetchApplications = async () => {
@@ -2644,6 +2673,60 @@
                 setMigrating(false);
             };
 
+            // Upload CV PDF
+            const [uploadingCV, setUploadingCV] = useState(false);
+            const [uploadVibeId, setUploadVibeId] = useState(null);
+
+            const handleUploadCV = async (vibe) => {
+                const input = document.createElement('input');
+                input.type = 'file';
+                input.accept = '.pdf,.docx,.doc,.txt,.rtf,.odt';
+                input.onchange = async (e) => {
+                    const file = e.target.files[0];
+                    if (!file) return;
+
+                    // Validate file type
+                    const validExtensions = ['pdf', 'docx', 'doc', 'txt', 'rtf', 'odt'];
+                    const fileExt = file.name.split('.').pop().toLowerCase();
+                    if (!validExtensions.includes(fileExt)) {
+                        alert('Ogiltigt filformat! Använd PDF, DOCX, DOC, TXT, RTF eller ODT');
+                        return;
+                    }
+
+                    setUploadingCV(true);
+                    setUploadVibeId(vibe.id);
+
+                    try {
+                        const token = localStorage.getItem('auth_token');
+                        const formData = new FormData();
+                        formData.append('file', file);
+
+                        const res = await fetch(`/api/upload/cv/${vibe.id}`, {
+                            method: 'POST',
+                            headers: {
+                                'Authorization': `Bearer ${token}`
+                            },
+                            body: formData
+                        });
+
+                        const data = await res.json();
+                        if (data.success) {
+                            alert(`✓ CV för ${vibe.name} uppladdad!`);
+                            await fetchUserCVs();
+                        } else {
+                            alert(data.detail || 'Kunde inte ladda upp CV. Försök igen.');
+                        }
+                    } catch (err) {
+                        console.error(err);
+                        alert('Något gick fel vid uppladdning.');
+                    }
+
+                    setUploadingCV(false);
+                    setUploadVibeId(null);
+                };
+                input.click();
+            };
+
             // Check auth on mount
             const [user, setUser] = useState(null);
 
@@ -2801,6 +2884,7 @@
                                 onOpenMasterCV={handleOpenMasterCV}
                                 onMigrate={handleMigrateData}
                                 migrating={migrating}
+                                onUploadCV={handleUploadCV}
                             />
                         )}
 
@@ -2846,6 +2930,11 @@
                             <p>© 2026 Platsbanken AI</p>
                         </div>
                     </footer>
+
+                    {/* Version badge */}
+                    <div style={{position:'fixed',bottom:'10px',right:'10px',fontSize:'10px',color:'#999',background:'#fff',padding:'4px 8px',borderRadius:'4px',border:'1px solid #ddd',zIndex:9999}}>
+                        v4-debug-2025-02-16
+                    </div>
                 </div>
             );
         };

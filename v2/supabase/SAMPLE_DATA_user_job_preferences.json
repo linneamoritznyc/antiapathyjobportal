@@ -1,0 +1,31 @@
+[
+  {
+    "info_type": "SAMPLE_DATA_user_job_preferences",
+    "id": "5d1daf8a-ebd9-424f-9190-c0400ef47e4e",
+    "user_id": "da8ed517-3b67-4456-8831-6ed3cb7114ad",
+    "search_keywords": [
+      "servitör",
+      "servitris",
+      "kundtjänst",
+      "content moderator",
+      "barista",
+      "café",
+      "receptionist",
+      "butik",
+      "kassa",
+      "trädgård"
+    ],
+    "locations": [
+      "Stockholm",
+      "Sollentuna",
+      "Sundbyberg",
+      "Solna",
+      "Vetlanda",
+      "Nässjö",
+      "Eksjö",
+      "Småland",
+      "Jönköping"
+    ],
+    "excluded_companies": []
+  }
+]
