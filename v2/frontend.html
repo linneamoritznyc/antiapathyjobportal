@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="sv">
 <head>
-    <!-- VERSION: 2025-02-17-PINK-TEST -->
+    <!-- VERSION: 2026-02-17-ERROR-DISPLAY -->
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Anti-Apathy Job Portal</title>
@@ -16,6 +16,34 @@
     </style>
 </head>
 <body class="bg-slate-50 min-h-screen">
+    <!-- Error display (shown until React renders) -->
+    <div id="js-error" style="display:none;position:fixed;top:0;left:0;right:0;bottom:0;background:#fff;padding:40px;font-family:monospace;z-index:99999;overflow:auto;">
+        <h2 style="color:#dc2626;font-size:1.5rem;margin-bottom:1rem;">JavaScript-fel (vit sida)</h2>
+        <pre id="js-error-msg" style="background:#fef2f2;border:1px solid #fca5a5;padding:16px;border-radius:8px;white-space:pre-wrap;word-break:break-all;font-size:0.75rem;"></pre>
+        <p style="margin-top:1rem;color:#6b7280;font-size:0.875rem;">Om du ser detta, ta en skärmdump och dela med utvecklaren.</p>
+    </div>
+    <script>
+        // Catch any JS errors before Babel runs
+        window.onerror = function(msg, src, line, col, err) {
+            var el = document.getElementById('js-error');
+            var msgEl = document.getElementById('js-error-msg');
+            if (el && msgEl) {
+                el.style.display = 'block';
+                document.getElementById('root').style.display = 'none';
+                msgEl.textContent = 'Fel: ' + msg + '\nFil: ' + src + '\nRad: ' + line + ':' + col + (err ? '\n\nStack:\n' + err.stack : '');
+            }
+            return false;
+        };
+        window.addEventListener('unhandledrejection', function(e) {
+            var el = document.getElementById('js-error');
+            var msgEl = document.getElementById('js-error-msg');
+            if (el && msgEl) {
+                el.style.display = 'block';
+                document.getElementById('root').style.display = 'none';
+                msgEl.textContent = 'Promise-fel: ' + (e.reason ? (e.reason.stack || e.reason) : e);
+            }
+        });
+    </script>
     <div id="root"></div>
     <script type="text/babel">
         const { useState, useEffect, useMemo } = React;
@@ -5418,13 +5446,26 @@
 
                     {/* Version badge */}
                     <div style={{position:'fixed',bottom:'10px',right:'10px',fontSize:'10px',color:'#999',background:'#fff',padding:'4px 8px',borderRadius:'4px',border:'1px solid #ddd',zIndex:9999}}>
-                        v8-catch-fix-2026-02-17
+                        v9-errordisplay-2026-02-17
                     </div>
                 </div>
             );
         };
 
-        ReactDOM.createRoot(document.getElementById('root')).render(<App />);
+        try {
+            ReactDOM.createRoot(document.getElementById('root')).render(<App />);
+            // Hide error overlay on success
+            var errEl = document.getElementById('js-error');
+            if (errEl) errEl.style.display = 'none';
+        } catch(renderErr) {
+            var el = document.getElementById('js-error');
+            var msgEl = document.getElementById('js-error-msg');
+            if (el && msgEl) {
+                el.style.display = 'block';
+                document.getElementById('root').style.display = 'none';
+                msgEl.textContent = 'React render-fel:\n' + (renderErr.stack || renderErr);
+            }
+        }
     </script>
 </body>
 </html>
