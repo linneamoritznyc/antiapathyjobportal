@@ -705,52 +705,8 @@
                                 {scraping ? 'Söker...' : 'Sök'}
                             </button>
                         </div>
-                        <p className="text-xs text-slate-500 mt-2">Visar endast jobb med e-postansökan.</p>
                     </div>
 
-                    {/* Filter bar */}
-                    {jobs.length > 0 && (
-                        <div className="bg-white rounded-xl p-4 shadow-sm mb-6">
-                            <div className="flex flex-wrap gap-3 items-center">
-                                <div className="flex-1 min-w-[200px]">
-                                    <input
-                                        type="text"
-                                        value={filterText}
-                                        onChange={(e) => setFilterText(e.target.value)}
-                                        placeholder="Filtrera: titel, företag, plats..."
-                                        className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm"
-                                    />
-                                </div>
-                                <select
-                                    value={filterPriority}
-                                    onChange={(e) => setFilterPriority(e.target.value)}
-                                    className="border border-slate-200 rounded-lg px-3 py-2 text-sm"
-                                >
-                                    <option value="all">Alla prioriteter</option>
-                                    <option value="urgent">⚡ Akut (3 dagar)</option>
-                                    <option value="soon">⏰ Snart (7 dagar)</option>
-                                    <option value="normal">✓ Normal</option>
-                                </select>
-                                <select
-                                    value={sortBy}
-                                    onChange={(e) => setSortBy(e.target.value)}
-                                    className="border border-slate-200 rounded-lg px-3 py-2 text-sm"
-                                >
-                                    <option value="deadline">Sortera: Deadline</option>
-                                    <option value="company">Sortera: Företag</option>
-                                    <option value="title">Sortera: Titel</option>
-                                </select>
-                                {(filterText || filterPriority !== 'all') && (
-                                    <button
-                                        onClick={() => { setFilterText(''); setFilterPriority('all'); }}
-                                        className="text-sm text-slate-500 hover:text-slate-700"
-                                    >
-                                        Rensa filter
-                                    </button>
-                                )}
-                            </div>
-                        </div>
-                    )}
 
                     {/* ONE JOB AT A TIME */}
                     {(() => {
@@ -775,18 +731,6 @@
                                     </div>
                                 ) : currentJob ? (
                                     <div className="max-w-xl mx-auto">
-                                        {/* Progress bar */}
-                                        <div className="mb-4">
-                                            <div className="flex justify-between text-sm text-slate-500 mb-1">
-                                                <span>Jobb {jobIndex + 1} av {filteredJobs.length}</span>
-                                                <span>{Math.round(((jobIndex + 1) / filteredJobs.length) * 100)}%</span>
-                                            </div>
-                                            <div className="h-2 bg-slate-200 rounded-full overflow-hidden">
-                                                <div className="h-full bg-pink-500 rounded-full transition-all duration-300"
-                                                     style={{width: `${((jobIndex + 1) / filteredJobs.length) * 100}%`}} />
-                                            </div>
-                                        </div>
-
                                         {/* Job card - large single view */}
                                         <div className="bg-white rounded-2xl shadow-sm border border-slate-100 p-6">
                                             <div className="flex justify-between items-start mb-3">
