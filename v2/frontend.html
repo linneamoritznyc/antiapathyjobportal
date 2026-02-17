@@ -4650,14 +4650,36 @@
                 }} />;
             }
 
+            // Landing page state
+            const [landingTab, setLandingTab] = useState('hem');
+
             // Landing page for non-logged-in users
             if (!user) {
                 return (
                     <div className="min-h-screen bg-gradient-to-br from-indigo-600 via-purple-600 to-pink-500">
-                        <header className="px-6 py-5">
+                        <header className="px-6 py-5 border-b border-white/10">
                             <div className="max-w-5xl mx-auto flex justify-between items-center">
-                                <span className="text-white/90 font-mono text-sm tracking-wide">anti-apathy</span>
-                                <a href="/login" className="text-white/70 hover:text-white text-sm transition">
+                                <div className="flex items-center gap-8">
+                                    <span className="text-white/90 font-mono text-sm tracking-wide cursor-pointer" onClick={() => setLandingTab('hem')}>anti-apathy</span>
+                                    <div className="flex gap-1">
+                                        {[
+                                            { id: 'hem', label: 'Hem' },
+                                            { id: 'funktioner', label: 'Varför oss?' },
+                                            { id: 'priser', label: 'Priser' }
+                                        ].map(t => (
+                                            <button
+                                                key={t.id}
+                                                onClick={() => setLandingTab(t.id)}
+                                                className={`px-3 py-1.5 rounded-lg text-sm transition ${
+                                                    landingTab === t.id
+                                                        ? 'bg-white/20 text-white font-medium'
+                                                        : 'text-white/60 hover:text-white hover:bg-white/10'
+                                                }`}
+                                            >{t.label}</button>
+                                        ))}
+                                    </div>
+                                </div>
+                                <a href="/login" className="bg-white/10 hover:bg-white/20 text-white text-sm px-4 py-2 rounded-lg transition">
                                     Logga in →
                                 </a>
                             </div>
@@ -4665,68 +4687,320 @@
 
                         <main className="px-6">
                             <div className="max-w-5xl mx-auto">
-                                {/* Hero - left aligned */}
-                                <div className="py-20 max-w-xl">
-                                    <h1 className="text-4xl md:text-5xl font-bold text-white leading-tight mb-6">
-                                        Jobbsökande<br/>
-                                        utan ångest.
-                                    </h1>
-                                    <p className="text-white/80 text-lg mb-8 leading-relaxed">
-                                        Skräddarsydda CV:n för olika branscher. AI-genererade personliga brev.
-                                        Allt på ett ställe så du kan fokusera på det som spelar roll.
-                                    </p>
-                                    <a href="/login" className="inline-block bg-white text-indigo-700 px-6 py-3 text-sm font-semibold hover:bg-white/90 transition">
-                                        Kom igång
-                                    </a>
-                                </div>
 
-                                {/* Features - asymmetric grid */}
-                                <div className="border-t border-white/20 py-16">
-                                    <div className="grid md:grid-cols-2 gap-x-16 gap-y-10">
-                                        <div>
-                                            <h3 className="text-white font-semibold mb-2">Master CV</h3>
-                                            <p className="text-white/60 text-sm leading-relaxed">
-                                                All din erfarenhet, utbildning och kompetenser samlade.
-                                                Uppdatera en gång, använd överallt.
-                                            </p>
+                            {/* ============ HEM TAB ============ */}
+                            {landingTab === 'hem' && (
+                                <div>
+                                    <div className="py-20 max-w-xl">
+                                        <h1 className="text-4xl md:text-5xl font-bold text-white leading-tight mb-6">
+                                            Jobbsökande<br/>utan ångest.
+                                        </h1>
+                                        <p className="text-white/80 text-lg mb-8 leading-relaxed">
+                                            Skräddarsydda CV:n för olika branscher. AI-genererade personliga brev.
+                                            Allt på ett ställe så du kan fokusera på det som spelar roll.
+                                        </p>
+                                        <div className="flex gap-4 items-center">
+                                            <a href="/login" className="inline-block bg-white text-indigo-700 px-6 py-3 text-sm font-semibold hover:bg-white/90 transition rounded-lg">
+                                                Kom igång gratis
+                                            </a>
+                                            <button onClick={() => setLandingTab('funktioner')} className="text-white/70 hover:text-white text-sm underline transition">
+                                                Se alla funktioner →
+                                            </button>
                                         </div>
-                                        <div>
-                                            <h3 className="text-white font-semibold mb-2">Branschanpassade versioner</h3>
-                                            <p className="text-white/60 text-sm leading-relaxed">
-                                                Restaurang, kundtjänst, tech, butik, vård. Varje version
-                                                lyfter rätt erfarenheter för rätt jobb.
-                                            </p>
+                                    </div>
+
+                                    <div className="border-t border-white/20 py-16">
+                                        <div className="grid md:grid-cols-2 gap-x-16 gap-y-10">
+                                            <div>
+                                                <h3 className="text-white font-semibold mb-2">Master CV</h3>
+                                                <p className="text-white/60 text-sm leading-relaxed">
+                                                    All din erfarenhet, utbildning och kompetenser samlade.
+                                                    Uppdatera en gång, använd överallt.
+                                                </p>
+                                            </div>
+                                            <div>
+                                                <h3 className="text-white font-semibold mb-2">Branschanpassade versioner</h3>
+                                                <p className="text-white/60 text-sm leading-relaxed">
+                                                    Restaurang, kundtjänst, tech, butik, vård. Varje version
+                                                    lyfter rätt erfarenheter för rätt jobb.
+                                                </p>
+                                            </div>
+                                            <div>
+                                                <h3 className="text-white font-semibold mb-2">Platsbanken-integration</h3>
+                                                <p className="text-white/60 text-sm leading-relaxed">
+                                                    Hämta jobb direkt från Arbetsförmedlingen. Se vilka som
+                                                    accepterar mail-ansökningar.
+                                                </p>
+                                            </div>
+                                            <div>
+                                                <h3 className="text-white font-semibold mb-2">Personliga brev</h3>
+                                                <p className="text-white/60 text-sm leading-relaxed">
+                                                    AI skriver brevet baserat på ditt CV och jobbannonsen.
+                                                    Granska, justera, skicka.
+                                                </p>
+                                            </div>
                                         </div>
-                                        <div>
-                                            <h3 className="text-white font-semibold mb-2">Platsbanken-integration</h3>
-                                            <p className="text-white/60 text-sm leading-relaxed">
-                                                Hämta jobb direkt från Arbetsförmedlingen. Se vilka som
-                                                accepterar mail-ansökningar.
-                                            </p>
+                                    </div>
+
+                                    <div className="border-t border-white/20 py-12">
+                                        <p className="text-white/50 text-sm mb-6">Så funkar det</p>
+                                        <div className="flex flex-wrap gap-6 text-white/80 text-sm">
+                                            <span>1. Skapa konto</span>
+                                            <span className="text-white/30">→</span>
+                                            <span>2. Fyll i Master CV</span>
+                                            <span className="text-white/30">→</span>
+                                            <span>3. Generera bransch-CV:n</span>
+                                            <span className="text-white/30">→</span>
+                                            <span>4. Sök jobb</span>
                                         </div>
-                                        <div>
-                                            <h3 className="text-white font-semibold mb-2">Personliga brev</h3>
-                                            <p className="text-white/60 text-sm leading-relaxed">
-                                                AI skriver brevet baserat på ditt CV och jobbannonsen.
-                                                Granska, justera, skicka.
+                                    </div>
+                                </div>
+                            )}
+
+                            {/* ============ FUNKTIONER / MARKETING TAB ============ */}
+                            {landingTab === 'funktioner' && (
+                                <div className="py-16">
+                                    {/* Marketing hero */}
+                                    <div className="text-center max-w-3xl mx-auto mb-20">
+                                        <p className="text-indigo-200 text-sm font-medium uppercase tracking-widest mb-4">Byggd för verkligheten</p>
+                                        <h2 className="text-3xl md:text-4xl font-bold text-white mb-6">
+                                            Det enda jobbsökarverktyget som faktiskt förstår hur det är att söka jobb i Sverige
+                                        </h2>
+                                        <p className="text-white/70 text-lg leading-relaxed">
+                                            Anti-Apathy är inte ytterligare en generisk AI-generator. Det är ett komplett system byggt från grunden
+                                            för den svenska arbetsmarknaden — speciellt för dig som tycker att jobbsökande är överväldigande.
+                                        </p>
+                                    </div>
+
+                                    {/* What makes us different */}
+                                    <div className="mb-20">
+                                        <h3 className="text-white/50 text-xs uppercase tracking-widest mb-8">Det andra verktyg saknar</h3>
+                                        <div className="grid md:grid-cols-3 gap-6">
+                                            {[
+                                                {
+                                                    icon: '🧠',
+                                                    title: 'Designad för neurodivergenta',
+                                                    desc: 'ADHD? Autism? Jobbsökande kan kännas omöjligt. Vi bryter ner processen i hanterbara steg. Ingen överväldigande. En sak i taget.',
+                                                    tag: 'Unikt'
+                                                },
+                                                {
+                                                    icon: '🇸🇪',
+                                                    title: '100% svenska arbetsmarknaden',
+                                                    desc: 'Allt på svenska. Platsbanken-integration. Svenska jobbkulturen. Inga amerikanska mallar som inte funkar här.',
+                                                    tag: 'Unikt'
+                                                },
+                                                {
+                                                    icon: '✍️',
+                                                    title: 'AI som lär sig DIN stil',
+                                                    desc: 'Ladda upp gamla personliga brev. AI analyserar din ton, dina fraser, din struktur — och skriver nya brev som låter som DIG, inte en robot.',
+                                                    tag: 'Unikt'
+                                                },
+                                                {
+                                                    icon: '📄',
+                                                    title: 'Ett CV → 8 branschversioner',
+                                                    desc: 'Fyll i ditt Master CV en gång. AI skapar skräddarsydda versioner för restaurang, tech, vård, kundtjänst, butik och fler. Rätt erfarenheter lyfts för rätt jobb.',
+                                                    tag: 'Unikt'
+                                                },
+                                                {
+                                                    icon: '🚫',
+                                                    title: 'Smarta dealbreaker-filter',
+                                                    desc: 'Hatar nattjobb? Allergisk mot djur? Vill undvika obetald praktik? Sätt dina dealbreakers och se bara jobb som faktiskt passar dig.',
+                                                    tag: 'Unikt'
+                                                },
+                                                {
+                                                    icon: '🎯',
+                                                    title: 'Quiz: Hitta din bransch',
+                                                    desc: 'Osäker på vad du vill jobba med? Vårt quiz hjälper dig upptäcka vilka branscher som matchar din personlighet och dina styrkor.',
+                                                    tag: 'Unikt'
+                                                },
+                                            ].map((f, i) => (
+                                                <div key={i} className="bg-white/10 backdrop-blur-sm rounded-2xl p-6 border border-white/10">
+                                                    <div className="flex items-start justify-between mb-3">
+                                                        <span className="text-3xl">{f.icon}</span>
+                                                        <span className="bg-indigo-400/20 text-indigo-200 text-xs px-2 py-0.5 rounded-full font-medium">{f.tag}</span>
+                                                    </div>
+                                                    <h4 className="text-white font-semibold mb-2">{f.title}</h4>
+                                                    <p className="text-white/60 text-sm leading-relaxed">{f.desc}</p>
+                                                </div>
+                                            ))}
+                                        </div>
+                                    </div>
+
+                                    {/* Full feature list */}
+                                    <div className="mb-20">
+                                        <h3 className="text-white/50 text-xs uppercase tracking-widest mb-8">Allt som ingår</h3>
+                                        <div className="grid md:grid-cols-2 gap-x-16 gap-y-6">
+                                            {[
+                                                { title: 'Master CV', desc: 'Samla all erfarenhet, utbildning, volontärarbete, projekt och kompetenser på ett ställe' },
+                                                { title: '8+ branschanpassade CV:n', desc: 'Restaurang, Tech, Vård, Butik, Kundtjänst, Hotell, Industri, Content Moderation' },
+                                                { title: 'Platsbanken-sökning', desc: 'Sök jobb direkt från Arbetsförmedlingen med smarta filter för plats, arbetstid och bransch' },
+                                                { title: 'AI-personliga brev', desc: 'Genereras automatiskt baserat på ditt CV, din stil och jobbannonsen — inte generiska mallar' },
+                                                { title: 'Ladda upp 20 CV-versioner', desc: 'Ladda upp befintliga CV:n som PDF. AI analyserar och ger feedback per bransch' },
+                                                { title: 'Stilanalys av brev', desc: 'Ladda upp gamla personliga brev. AI lär sig din ton, struktur och favoritfraser' },
+                                                { title: 'Negativa nyckelord', desc: 'Filtrera bort jobb du vet att du inte vill ha — typ "telefonförsäljning" eller "nattjobb"' },
+                                                { title: 'Dealbreaker-system', desc: '18 filterkategorier: nattarbete, tunga lyft, obetald praktik, kräver körkort, med mera' },
+                                                { title: 'Län + kommun-filter', desc: 'Välj län, sedan specifika kommuner — precis som Arbetsförmedlingen' },
+                                                { title: 'Gmail-utkast', desc: 'Skapa ansökningsmail direkt i ditt Gmail med rätt CV bifogat — ett klick' },
+                                                { title: 'Ansökningsstatistik', desc: 'Se hur många jobb du sökt, sparat, fått intervju på — håll koll på din progress' },
+                                                { title: 'Profilbild + GDPR', desc: 'Din data säljs aldrig. Ladda upp profilbild, hantera dina uppgifter. Fullständig GDPR-efterlevnad' },
+                                            ].map((f, i) => (
+                                                <div key={i} className="flex gap-3 items-start">
+                                                    <span className="text-green-300 mt-0.5 flex-shrink-0">✓</span>
+                                                    <div>
+                                                        <span className="text-white font-medium text-sm">{f.title}</span>
+                                                        <p className="text-white/50 text-sm">{f.desc}</p>
+                                                    </div>
+                                                </div>
+                                            ))}
+                                        </div>
+                                    </div>
+
+                                    {/* Comparison table */}
+                                    <div className="mb-20">
+                                        <h3 className="text-white/50 text-xs uppercase tracking-widest mb-8">Anti-Apathy vs andra AI-jobbverktyg</h3>
+                                        <div className="bg-white/5 rounded-2xl border border-white/10 overflow-hidden">
+                                            <table className="w-full text-sm">
+                                                <thead>
+                                                    <tr className="border-b border-white/10">
+                                                        <th className="text-left text-white/50 py-4 px-6 font-normal">Funktion</th>
+                                                        <th className="text-center text-white font-semibold py-4 px-4">Anti-Apathy</th>
+                                                        <th className="text-center text-white/40 py-4 px-4">Generiska AI-verktyg</th>
+                                                    </tr>
+                                                </thead>
+                                                <tbody>
+                                                    {[
+                                                        ['Helt på svenska', true, false],
+                                                        ['Platsbanken-integration', true, false],
+                                                        ['Branschanpassade CV:n', true, false],
+                                                        ['Lär sig din skrivstil', true, false],
+                                                        ['Dealbreaker-filter', true, false],
+                                                        ['Län + kommun-sökning', true, false],
+                                                        ['Neurodivergent-anpassad UX', true, false],
+                                                        ['Gmail-integration', true, '~'],
+                                                        ['AI-personliga brev', true, true],
+                                                    ].map(([label, us, them], i) => (
+                                                        <tr key={i} className="border-b border-white/5">
+                                                            <td className="text-white/70 py-3 px-6">{label}</td>
+                                                            <td className="text-center py-3 px-4">
+                                                                <span className="text-green-400 text-lg">{us === true ? '✓' : us}</span>
+                                                            </td>
+                                                            <td className="text-center py-3 px-4">
+                                                                <span className={them === true ? 'text-green-400/50 text-lg' : them === '~' ? 'text-yellow-400/50' : 'text-red-400/50 text-lg'}>
+                                                                    {them === true ? '✓' : them === '~' ? '~' : '✗'}
+                                                                </span>
+                                                            </td>
+                                                        </tr>
+                                                    ))}
+                                                </tbody>
+                                            </table>
+                                        </div>
+                                    </div>
+
+                                    {/* Coming soon */}
+                                    <div className="mb-16">
+                                        <h3 className="text-white/50 text-xs uppercase tracking-widest mb-8">Kommer snart</h3>
+                                        <div className="grid md:grid-cols-3 gap-6">
+                                            {[
+                                                {
+                                                    icon: '🌍',
+                                                    title: 'Fler jobbkällor',
+                                                    desc: 'Idag söker vi på Platsbanken. Snart: LinkedIn, Indeed, Jobbsafari, Blocket Jobb och fler — alla på samma ställe.'
+                                                },
+                                                {
+                                                    icon: '📨',
+                                                    title: 'Automatisk ansökan',
+                                                    desc: 'Låt appen skicka ansökningar automatiskt baserat på dina preferenser. Du godkänner — appen skickar.'
+                                                },
+                                                {
+                                                    icon: '📊',
+                                                    title: 'Jobbmarknads-insikter',
+                                                    desc: 'Se trender: vilka branscher anställer just nu? Vilka kompetenser efterfrågas mest i din region?'
+                                                },
+                                            ].map((f, i) => (
+                                                <div key={i} className="bg-white/5 rounded-2xl p-6 border border-dashed border-white/20">
+                                                    <span className="text-2xl mb-3 block">{f.icon}</span>
+                                                    <h4 className="text-white font-semibold mb-2">{f.title}</h4>
+                                                    <p className="text-white/50 text-sm leading-relaxed">{f.desc}</p>
+                                                </div>
+                                            ))}
+                                        </div>
+                                    </div>
+
+                                    {/* CTA */}
+                                    <div className="text-center py-12 border-t border-white/10">
+                                        <h3 className="text-2xl font-bold text-white mb-4">Redo att sluta hata jobbsökande?</h3>
+                                        <p className="text-white/60 mb-8">Testa gratis. Ingen bindningstid.</p>
+                                        <div className="flex gap-4 justify-center">
+                                            <a href="/login" className="bg-white text-indigo-700 px-8 py-3 font-semibold rounded-lg hover:bg-white/90 transition text-sm">
+                                                Skapa konto
+                                            </a>
+                                            <button onClick={() => setLandingTab('priser')} className="border border-white/30 text-white px-8 py-3 rounded-lg hover:bg-white/10 transition text-sm">
+                                                Se priser
+                                            </button>
+                                        </div>
+                                    </div>
+                                </div>
+                            )}
+
+                            {/* ============ PRISER TAB ============ */}
+                            {landingTab === 'priser' && (
+                                <div className="py-20">
+                                    <div className="text-center max-w-2xl mx-auto mb-16">
+                                        <p className="text-indigo-200 text-sm font-medium uppercase tracking-widest mb-4">Enkel prissättning</p>
+                                        <h2 className="text-3xl md:text-4xl font-bold text-white mb-6">
+                                            En plan. Allt ingår.
+                                        </h2>
+                                        <p className="text-white/70 text-lg">
+                                            Inget krångel med olika nivåer. Du får tillgång till alla funktioner.
+                                        </p>
+                                    </div>
+
+                                    <div className="max-w-md mx-auto">
+                                        <div className="bg-white/10 backdrop-blur-sm rounded-3xl p-8 border border-white/20 text-center">
+                                            <p className="text-white/60 text-sm mb-2">Per månad</p>
+                                            <div className="flex items-baseline justify-center gap-1 mb-2">
+                                                <span className="text-5xl font-bold text-white">499</span>
+                                                <span className="text-white/60 text-lg">kr</span>
+                                            </div>
+                                            <p className="text-white/40 text-sm mb-8">Ingen bindningstid. Avsluta när du vill.</p>
+
+                                            <a href="/login" className="block w-full bg-white text-indigo-700 py-3 rounded-xl font-semibold hover:bg-white/90 transition mb-8">
+                                                Kom igång nu
+                                            </a>
+
+                                            <div className="text-left space-y-3">
+                                                {[
+                                                    'Master CV + 8 branschversioner',
+                                                    'Obegränsat antal personliga brev',
+                                                    'Platsbanken-sökning med smarta filter',
+                                                    'AI som lär sig din skrivstil',
+                                                    'Dealbreaker-filter (18 kategorier)',
+                                                    'Gmail-integration med rätt CV bifogat',
+                                                    'Ladda upp 20 CV:n + 20 brev',
+                                                    'Ansökningsstatistik',
+                                                    'Quiz: hitta din bransch',
+                                                    'GDPR — din data säljs aldrig',
+                                                    'Kommande: LinkedIn, Indeed, Jobbsafari',
+                                                ].map((f, i) => (
+                                                    <div key={i} className="flex items-center gap-3">
+                                                        <span className="text-green-400 flex-shrink-0">✓</span>
+                                                        <span className="text-white/80 text-sm">{f}</span>
+                                                    </div>
+                                                ))}
+                                            </div>
+                                        </div>
+
+                                        <div className="mt-8 bg-white/5 rounded-2xl p-6 border border-white/10 text-center">
+                                            <p className="text-white/80 text-sm font-medium mb-2">Billigare än en kopp kaffe om dagen</p>
+                                            <p className="text-white/50 text-xs leading-relaxed">
+                                                499 kr/mån = ca 16 kr/dag. Du lägger mer på en latte. Men det här kan leda till jobbet
+                                                som förändrar allt. Tänk på vad det kostar att INTE söka jobb.
                                             </p>
                                         </div>
                                     </div>
                                 </div>
+                            )}
 
-                                {/* How it works - minimal */}
-                                <div className="border-t border-white/20 py-12">
-                                    <p className="text-white/50 text-sm mb-6">Så funkar det</p>
-                                    <div className="flex flex-wrap gap-6 text-white/80 text-sm">
-                                        <span>1. Skapa konto</span>
-                                        <span className="text-white/30">→</span>
-                                        <span>2. Fyll i Master CV</span>
-                                        <span className="text-white/30">→</span>
-                                        <span>3. Generera bransch-CV:n</span>
-                                        <span className="text-white/30">→</span>
-                                        <span>4. Sök jobb</span>
-                                    </div>
-                                </div>
                             </div>
                         </main>
 
