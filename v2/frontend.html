@@ -5,10 +5,10 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Anti-Apathy Job Portal</title>
-    <script src="https://cdn.tailwindcss.com"></script>
-    <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
-    <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
-    <script src="https://unpkg.com/@babel/standalone@7.23.9/babel.min.js"></script>
+    <script crossorigin="anonymous" src="https://cdn.tailwindcss.com"></script>
+    <script crossorigin="anonymous" src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+    <script crossorigin="anonymous" src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+    <script crossorigin="anonymous" src="https://unpkg.com/@babel/standalone@7.23.9/babel.min.js"></script>
     <style>
         * { font-family: system-ui, -apple-system, sans-serif; }
         .gradient { background: linear-gradient(135deg, #ec4899 0%, #f472b6 50%, #fb7185 100%); }
@@ -43,6 +43,21 @@
                 msgEl.textContent = 'Promise-fel: ' + (e.reason ? (e.reason.stack || e.reason) : e);
             }
         });
+        // Check CDN scripts loaded
+        setTimeout(function() {
+            var missing = [];
+            if (typeof React === 'undefined') missing.push('React');
+            if (typeof ReactDOM === 'undefined') missing.push('ReactDOM');
+            if (typeof Babel === 'undefined') missing.push('Babel');
+            if (missing.length > 0) {
+                var el = document.getElementById('js-error');
+                var msgEl = document.getElementById('js-error-msg');
+                if (el && msgEl) {
+                    el.style.display = 'block';
+                    msgEl.textContent = 'CDN-skript kunde inte laddas: ' + missing.join(', ') + '\n\nDetta orsakar vit sida. Möjliga orsaker:\n- Nätverksfel\n- CDN blockerad\n- Adblocker';
+                }
+            }
+        }, 3000);
     </script>
     <div id="root"></div>
     <script type="text/babel">
