@@ -1065,9 +1065,12 @@
         const ProfilPage = () => {
             const [uploadingPhoto, setUploadingPhoto] = useState(false);
             const [uploadingLetter, setUploadingLetter] = useState(false);
+            const [uploadingCV, setUploadingCV] = useState(false);
             const [photoUrl, setPhotoUrl] = useState(null);
             const [letterStatus, setLetterStatus] = useState(null);
             const [photoStatus, setPhotoStatus] = useState(null);
+            const [cvStatus, setCvStatus] = useState(null);
+            const [cvCount, setCvCount] = useState(0);
 
             // Load existing profile data
             useEffect(() => {
@@ -1088,6 +1091,10 @@
                     }
                     if (data.training_letter_analyzed) {
                         setLetterStatus('Uppladdad och analyserad ✓');
+                    }
+                    if (data.cv_count > 0) {
+                        setCvCount(data.cv_count);
+                        setCvStatus(`${data.cv_count} CV uppladdat ✓`);
                     }
                 } catch (err) {
                     console.error('Error fetching profile:', err);
@@ -1171,6 +1178,45 @@
                 input.click();
             };
 
+            const handleCVUpload = async () => {
+                const input = document.createElement('input');
+                input.type = 'file';
+                input.accept = '.pdf,.docx,.doc,.txt,.rtf,.odt';
+
+                input.onchange = async (e) => {
+                    const file = e.target.files[0];
+                    if (!file) return;
+
+                    setUploadingCV(true);
+                    const token = localStorage.getItem('auth_token');
+
+                    try {
+                        const formData = new FormData();
+                        formData.append('file', file);
+
+                        const res = await fetch('/api/cv/upload-and-analyze', {
+                            method: 'POST',
+                            headers: { 'Authorization': `Bearer ${token}` },
+                            body: formData
+                        });
+
+                        const data = await res.json();
+                        if (res.ok) {
+                            setCvCount(prev => prev + 1);
+                            setCvStatus(`CV uppladdat ✓`);
+                        } else {
+                            setCvStatus(data.detail || 'Kunde inte ladda upp CV');
+                        }
+                    } catch (err) {
+                        console.error(err);
+                        setCvStatus('Ett fel uppstod vid uppladdning');
+                    } finally {
+                        setUploadingCV(false);
+                    }
+                };
+                input.click();
+            };
+
             return (
                 <div className="max-w-3xl mx-auto space-y-8">
                     <h2 className="text-2xl font-bold">Profil</h2>
@@ -1249,6 +1295,38 @@
                                 <li>Din struktur på personliga brev</li>
                             </ul>
                         </div>
+                    </div>
+
+                    {/* CV Upload Section */}
+                    <div className="bg-white rounded-xl p-6 border border-slate-200">
+                        <h3 className="text-lg font-semibold mb-4">📄 Ladda upp CV</h3>
+                        <p className="text-sm text-slate-600 mb-4">
+                            Ladda upp ditt CV. AI analyserar din erfarenhet och kompetens för att bättre kunna matcha och anpassa ansökningar.
+                        </p>
+
+                        {cvStatus && (
+                            <div className={`mb-4 p-3 rounded-lg text-sm ${cvStatus.includes('✓') ? 'bg-green-50 border border-green-200 text-green-700' : 'bg-red-50 border border-red-200 text-red-700'}`}>
+                                {cvStatus.includes('✓') ? '✓ ' : ''}{cvStatus}
+                            </div>
+                        )}
+
+                        {cvCount > 0 && (
+                            <p className="text-sm text-slate-500 mb-3">
+                                {cvCount} CV uppladdad{cvCount > 1 ? 'e' : ''}
+                            </p>
+                        )}
+
+                        <button
+                            onClick={handleCVUpload}
+                            disabled={uploadingCV}
+                            className="bg-indigo-600 text-white px-6 py-3 rounded-lg font-medium hover:bg-indigo-700 disabled:opacity-50 transition"
+                        >
+                            {uploadingCV ? 'Analyserar...' : '📤 Ladda upp CV'}
+                        </button>
+
+                        <p className="text-xs text-slate-400 mt-3">
+                            Accepterade format: PDF, DOCX, DOC, TXT, RTF, ODT
+                        </p>
                     </div>
                 </div>
             );
