@@ -641,18 +641,34 @@
                 {
                     id: 'location',
                     question: 'Var vill du jobba?',
-                    subtitle: 'Välj alla som funkar',
+                    subtitle: 'Välj alla kommuner som funkar — du kan ändra sen under Preferenser',
                     type: 'multi',
                     options: [
-                        { value: 'stockholm', label: 'Stockholm' },
-                        { value: 'sollentuna', label: 'Sollentuna' },
-                        { value: 'solna', label: 'Solna' },
-                        { value: 'vetlanda', label: 'Vetlanda' },
-                        { value: 'goteborg', label: 'Göteborg' },
-                        { value: 'malmo', label: 'Malmö' },
-                        { value: 'uppsala', label: 'Uppsala' },
+                        { value: 'anywhere', label: 'Hela Sverige' },
                         { value: 'remote', label: 'Distans/Remote' },
-                        { value: 'anywhere', label: 'Hela Sverige' }
+                        { value: 'stockholm', label: 'Stockholm' },
+                        { value: 'solna', label: 'Solna' },
+                        { value: 'sundbyberg', label: 'Sundbyberg' },
+                        { value: 'sollentuna', label: 'Sollentuna' },
+                        { value: 'nacka', label: 'Nacka' },
+                        { value: 'huddinge', label: 'Huddinge' },
+                        { value: 'taby', label: 'Täby' },
+                        { value: 'jarfalla', label: 'Järfälla' },
+                        { value: 'goteborg', label: 'Göteborg' },
+                        { value: 'molndal', label: 'Mölndal' },
+                        { value: 'boras', label: 'Borås' },
+                        { value: 'malmo', label: 'Malmö' },
+                        { value: 'helsingborg', label: 'Helsingborg' },
+                        { value: 'lund', label: 'Lund' },
+                        { value: 'uppsala', label: 'Uppsala' },
+                        { value: 'linkoping', label: 'Linköping' },
+                        { value: 'norrkoping', label: 'Norrköping' },
+                        { value: 'orebro', label: 'Örebro' },
+                        { value: 'vasteras', label: 'Västerås' },
+                        { value: 'jonkoping', label: 'Jönköping' },
+                        { value: 'eskilstuna', label: 'Eskilstuna' },
+                        { value: 'halmstad', label: 'Halmstad' },
+                        { value: 'gavle', label: 'Gävle' },
                     ]
                 },
                 {
@@ -894,7 +910,7 @@
             }, []);
 
             const fetchProfileData = async () => {
-                const token = localStorage.getItem('supabase_token');
+                const token = localStorage.getItem('auth_token');
                 if (!token) return;
 
                 try {
@@ -923,7 +939,7 @@
                     if (!file) return;
 
                     setUploadingPhoto(true);
-                    const token = localStorage.getItem('supabase_token');
+                    const token = localStorage.getItem('auth_token');
 
                     try {
                         const formData = new FormData();
@@ -962,7 +978,7 @@
                     if (!file) return;
 
                     setUploadingLetter(true);
-                    const token = localStorage.getItem('supabase_token');
+                    const token = localStorage.getItem('auth_token');
 
                     try {
                         const formData = new FormData();
@@ -1419,7 +1435,7 @@
             }, []);
 
             const fetchMasterCVData = async () => {
-                const token = localStorage.getItem('supabase_token');
+                const token = localStorage.getItem('auth_token');
                 if (!token) return;
 
                 try {
@@ -1449,7 +1465,7 @@
             };
 
             const fetchBranschCVs = async () => {
-                const token = localStorage.getItem('supabase_token');
+                const token = localStorage.getItem('auth_token');
                 if (!token) return;
 
                 try {
@@ -1464,7 +1480,7 @@
             };
 
             const handleDownloadMasterCV = async () => {
-                const token = localStorage.getItem('supabase_token');
+                const token = localStorage.getItem('auth_token');
                 if (!token) return;
 
                 try {
@@ -1485,7 +1501,7 @@
             };
 
             const handleDownloadBranschCV = async (cv) => {
-                const token = localStorage.getItem('supabase_token');
+                const token = localStorage.getItem('auth_token');
                 if (!token) return;
 
                 try {
@@ -1702,15 +1718,85 @@
             ]
         };
 
-        const LOCATION_OPTIONS = [
-            { id: 'stockholm', label: 'Stockholm' },
-            { id: 'sollentuna', label: 'Sollentuna' },
-            { id: 'solna', label: 'Solna' },
-            { id: 'goteborg', label: 'Göteborg' },
-            { id: 'malmo', label: 'Malmö' },
-            { id: 'uppsala', label: 'Uppsala' },
-            { id: 'remote', label: 'Remote' },
-            { id: 'anywhere', label: 'Var som helst' }
+        const LAN_DATA = [
+            { id: 'stockholm_lan', label: 'Stockholms län', kommuner: [
+                { id: 'stockholm', label: 'Stockholm' },
+                { id: 'solna', label: 'Solna' },
+                { id: 'sundbyberg', label: 'Sundbyberg' },
+                { id: 'sollentuna', label: 'Sollentuna' },
+                { id: 'taby', label: 'Täby' },
+                { id: 'nacka', label: 'Nacka' },
+                { id: 'lidingo', label: 'Lidingö' },
+                { id: 'jarfalla', label: 'Järfälla' },
+                { id: 'huddinge', label: 'Huddinge' },
+                { id: 'botkyrka', label: 'Botkyrka' },
+                { id: 'haninge', label: 'Haninge' },
+                { id: 'tyreso', label: 'Tyresö' },
+                { id: 'upplands_vasby', label: 'Upplands Väsby' },
+                { id: 'vaxholm', label: 'Vaxholm' },
+            ]},
+            { id: 'vastragotaland_lan', label: 'Västra Götalands län', kommuner: [
+                { id: 'goteborg', label: 'Göteborg' },
+                { id: 'molndal', label: 'Mölndal' },
+                { id: 'partille', label: 'Partille' },
+                { id: 'boras', label: 'Borås' },
+                { id: 'trollhattan', label: 'Trollhättan' },
+                { id: 'skovde', label: 'Skövde' },
+                { id: 'vanersborg', label: 'Vänersborg' },
+                { id: 'lidkoping', label: 'Lidköping' },
+                { id: 'alingsas', label: 'Alingsås' },
+            ]},
+            { id: 'skane_lan', label: 'Skåne län', kommuner: [
+                { id: 'malmo', label: 'Malmö' },
+                { id: 'helsingborg', label: 'Helsingborg' },
+                { id: 'lund', label: 'Lund' },
+                { id: 'kristianstad', label: 'Kristianstad' },
+                { id: 'landskrona', label: 'Landskrona' },
+                { id: 'trelleborg', label: 'Trelleborg' },
+                { id: 'ystad', label: 'Ystad' },
+            ]},
+            { id: 'uppsala_lan', label: 'Uppsala län', kommuner: [
+                { id: 'uppsala', label: 'Uppsala' },
+                { id: 'enkoping', label: 'Enköping' },
+                { id: 'knivsta', label: 'Knivsta' },
+            ]},
+            { id: 'jonkoping_lan', label: 'Jönköpings län', kommuner: [
+                { id: 'jonkoping', label: 'Jönköping' },
+                { id: 'varnamo', label: 'Värnamo' },
+                { id: 'nassjo', label: 'Nässjö' },
+                { id: 'eksjo', label: 'Eksjö' },
+            ]},
+            { id: 'ostergotland_lan', label: 'Östergötlands län', kommuner: [
+                { id: 'linkoping', label: 'Linköping' },
+                { id: 'norrkoping', label: 'Norrköping' },
+                { id: 'motala', label: 'Motala' },
+            ]},
+            { id: 'sodermanland_lan', label: 'Södermanlands län', kommuner: [
+                { id: 'eskilstuna', label: 'Eskilstuna' },
+                { id: 'nykoping', label: 'Nyköping' },
+                { id: 'katrineholm', label: 'Katrineholm' },
+            ]},
+            { id: 'vastmanland_lan', label: 'Västmanlands län', kommuner: [
+                { id: 'vasteras', label: 'Västerås' },
+                { id: 'sala', label: 'Sala' },
+            ]},
+            { id: 'orebro_lan', label: 'Örebro län', kommuner: [
+                { id: 'orebro', label: 'Örebro' },
+                { id: 'kumla', label: 'Kumla' },
+            ]},
+            { id: 'halland_lan', label: 'Hallands län', kommuner: [
+                { id: 'halmstad', label: 'Halmstad' },
+                { id: 'kungsbacka', label: 'Kungsbacka' },
+                { id: 'varberg', label: 'Varberg' },
+            ]},
+            { id: 'gavleborg_lan', label: 'Gävleborgs län', kommuner: [
+                { id: 'gavle', label: 'Gävle' },
+                { id: 'sandviken', label: 'Sandviken' },
+            ]},
+            { id: 'dalarna_lan', label: 'Dalarnas län', kommuner: [
+                { id: 'falun', label: 'Falun' },
+                { id: 'borlange', label: 'Borlänge' },
+            ]},
         ];
 
         const WORKING_HOURS_OPTIONS = [
@@ -1721,11 +1807,27 @@
         ];
 
         const DEALBREAKER_OPTIONS = [
-            { id: 'natt', label: 'Nattarbete' },
-            { id: 'helg', label: 'Helgarbete' },
-            { id: 'telefon', label: 'Telefonförsäljning' },
-            { id: 'tunga_lyft', label: 'Tunga lyft' },
-            { id: 'utomhus', label: 'Utomhusarbete' }
+            // Arbetstider
+            { id: 'natt', label: 'Nattarbete', group: 'Arbetstider' },
+            { id: 'helg', label: 'Helgarbete', group: 'Arbetstider' },
+            { id: 'tidiga_mornar', label: 'Tidiga morgnar (före 07)', group: 'Arbetstider' },
+            { id: 'delade_turer', label: 'Delade turer', group: 'Arbetstider' },
+            // Kommunikation
+            { id: 'telefonförsäljning', label: 'Telefonförsäljning', group: 'Kommunikation' },
+            { id: 'telefonarbete', label: 'Telefonarbete (kundtjänst, support)', group: 'Kommunikation' },
+            { id: 'forsaljning', label: 'Försäljning / säljmål', group: 'Kommunikation' },
+            // Fysiskt
+            { id: 'tunga_lyft', label: 'Tunga lyft', group: 'Fysiskt' },
+            { id: 'utomhus', label: 'Utomhusarbete', group: 'Fysiskt' },
+            { id: 'stressig_miljo', label: 'Stressig / hög-tempo miljö', group: 'Fysiskt' },
+            { id: 'kemikalier', label: 'Kemikalier / starkt rengöringsmedel', group: 'Fysiskt' },
+            // Ansvar & villkor
+            { id: 'obetald_praktik', label: 'Obetald praktik', group: 'Villkor' },
+            { id: 'resor_utomlands', label: 'Resor utomlands', group: 'Villkor' },
+            { id: 'resor_i_tjanst', label: 'Tjänsteresor (övernattning)', group: 'Villkor' },
+            { id: 'korkort', label: 'Kräver körkort / bil', group: 'Villkor' },
+            { id: 'ensamarbete', label: 'Ensamarbete (inga kollegor)', group: 'Villkor' },
+            { id: 'djur', label: 'Arbete med djur (allergi)', group: 'Villkor' },
         ];
 
         const PreferencesPage = () => {
@@ -1745,7 +1847,14 @@
             const [customNegKw, setCustomNegKw] = useState('');
 
             // Location & hours
-            const [selectedLocations, setSelectedLocations] = useState(prefs.location || []);
+            const [selectedKommuner, setSelectedKommuner] = useState(prefs.location || []);
+            const [expandedLan, setExpandedLan] = useState(() => {
+                // Auto-expand the county that contains saved kommuner
+                const saved = prefs.location || [];
+                if (!saved.length) return null;
+                const found = LAN_DATA.find(lan => lan.kommuner.some(k => saved.includes(k.id)));
+                return found ? found.id : null;
+            });
             const [selectedHours, setSelectedHours] = useState(prefs.working_hours || []);
 
             // Dealbreakers
@@ -1778,9 +1887,13 @@
                 setNewPosKw('');
             };
 
-            const toggleLocation = (id) => {
-                setSelectedLocations(prev =>
-                    prev.includes(id) ? prev.filter(l => l !== id) : [...prev, id]
+            const toggleLan = (lanId) => {
+                setExpandedLan(prev => prev === lanId ? null : lanId);
+            };
+
+            const toggleKommun = (kommunId) => {
+                setSelectedKommuner(prev =>
+                    prev.includes(kommunId) ? prev.filter(k => k !== kommunId) : [...prev, kommunId]
                 );
             };
 
@@ -1801,7 +1914,7 @@
                     ...prefs,
                     custom_search: posKeywords.join(', '),
                     negative_keywords: negKeywords,
-                    location: selectedLocations,
+                    location: selectedKommuner,
                     working_hours: selectedHours,
                     dealbreakers: selectedDealbreakers
                 };
@@ -1949,21 +2062,90 @@
                         <h3 className="text-lg font-semibold mb-4">📍 Plats & Arbetstid</h3>
 
                         <p className="text-xs font-semibold text-slate-400 uppercase tracking-wide mb-2">Plats</p>
-                        <div className="flex flex-wrap gap-2 mb-5">
-                            {LOCATION_OPTIONS.map(opt => (
+
+                        {/* Special options */}
+                        <div className="flex flex-wrap gap-2 mb-4">
+                            {[{ id: 'remote', label: 'Remote' }, { id: 'anywhere', label: 'Var som helst' }].map(opt => (
                                 <button
                                     key={opt.id}
-                                    onClick={() => toggleLocation(opt.id)}
+                                    onClick={() => toggleKommun(opt.id)}
                                     className={`px-3 py-1.5 rounded-full text-sm border transition ${
-                                        selectedLocations.includes(opt.id)
+                                        selectedKommuner.includes(opt.id)
                                             ? 'bg-indigo-100 border-indigo-400 text-indigo-800 font-medium'
                                             : 'bg-slate-50 border-slate-200 text-slate-700 hover:border-indigo-300'
                                     }`}
                                 >
-                                    {selectedLocations.includes(opt.id) ? '✓ ' : ''}{opt.label}
+                                    {selectedKommuner.includes(opt.id) ? '✓ ' : ''}{opt.label}
                                 </button>
                             ))}
                         </div>
+
+                        {/* Level 1: Välj län */}
+                        <p className="text-xs text-slate-400 mb-2">Välj län för att se kommuner:</p>
+                        <div className="flex flex-wrap gap-2 mb-3">
+                            {LAN_DATA.map(lan => {
+                                const kommunerSelected = lan.kommuner.filter(k => selectedKommuner.includes(k.id)).length;
+                                const isExpanded = expandedLan === lan.id;
+                                return (
+                                    <button
+                                        key={lan.id}
+                                        onClick={() => toggleLan(lan.id)}
+                                        className={`px-3 py-1.5 rounded-full text-sm border transition flex items-center gap-1 ${
+                                            isExpanded
+                                                ? 'bg-indigo-600 border-indigo-600 text-white font-medium'
+                                                : kommunerSelected > 0
+                                                    ? 'bg-indigo-100 border-indigo-400 text-indigo-800 font-medium'
+                                                    : 'bg-slate-50 border-slate-200 text-slate-700 hover:border-indigo-300'
+                                        }`}
+                                    >
+                                        {isExpanded ? '▾ ' : kommunerSelected > 0 ? '✓ ' : ''}{lan.label}
+                                        {kommunerSelected > 0 && !isExpanded && (
+                                            <span className="bg-indigo-500 text-white text-xs rounded-full px-1.5 py-0.5 leading-none">{kommunerSelected}</span>
+                                        )}
+                                    </button>
+                                );
+                            })}
+                        </div>
+
+                        {/* Level 2: Kommuner inom valt län */}
+                        {expandedLan && (() => {
+                            const lan = LAN_DATA.find(l => l.id === expandedLan);
+                            return lan ? (
+                                <div className="bg-indigo-50 border border-indigo-200 rounded-xl p-3 mb-3">
+                                    <p className="text-xs font-semibold text-indigo-600 mb-2">{lan.label} — välj kommuner:</p>
+                                    <div className="flex flex-wrap gap-2">
+                                        {lan.kommuner.map(k => (
+                                            <button
+                                                key={k.id}
+                                                onClick={() => toggleKommun(k.id)}
+                                                className={`px-3 py-1.5 rounded-full text-sm border transition ${
+                                                    selectedKommuner.includes(k.id)
+                                                        ? 'bg-indigo-500 border-indigo-500 text-white font-medium'
+                                                        : 'bg-white border-indigo-200 text-slate-700 hover:border-indigo-400'
+                                                }`}
+                                            >
+                                                {selectedKommuner.includes(k.id) ? '✓ ' : ''}{k.label}
+                                            </button>
+                                        ))}
+                                    </div>
+                                </div>
+                            ) : null;
+                        })()}
+
+                        {/* Summary of selected kommuner */}
+                        {selectedKommuner.filter(k => k !== 'remote' && k !== 'anywhere').length > 0 && (
+                            <div className="flex flex-wrap gap-1 mb-2">
+                                {selectedKommuner.filter(k => k !== 'remote' && k !== 'anywhere').map(kId => {
+                                    const found = LAN_DATA.flatMap(l => l.kommuner).find(k => k.id === kId);
+                                    return found ? (
+                                        <span key={kId} className="bg-indigo-100 text-indigo-800 text-xs px-2 py-1 rounded-full flex items-center gap-1">
+                                            {found.label}
+                                            <button onClick={() => toggleKommun(kId)} className="text-indigo-500 hover:text-indigo-800 font-bold">×</button>
+                                        </span>
+                                    ) : null;
+                                })}
+                            </div>
+                        )}
 
                         <p className="text-xs font-semibold text-slate-400 uppercase tracking-wide mb-2">Arbetstid</p>
                         <div className="flex flex-wrap gap-2">
@@ -1986,23 +2168,28 @@
                     {/* Dealbreakers */}
                     <div className="bg-white rounded-xl p-6 border border-slate-200">
                         <h3 className="text-lg font-semibold mb-1">⚡ Undvik på jobbet</h3>
-                        <p className="text-sm text-slate-500 mb-4">Jobb med dessa egenskaper filtreras bort</p>
+                        <p className="text-sm text-slate-500 mb-4">Jobb med dessa egenskaper filtreras bort automatiskt</p>
 
-                        <div className="flex flex-wrap gap-2">
-                            {DEALBREAKER_OPTIONS.map(opt => (
-                                <button
-                                    key={opt.id}
-                                    onClick={() => toggleDealbreaker(opt.id)}
-                                    className={`px-3 py-1.5 rounded-full text-sm border transition ${
-                                        selectedDealbreakers.includes(opt.id)
-                                            ? 'bg-orange-100 border-orange-400 text-orange-800 font-medium'
-                                            : 'bg-slate-50 border-slate-200 text-slate-700 hover:border-orange-300'
-                                    }`}
-                                >
-                                    {selectedDealbreakers.includes(opt.id) ? '✕ ' : ''}{opt.label}
-                                </button>
-                            ))}
-                        </div>
+                        {['Arbetstider', 'Kommunikation', 'Fysiskt', 'Villkor'].map(group => (
+                            <div key={group} className="mb-4">
+                                <p className="text-xs font-semibold text-slate-400 uppercase tracking-wide mb-2">{group}</p>
+                                <div className="flex flex-wrap gap-2">
+                                    {DEALBREAKER_OPTIONS.filter(o => o.group === group).map(opt => (
+                                        <button
+                                            key={opt.id}
+                                            onClick={() => toggleDealbreaker(opt.id)}
+                                            className={`px-3 py-1.5 rounded-full text-sm border transition ${
+                                                selectedDealbreakers.includes(opt.id)
+                                                    ? 'bg-orange-100 border-orange-400 text-orange-800 font-medium'
+                                                    : 'bg-slate-50 border-slate-200 text-slate-700 hover:border-orange-300'
+                                            }`}
+                                        >
+                                            {selectedDealbreakers.includes(opt.id) ? '✕ ' : ''}{opt.label}
+                                        </button>
+                                    ))}
+                                </div>
+                            </div>
+                        ))}
                     </div>
 
                     {/* Save button */}
@@ -2036,7 +2223,7 @@
             }, []);
 
             const fetchLetterStyle = async () => {
-                const token = localStorage.getItem('supabase_token');
+                const token = localStorage.getItem('auth_token');
                 if (!token) { setLoadingStyle(false); return; }
                 try {
                     const res = await fetch('/api/user/letter-style', {
@@ -2051,7 +2238,7 @@
             };
 
             const handleUpload = async () => {
-                const token = localStorage.getItem('supabase_token');
+                const token = localStorage.getItem('auth_token');
                 if (!token) return;
                 const input = document.createElement('input');
                 input.type = 'file';
@@ -2087,7 +2274,7 @@
 
             const handlePasteSubmit = async () => {
                 if (!pastedText.trim()) return;
-                const token = localStorage.getItem('supabase_token');
+                const token = localStorage.getItem('auth_token');
                 if (!token) return;
                 setLoading(true);
                 setSaveStatus('Analyserar text...');
