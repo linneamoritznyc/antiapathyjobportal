@@ -5135,13 +5135,15 @@ async def upload_cv(vibe_id: str, request: Request):
 
     token = auth_header.replace("Bearer ", "")
 
-    # Verify user
-    user_response = await db_request("GET", "auth/v1/user", auth_token=token)
-    if user_response.status_code != 200:
-        raise HTTPException(status_code=401, detail="Invalid token")
-
-    user = user_response.json()
-    user_id = user.get("id")
+    # Verify user via Supabase auth
+    async with httpx.AsyncClient() as client:
+        user_response = await client.get(
+            f"{SUPABASE_URL}/auth/v1/user",
+            headers={"apikey": SUPABASE_ANON_KEY, "Authorization": f"Bearer {token}"}
+        )
+        if user_response.status_code != 200:
+            raise HTTPException(status_code=401, detail="Invalid token")
+        user_id = user_response.json().get("id")
 
     # Get file from request
     form = await request.form()
@@ -5181,14 +5183,15 @@ async def upload_cv(vibe_id: str, request: Request):
             f"{SUPABASE_URL}/storage/v1/object/cv-files/{file_path}",
             headers={
                 "Authorization": f"Bearer {SUPABASE_KEY}",
-                "Content-Type": content_type
+                "Content-Type": content_type,
+                "x-upsert": "true"
             },
             content=file_content,
             timeout=30
         )
 
         if upload_response.status_code not in [200, 201]:
-            logger.error(f"Storage upload failed: {upload_response.text}")
+            logger.error(f"Storage upload failed: {upload_response.status_code} - {upload_response.text}")
             raise HTTPException(status_code=500, detail="Failed to upload file")
 
     # Get public URL
@@ -5201,7 +5204,7 @@ async def upload_cv(vibe_id: str, request: Request):
         logger.warning(f"Could not extract text from {file.filename}")
 
     # Update user_cvs table with pdf_url and cv_text
-    update_response = await db_request(
+    update_result = await db_request(
         "PATCH",
         "user_cvs",
         params={"user_id": f"eq.{user_id}", "vibe_id": f"eq.{vibe_id}"},
@@ -5211,7 +5214,7 @@ async def upload_cv(vibe_id: str, request: Request):
         }
     )
 
-    if update_response.status_code not in [200, 201, 204]:
+    if not update_result or len(update_result) == 0:
         # If no existing record, create one
         vibe_names = {
             "restaurant": "Restaurang & Café",
@@ -5252,13 +5255,15 @@ async def upload_profile_photo(request: Request):
 
     token = auth_header.replace("Bearer ", "")
 
-    # Verify user
-    user_response = await db_request("GET", "auth/v1/user", auth_token=token)
-    if user_response.status_code != 200:
-        raise HTTPException(status_code=401, detail="Invalid token")
-
-    user = user_response.json()
-    user_id = user.get("id")
+    # Verify user via Supabase auth
+    async with httpx.AsyncClient() as client:
+        user_response = await client.get(
+            f"{SUPABASE_URL}/auth/v1/user",
+            headers={"apikey": SUPABASE_ANON_KEY, "Authorization": f"Bearer {token}"}
+        )
+        if user_response.status_code != 200:
+            raise HTTPException(status_code=401, detail="Invalid token")
+        user_id = user_response.json().get("id")
 
     # Get file from request
     form = await request.form()
@@ -5282,7 +5287,7 @@ async def upload_profile_photo(request: Request):
         ext = "jpg"
         content_type = "image/jpeg"
 
-    # Upload to Supabase Storage
+    # Upload to Supabase Storage (upsert to handle re-uploads)
     file_path = f"{user_id}/profile.{ext}"
 
     async with httpx.AsyncClient() as client:
@@ -5290,15 +5295,16 @@ async def upload_profile_photo(request: Request):
             f"{SUPABASE_URL}/storage/v1/object/profile-photos/{file_path}",
             headers={
                 "Authorization": f"Bearer {SUPABASE_KEY}",
-                "Content-Type": content_type
+                "Content-Type": content_type,
+                "x-upsert": "true"
             },
             content=file_content,
             timeout=30
         )
 
         if upload_response.status_code not in [200, 201]:
-            logger.error(f"Storage upload failed: {upload_response.text}")
-            raise HTTPException(status_code=500, detail="Failed to upload photo")
+            logger.error(f"Storage upload failed: {upload_response.status_code} - {upload_response.text}")
+            raise HTTPException(status_code=500, detail=f"Failed to upload photo: {upload_response.text[:200]}")
 
     # Get public URL
     photo_url = f"{SUPABASE_URL}/storage/v1/object/public/profile-photos/{file_path}"
@@ -5326,13 +5332,15 @@ async def upload_training_letter(request: Request):
 
     token = auth_header.replace("Bearer ", "")
 
-    # Verify user
-    user_response = await db_request("GET", "auth/v1/user", auth_token=token)
-    if user_response.status_code != 200:
-        raise HTTPException(status_code=401, detail="Invalid token")
-
-    user = user_response.json()
-    user_id = user.get("id")
+    # Verify user via Supabase auth
+    async with httpx.AsyncClient() as client:
+        user_response = await client.get(
+            f"{SUPABASE_URL}/auth/v1/user",
+            headers={"apikey": SUPABASE_ANON_KEY, "Authorization": f"Bearer {token}"}
+        )
+        if user_response.status_code != 200:
+            raise HTTPException(status_code=401, detail="Invalid token")
+        user_id = user_response.json().get("id")
 
     # Get file from request
     form = await request.form()
@@ -5376,15 +5384,16 @@ async def upload_training_letter(request: Request):
             f"{SUPABASE_URL}/storage/v1/object/training-letters/{file_path}",
             headers={
                 "Authorization": f"Bearer {SUPABASE_KEY}",
-                "Content-Type": content_type
+                "Content-Type": content_type,
+                "x-upsert": "true"
             },
             content=file_content,
             timeout=30
         )
 
         if upload_response.status_code not in [200, 201]:
-            logger.error(f"Storage upload failed: {upload_response.text}")
-            raise HTTPException(status_code=500, detail="Failed to upload letter")
+            logger.error(f"Storage upload failed: {upload_response.status_code} - {upload_response.text}")
+            raise HTTPException(status_code=500, detail=f"Failed to upload letter: {upload_response.text[:200]}")
 
     # Analyze tone/style with Claude if we have text
     tone_analysis = None
@@ -5392,17 +5401,13 @@ async def upload_training_letter(request: Request):
         tone_analysis = await analyze_writing_tone(letter_text)
 
     # Get or create user preferences
-    prefs_response = await db_request(
+    prefs_data = await db_request(
         "GET",
         "user_cover_letter_preferences",
         params={"user_id": f"eq.{user_id}"}
     )
 
-    existing_prefs = None
-    if prefs_response.status_code == 200:
-        prefs_data = prefs_response.json()
-        if prefs_data:
-            existing_prefs = prefs_data[0]
+    existing_prefs = prefs_data[0] if prefs_data and len(prefs_data) > 0 else None
 
     # Update preferences with tone analysis
     if tone_analysis:
