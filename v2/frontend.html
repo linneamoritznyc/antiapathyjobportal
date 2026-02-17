@@ -903,6 +903,7 @@
             const [uploadingLetter, setUploadingLetter] = useState(false);
             const [photoUrl, setPhotoUrl] = useState(null);
             const [letterStatus, setLetterStatus] = useState(null);
+            const [photoStatus, setPhotoStatus] = useState(null);
 
             // Load existing profile data
             useEffect(() => {
@@ -954,13 +955,13 @@
                         const data = await res.json();
                         if (res.ok) {
                             setPhotoUrl(data.photo_url);
-                            alert('Profilbild uppladdad!');
+                            setPhotoStatus('✓ Profilbild uppladdad!');
                         } else {
-                            alert(data.detail || 'Kunde inte ladda upp bild');
+                            setPhotoStatus(data.detail || 'Kunde inte ladda upp bild');
                         }
                     } catch (err) {
                         console.error(err);
-                        alert('Ett fel uppstod vid uppladdning');
+                        setPhotoStatus('Ett fel uppstod vid uppladdning');
                     } finally {
                         setUploadingPhoto(false);
                     }
@@ -984,7 +985,7 @@
                         const formData = new FormData();
                         formData.append('file', file);
 
-                        const res = await fetch('/api/upload/training-letter', {
+                        const res = await fetch('/api/user/upload-training-letter', {
                             method: 'POST',
                             headers: { 'Authorization': `Bearer ${token}` },
                             body: formData
@@ -993,13 +994,12 @@
                         const data = await res.json();
                         if (res.ok) {
                             setLetterStatus('Uppladdad och analyserad ✓');
-                            alert('Personligt brev uppladdad! AI har analyserat din skrivstil.');
                         } else {
-                            alert(data.detail || 'Kunde inte ladda upp brev');
+                            setLetterStatus(data.detail || 'Kunde inte ladda upp brev');
                         }
                     } catch (err) {
                         console.error(err);
-                        alert('Ett fel uppstod vid uppladdning');
+                        setLetterStatus('Ett fel uppstod vid uppladdning');
                     } finally {
                         setUploadingLetter(false);
                     }
@@ -1036,6 +1036,11 @@
                             </button>
                         </div>
 
+                        {photoStatus && (
+                            <div className={`mt-3 p-2 rounded-lg text-sm ${photoStatus.startsWith('✓') ? 'bg-green-50 text-green-700' : 'bg-red-50 text-red-700'}`}>
+                                {photoStatus}
+                            </div>
+                        )}
                         <p className="text-xs text-slate-400 mt-3">
                             Accepterade format: JPG, PNG
                         </p>
@@ -1107,17 +1112,11 @@
                     <StatCard icon="🗣️" label="Språk" value={stats.languages || 0} />
                 </div>
 
-                <button
-                    onClick={onUploadCV}
-                    className="w-full bg-indigo-600 text-white py-3 rounded-lg hover:bg-indigo-700 transition"
-                >
-                    📥 Ladda upp CV för att lägga till data
-                </button>
             </div>
         );
 
         // Experience Card Component
-        const ExperienceCard = ({ exp, onEdit, onDelete }) => {
+        const ExperienceCard = ({ exp }) => {
             const iconMap = {
                 restaurant: '🍽️', retail: '🛒', tech: '💻', healthcare: '🏥',
                 art: '🎨', marketing: '📢', education: '📚', industry: '🏭',
@@ -1153,27 +1152,13 @@
                             </div>
                         </div>
 
-                        <div className="flex gap-2 ml-4">
-                            <button
-                                onClick={() => onEdit(exp)}
-                                className="text-indigo-600 hover:text-indigo-800 text-sm"
-                            >
-                                ✏️
-                            </button>
-                            <button
-                                onClick={() => onDelete(exp)}
-                                className="text-red-600 hover:text-red-800 text-sm"
-                            >
-                                🗑️
-                            </button>
-                        </div>
                     </div>
                 </div>
             );
         };
 
         // Education Card Component
-        const EducationCard = ({ item, onEdit, onDelete }) => (
+        const EducationCard = ({ item }) => (
             <div className="bg-slate-50 rounded-lg p-4 border border-slate-200 hover:border-indigo-300 transition">
                 <div className="flex justify-between items-start">
                     <div className="flex-1">
@@ -1189,16 +1174,13 @@
                             <p className="text-sm text-slate-700 line-clamp-2">{item.description}</p>
                         )}
                     </div>
-                    <div className="flex gap-2 ml-4">
-                        <button onClick={() => onEdit(item)} className="text-indigo-600 hover:text-indigo-800 text-sm">✏️</button>
-                        <button onClick={() => onDelete(item)} className="text-red-600 hover:text-red-800 text-sm">🗑️</button>
                     </div>
                 </div>
             </div>
         );
 
         // Project Card Component
-        const ProjectCard = ({ item, onEdit, onDelete }) => (
+        const ProjectCard = ({ item }) => (
             <div className="bg-slate-50 rounded-lg p-4 border border-slate-200 hover:border-indigo-300 transition">
                 <div className="flex justify-between items-start">
                     <div className="flex-1">
@@ -1214,29 +1196,19 @@
                         )}
                         <p className="text-sm text-slate-700 mt-2 line-clamp-2">{item.description}</p>
                     </div>
-                    <div className="flex gap-2 ml-4">
-                        <button onClick={() => onEdit(item)} className="text-indigo-600 hover:text-indigo-800 text-sm">✏️</button>
-                        <button onClick={() => onDelete(item)} className="text-red-600 hover:text-red-800 text-sm">🗑️</button>
-                    </div>
                 </div>
             </div>
         );
 
         // Generic Card for other types
-        const GenericCard = ({ item, icon, title, subtitle, onEdit, onDelete }) => (
+        const GenericCard = ({ item, icon, title, subtitle }) => (
             <div className="bg-slate-50 rounded-lg p-4 border border-slate-200 hover:border-indigo-300 transition">
-                <div className="flex justify-between items-start">
+                <div className="flex items-start gap-3">
+                    <span className="text-2xl flex-shrink-0">{icon}</span>
                     <div className="flex-1">
-                        <div className="flex items-center gap-2 mb-1">
-                            <span className="text-2xl">{icon}</span>
-                            <h4 className="font-semibold">{title}</h4>
-                        </div>
+                        <h4 className="font-semibold">{title}</h4>
                         {subtitle && <p className="text-sm text-slate-600">{subtitle}</p>}
                         {item.description && <p className="text-sm text-slate-700 mt-2 line-clamp-2">{item.description}</p>}
-                    </div>
-                    <div className="flex gap-2 ml-4">
-                        <button onClick={() => onEdit(item)} className="text-indigo-600 hover:text-indigo-800 text-sm">✏️</button>
-                        <button onClick={() => onDelete(item)} className="text-red-600 hover:text-red-800 text-sm">🗑️</button>
                     </div>
                 </div>
             </div>
@@ -1256,12 +1228,6 @@
                             <span className="text-slate-400">{isExpanded ? '▼' : '▶'}</span>
                             <h3 className="font-semibold">{icon} {title} ({count})</h3>
                         </div>
-                        <button
-                            onClick={(e) => { e.stopPropagation(); onAdd(); }}
-                            className="text-indigo-600 text-sm hover:text-indigo-800"
-                        >
-                            + Ny
-                        </button>
                     </div>
 
                     {isExpanded && items.length > 0 && (
@@ -1271,8 +1237,6 @@
                                     key={item.id || idx}
                                     item={item}
                                     exp={item}
-                                    onEdit={() => onEdit(item)}
-                                    onDelete={() => onDelete(item)}
                                 />
                             ))}
                         </div>
@@ -1280,7 +1244,7 @@
 
                     {isExpanded && items.length === 0 && (
                         <div className="mt-4 text-center text-slate-400 text-sm py-6">
-                            Inga objekt ännu. Klicka "+ Ny" för att lägga till.
+                            Inga objekt ännu.
                         </div>
                     )}
                 </div>
@@ -1318,12 +1282,6 @@
                                 className="text-xs bg-white border border-slate-300 py-2 rounded hover:bg-slate-50"
                             >
                                 👁️ Visa
-                            </button>
-                            <button
-                                onClick={() => onEdit(cv)}
-                                className="text-xs bg-indigo-600 text-white py-2 rounded hover:bg-indigo-700"
-                            >
-                                ✏️ Redigera
                             </button>
                         </div>
                     </div>
@@ -1365,12 +1323,6 @@
                                     className="px-4 py-2 bg-white border border-slate-300 rounded-lg hover:bg-slate-50"
                                 >
                                     📥 Ladda ner PDF
-                                </button>
-                                <button
-                                    onClick={() => { onClose(); onEdit(cv); }}
-                                    className="px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700"
-                                >
-                                    ✏️ Redigera
                                 </button>
                                 <button
                                     onClick={onClose}
@@ -1526,7 +1478,7 @@
                     {/* Section 1: Master CV Summary */}
                     <MasterCVSummary
                         stats={stats}
-                        onUploadCV={() => alert('CV upload kommer snart!')}
+                        onUploadCV={null}
                     />
 
                     {/* Download Master CV Button */}
@@ -1547,9 +1499,6 @@
                             icon="📊"
                             items={experiences}
                             ItemCard={ExperienceCard}
-                            onAdd={() => alert('Lägg till ny erfarenhet kommer snart!')}
-                            onEdit={(exp) => alert('Redigera erfarenhet kommer snart!')}
-                            onDelete={(exp) => alert('Ta bort erfarenhet kommer snart!')}
                         />
 
                         <CVBlockAccordion
@@ -1558,9 +1507,6 @@
                             icon="🎓"
                             items={education}
                             ItemCard={EducationCard}
-                            onAdd={() => alert('Lägg till ny utbildning kommer snart!')}
-                            onEdit={(edu) => alert('Redigera utbildning kommer snart!')}
-                            onDelete={(edu) => alert('Ta bort utbildning kommer snart!')}
                         />
 
                         <CVBlockAccordion
@@ -1569,9 +1515,6 @@
                             icon="💻"
                             items={projects}
                             ItemCard={ProjectCard}
-                            onAdd={() => alert('Lägg till nytt projekt kommer snart!')}
-                            onEdit={(proj) => alert('Redigera projekt kommer snart!')}
-                            onDelete={(proj) => alert('Ta bort projekt kommer snart!')}
                         />
 
                         <CVBlockAccordion
@@ -1579,19 +1522,14 @@
                             count={certifications.length}
                             icon="🏅"
                             items={certifications}
-                            ItemCard={({ item, onEdit, onDelete }) => (
+                            ItemCard={({ item }) => (
                                 <GenericCard
                                     item={item}
                                     icon="🏅"
                                     title={item.certification_name || item.name}
                                     subtitle={item.organization}
-                                    onEdit={onEdit}
-                                    onDelete={onDelete}
                                 />
                             )}
-                            onAdd={() => alert('Lägg till ny certifiering kommer snart!')}
-                            onEdit={(cert) => alert('Redigera certifiering kommer snart!')}
-                            onDelete={(cert) => alert('Ta bort certifiering kommer snart!')}
                         />
 
                         <CVBlockAccordion
@@ -1599,19 +1537,14 @@
                             count={awards.length}
                             icon="🏆"
                             items={awards}
-                            ItemCard={({ item, onEdit, onDelete }) => (
+                            ItemCard={({ item }) => (
                                 <GenericCard
                                     item={item}
                                     icon="🏆"
                                     title={item.award_name}
                                     subtitle={item.organization}
-                                    onEdit={onEdit}
-                                    onDelete={onDelete}
                                 />
                             )}
-                            onAdd={() => alert('Lägg till nytt pris kommer snart!')}
-                            onEdit={(award) => alert('Redigera pris kommer snart!')}
-                            onDelete={(award) => alert('Ta bort pris kommer snart!')}
                         />
 
                         <CVBlockAccordion
@@ -1619,19 +1552,14 @@
                             count={volunteer.length}
                             icon="🤝"
                             items={volunteer}
-                            ItemCard={({ item, onEdit, onDelete }) => (
+                            ItemCard={({ item }) => (
                                 <GenericCard
                                     item={item}
                                     icon="🤝"
                                     title={item.organization_name}
                                     subtitle={item.role}
-                                    onEdit={onEdit}
-                                    onDelete={onDelete}
                                 />
                             )}
-                            onAdd={() => alert('Lägg till nytt volontärarbete kommer snart!')}
-                            onEdit={(vol) => alert('Redigera volontärarbete kommer snart!')}
-                            onDelete={(vol) => alert('Ta bort volontärarbete kommer snart!')}
                         />
 
                         <CVBlockAccordion
@@ -1639,19 +1567,14 @@
                             count={skills.filter(s => s.skill_type === 'language').length}
                             icon="🗣️"
                             items={skills.filter(s => s.skill_type === 'language')}
-                            ItemCard={({ item, onEdit, onDelete }) => (
+                            ItemCard={({ item }) => (
                                 <GenericCard
                                     item={item}
                                     icon="🗣️"
                                     title={item.skill_name}
                                     subtitle={item.proficiency_level}
-                                    onEdit={onEdit}
-                                    onDelete={onDelete}
                                 />
                             )}
-                            onAdd={() => alert('Lägg till nytt språk kommer snart!')}
-                            onEdit={(lang) => alert('Redigera språk kommer snart!')}
-                            onDelete={(lang) => alert('Ta bort språk kommer snart!')}
                         />
                     </div>
 
@@ -1668,17 +1591,9 @@
                                     key={cv.id || idx}
                                     cv={cv}
                                     onView={(cv) => setViewingCV(cv)}
-                                    onEdit={(cv) => alert('Redigera Bransch-CV kommer snart!')}
                                 />
                             ))}
                         </div>
-
-                        <button
-                            onClick={() => alert('Skapa nytt Bransch-CV kommer snart!')}
-                            className="w-full mt-6 bg-indigo-600 text-white py-3 rounded-lg hover:bg-indigo-700"
-                        >
-                            + Skapa nytt bransch-CV
-                        </button>
                     </div>
 
                     {/* Bransch-CV Preview Modal */}
@@ -1686,7 +1601,6 @@
                         <BranschCVPreviewModal
                             cv={viewingCV}
                             onClose={() => setViewingCV(null)}
-                            onEdit={(cv) => alert('Redigera Bransch-CV kommer snart!')}
                             onDownloadPDF={handleDownloadBranschCV}
                         />
                     )}
