@@ -719,27 +719,53 @@ async def generate_all_cv_vibes(master_cv: Dict, user_id: str) -> List[Dict]:
 
 
 def match_job_to_cv_vibe(job_title: str, job_description: str) -> str:
-    """Match a job to the best CV vibe"""
+    """Match a job to the best CV vibe. Returns vibe_id that maps to a CV PDF."""
     text = f"{job_title} {job_description}".lower()
 
-    # Keywords for each vibe
     vibe_keywords = {
-        "restaurant": ["servitör", "servitris", "restaurang", "kock", "café", "barista", "kök", "mat", "dryck"],
-        "retail": ["butik", "kassa", "försäljare", "säljare", "retail", "lager", "handel"],
-        "customerservice": ["kundtjänst", "customer service", "support", "kundservice", "telefon", "chat"],
-        "tech": ["it", "tech", "utvecklare", "developer", "webbutvecklare", "frontend", "backend", "data", "programmering"],
-        "healthcare": ["vård", "omsorg", "sjuksköterska", "äldreboende", "hemtjänst", "medicin"],
-        "garden": ["trädgård", "industri", "lager", "städ", "fysiskt", "utomhus", "bygg"],
+        "restaurant":         ["servitör", "servitris", "restaurang", "kock", "café", "barista", "kök", "mat", "dryck", "bar"],
+        "retail":             ["butik", "kassa", "försäljare", "säljare", "retail", "handel", "klädbutik", "ica", "coop", "lidl", "hemköp"],
+        "customerservice":    ["kundtjänst", "kundservice", "customer service", "support", "helpdesk", "telefon", "chatt", "reception"],
+        "tech":               ["it", "tech", "utvecklare", "developer", "webbutvecklare", "frontend", "backend", "data", "programmering", "mjukvara"],
+        "healthcare":         ["vård", "omsorg", "sjuksköterska", "undersköterska", "äldreboende", "hemtjänst", "medicin", "rehab"],
+        "industri":           ["trädgård", "industri", "lager", "städ", "renhållning", "utomhus", "bygg", "produktion", "truck", "magasin"],
+        "contentmoderation":  ["moderator", "content moderation", "trust and safety", "granskning", "recensioner", "online safety"],
+        "art":                ["konst", "kultur", "galleri", "utställning", "kreativ", "design", "illustration", "media"],
     }
 
-    # Count keyword matches
-    scores = {}
-    for vibe_id, keywords in vibe_keywords.items():
-        scores[vibe_id] = sum(1 for kw in keywords if kw in text)
-
-    # Return best match, or "customerservice" as default
+    scores = {vibe: sum(1 for kw in kws if kw in text) for vibe, kws in vibe_keywords.items()}
     best_vibe = max(scores, key=scores.get) if max(scores.values()) > 0 else "customerservice"
     return best_vibe
+
+
+# Maps vibe_id → actual CV PDF filename in cv_files/
+CV_FILE_MAP = {
+    "restaurant":        "CV_Linnea_Moritz_Restaurang_Cafe.pdf",
+    "retail":            "CV_Linnea_Moritz_Butik_Kassa.pdf",
+    "customerservice":   "CV_Linnea_Moritz_Kundtjanst.pdf",
+    "tech":              "CV_Linnea_Moritz_Tech_Kontor.pdf",
+    "healthcare":        "CV_Linnea_Moritz_Vard_Omsorg.pdf",
+    "industri":          "CV_Linnea_Moritz_Industri_Tradgard.pdf",
+    "contentmoderation": "CV_Linnea_Moritz_Content_Moderation.pdf",
+    "art":               "CV_Linnea_Moritz_Konst_Kultur.pdf",
+}
+CV_FILES_DIR = pathlib.Path(__file__).parent / "cv_files"
+
+
+def get_cv_pdf_bytes(vibe_id: str) -> Optional[bytes]:
+    """Read the matching CV PDF from disk. Returns None if not found."""
+    filename = CV_FILE_MAP.get(vibe_id, CV_FILE_MAP["customerservice"])
+    path = CV_FILES_DIR / filename
+    try:
+        return path.read_bytes()
+    except Exception as e:
+        logger.error(f"Could not read CV PDF {path}: {e}")
+        return None
+
+
+def get_cv_pdf_filename(vibe_id: str) -> str:
+    """Return the CV PDF filename for a given vibe."""
+    return CV_FILE_MAP.get(vibe_id, CV_FILE_MAP["customerservice"])
 
 
 # ============== SUPABASE DATABASE ==============
@@ -1756,36 +1782,77 @@ async def apply_with_cv(request: Request, job_id: str):
     cover_letter = await generate_cover_letter(job, cv_text_for_letter, user_profile)
 
     # Try to automatically create a Gmail draft using this user's connected Gmail
-    draft_id = None
     contact_email = job.get("contact_email")
+    contact_name = job.get("contact_name")
+
+    # Validate email looks real before using it
+    if contact_email and not re.match(r'^[^\s@]+@[^\s@]+\.[^\s@]+$', contact_email):
+        logger.warning(f"Scraped email looks invalid, ignoring: {contact_email}")
+        contact_email = None
+
+    # Build subject line: "Ansökan: Jobbtitel – Linnea Moritz"
+    sender_name = user_profile.get("full_name", "Linnea Moritz") if user_profile else "Linnea Moritz"
+    job_title = job.get("title", "Tjänst")
+    subject = f"Ansökan: {job_title} – {sender_name}"
+
+    # Create Gmail draft with PDF attachments if user has connected Gmail
+    draft_id = None
     if contact_email and user_id:
-        subject = f"Ansökan: {job.get('title', 'Tjänst')} – {job.get('company', '')}"
-        draft_id = await create_gmail_draft_for_user(user_id, contact_email, subject, cover_letter)
+        attachments = []
+
+        # 1. Cover letter as PDF
+        try:
+            cover_letter_pdf = generate_cover_letter_pdf(cover_letter, sender_name)
+            attachments.append({
+                "filename": f"Personligt_Brev_{sender_name.replace(' ', '_')}.pdf",
+                "data": cover_letter_pdf
+            })
+        except Exception as e:
+            logger.error(f"Cover letter PDF generation failed: {e}")
+
+        # 2. Matching CV PDF
+        cv_pdf_bytes = get_cv_pdf_bytes(best_vibe)
+        if cv_pdf_bytes:
+            attachments.append({
+                "filename": get_cv_pdf_filename(best_vibe),
+                "data": cv_pdf_bytes
+            })
+
+        draft_id = await create_gmail_draft_for_user(
+            user_id, contact_email, subject, cover_letter, attachments
+        )
 
     return {
         "success": True,
         "job": {
             "id": job.get("id"),
-            "title": job.get("title"),
+            "title": job_title,
             "company": job.get("company"),
             "contact_email": contact_email,
-            "contact_name": job.get("contact_name")
+            "contact_name": contact_name
         },
         "matched_vibe": best_vibe,
+        "cv_filename": get_cv_pdf_filename(best_vibe),
         "cv": cv,
         "cover_letter": cover_letter,
         "draft_created": draft_id is not None,
-        "gmail_link": _create_gmail_link(job, cover_letter)
+        "draft_id": draft_id,
+        "gmail_link": _create_gmail_link(job, cover_letter, subject)
     }
 
 
-def _create_gmail_link(job: Dict, letter: str) -> str:
-    """Create Gmail compose link"""
+def _create_gmail_link(job: Dict, letter: str, subject: str = "") -> str:
+    """Create Gmail compose link as fallback when no draft was created."""
     import urllib.parse
     to = job.get("contact_email", "")
-    subject = urllib.parse.quote(f"Ansökan: {job.get('title', 'Tjänst')}")
-    body = urllib.parse.quote(letter)
-    return f"https://mail.google.com/mail/?view=cm&fs=1&to={to}&su={subject}&body={body}"
+    if not subject:
+        subject = f"Ansökan: {job.get('title', 'Tjänst')}"
+    return (
+        f"https://mail.google.com/mail/?view=cm&fs=1"
+        f"&to={urllib.parse.quote(to)}"
+        f"&su={urllib.parse.quote(subject)}"
+        f"&body={urllib.parse.quote(letter)}"
+    )
 
 
 # ============== FRONTEND ==============
@@ -4670,24 +4737,67 @@ async def refresh_gmail_token(user_id: str) -> Optional[str]:
         return tokens["access_token"]
 
 
-async def create_gmail_draft_for_user(user_id: str, to_email: str, subject: str, body: str) -> Optional[str]:
-    """Create a Gmail draft in the user's inbox. Returns draft ID or None."""
+def generate_cover_letter_pdf(text: str, sender_name: str = "Linnea Moritz") -> bytes:
+    """Generate a simple PDF from cover letter text. Handles Swedish characters."""
+    from fpdf import FPDF
+
+    pdf = FPDF()
+    pdf.set_margins(25, 25, 25)
+    pdf.add_page()
+    pdf.set_auto_page_break(auto=True, margin=20)
+    pdf.set_font("Helvetica", size=11)
+
+    for line in text.split("\n"):
+        # Empty line = small spacer
+        if line.strip() == "":
+            pdf.ln(4)
+        else:
+            # Replace Swedish characters with latin-1 equivalents (fpdf core fonts)
+            safe_line = (line
+                .replace("\u2013", "-").replace("\u2014", "-")
+                .replace("\u2018", "'").replace("\u2019", "'")
+                .replace("\u201c", '"').replace("\u201d", '"'))
+            pdf.multi_cell(0, 6, safe_line)
+
+    return bytes(pdf.output())
+
+
+async def create_gmail_draft_for_user(
+    user_id: str,
+    to_email: str,
+    subject: str,
+    body: str,
+    attachments: Optional[List[Dict]] = None  # [{"filename": "...", "data": bytes}]
+) -> Optional[str]:
+    """Create a Gmail draft with optional PDF attachments. Returns draft ID or None."""
     access_token = await refresh_gmail_token(user_id)
     if not access_token:
         return None
     try:
+        from email.mime.multipart import MIMEMultipart
         from email.mime.text import MIMEText
-        import base64
-        msg = MIMEText(body, "plain", "utf-8")
+        from email.mime.base import MIMEBase
+        from email import encoders
+
+        msg = MIMEMultipart()
         msg["to"] = to_email
         msg["subject"] = subject
+        msg.attach(MIMEText(body, "plain", "utf-8"))
+
+        for att in (attachments or []):
+            part = MIMEBase("application", "octet-stream")
+            part.set_payload(att["data"])
+            encoders.encode_base64(part)
+            part.add_header("Content-Disposition", "attachment", filename=att["filename"])
+            msg.attach(part)
+
         raw = base64.urlsafe_b64encode(msg.as_bytes()).decode("utf-8")
         async with httpx.AsyncClient() as client:
             resp = await client.post(
                 "https://gmail.googleapis.com/gmail/v1/users/me/drafts",
                 headers={"Authorization": f"Bearer {access_token}", "Content-Type": "application/json"},
                 json={"message": {"raw": raw}},
-                timeout=15
+                timeout=20
             )
             if resp.status_code in [200, 201]:
                 return resp.json().get("id")
@@ -4695,20 +4805,6 @@ async def create_gmail_draft_for_user(user_id: str, to_email: str, subject: str,
     except Exception as e:
         logger.error(f"Gmail draft error: {e}")
     return None
-
-        if response.status_code != 200:
-            return None
-
-        tokens = response.json()
-        expires_at = datetime.now() + timedelta(seconds=tokens.get("expires_in", 3600))
-
-        await db_request("PATCH", f"user_google_credentials?user_id=eq.{user_id}", data={
-            "access_token": tokens["access_token"],
-            "token_expires_at": expires_at.isoformat(),
-            "updated_at": datetime.now().isoformat()
-        })
-
-        return tokens["access_token"]
 
 
 @app.post("/api/gmail/draft")
