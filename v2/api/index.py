@@ -5436,6 +5436,178 @@ async def upload_training_letter(request: Request):
     }
 
 
+@app.get("/api/user/letter-style")
+async def get_letter_style(request: Request):
+    """Get the user's analyzed cover letter style summary"""
+    auth_header = request.headers.get("Authorization", "")
+    user_id = None
+
+    if auth_header.startswith("Bearer "):
+        token = auth_header.replace("Bearer ", "")
+        async with httpx.AsyncClient() as client:
+            user_response = await client.get(
+                f"{SUPABASE_URL}/auth/v1/user",
+                headers={"apikey": SUPABASE_ANON_KEY, "Authorization": f"Bearer {token}"}
+            )
+            if user_response.status_code == 200:
+                user_id = user_response.json().get("id")
+
+    if not user_id:
+        return {"style_summary": None}
+
+    prefs = await db_request("GET", "user_cover_letter_preferences", params={"user_id": f"eq.{user_id}"})
+
+    if not prefs or len(prefs) == 0:
+        return {"style_summary": None}
+
+    p = prefs[0]
+    # Map DB fields to rich style_summary format for the frontend
+    style_summary = {
+        "tone": p.get("tone"),
+        "structure": p.get("writing_style"),
+        "phrases": p.get("always_mention") if isinstance(p.get("always_mention"), list) else [],
+        "avoid": p.get("avoid_phrases") if isinstance(p.get("avoid_phrases"), list) else [],
+        "length_preference": p.get("length_preference"),
+        "opening_style": p.get("opening_style")
+    }
+    return {"style_summary": style_summary}
+
+
+@app.post("/api/user/upload-training-letter")
+async def upload_user_training_letter(request: Request):
+    """Upload a training letter file and analyze the writing style"""
+    auth_header = request.headers.get("Authorization", "")
+    user_id = None
+
+    if auth_header.startswith("Bearer "):
+        token = auth_header.replace("Bearer ", "")
+        async with httpx.AsyncClient() as client:
+            user_response = await client.get(
+                f"{SUPABASE_URL}/auth/v1/user",
+                headers={"apikey": SUPABASE_ANON_KEY, "Authorization": f"Bearer {token}"}
+            )
+            if user_response.status_code == 200:
+                user_id = user_response.json().get("id")
+
+    if not user_id:
+        raise HTTPException(status_code=401, detail="Ej inloggad")
+
+    form = await request.form()
+    file = form.get("file")
+    if not file:
+        raise HTTPException(status_code=400, detail="Ingen fil bifogad")
+
+    file_content = await file.read()
+    letter_text = extract_text_from_file(file_content, file.filename)
+
+    if not letter_text:
+        letter_text = "[Kunde inte extrahera text från filen]"
+
+    tone_analysis = await analyze_writing_tone_rich(letter_text)
+    await save_letter_style(user_id, tone_analysis)
+
+    return {"success": True, "tone_analysis": tone_analysis}
+
+
+@app.post("/api/user/analyze-letter-text")
+async def analyze_pasted_letter_text(request: Request):
+    """Analyze pasted cover letter text to extract writing style"""
+    auth_header = request.headers.get("Authorization", "")
+    user_id = None
+
+    if auth_header.startswith("Bearer "):
+        token = auth_header.replace("Bearer ", "")
+        async with httpx.AsyncClient() as client:
+            user_response = await client.get(
+                f"{SUPABASE_URL}/auth/v1/user",
+                headers={"apikey": SUPABASE_ANON_KEY, "Authorization": f"Bearer {token}"}
+            )
+            if user_response.status_code == 200:
+                user_id = user_response.json().get("id")
+
+    if not user_id:
+        raise HTTPException(status_code=401, detail="Ej inloggad")
+
+    body = await request.json()
+    text = body.get("text", "").strip()
+    if not text:
+        raise HTTPException(status_code=400, detail="Ingen text angiven")
+
+    tone_analysis = await analyze_writing_tone_rich(text)
+    await save_letter_style(user_id, tone_analysis)
+
+    return {"success": True, "tone_analysis": tone_analysis}
+
+
+async def save_letter_style(user_id: str, analysis: dict):
+    """Save or update letter style analysis in DB"""
+    existing = await db_request("GET", "user_cover_letter_preferences", params={"user_id": f"eq.{user_id}"})
+    data = {
+        "tone": analysis.get("tone"),
+        "writing_style": analysis.get("structure"),
+        "always_mention": analysis.get("phrases", []),
+        "avoid_phrases": analysis.get("avoid", []),
+        "length_preference": analysis.get("length_preference"),
+        "opening_style": analysis.get("opening_style")
+    }
+    if existing and len(existing) > 0:
+        await db_request("PATCH", "user_cover_letter_preferences",
+            params={"user_id": f"eq.{user_id}"}, data=data)
+    else:
+        await db_request("POST", "user_cover_letter_preferences",
+            data={"user_id": user_id, **data})
+
+
+async def analyze_writing_tone_rich(text: str) -> dict:
+    """Analyze writing tone and style using Claude API — returns rich structured summary"""
+    if not ANTHROPIC_API_KEY:
+        return {}
+
+    prompt = f"""Du analyserar ett personligt brev på svenska och skapar en strukturerad sammanfattning av skrivarens stil.
+
+Brev:
+{text[:3000]}
+
+Returnera ett JSON-objekt med dessa exakta nycklar:
+- "tone": En mening om tonen, t.ex. "Varm och personlig, men professionell"
+- "structure": En mening om hur brevet är uppbyggt, t.ex. "Börjar med varför företaget, sedan erfarenhet, avslutar med konkret nästa steg"
+- "phrases": Lista med 3-6 fraser eller uttryck som personen faktiskt använder
+- "avoid": Lista med ord eller fraser som personen INTE använder (t.ex. klichéer som de aktivt undviker)
+- "length_preference": En mening om brevets längd och takt, t.ex. "Kortfattat, max 3 stycken, ingen onödig utfyllnad"
+- "opening_style": En mening om hur personen brukar inleda, t.ex. "Börjar alltid med vad som drog dem till just det företaget"
+
+Svara ENDAST med JSON."""
+
+    try:
+        async with httpx.AsyncClient() as client:
+            response = await client.post(
+                "https://api.anthropic.com/v1/messages",
+                headers={
+                    "x-api-key": ANTHROPIC_API_KEY,
+                    "anthropic-version": "2023-06-01",
+                    "content-type": "application/json"
+                },
+                json={
+                    "model": "claude-sonnet-4-5-20250929",
+                    "max_tokens": 700,
+                    "messages": [{"role": "user", "content": prompt}]
+                },
+                timeout=30
+            )
+            if response.status_code == 200:
+                result = response.json()
+                raw = result["content"][0]["text"].strip()
+                import json as json_lib
+                start = raw.find('{')
+                end = raw.rfind('}') + 1
+                if start >= 0 and end > start:
+                    return json_lib.loads(raw[start:end])
+    except Exception as e:
+        logger.error(f"Rich tone analysis error: {e}")
+
+    return {}
+
+
 async def analyze_writing_tone(text: str) -> dict:
     """Analyze writing tone and style using Claude API"""
     if not ANTHROPIC_API_KEY:
