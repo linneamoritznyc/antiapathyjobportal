@@ -124,7 +124,7 @@ CREATE TABLE IF NOT EXISTS user_education (
     created_at TIMESTAMPTZ DEFAULT NOW()
 );
 
--- Work experience entries (tagged with categories)
+-- Work experience entries (tagged with categories + AI matching tags)
 CREATE TABLE IF NOT EXISTS user_experiences (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     user_id TEXT NOT NULL,
@@ -132,8 +132,17 @@ CREATE TABLE IF NOT EXISTS user_experiences (
     location TEXT,
     title TEXT,
     dates TEXT,
+    start_date TEXT,           -- 'Juli 2024' (for AI sorting/matching)
+    end_date TEXT,             -- 'Augusti 2025' or 'Pågående'
+    description TEXT,          -- Free-text description of the role
     bullets TEXT[] DEFAULT ARRAY[]::TEXT[],
     categories TEXT[] DEFAULT ARRAY[]::TEXT[],  -- ['restaurant', 'retail', 'customerservice', 'tech', etc.]
+    -- AI matching tags
+    job_types TEXT[] DEFAULT ARRAY[]::TEXT[],        -- ['industri', 'fysiskt_arbete', 'kundtjänst']
+    skill_level TEXT,                                 -- 'entry', 'mid', 'senior'
+    environment_type TEXT,                            -- 'physical', 'office', 'remote', 'outdoor', 'retail'
+    key_skills TEXT[] DEFAULT ARRAY[]::TEXT[],        -- ['skiftarbete', 'teamwork', 'kundhantering']
+    industry_keywords TEXT[] DEFAULT ARRAY[]::TEXT[], -- ['anodisering', 'metallbearbetning']
     sort_order INT DEFAULT 0,
     created_at TIMESTAMPTZ DEFAULT NOW()
 );
@@ -167,6 +176,16 @@ CREATE TABLE IF NOT EXISTS user_awards (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     user_id TEXT NOT NULL,
     award_text TEXT NOT NULL,  -- Full award line like '1:a pris Stockholms Konstsalong 2024 - ...'
+    sort_order INT DEFAULT 0,
+    created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- General certifications (non-tech: körkort, kassahantering, första hjälpen, etc.)
+CREATE TABLE IF NOT EXISTS user_certifications (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    user_id TEXT NOT NULL,
+    certification_name TEXT NOT NULL,
+    issuing_organization TEXT,
     sort_order INT DEFAULT 0,
     created_at TIMESTAMPTZ DEFAULT NOW()
 );
@@ -338,7 +357,10 @@ BEGIN
         'experiences', (SELECT jsonb_agg(row_to_json(x.*) ORDER BY x.sort_order) FROM user_experiences x WHERE x.user_id = p_user_id),
         'volunteer', (SELECT jsonb_agg(row_to_json(v.*) ORDER BY v.sort_order) FROM user_volunteer v WHERE v.user_id = p_user_id),
         'awards', (SELECT jsonb_agg(row_to_json(a.*) ORDER BY a.sort_order) FROM user_awards a WHERE a.user_id = p_user_id),
-        'skills', (SELECT jsonb_agg(row_to_json(s.*)) FROM user_skills s WHERE s.user_id = p_user_id)
+        'skills', (SELECT jsonb_agg(row_to_json(s.*)) FROM user_skills s WHERE s.user_id = p_user_id),
+        'certifications', (SELECT jsonb_agg(row_to_json(c.*) ORDER BY c.sort_order) FROM user_certifications c WHERE c.user_id = p_user_id),
+        'tech_certifications', (SELECT jsonb_agg(row_to_json(tc.*) ORDER BY tc.sort_order) FROM tech_certifications tc WHERE tc.user_id = p_user_id),
+        'tech_projects', (SELECT jsonb_agg(row_to_json(tp.*) ORDER BY tp.sort_order) FROM tech_projects tp WHERE tp.user_id = p_user_id)
     ) INTO result;
 
     RETURN result;
@@ -473,6 +495,7 @@ CREATE INDEX IF NOT EXISTS idx_user_cv_branscher_user ON user_cv_branscher(user_
 CREATE INDEX IF NOT EXISTS idx_user_ai_feedback_user ON user_ai_feedback(user_id);
 CREATE INDEX IF NOT EXISTS idx_user_experience_tags_user ON user_experience_tags(user_id);
 CREATE INDEX IF NOT EXISTS idx_user_experience_tags_bransch ON user_experience_tags(bransch_id);
+CREATE INDEX IF NOT EXISTS idx_user_certifications_user ON user_certifications(user_id);
 
 -- Row Level Security (enable when you add auth)
 -- ALTER TABLE user_profiles ENABLE ROW LEVEL SECURITY;
@@ -492,14 +515,27 @@ COMMENT ON TABLE user_cover_letter_preferences IS 'Per-user cover letter style a
 COMMENT ON TABLE user_job_preferences IS 'Per-user job search filters and preferences';
 COMMENT ON TABLE user_ai_feedback IS 'User feedback to AI for personalized cover letter generation';
 COMMENT ON TABLE user_experience_tags IS 'Links experiences to branscher with priority for cover letter generation';
+COMMENT ON TABLE user_certifications IS 'General certifications (körkort, kassahantering, första hjälpen, etc.)';
 COMMENT ON TABLE user_training_letters IS 'User-uploaded training letters for AI style analysis (max 20 per user)';
 COMMENT ON TABLE user_cv_uploads IS 'User-uploaded CVs as PDFs (max 20 per user)';
 COMMENT ON TABLE bransch_cvs IS 'Industry-specific CV variants shown in MinaCVPage';
 
 -- ============== SUPABASE STORAGE BUCKETS ==============
--- These buckets are created via Supabase Dashboard (not SQL).
--- All three are PUBLIC buckets.
+-- These are created automatically on app startup via the API.
+-- If they don't exist, run this in Supabase SQL Editor:
 --
+-- INSERT INTO storage.buckets (id, name, public) VALUES ('profile-photos', 'profile-photos', true) ON CONFLICT (id) DO NOTHING;
+-- INSERT INTO storage.buckets (id, name, public) VALUES ('training-letters', 'training-letters', true) ON CONFLICT (id) DO NOTHING;
+-- INSERT INTO storage.buckets (id, name, public) VALUES ('cv-files', 'cv-files', true) ON CONFLICT (id) DO NOTHING;
+--
+-- Also add permissive storage policies so service_role can upload:
+--
+-- CREATE POLICY "Allow public read" ON storage.objects FOR SELECT USING (bucket_id IN ('profile-photos', 'training-letters', 'cv-files'));
+-- CREATE POLICY "Allow service upload" ON storage.objects FOR INSERT WITH CHECK (true);
+-- CREATE POLICY "Allow service update" ON storage.objects FOR UPDATE USING (true);
+-- CREATE POLICY "Allow service delete" ON storage.objects FOR DELETE USING (true);
+--
+-- Bucket details:
 -- 1. profile-photos    — User profile photos (one per user)
 --    Path: {user_id}/profile.{ext}
 --    URL:  {SUPABASE_URL}/storage/v1/object/public/profile-photos/{path}
