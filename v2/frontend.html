@@ -1,14 +1,14 @@
 <!DOCTYPE html>
 <html lang="sv">
 <head>
-    <!-- VERSION: 2025-02-17-PINK-TEST -->
+    <!-- VERSION: 2026-02-17-ERROR-DISPLAY -->
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Anti-Apathy Job Portal</title>
-    <script src="https://cdn.tailwindcss.com"></script>
-    <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
-    <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
-    <script src="https://unpkg.com/@babel/standalone@7.23.9/babel.min.js"></script>
+    <script crossorigin="anonymous" src="https://cdn.tailwindcss.com"></script>
+    <script crossorigin="anonymous" src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+    <script crossorigin="anonymous" src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+    <script crossorigin="anonymous" src="https://unpkg.com/@babel/standalone@7.23.9/babel.min.js"></script>
     <style>
         * { font-family: system-ui, -apple-system, sans-serif; }
         .gradient { background: linear-gradient(135deg, #ec4899 0%, #f472b6 50%, #fb7185 100%); }
@@ -16,8 +16,51 @@
     </style>
 </head>
 <body class="bg-slate-50 min-h-screen">
+    <!-- Error display (shown until React renders) -->
+    <div id="js-error" style="display:none;position:fixed;top:0;left:0;right:0;bottom:0;background:#fff;padding:40px;font-family:monospace;z-index:99999;overflow:auto;">
+        <h2 style="color:#dc2626;font-size:1.5rem;margin-bottom:1rem;">JavaScript-fel (vit sida)</h2>
+        <pre id="js-error-msg" style="background:#fef2f2;border:1px solid #fca5a5;padding:16px;border-radius:8px;white-space:pre-wrap;word-break:break-all;font-size:0.75rem;"></pre>
+        <p style="margin-top:1rem;color:#6b7280;font-size:0.875rem;">Om du ser detta, ta en skärmdump och dela med utvecklaren.</p>
+    </div>
+    <script>
+        // Catch any JS errors before Babel runs
+        window.onerror = function(msg, src, line, col, err) {
+            var el = document.getElementById('js-error');
+            var msgEl = document.getElementById('js-error-msg');
+            if (el && msgEl) {
+                el.style.display = 'block';
+                document.getElementById('root').style.display = 'none';
+                msgEl.textContent = 'Fel: ' + msg + '\nFil: ' + src + '\nRad: ' + line + ':' + col + (err ? '\n\nStack:\n' + err.stack : '');
+            }
+            return false;
+        };
+        window.addEventListener('unhandledrejection', function(e) {
+            var el = document.getElementById('js-error');
+            var msgEl = document.getElementById('js-error-msg');
+            if (el && msgEl) {
+                el.style.display = 'block';
+                document.getElementById('root').style.display = 'none';
+                msgEl.textContent = 'Promise-fel: ' + (e.reason ? (e.reason.stack || e.reason) : e);
+            }
+        });
+        // Check CDN scripts loaded
+        setTimeout(function() {
+            var missing = [];
+            if (typeof React === 'undefined') missing.push('React');
+            if (typeof ReactDOM === 'undefined') missing.push('ReactDOM');
+            if (typeof Babel === 'undefined') missing.push('Babel');
+            if (missing.length > 0) {
+                var el = document.getElementById('js-error');
+                var msgEl = document.getElementById('js-error-msg');
+                if (el && msgEl) {
+                    el.style.display = 'block';
+                    msgEl.textContent = 'CDN-skript kunde inte laddas: ' + missing.join(', ') + '\n\nDetta orsakar vit sida. Möjliga orsaker:\n- Nätverksfel\n- CDN blockerad\n- Adblocker';
+                }
+            }
+        }, 3000);
+    </script>
     <div id="root"></div>
-    <script type="text/babel">
+    <script type="text/plain" id="app-source">
         const { useState, useEffect, useMemo } = React;
 
         // ============== COMPONENTS ==============
@@ -5417,13 +5460,68 @@
 
                     {/* Version badge */}
                     <div style={{position:'fixed',bottom:'10px',right:'10px',fontSize:'10px',color:'#999',background:'#fff',padding:'4px 8px',borderRadius:'4px',border:'1px solid #ddd',zIndex:9999}}>
-                        v8-catch-fix-2026-02-17
+                        v9-errordisplay-2026-02-17
                     </div>
                 </div>
             );
         };
 
-        ReactDOM.createRoot(document.getElementById('root')).render(<App />);
+        try {
+            ReactDOM.createRoot(document.getElementById('root')).render(<App />);
+            // Hide error overlay on success
+            var errEl = document.getElementById('js-error');
+            if (errEl) errEl.style.display = 'none';
+        } catch(renderErr) {
+            var el = document.getElementById('js-error');
+            var msgEl = document.getElementById('js-error-msg');
+            if (el && msgEl) {
+                el.style.display = 'block';
+                document.getElementById('root').style.display = 'none';
+                msgEl.textContent = 'React render-fel:\n' + (renderErr.stack || renderErr);
+            }
+        }
+    </script>
+    <script>
+        // Manual Babel compilation with full error reporting
+        (function() {
+            var showError = function(title, err) {
+                var el = document.getElementById('js-error');
+                var msgEl = document.getElementById('js-error-msg');
+                if (el && msgEl) {
+                    el.style.display = 'block';
+                    var root = document.getElementById('root');
+                    if (root) root.style.display = 'none';
+                    msgEl.textContent = title + ':\n' + (err.stack || err.message || String(err));
+                }
+            };
+
+            // Check dependencies
+            if (typeof React === 'undefined') return showError('Saknar beroende', new Error('React laddades inte från CDN'));
+            if (typeof ReactDOM === 'undefined') return showError('Saknar beroende', new Error('ReactDOM laddades inte från CDN'));
+            if (typeof Babel === 'undefined') return showError('Saknar beroende', new Error('Babel laddades inte från CDN'));
+
+            var source = document.getElementById('app-source');
+            if (!source) return showError('Intern fel', new Error('Hittade inte app-source element'));
+
+            var code = source.textContent;
+
+            // Step 1: Babel compile
+            var compiled;
+            try {
+                compiled = Babel.transform(code, { presets: ['react'] });
+            } catch(babelErr) {
+                return showError('Babel kompileringsfel (JSX-syntax)', babelErr);
+            }
+
+            // Step 2: Execute compiled code
+            try {
+                var script = document.createElement('script');
+                script.textContent = compiled.code;
+                document.body.appendChild(script);
+            } catch(execErr) {
+                return showError('Körningsfel efter kompilering', execErr);
+            }
+        })();
     </script>
 </body>
 </html>
