@@ -219,13 +219,29 @@ CV_BRANSCHER = [
 # ============== HELPERS ==============
 
 def extract_email(text: str) -> Optional[str]:
-    """Extract email from text, filtering out generic ones"""
+    """Extract a real contact email from job ad text, filtering generic/system addresses."""
     pattern = r'[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}'
     emails = re.findall(pattern, text)
-    exclude = ['noreply', 'info@arbetsformedlingen', 'kundtjanst@', 'support@']
+
+    # Substrings that indicate a generic/system address — not a real contact
+    exclude_fragments = [
+        'noreply', 'no-reply', 'donotreply',
+        'arbetsformedlingen', 'arbetsförmedlingen',
+        'platsbanken',
+        'info@', 'kontakt@', 'post@', 'mail@', 'hej@',
+        'support@', 'help@', 'helpdesk@',
+        'kundtjanst@', 'kundservice@',
+        'jobb@', 'jobb.', 'career@', 'careers@', 'jobbansok',
+        'ansok@', 'ansökan@',
+        'hr@', 'rekrytering@', 'rekrytera@', 'resurs@',
+        'admin@', 'webmaster@', 'abuse@',
+        'example.com', 'test@',
+    ]
+
     for email in emails:
-        if not any(ex in email.lower() for ex in exclude):
-            return email.lower()
+        low = email.lower()
+        if not any(ex in low for ex in exclude_fragments):
+            return low
     return None
 
 
@@ -318,53 +334,70 @@ async def scrape_platsbanken(keyword: str, location: str = "Stockholm", max_jobs
                 salary_type = conditions.get("salaryType", "")
                 salary_description = conditions.get("salaryDescription", "")
 
-                # Application details
-                contact_email = extract_email(description)
-                if not contact_email and app_details.get("email"):
-                    contact_email = app_details.get("email")
-                apply_url = app_details.get("url", "")
+                # Always fetch full job detail — more reliable email + extra fields
+                number_of_positions = 1
+                municipality = ""
+                county = ""
+                occupation = ""
+                try:
+                    detail_res = await client.get(
+                        f"https://platsbanken-api.arbetsformedlingen.se/jobs/v1/job/{job_id}",
+                        headers={"Content-Type": "application/json"},
+                        timeout=8
+                    )
+                    if detail_res.status_code == 200:
+                        detail = detail_res.json()
+                        full_desc = detail.get("description", "") or ""
+                        if len(full_desc) > len(description):
+                            description = full_desc
 
-                # Contact info
-                contact_name = extract_contact_name(description)
-                if not contact_name and app_details.get("name"):
-                    contact_name = app_details.get("name")
-                contact_phone = app_details.get("phoneNumber", "")
+                        d_app = detail.get("applicationDetails", {}) or {}
+                        d_cond = detail.get("conditions", {}) or {}
+                        d_workplace = detail.get("workplace", {}) or {}
 
-                # Try to fetch full job details for longer description
-                if len(description) < 200:
-                    try:
-                        detail_res = await client.get(
-                            f"https://platsbanken-api.arbetsformedlingen.se/jobs/v1/job/{job_id}",
-                            headers={"Content-Type": "application/json"},
-                            timeout=5
-                        )
-                        if detail_res.status_code == 200:
-                            detail = detail_res.json()
-                            full_desc = detail.get("description", "")
-                            if full_desc and len(full_desc) > len(description):
-                                description = full_desc
-                            # Also grab any missing fields
-                            if not contact_email:
-                                contact_email = extract_email(full_desc)
-                            d_app = detail.get("applicationDetails", {}) or {}
-                            if not contact_email and d_app.get("email"):
-                                contact_email = d_app.get("email")
-                            if not contact_name and d_app.get("name"):
-                                contact_name = d_app.get("name")
-                            if not contact_phone and d_app.get("phoneNumber"):
-                                contact_phone = d_app.get("phoneNumber")
-                            if not apply_url and d_app.get("url"):
-                                apply_url = d_app.get("url")
-                            # Employment details
-                            d_cond = detail.get("conditions", {}) or {}
-                            if not employment_type:
-                                employment_type = detail.get("employmentType", "") or d_cond.get("employmentType", "")
-                            if not duration:
-                                duration = detail.get("duration", "") or d_cond.get("duration", "")
-                            if not working_hours:
-                                working_hours = detail.get("workingHoursType", "") or d_cond.get("workingHoursType", "")
-                    except Exception:
-                        pass  # Detail fetch is best-effort
+                        # applicationDetails.email is most reliable
+                        if d_app.get("email"):
+                            app_details_email = d_app["email"].lower()
+                        else:
+                            app_details_email = None
+
+                        apply_url = d_app.get("url", "") or app_details.get("url", "")
+                        contact_name = d_app.get("name") or extract_contact_name(full_desc)
+                        contact_phone = d_app.get("phoneNumber", "")
+
+                        if not employment_type:
+                            employment_type = d_cond.get("employmentType", "")
+                        if not duration:
+                            duration = d_cond.get("duration", "")
+                        if not working_hours:
+                            working_hours = d_cond.get("workingHoursType", "")
+                        if not salary_type:
+                            salary_type = d_cond.get("salaryType", "")
+                        if not salary_description:
+                            salary_description = d_cond.get("salaryDescription", "")
+
+                        number_of_positions = detail.get("numberOfVacancies", 1) or 1
+                        municipality = d_workplace.get("municipality", "") or ""
+                        county = d_workplace.get("region", "") or ""
+                        occupation = detail.get("occupation", {}).get("label", "") if isinstance(detail.get("occupation"), dict) else ""
+                except Exception as e:
+                    logger.debug(f"Detail fetch failed for {job_id}: {e}")
+                    app_details_email = None
+                    apply_url = app_details.get("url", "")
+                    contact_name = extract_contact_name(description)
+                    contact_phone = app_details.get("phoneNumber", "")
+
+                # Pick best contact email:
+                # Priority: applicationDetails.email → extract from full description
+                # Both filtered through extract_email's blocklist
+                contact_email = None
+                if app_details_email and not any(ex in app_details_email for ex in [
+                    'noreply', 'no-reply', 'arbetsformedlingen', 'platsbanken',
+                    'donotreply', 'example.com'
+                ]):
+                    contact_email = app_details_email
+                if not contact_email:
+                    contact_email = extract_email(description)
 
                 # Strip HTML tags from description
                 description = re.sub(r'<[^>]+>', ' ', description)
@@ -375,7 +408,10 @@ async def scrape_platsbanken(keyword: str, location: str = "Stockholm", max_jobs
                     "title": title,
                     "company": company,
                     "location": job_location,
-                    "description": description[:5000],
+                    "municipality": municipality,
+                    "county": county,
+                    "occupation": occupation,
+                    "description": description[:6000],
                     "url": f"https://arbetsformedlingen.se/platsbanken/annonser/{job_id}",
                     "deadline": deadline,
                     "priority": calculate_priority(deadline),
@@ -387,6 +423,7 @@ async def scrape_platsbanken(keyword: str, location: str = "Stockholm", max_jobs
                     "working_hours": working_hours,
                     "salary_type": salary_type,
                     "salary_description": salary_description,
+                    "number_of_positions": number_of_positions,
                     "apply_url": apply_url,
                     "source": "platsbanken",
                     "scraped_at": datetime.now().isoformat()
