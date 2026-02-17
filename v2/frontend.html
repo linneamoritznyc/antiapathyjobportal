@@ -461,8 +461,10 @@
         // Quiz page - step by step job preferences (dark theme, one Q per screen)
         const QuizPage = ({ onComplete, saving }) => {
             const [step, setStep] = useState(0);
+            const [customSearch, setCustomSearch] = useState('');
             const [answers, setAnswers] = useState({
                 search_terms: [],
+                custom_search: '',
                 location: [],
                 working_hours: '',
                 employment_form: [],
@@ -475,20 +477,20 @@
                 {
                     id: 'search_terms',
                     question: 'Vad vill du jobba med?',
-                    subtitle: 'Valj alla som passar dig',
-                    type: 'multi',
+                    subtitle: 'Skriv fritt eller valj fran forslagen nedan',
+                    type: 'freetext_multi',
                     options: [
-                        { value: 'servitor', label: 'Servering/Restaurang' },
-                        { value: 'kundtjanst', label: 'Kundtjanst/Support' },
-                        { value: 'butik', label: 'Butik/Kassa/Forsaljning' },
-                        { value: 'lager', label: 'Lager/Logistik' },
+                        { value: 'servitor', label: 'Servering' },
+                        { value: 'kundtjanst', label: 'Kundtjanst' },
+                        { value: 'butik', label: 'Butik/Forsaljning' },
+                        { value: 'lager', label: 'Lager' },
                         { value: 'kontor', label: 'Kontor/Admin' },
-                        { value: 'tech', label: 'IT/Tech/Utveckling' },
+                        { value: 'tech', label: 'IT/Tech' },
                         { value: 'vard', label: 'Vard/Omsorg' },
-                        { value: 'hotell', label: 'Hotell/Reception' },
-                        { value: 'barn', label: 'Barn/Forskola/Nanny' },
-                        { value: 'skola', label: 'Skola/Utbildning' },
-                        { value: 'tradgard', label: 'Tradgard/Industri' },
+                        { value: 'hotell', label: 'Hotell' },
+                        { value: 'barn', label: 'Barn/Nanny' },
+                        { value: 'skola', label: 'Skola/Larare' },
+                        { value: 'tradgard', label: 'Tradgard' },
                         { value: 'stad', label: 'Stad/Lokalvard' }
                     ]
                 },
@@ -598,9 +600,11 @@
             };
 
             const canProceed = currentQ.allowEmpty ? true :
-                currentQ.type === 'single'
-                    ? !!answers[currentQ.id]
-                    : (answers[currentQ.id] || []).length > 0;
+                currentQ.type === 'freetext_multi'
+                    ? ((answers[currentQ.id] || []).length > 0 || customSearch.trim().length > 0)
+                    : currentQ.type === 'single'
+                        ? !!answers[currentQ.id]
+                        : (answers[currentQ.id] || []).length > 0;
 
             return (
                 <div className="min-h-screen bg-slate-900 flex flex-col items-center justify-center p-6">
@@ -642,17 +646,36 @@
 
                         {/* Options */}
                         <div className="space-y-3">
+                            {/* Freetext input for search_terms question */}
+                            {currentQ.type === 'freetext_multi' && (
+                                <div className="mb-4">
+                                    <input
+                                        type="text"
+                                        value={customSearch}
+                                        onChange={(e) => {
+                                            setCustomSearch(e.target.value);
+                                            setAnswers({...answers, custom_search: e.target.value});
+                                        }}
+                                        placeholder="Skriv vad du vill jobba med... t.ex. 'programmerare', 'florist', 'taxichauffor'"
+                                        className="w-full p-4 rounded-xl bg-white/10 text-white placeholder-white/30 border border-white/20 focus:border-indigo-400 focus:ring-1 focus:ring-indigo-400 outline-none text-base"
+                                    />
+                                    {customSearch.trim() && (
+                                        <p className="text-indigo-400 text-xs mt-2 ml-1">Soker pa: "{customSearch.trim()}"</p>
+                                    )}
+                                    <p className="text-white/30 text-xs mt-2 ml-1">Eller valj fran forslagen:</p>
+                                </div>
+                            )}
                             {currentQ.options.map(opt => (
                                 <button
                                     key={opt.value}
                                     onClick={() => handleSelect(opt.value)}
-                                    className={`w-full p-4 rounded-xl text-left transition-all duration-200 ${
+                                    className={`${currentQ.type === 'freetext_multi' ? 'inline-block mr-2 mb-2 px-4 py-2 rounded-full text-sm' : 'w-full p-4 rounded-xl text-left'} transition-all duration-200 ${
                                         isSelected(opt.value)
                                             ? 'bg-indigo-600 text-white ring-2 ring-indigo-400'
                                             : 'bg-white/5 text-white/80 hover:bg-white/10 border border-white/10'
                                     }`}
                                 >
-                                    <span className="font-medium text-base">{opt.label}</span>
+                                    <span className="font-medium">{opt.label}</span>
                                 </button>
                             ))}
                         </div>
@@ -2589,7 +2612,10 @@
                         'hotell': 'hotell', 'barn': 'barnvakt', 'skola': 'lärare',
                         'tradgard': 'trädgård', 'stad': 'städ'
                     };
-                    if (prefs.search_terms && prefs.search_terms.length > 0) {
+                    // Use custom freetext search first, then preset chips
+                    if (prefs.custom_search && prefs.custom_search.trim()) {
+                        kw = prefs.custom_search.split(',').map(k => k.trim()).filter(Boolean);
+                    } else if (prefs.search_terms && prefs.search_terms.length > 0) {
                         kw = prefs.search_terms.map(r => roleMap[r] || r);
                     }
                     if (prefs.location && prefs.location.length > 0) {

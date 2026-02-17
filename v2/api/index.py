@@ -361,6 +361,10 @@ async def scrape_platsbanken(keyword: str, location: str = "Stockholm", max_jobs
                     except Exception:
                         pass  # Detail fetch is best-effort
 
+                # Strip HTML tags from description
+                description = re.sub(r'<[^>]+>', ' ', description)
+                description = re.sub(r'\s+', ' ', description).strip()
+
                 job = {
                     "id": job_id,
                     "title": title,
@@ -447,20 +451,34 @@ async def generate_cover_letter(job: Dict, user_cv_text: Optional[str] = None) -
 
     contact_greeting = f"Hej {job.get('contact_name', '')}!" if job.get('contact_name') else "Hej!"
 
+    # Build extra job details for the prompt
+    job_extras = []
+    if job.get("employment_type"):
+        job_extras.append(f"- Anställningsform: {job['employment_type']}")
+    if job.get("working_hours"):
+        job_extras.append(f"- Omfattning: {job['working_hours']}")
+    if job.get("duration"):
+        job_extras.append(f"- Varaktighet: {job['duration']}")
+    if job.get("salary_type") or job.get("salary_description"):
+        sal = job.get("salary_description") or job.get("salary_type", "")
+        job_extras.append(f"- Lön: {sal}")
+    extras_text = "\n".join(job_extras) if job_extras else ""
+
     prompt = f"""Skriv ett personligt brev på svenska för denna jobbansökan.
 
 JOBBET:
 - Titel: {job.get('title')}
 - Företag: {job.get('company')}
 - Plats: {job.get('location')}
-- Beskrivning: {job.get('description', '')[:1500]}
+{extras_text}
+- Beskrivning: {job.get('description', '')[:2500]}
 
 MIN ERFARENHET:
 {experience}
 
 OM MIG:
 - Linnea Moritz, 28 år, bor i Sollentuna
-- B-körkort, flexibel med arbetstider
+- B-körkort, egen bil, flexibel med arbetstider
 - Telefon: 0761166109
 - Svenska (modersmål), Engelska (flytande)
 
@@ -468,8 +486,9 @@ INSTRUKTIONER:
 1. Börja med: {contact_greeting}
 2. Skriv 150-200 ord på naturlig, varm svenska
 3. Lyft fram 2-3 specifika erfarenheter som matchar jobbet
-4. Nämn att jag bor i Sollentuna, har B-körkort och är flexibel
-5. Avsluta med:
+4. VIKTIGT: Om annonsen nämner specifika krav (t.ex. körkort, bil, språk, kvällar, helger, fysiska krav), bekräfta att jag uppfyller dem
+5. Nämn att jag bor i Sollentuna och är flexibel med arbetstider
+6. Avsluta med:
    Med vänlig hälsning,
    Linnea Moritz
    0761166109
