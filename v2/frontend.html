@@ -2218,10 +2218,43 @@
             const [loadingStyle, setLoadingStyle] = useState(true);
             const [saveStatus, setSaveStatus] = useState('');
             const [dragOver, setDragOver] = useState(false);
+            const [uploadedLetters, setUploadedLetters] = useState([]);
+            const [deletingId, setDeletingId] = useState(null);
 
             useEffect(() => {
                 fetchLetterStyle();
+                fetchUploadedLetters();
             }, []);
+
+            const fetchUploadedLetters = async () => {
+                const token = localStorage.getItem('auth_token');
+                if (!token) return;
+                try {
+                    const res = await fetch('/api/user/training-letters', {
+                        headers: { 'Authorization': `Bearer ${token}` }
+                    });
+                    if (res.ok) {
+                        const data = await res.json();
+                        setUploadedLetters(data.letters || []);
+                    }
+                } catch(e) {}
+            };
+
+            const deleteLetter = async (id) => {
+                const token = localStorage.getItem('auth_token');
+                if (!token) return;
+                setDeletingId(id);
+                try {
+                    const res = await fetch(`/api/user/training-letters/${id}`, {
+                        method: 'DELETE',
+                        headers: { 'Authorization': `Bearer ${token}` }
+                    });
+                    if (res.ok) {
+                        setUploadedLetters(prev => prev.filter(l => l.id !== id));
+                    }
+                } catch(e) {}
+                setDeletingId(null);
+            };
 
             const fetchLetterStyle = async () => {
                 const token = localStorage.getItem('auth_token');
@@ -2256,8 +2289,9 @@
                     if (data.success) {
                         setSaveStatus('✓ AI har analyserat ditt brev!');
                         await fetchLetterStyle();
+                        await fetchUploadedLetters();
                     } else {
-                        setSaveStatus('Något gick fel. Försök igen.');
+                        setSaveStatus(data.detail || 'Något gick fel. Försök igen.');
                     }
                 } catch(e) {
                     setSaveStatus('Något gick fel. Försök igen.');
@@ -2393,6 +2427,50 @@
                             </div>
                         )}
                     </div>
+
+                    {/* Uploaded letters list */}
+                    {uploadedLetters.length > 0 && (
+                        <div className="bg-white rounded-xl p-6 border border-slate-200">
+                            <h3 className="text-lg font-semibold mb-1">📚 Dina uppladdade brev</h3>
+                            <p className="text-sm text-slate-500 mb-4">
+                                {uploadedLetters.length} av 20 brev uppladdade
+                            </p>
+                            <div className="space-y-2">
+                                {uploadedLetters.map(letter => (
+                                    <div key={letter.id} className="flex items-center justify-between bg-slate-50 rounded-lg px-4 py-3 border border-slate-100">
+                                        <div className="flex items-center gap-3 min-w-0">
+                                            <span className="text-lg flex-shrink-0">📄</span>
+                                            <div className="min-w-0">
+                                                <div className="text-sm font-medium text-slate-700 truncate">{letter.filename}</div>
+                                                <div className="text-xs text-slate-400">
+                                                    {new Date(letter.uploaded_at).toLocaleDateString('sv-SE')}
+                                                </div>
+                                            </div>
+                                        </div>
+                                        <div className="flex items-center gap-2 flex-shrink-0">
+                                            {letter.file_url && (
+                                                <a
+                                                    href={letter.file_url}
+                                                    target="_blank"
+                                                    rel="noopener noreferrer"
+                                                    className="text-indigo-600 hover:text-indigo-800 text-sm font-medium"
+                                                >
+                                                    Visa
+                                                </a>
+                                            )}
+                                            <button
+                                                onClick={() => deleteLetter(letter.id)}
+                                                disabled={deletingId === letter.id}
+                                                className="text-red-400 hover:text-red-600 text-sm disabled:opacity-50"
+                                            >
+                                                {deletingId === letter.id ? '...' : '✕'}
+                                            </button>
+                                        </div>
+                                    </div>
+                                ))}
+                            </div>
+                        </div>
+                    )}
 
                     {/* AI style summary */}
                     <div className="bg-white rounded-xl p-6 border border-slate-200">
@@ -2578,11 +2656,7 @@
                 })
                 .sort((a, b) => {
                     if (sortBy === 'deadline') {
-                        // Urgent first, then by deadline date
-                        const priorityOrder = { urgent: 0, soon: 1, normal: 2 };
-                        const aPriority = priorityOrder[a.priority] ?? 2;
-                        const bPriority = priorityOrder[b.priority] ?? 2;
-                        if (aPriority !== bPriority) return aPriority - bPriority;
+                        // Pure deadline sort — soonest deadline first
                         return new Date(a.deadline || '2099-12-31') - new Date(b.deadline || '2099-12-31');
                     }
                     if (sortBy === 'company') {

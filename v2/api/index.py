@@ -859,14 +859,26 @@ async def health():
 
 @app.post("/api/scrape")
 async def scrape_jobs(request: JobSearchRequest = None):
-    """Scrape jobs from Platsbanken"""
+    """Scrape jobs from Platsbanken.
+    Searches user's positive keywords PLUS a broad catch-all search,
+    so unexpected dream jobs also appear (filtered by negatives in frontend).
+    """
     keywords = request.keywords if request and request.keywords else ["servitör", "kundtjänst", "butik"]
     location = request.location if request else "Stockholm"
 
     all_jobs = []
+
+    # 1. Scrape user's positive keywords (what they specifically want)
     for keyword in keywords[:5]:  # Max 5 keywords
         jobs = await scrape_platsbanken(keyword, location, max_jobs=10)
         all_jobs.extend(jobs)
+
+    # 2. Broad catch-all scrape so unexpected cool jobs also appear
+    #    (negative keywords filter them in frontend — we cast a wide net here)
+    broad_terms = ["jobb", "anställning"]
+    for term in broad_terms:
+        broad_jobs = await scrape_platsbanken(term, location, max_jobs=15)
+        all_jobs.extend(broad_jobs)
 
     # Remove duplicates by job ID
     seen = set()
@@ -875,6 +887,9 @@ async def scrape_jobs(request: JobSearchRequest = None):
         if job["id"] not in seen:
             seen.add(job["id"])
             unique_jobs.append(job)
+
+    # Sort by deadline (soonest first) before returning
+    unique_jobs.sort(key=lambda j: j.get("deadline") or "2099-12-31")
 
     # Save to database if configured
     saved_count = await save_jobs_to_db(unique_jobs)
@@ -5478,9 +5493,9 @@ async def get_letter_style(request: Request):
     return {"style_summary": style_summary}
 
 
-@app.post("/api/user/upload-training-letter")
-async def upload_user_training_letter(request: Request):
-    """Upload a training letter file and analyze the writing style"""
+@app.get("/api/user/training-letters")
+async def get_user_training_letters(request: Request):
+    """Get all training letters uploaded by the user"""
     auth_header = request.headers.get("Authorization", "")
     user_id = None
 
@@ -5497,6 +5512,80 @@ async def upload_user_training_letter(request: Request):
     if not user_id:
         raise HTTPException(status_code=401, detail="Ej inloggad")
 
+    letters = await db_request("GET", "user_training_letters",
+        params={"user_id": f"eq.{user_id}", "order": "uploaded_at.desc"})
+
+    return {"success": True, "letters": letters or []}
+
+
+@app.delete("/api/user/training-letters/{letter_id}")
+async def delete_user_training_letter(letter_id: str, request: Request):
+    """Delete a training letter"""
+    auth_header = request.headers.get("Authorization", "")
+    user_id = None
+
+    if auth_header.startswith("Bearer "):
+        token = auth_header.replace("Bearer ", "")
+        async with httpx.AsyncClient() as client:
+            user_response = await client.get(
+                f"{SUPABASE_URL}/auth/v1/user",
+                headers={"apikey": SUPABASE_ANON_KEY, "Authorization": f"Bearer {token}"}
+            )
+            if user_response.status_code == 200:
+                user_id = user_response.json().get("id")
+
+    if not user_id:
+        raise HTTPException(status_code=401, detail="Ej inloggad")
+
+    # Verify the letter belongs to this user before deleting
+    letter = await db_request("GET", "user_training_letters",
+        params={"id": f"eq.{letter_id}", "user_id": f"eq.{user_id}"})
+
+    if not letter or len(letter) == 0:
+        raise HTTPException(status_code=404, detail="Brev hittades inte")
+
+    # Delete from storage if file_url exists
+    file_url = letter[0].get("file_url", "")
+    if file_url and "training-letters/" in file_url:
+        storage_path = file_url.split("training-letters/")[-1]
+        async with httpx.AsyncClient() as client:
+            await client.delete(
+                f"{SUPABASE_URL}/storage/v1/object/training-letters/{storage_path}",
+                headers={"Authorization": f"Bearer {SUPABASE_KEY}"},
+                timeout=10
+            )
+
+    await db_request("DELETE", "user_training_letters",
+        params={"id": f"eq.{letter_id}", "user_id": f"eq.{user_id}"})
+
+    return {"success": True}
+
+
+@app.post("/api/user/upload-training-letter")
+async def upload_user_training_letter(request: Request):
+    """Upload a training letter file, save to storage + DB, and analyze writing style"""
+    auth_header = request.headers.get("Authorization", "")
+    user_id = None
+
+    if auth_header.startswith("Bearer "):
+        token = auth_header.replace("Bearer ", "")
+        async with httpx.AsyncClient() as client:
+            user_response = await client.get(
+                f"{SUPABASE_URL}/auth/v1/user",
+                headers={"apikey": SUPABASE_ANON_KEY, "Authorization": f"Bearer {token}"}
+            )
+            if user_response.status_code == 200:
+                user_id = user_response.json().get("id")
+
+    if not user_id:
+        raise HTTPException(status_code=401, detail="Ej inloggad")
+
+    # Check max 20 letters per user
+    existing_letters = await db_request("GET", "user_training_letters",
+        params={"user_id": f"eq.{user_id}", "select": "id"})
+    if existing_letters and len(existing_letters) >= 20:
+        raise HTTPException(status_code=400, detail="Max 20 brev. Ta bort ett för att ladda upp fler.")
+
     form = await request.form()
     file = form.get("file")
     if not file:
@@ -5508,10 +5597,50 @@ async def upload_user_training_letter(request: Request):
     if not letter_text:
         letter_text = "[Kunde inte extrahera text från filen]"
 
+    # Upload to Supabase Storage (training-letters bucket, PUBLIC)
+    import time
+    timestamp = int(time.time())
+    filename_lower = file.filename.lower()
+    file_ext = filename_lower.split('.')[-1] if '.' in filename_lower else 'pdf'
+    content_type_map = {
+        'pdf': 'application/pdf',
+        'docx': 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+        'doc': 'application/msword',
+        'txt': 'text/plain',
+        'rtf': 'application/rtf',
+        'odt': 'application/vnd.oasis.opendocument.text'
+    }
+    content_type = content_type_map.get(file_ext, 'application/pdf')
+    storage_path = f"{user_id}/letter_{timestamp}.{file_ext}"
+    file_url = None
+
+    async with httpx.AsyncClient() as client:
+        upload_response = await client.post(
+            f"{SUPABASE_URL}/storage/v1/object/training-letters/{storage_path}",
+            headers={
+                "Authorization": f"Bearer {SUPABASE_KEY}",
+                "Content-Type": content_type,
+                "x-upsert": "true"
+            },
+            content=file_content,
+            timeout=30
+        )
+        if upload_response.status_code in [200, 201]:
+            file_url = f"{SUPABASE_URL}/storage/v1/object/public/training-letters/{storage_path}"
+
+    # Save to user_training_letters table
+    await db_request("POST", "user_training_letters", data={
+        "user_id": user_id,
+        "filename": file.filename,
+        "letter_text": letter_text,
+        "file_url": file_url
+    })
+
+    # Analyze tone and update style preferences
     tone_analysis = await analyze_writing_tone_rich(letter_text)
     await save_letter_style(user_id, tone_analysis)
 
-    return {"success": True, "tone_analysis": tone_analysis}
+    return {"success": True, "tone_analysis": tone_analysis, "file_url": file_url}
 
 
 @app.post("/api/user/analyze-letter-text")

@@ -492,3 +492,22 @@ COMMENT ON TABLE user_cover_letter_preferences IS 'Per-user cover letter style a
 COMMENT ON TABLE user_job_preferences IS 'Per-user job search filters and preferences';
 COMMENT ON TABLE user_ai_feedback IS 'User feedback to AI for personalized cover letter generation';
 COMMENT ON TABLE user_experience_tags IS 'Links experiences to branscher with priority for cover letter generation';
+COMMENT ON TABLE user_training_letters IS 'User-uploaded training letters for AI style analysis (max 20 per user)';
+COMMENT ON TABLE user_cv_uploads IS 'User-uploaded CVs as PDFs (max 20 per user)';
+COMMENT ON TABLE bransch_cvs IS 'Industry-specific CV variants shown in MinaCVPage';
+
+-- ============== SUPABASE STORAGE BUCKETS ==============
+-- These buckets are created via Supabase Dashboard (not SQL).
+-- All three are PUBLIC buckets.
+--
+-- 1. profile-photos    — User profile photos (one per user)
+--    Path: {user_id}/profile.{ext}
+--    URL:  {SUPABASE_URL}/storage/v1/object/public/profile-photos/{path}
+--
+-- 2. training-letters  — Personal letters uploaded to train AI style (max 20/user)
+--    Path: {user_id}/letter_{timestamp}.{ext}
+--    URL:  {SUPABASE_URL}/storage/v1/object/public/training-letters/{path}
+--
+-- 3. cv-files          — Uploaded CV PDFs (max 20/user)
+--    Path: {user_id}/cv_{timestamp}.{ext}
+--    URL:  {SUPABASE_URL}/storage/v1/object/public/cv-files/{path}
