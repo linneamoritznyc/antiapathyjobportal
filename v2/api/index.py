@@ -5622,6 +5622,11 @@ async def get_profile(request: Request):
         "user_id": f"eq.{user_id}", "select": "id"
     }) or []
 
+    # Check uploaded CVs
+    cv_uploads = await db_request("GET", "user_cv_uploads", params={
+        "user_id": f"eq.{user_id}", "select": "id"
+    }) or []
+
     return {
         "profile_photo_url": profile.get("photo_url"),
         "full_name": profile.get("full_name", ""),
@@ -5629,7 +5634,9 @@ async def get_profile(request: Request):
         "phone": profile.get("phone", ""),
         "location": profile.get("location", ""),
         "training_letter_analyzed": len(letters) > 0,
-        "training_letter_count": len(letters)
+        "training_letter_count": len(letters),
+        "cv_uploaded": len(cv_uploads) > 0,
+        "cv_count": len(cv_uploads)
     }
 
 
