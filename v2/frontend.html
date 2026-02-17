@@ -280,7 +280,7 @@
             const openGmail = async () => {
                 // Save as draft first
                 await saveApplication('draft');
-                const subject = encodeURIComponent(`Ansokan: ${job.title}`);
+                const subject = encodeURIComponent(`Ansökan: ${job.title}`);
                 const body = encodeURIComponent(letter);
                 window.open(`https://mail.google.com/mail/?view=cm&fs=1&to=${job.contact_email}&su=${subject}&body=${body}`, '_blank');
             };
@@ -315,7 +315,7 @@
                     });
                     setFeedback('');
                     setShowFeedback(false);
-                    alert('Feedback sparad! AI kommer anvanda denna nasta gang.');
+                    alert('Feedback sparad! AI kommer använda denna nästa gång.');
                 } catch (err) {
                     console.error(err);
                 }
@@ -351,7 +351,7 @@
                                         <textarea
                                             value={feedback}
                                             onChange={(e) => setFeedback(e.target.value)}
-                                            placeholder="Ex: Namna alltid min kundtjanst-erfarenhet for dessa jobb..."
+                                            placeholder="Ex: Nämna alltid min kundtjänst-erfarenhet för dessa jobb..."
                                             className="w-full h-32 p-3 border border-amber-200 bg-amber-50 rounded-lg text-sm"
                                         />
                                         <button
@@ -362,7 +362,7 @@
                                             {savingFeedback ? 'Sparar...' : 'Spara feedback'}
                                         </button>
                                         <p className="text-xs text-slate-500 mt-2">
-                                            AI anvander din feedback for framtida brev.
+                                            AI använder din feedback för framtida brev.
                                         </p>
                                     </div>
                                 )}
@@ -488,56 +488,56 @@
                 {
                     id: 'full_name',
                     question: 'Vad heter du?',
-                    subtitle: 'Ditt namn anvands i personliga brev och ansokningar',
+                    subtitle: 'Ditt namn används i personliga brev och ansökningar',
                     type: 'text',
-                    placeholder: 'Fornamn Efternamn'
+                    placeholder: 'Förnamn Efternamn'
                 },
                 {
                     id: 'phone',
-                    question: 'Vad ar ditt telefonnummer?',
+                    question: 'Vad är ditt telefonnummer?',
                     subtitle: 'Arbetsgivare vill kunna ringa dig',
                     type: 'text',
                     placeholder: '07X XXX XX XX'
                 },
                 {
                     id: 'age',
-                    question: 'Hur gammal ar du?',
+                    question: 'Hur gammal är du?',
                     type: 'single',
                     options: [
-                        { value: '16-19', label: '16-19 ar' },
-                        { value: '20-25', label: '20-25 ar' },
-                        { value: '26-35', label: '26-35 ar' },
-                        { value: '36-50', label: '36-50 ar' },
-                        { value: '50+', label: '50+ ar' }
+                        { value: '16-19', label: '16-19 år' },
+                        { value: '20-25', label: '20-25 år' },
+                        { value: '26-35', label: '26-35 år' },
+                        { value: '36-50', label: '36-50 år' },
+                        { value: '50+', label: '50+ år' }
                     ]
                 },
                 {
                     id: 'drivers_license',
-                    question: 'Har du korkort?',
-                    subtitle: 'Manga jobb kraver korkort',
+                    question: 'Har du körkort?',
+                    subtitle: 'Många jobb kräver körkort',
                     type: 'single',
                     options: [
                         { value: 'manuell', label: 'Ja, manuell (och automat)' },
                         { value: 'automat', label: 'Ja, bara automat' },
-                        { value: 'no', label: 'Nej, inget korkort' }
+                        { value: 'no', label: 'Nej, inget körkort' }
                     ]
                 },
                 {
                     id: 'earliest_start',
-                    question: 'Nar kan du borja jobba?',
+                    question: 'När kan du börja jobba?',
                     type: 'single',
                     options: [
-                        { value: 'omgaende', label: 'Omgaende / direkt' },
+                        { value: 'omgaende', label: 'Omgående / direkt' },
                         { value: '2veckor', label: 'Inom 2 veckor' },
-                        { value: '1manad', label: 'Inom 1 manad' },
-                        { value: '2manader', label: 'Inom 2-3 manader' },
-                        { value: 'later', label: 'Senare (sommar/host)' }
+                        { value: '1manad', label: 'Inom 1 månad' },
+                        { value: '2manader', label: 'Inom 2-3 månader' },
+                        { value: 'later', label: 'Senare (sommar/höst)' }
                     ]
                 },
                 {
                     id: 'linkedin',
                     question: 'Har du en LinkedIn-profil?',
-                    subtitle: 'Valfritt - men bra att ha med i ansokningar',
+                    subtitle: 'Valfritt - men bra att ha med i ansökningar',
                     type: 'text',
                     placeholder: 'linkedin.com/in/ditt-namn',
                     allowEmpty: true
@@ -545,49 +545,49 @@
                 {
                     id: 'education_level',
                     question: 'Vilken utbildning har du?',
-                    subtitle: 'Hjalper oss visa ratt jobb - t.ex. lakare kraver lakarexamen',
+                    subtitle: 'Hjälper oss visa rätt jobb - t.ex. läkare kräver läkarexamen',
                     type: 'single',
                     options: [
                         { value: 'grundskola', label: 'Grundskola' },
                         { value: 'gymnasie', label: 'Gymnasie' },
-                        { value: 'yrkeshogskola', label: 'Yrkeshogskola/KY' },
-                        { value: 'hogskola', label: 'Hogskola/Universitet' },
-                        { value: 'annat', label: 'Annat / Pagar utbildning' }
+                        { value: 'yrkeshogskola', label: 'Yrkeshögskola/KY' },
+                        { value: 'hogskola', label: 'Högskola/Universitet' },
+                        { value: 'annat', label: 'Annat / Pågår utbildning' }
                     ]
                 },
                 // === JOB PREFERENCES (for search & filtering) ===
                 {
                     id: 'search_terms',
                     question: 'Vad vill du jobba med?',
-                    subtitle: 'Skriv fritt eller valj fran forslagen nedan',
+                    subtitle: 'Skriv fritt eller välj från förslagen nedan',
                     type: 'freetext_multi',
                     options: [
                         { value: 'servitor', label: 'Servering' },
-                        { value: 'kundtjanst', label: 'Kundtjanst' },
-                        { value: 'butik', label: 'Butik/Forsaljning' },
+                        { value: 'kundtjanst', label: 'Kundtjänst' },
+                        { value: 'butik', label: 'Butik/Försäljning' },
                         { value: 'lager', label: 'Lager' },
                         { value: 'kontor', label: 'Kontor/Admin' },
                         { value: 'tech', label: 'IT/Tech' },
-                        { value: 'vard', label: 'Vard/Omsorg' },
+                        { value: 'vard', label: 'Vård/Omsorg' },
                         { value: 'hotell', label: 'Hotell' },
                         { value: 'barn', label: 'Barn/Nanny' },
-                        { value: 'skola', label: 'Skola/Larare' },
-                        { value: 'tradgard', label: 'Tradgard' },
-                        { value: 'stad', label: 'Stad/Lokalvard' }
+                        { value: 'skola', label: 'Skola/Lärare' },
+                        { value: 'tradgard', label: 'Trädgård' },
+                        { value: 'stad', label: 'Städ/Lokalvård' }
                     ]
                 },
                 {
                     id: 'location',
                     question: 'Var vill du jobba?',
-                    subtitle: 'Valj alla som funkar',
+                    subtitle: 'Välj alla som funkar',
                     type: 'multi',
                     options: [
                         { value: 'stockholm', label: 'Stockholm' },
                         { value: 'sollentuna', label: 'Sollentuna' },
                         { value: 'solna', label: 'Solna' },
                         { value: 'vetlanda', label: 'Vetlanda' },
-                        { value: 'goteborg', label: 'Goteborg' },
-                        { value: 'malmo', label: 'Malmo' },
+                        { value: 'goteborg', label: 'Göteborg' },
+                        { value: 'malmo', label: 'Malmö' },
                         { value: 'uppsala', label: 'Uppsala' },
                         { value: 'remote', label: 'Distans/Remote' },
                         { value: 'anywhere', label: 'Hela Sverige' }
@@ -596,65 +596,65 @@
                 {
                     id: 'working_hours',
                     question: 'Hur mycket vill du jobba?',
-                    subtitle: 'Matchar Platsbanken-faltet "Omfattning"',
+                    subtitle: 'Matchar Platsbanken-fältet "Omfattning"',
                     type: 'single',
                     options: [
                         { value: 'heltid', label: 'Heltid' },
                         { value: 'deltid', label: 'Deltid' },
-                        { value: 'both', label: 'Bade heltid och deltid' },
-                        { value: 'extra', label: 'Extrajobb/Timanstallning' }
+                        { value: 'both', label: 'Både heltid och deltid' },
+                        { value: 'extra', label: 'Extrajobb/Timanställning' }
                     ]
                 },
                 {
                     id: 'employment_form',
-                    question: 'Vilken anstallningsform passar dig?',
-                    subtitle: 'Valj alla du kan tanka dig',
+                    question: 'Vilken anställningsform passar dig?',
+                    subtitle: 'Välj alla du kan tänka dig',
                     type: 'multi',
                     options: [
-                        { value: 'tillsvidare', label: 'Tillsvidareanstallning (fast)' },
-                        { value: 'tidsbegransad', label: 'Tidsbegransad anstallning' },
-                        { value: 'behov', label: 'Behovsanstallning' },
-                        { value: 'sommar', label: 'Sommarjobb/Sasongsarbete' },
+                        { value: 'tillsvidare', label: 'Tillsvidareanställning (fast)' },
+                        { value: 'tidsbegransad', label: 'Tidsbegränsad anställning' },
+                        { value: 'behov', label: 'Behovsanställning' },
+                        { value: 'sommar', label: 'Sommarjobb/Säsongsarbete' },
                         { value: 'anything', label: 'Spelar ingen roll' }
                     ]
                 },
                 {
                     id: 'duration',
-                    question: 'Hur lange vill du jobba?',
-                    subtitle: 'Matchar Platsbanken-faltet "Varaktighet"',
+                    question: 'Hur länge vill du jobba?',
+                    subtitle: 'Matchar Platsbanken-fältet "Varaktighet"',
                     type: 'single',
                     options: [
                         { value: 'tillsvidare', label: 'Tillsvidare (permanent)' },
-                        { value: 'over6', label: '6 manader eller langre' },
-                        { value: '3to6', label: '3-6 manader' },
-                        { value: 'under3', label: 'Under 3 manader' },
+                        { value: 'over6', label: '6 månader eller längre' },
+                        { value: '3to6', label: '3-6 månader' },
+                        { value: 'under3', label: 'Under 3 månader' },
                         { value: 'anything', label: 'Spelar ingen roll' }
                     ]
                 },
                 {
                     id: 'salary',
-                    question: 'Vad ar viktigt med lonen?',
-                    subtitle: 'Matchar Platsbanken-faltet "Lonetyp"',
+                    question: 'Vad är viktigt med lönen?',
+                    subtitle: 'Matchar Platsbanken-fältet "Lönetyp"',
                     type: 'single',
                     options: [
-                        { value: 'fast', label: 'Fast lon' },
+                        { value: 'fast', label: 'Fast lön' },
                         { value: 'provision', label: 'Provision/Ackord' },
                         { value: 'anything', label: 'Spelar ingen roll' }
                     ]
                 },
                 {
                     id: 'dealbreakers',
-                    question: 'Finns det nagot du INTE vill?',
+                    question: 'Finns det något du INTE vill?',
                     subtitle: 'Vi filtrerar bort jobb som matchar detta',
                     type: 'multi',
                     allowEmpty: true,
                     options: [
                         { value: 'natt', label: 'Nattarbete' },
                         { value: 'helg', label: 'Helgarbete' },
-                        { value: 'telefon', label: 'Telefonforsaljning' },
+                        { value: 'telefon', label: 'Telefonförsäljning' },
                         { value: 'tunga_lyft', label: 'Tunga lyft' },
                         { value: 'utomhus', label: 'Utomhusarbete' },
-                        { value: 'ingen', label: 'Inget speciellt - jag ar oppen' }
+                        { value: 'ingen', label: 'Inget speciellt - jag är öppen' }
                     ]
                 }
             ];
@@ -700,7 +700,7 @@
                                 onClick={() => onComplete(answers)}
                                 className="text-white/30 hover:text-white/60 text-sm transition"
                             >
-                                Hoppa over
+                                Hoppa över
                             </button>
                         </div>
 
@@ -756,9 +756,9 @@
                                         className="w-full p-4 rounded-xl bg-white/10 text-white placeholder-white/30 border border-white/20 focus:border-indigo-400 focus:ring-1 focus:ring-indigo-400 outline-none text-base"
                                     />
                                     {customSearch.trim() && (
-                                        <p className="text-indigo-400 text-xs mt-2 ml-1">Soker pa: "{customSearch.trim()}"</p>
+                                        <p className="text-indigo-400 text-xs mt-2 ml-1">Söker på: "{customSearch.trim()}"</p>
                                     )}
-                                    <p className="text-white/30 text-xs mt-2 ml-1">Eller valj fran forslagen:</p>
+                                    <p className="text-white/30 text-xs mt-2 ml-1">Eller välj från förslagen:</p>
                                 </div>
                             )}
 
@@ -802,7 +802,7 @@
                                     disabled={!canProceed}
                                     className="px-8 py-3 bg-white text-slate-900 font-semibold rounded-xl hover:bg-white/90 disabled:opacity-30 transition"
                                 >
-                                    Nasta
+                                    Nästa
                                 </button>
                             )}
                         </div>
@@ -965,7 +965,7 @@
                                                 onClick={onOpenQuiz}
                                                 className="bg-indigo-600 text-white px-6 py-3 rounded-xl font-medium hover:bg-indigo-700 transition"
                                             >
-                                                Fyll i quiz for att hitta ratt jobb
+                                                Fyll i quiz för att hitta rätt jobb
                                             </button>
                                         ) : (
                                             <button
@@ -973,7 +973,7 @@
                                                 disabled={scraping}
                                                 className="bg-indigo-600 text-white px-6 py-3 rounded-xl font-medium hover:bg-indigo-700 disabled:opacity-50 transition"
                                             >
-                                                {scraping ? 'Soker...' : 'Sok jobb baserat pa dina preferenser'}
+                                                {scraping ? 'Söker...' : 'Sök jobb baserat på dina preferenser'}
                                             </button>
                                         )}
                                     </div>
@@ -1069,14 +1069,14 @@
                                                     onClick={() => setCurrentPage(p => Math.min(filteredJobs.length, p + 1))}
                                                     className="flex-1 py-3 px-4 border-2 border-slate-200 rounded-xl text-slate-500 font-medium hover:bg-slate-50 transition"
                                                 >
-                                                    Hoppa over
+                                                    Hoppa över
                                                 </button>
                                                 <button
                                                     onClick={() => onApply(currentJob)}
                                                     disabled={applyingJob === currentJob.id}
                                                     className="flex-1 py-3 px-4 bg-pink-600 text-white rounded-xl font-medium hover:bg-pink-700 disabled:opacity-50 transition"
                                                 >
-                                                    {applyingJob === currentJob.id ? 'Skapar...' : 'Ansok'}
+                                                    {applyingJob === currentJob.id ? 'Skapar...' : 'Ansök'}
                                                 </button>
                                             </div>
 
@@ -1088,7 +1088,7 @@
                                                     onClick={() => onSaveJob(currentJob.id, !(savedJobs || []).includes(currentJob.id))}
                                                     className="text-sm text-slate-400 hover:text-pink-600"
                                                 >
-                                                    {(savedJobs || []).includes(currentJob.id) ? 'Sparad' : 'Spara for senare'}
+                                                    {(savedJobs || []).includes(currentJob.id) ? 'Sparad' : 'Spara för senare'}
                                                 </button>
                                             </div>
                                         </div>
@@ -1107,7 +1107,7 @@
                                                 disabled={jobIndex >= filteredJobs.length - 1}
                                                 className="text-sm text-slate-400 hover:text-slate-600 disabled:opacity-30"
                                             >
-                                                Nasta jobb
+                                                Nästa jobb
                                             </button>
                                         </div>
                                     </div>
@@ -3145,7 +3145,7 @@
                                     </div>
                                     <div className="bg-white rounded-xl p-5 border border-slate-100">
                                         <div className="text-3xl font-bold text-green-600">{stats.sent || 0}</div>
-                                        <div className="text-slate-500 text-sm mt-1">Ansokningar skickade</div>
+                                        <div className="text-slate-500 text-sm mt-1">Ansökningar skickade</div>
                                     </div>
                                     <div className="bg-white rounded-xl p-5 border border-slate-100">
                                         <div className="text-3xl font-bold text-amber-600">{stats.interviews || 0}</div>
