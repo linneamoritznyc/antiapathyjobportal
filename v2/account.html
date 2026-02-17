@@ -31,7 +31,7 @@
             const [user, setUser] = useState(null);
             const [loading, setLoading] = useState(true);
             const [toast, setToast] = useState(null);
-            const [activeTab, setActiveTab] = useState('profile'); // 'profile' or 'settings'
+            const [activeTab, setActiveTab] = useState('cv'); // 'cv', 'profile', or 'settings'
 
             // Form states
             const [profile, setProfile] = useState({ first_name: '', last_name: '', phone: '', age: '' });
@@ -398,7 +398,17 @@
                         {/* Tabs */}
                         <div className="flex gap-1 mb-6 bg-slate-100 p-1 rounded-lg w-fit">
                             <button
-                                onClick={() => { setActiveTab('profile'); window.history.replaceState(null, '', '/account'); }}
+                                onClick={() => { setActiveTab('cv'); window.history.replaceState(null, '', '/account'); }}
+                                className={`px-4 py-2 rounded-md text-sm font-medium transition ${
+                                    activeTab === 'cv'
+                                        ? 'bg-white text-slate-800 shadow-sm'
+                                        : 'text-slate-600 hover:text-slate-800'
+                                }`}
+                            >
+                                📄 Mina CV
+                            </button>
+                            <button
+                                onClick={() => { setActiveTab('profile'); window.history.replaceState(null, '', '/account#profile'); }}
                                 className={`px-4 py-2 rounded-md text-sm font-medium transition ${
                                     activeTab === 'profile'
                                         ? 'bg-white text-slate-800 shadow-sm'
@@ -503,8 +513,8 @@
                         </section>
                         )}
 
-                        {/* File Uploads Section - only show on profile tab */}
-                        {activeTab === 'profile' && (
+                        {/* File Uploads Section - only show on CV tab */}
+                        {activeTab === 'cv' && (
                         <>
                         {/* CV Upload */}
                         <section className="bg-white rounded-xl border border-slate-200 p-6">
