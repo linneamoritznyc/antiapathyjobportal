@@ -69,6 +69,11 @@ CREATE TABLE IF NOT EXISTS user_cover_letter_preferences (
     never_mention TEXT[] DEFAULT ARRAY[]::TEXT[],  -- ['konst', 'Shopify']
     priority_experiences_per_vibe JSONB,  -- {"restaurant": ["Max Hamburgare"], "tech": ["Clubhouse"]}
     custom_ai_instructions TEXT,  -- Free-form additional rules
+    -- Added 2026-02-17: rich AI style analysis fields (from analyze_writing_tone_rich)
+    writing_style TEXT,             -- How the letter is structured
+    avoid_phrases JSONB DEFAULT '[]'::jsonb,  -- Phrases/clichés the user never uses
+    length_preference TEXT,         -- Short/long preference description
+    opening_style TEXT,             -- How user typically opens letters
     created_at TIMESTAMPTZ DEFAULT NOW(),
     updated_at TIMESTAMPTZ DEFAULT NOW()
 );
@@ -357,7 +362,7 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql;
 
--- Generated CV versions (different "vibes")
+-- Generated CV versions (different "vibes") — one per industry per user
 CREATE TABLE IF NOT EXISTS user_cvs (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     user_id TEXT NOT NULL,
@@ -365,9 +370,49 @@ CREATE TABLE IF NOT EXISTS user_cvs (
     vibe_name TEXT,
     vibe_emoji TEXT,
     cv_text TEXT NOT NULL,
+    pdf_url TEXT,           -- Added 2026-02-17: Supabase Storage URL for uploaded/generated PDF
     created_at TIMESTAMPTZ DEFAULT NOW(),
     updated_at TIMESTAMPTZ DEFAULT NOW(),
     UNIQUE(user_id, vibe_id)
+);
+
+-- Industry-specific CV variants (read by /api/bransch-cvs, shown in MinaCVPage)
+-- Added 2026-02-17: table was referenced in code but never created
+CREATE TABLE IF NOT EXISTS bransch_cvs (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    user_id TEXT NOT NULL,
+    vibe_id TEXT NOT NULL,   -- 'restaurant', 'tech', 'retail', etc.
+    vibe_name TEXT,
+    vibe_emoji TEXT,
+    cv_text TEXT,
+    pdf_url TEXT,            -- Supabase Storage URL for downloadable PDF
+    created_at TIMESTAMPTZ DEFAULT NOW(),
+    updated_at TIMESTAMPTZ DEFAULT NOW(),
+    UNIQUE(user_id, vibe_id)
+);
+
+-- Raw uploaded CV PDFs — max 20 per user (enforced by trigger)
+-- Added 2026-02-17: updated from stub (had only cv_text + recommendations)
+CREATE TABLE IF NOT EXISTS user_cv_uploads (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    user_id UUID NOT NULL,
+    filename TEXT,
+    file_url TEXT,           -- Supabase Storage URL (cv-files bucket)
+    upload_number INTEGER,   -- 1–20
+    cv_text TEXT NOT NULL,
+    recommendations JSONB DEFAULT '[]'::jsonb,
+    created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- Training letters (personal letters uploaded to train AI style)
+-- Max 20 per user, enforced by trigger. Added 2026-02-17.
+CREATE TABLE IF NOT EXISTS user_training_letters (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    user_id UUID REFERENCES auth.users(id) ON DELETE CASCADE NOT NULL,
+    filename TEXT NOT NULL,
+    letter_text TEXT,
+    file_url TEXT,           -- Supabase Storage URL (training-letters bucket)
+    uploaded_at TIMESTAMPTZ DEFAULT NOW()
 );
 
 -- User Google Cloud credentials (each user brings their own)
@@ -447,3 +492,22 @@ COMMENT ON TABLE user_cover_letter_preferences IS 'Per-user cover letter style a
 COMMENT ON TABLE user_job_preferences IS 'Per-user job search filters and preferences';
 COMMENT ON TABLE user_ai_feedback IS 'User feedback to AI for personalized cover letter generation';
 COMMENT ON TABLE user_experience_tags IS 'Links experiences to branscher with priority for cover letter generation';
+COMMENT ON TABLE user_training_letters IS 'User-uploaded training letters for AI style analysis (max 20 per user)';
+COMMENT ON TABLE user_cv_uploads IS 'User-uploaded CVs as PDFs (max 20 per user)';
+COMMENT ON TABLE bransch_cvs IS 'Industry-specific CV variants shown in MinaCVPage';
+
+-- ============== SUPABASE STORAGE BUCKETS ==============
+-- These buckets are created via Supabase Dashboard (not SQL).
+-- All three are PUBLIC buckets.
+--
+-- 1. profile-photos    — User profile photos (one per user)
+--    Path: {user_id}/profile.{ext}
+--    URL:  {SUPABASE_URL}/storage/v1/object/public/profile-photos/{path}
+--
+-- 2. training-letters  — Personal letters uploaded to train AI style (max 20/user)
+--    Path: {user_id}/letter_{timestamp}.{ext}
+--    URL:  {SUPABASE_URL}/storage/v1/object/public/training-letters/{path}
+--
+-- 3. cv-files          — Uploaded CV PDFs (max 20/user)
+--    Path: {user_id}/cv_{timestamp}.{ext}
+--    URL:  {SUPABASE_URL}/storage/v1/object/public/cv-files/{path}

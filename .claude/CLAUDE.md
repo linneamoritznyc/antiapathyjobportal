@@ -73,6 +73,12 @@ Do not add new features until the core flow works end-to-end.
 3. THEN write migration SQL based on THEIR reality, not your assumptions
 4. Don't write blind
 
+### Database changes:
+- NEVER create separate SQL migration files in the repo. It clutters GitHub and is overwhelming.
+- Instead: give SQL directly to the user in chat to run in Supabase SQL Editor.
+- ALWAYS update `v2/supabase_schema.sql` to reflect any DB changes (this is the source of truth).
+- One schema file, no migration folder spam.
+
 ### Architecture reminders:
 - GitHub → Vercel → Supabase
 - All text in Swedish

@@ -31,6 +31,11 @@ SUPABASE_KEY = os.getenv("SUPABASE_SERVICE_ROLE_KEY") or os.getenv("SUPABASE_ANO
 SUPABASE_ANON_KEY = os.getenv("SUPABASE_ANON_KEY")  # For client-side auth
 ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY")
 
+# App-level Gmail OAuth credentials (shared by all users, set in Vercel env vars)
+# Each user's access/refresh tokens are stored per-user in Supabase
+GMAIL_CLIENT_ID = os.getenv("GMAIL_CLIENT_ID")
+GMAIL_CLIENT_SECRET = os.getenv("GMAIL_CLIENT_SECRET")
+
 # Gmail API scopes (for user's own Google Cloud credentials)
 GMAIL_SCOPES = "https://www.googleapis.com/auth/gmail.compose https://www.googleapis.com/auth/gmail.modify"
 
@@ -714,27 +719,53 @@ async def generate_all_cv_vibes(master_cv: Dict, user_id: str) -> List[Dict]:
 
 
 def match_job_to_cv_vibe(job_title: str, job_description: str) -> str:
-    """Match a job to the best CV vibe"""
+    """Match a job to the best CV vibe. Returns vibe_id that maps to a CV PDF."""
     text = f"{job_title} {job_description}".lower()
 
-    # Keywords for each vibe
     vibe_keywords = {
-        "restaurant": ["servitör", "servitris", "restaurang", "kock", "café", "barista", "kök", "mat", "dryck"],
-        "retail": ["butik", "kassa", "försäljare", "säljare", "retail", "lager", "handel"],
-        "customerservice": ["kundtjänst", "customer service", "support", "kundservice", "telefon", "chat"],
-        "tech": ["it", "tech", "utvecklare", "developer", "webbutvecklare", "frontend", "backend", "data", "programmering"],
-        "healthcare": ["vård", "omsorg", "sjuksköterska", "äldreboende", "hemtjänst", "medicin"],
-        "garden": ["trädgård", "industri", "lager", "städ", "fysiskt", "utomhus", "bygg"],
+        "restaurant":         ["servitör", "servitris", "restaurang", "kock", "café", "barista", "kök", "mat", "dryck", "bar"],
+        "retail":             ["butik", "kassa", "försäljare", "säljare", "retail", "handel", "klädbutik", "ica", "coop", "lidl", "hemköp"],
+        "customerservice":    ["kundtjänst", "kundservice", "customer service", "support", "helpdesk", "telefon", "chatt", "reception"],
+        "tech":               ["it", "tech", "utvecklare", "developer", "webbutvecklare", "frontend", "backend", "data", "programmering", "mjukvara"],
+        "healthcare":         ["vård", "omsorg", "sjuksköterska", "undersköterska", "äldreboende", "hemtjänst", "medicin", "rehab"],
+        "industri":           ["trädgård", "industri", "lager", "städ", "renhållning", "utomhus", "bygg", "produktion", "truck", "magasin"],
+        "contentmoderation":  ["moderator", "content moderation", "trust and safety", "granskning", "recensioner", "online safety"],
+        "art":                ["konst", "kultur", "galleri", "utställning", "kreativ", "design", "illustration", "media"],
     }
 
-    # Count keyword matches
-    scores = {}
-    for vibe_id, keywords in vibe_keywords.items():
-        scores[vibe_id] = sum(1 for kw in keywords if kw in text)
-
-    # Return best match, or "customerservice" as default
+    scores = {vibe: sum(1 for kw in kws if kw in text) for vibe, kws in vibe_keywords.items()}
     best_vibe = max(scores, key=scores.get) if max(scores.values()) > 0 else "customerservice"
     return best_vibe
+
+
+# Maps vibe_id → actual CV PDF filename in cv_files/
+CV_FILE_MAP = {
+    "restaurant":        "CV_Linnea_Moritz_Restaurang_Cafe.pdf",
+    "retail":            "CV_Linnea_Moritz_Butik_Kassa.pdf",
+    "customerservice":   "CV_Linnea_Moritz_Kundtjanst.pdf",
+    "tech":              "CV_Linnea_Moritz_Tech_Kontor.pdf",
+    "healthcare":        "CV_Linnea_Moritz_Vard_Omsorg.pdf",
+    "industri":          "CV_Linnea_Moritz_Industri_Tradgard.pdf",
+    "contentmoderation": "CV_Linnea_Moritz_Content_Moderation.pdf",
+    "art":               "CV_Linnea_Moritz_Konst_Kultur.pdf",
+}
+CV_FILES_DIR = pathlib.Path(__file__).parent / "cv_files"
+
+
+def get_cv_pdf_bytes(vibe_id: str) -> Optional[bytes]:
+    """Read the matching CV PDF from disk. Returns None if not found."""
+    filename = CV_FILE_MAP.get(vibe_id, CV_FILE_MAP["customerservice"])
+    path = CV_FILES_DIR / filename
+    try:
+        return path.read_bytes()
+    except Exception as e:
+        logger.error(f"Could not read CV PDF {path}: {e}")
+        return None
+
+
+def get_cv_pdf_filename(vibe_id: str) -> str:
+    """Return the CV PDF filename for a given vibe."""
+    return CV_FILE_MAP.get(vibe_id, CV_FILE_MAP["customerservice"])
 
 
 # ============== SUPABASE DATABASE ==============
@@ -859,14 +890,26 @@ async def health():
 
 @app.post("/api/scrape")
 async def scrape_jobs(request: JobSearchRequest = None):
-    """Scrape jobs from Platsbanken"""
+    """Scrape jobs from Platsbanken.
+    Searches user's positive keywords PLUS a broad catch-all search,
+    so unexpected dream jobs also appear (filtered by negatives in frontend).
+    """
     keywords = request.keywords if request and request.keywords else ["servitör", "kundtjänst", "butik"]
     location = request.location if request else "Stockholm"
 
     all_jobs = []
+
+    # 1. Scrape user's positive keywords (what they specifically want)
     for keyword in keywords[:5]:  # Max 5 keywords
         jobs = await scrape_platsbanken(keyword, location, max_jobs=10)
         all_jobs.extend(jobs)
+
+    # 2. Broad catch-all scrape so unexpected cool jobs also appear
+    #    (negative keywords filter them in frontend — we cast a wide net here)
+    broad_terms = ["jobb", "anställning"]
+    for term in broad_terms:
+        broad_jobs = await scrape_platsbanken(term, location, max_jobs=15)
+        all_jobs.extend(broad_jobs)
 
     # Remove duplicates by job ID
     seen = set()
@@ -875,6 +918,9 @@ async def scrape_jobs(request: JobSearchRequest = None):
         if job["id"] not in seen:
             seen.add(job["id"])
             unique_jobs.append(job)
+
+    # Sort by deadline (soonest first) before returning
+    unique_jobs.sort(key=lambda j: j.get("deadline") or "2099-12-31")
 
     # Save to database if configured
     saved_count = await save_jobs_to_db(unique_jobs)
@@ -1683,6 +1729,7 @@ async def download_bransch_cv_pdf(cv_id: str, request: Request):
     raise HTTPException(status_code=501, detail="PDF-generering kommer snart. CV-text finns i bransch-CV databasen.")
 
 
+
 @app.post("/api/jobs/{job_id}/apply-with-cv")
 async def apply_with_cv(request: Request, job_id: str):
     """
@@ -1734,29 +1781,78 @@ async def apply_with_cv(request: Request, job_id: str):
     cv_text_for_letter = cv.get("cv_text") if cv else None
     cover_letter = await generate_cover_letter(job, cv_text_for_letter, user_profile)
 
+    # Try to automatically create a Gmail draft using this user's connected Gmail
+    contact_email = job.get("contact_email")
+    contact_name = job.get("contact_name")
+
+    # Validate email looks real before using it
+    if contact_email and not re.match(r'^[^\s@]+@[^\s@]+\.[^\s@]+$', contact_email):
+        logger.warning(f"Scraped email looks invalid, ignoring: {contact_email}")
+        contact_email = None
+
+    # Build subject line: "Ansökan: Jobbtitel – Linnea Moritz"
+    sender_name = user_profile.get("full_name", "Linnea Moritz") if user_profile else "Linnea Moritz"
+    job_title = job.get("title", "Tjänst")
+    subject = f"Ansökan: {job_title} – {sender_name}"
+
+    # Create Gmail draft with PDF attachments if user has connected Gmail
+    draft_id = None
+    if contact_email and user_id:
+        attachments = []
+
+        # 1. Cover letter as PDF
+        try:
+            cover_letter_pdf = generate_cover_letter_pdf(cover_letter, sender_name)
+            attachments.append({
+                "filename": f"Personligt_Brev_{sender_name.replace(' ', '_')}.pdf",
+                "data": cover_letter_pdf
+            })
+        except Exception as e:
+            logger.error(f"Cover letter PDF generation failed: {e}")
+
+        # 2. Matching CV PDF
+        cv_pdf_bytes = get_cv_pdf_bytes(best_vibe)
+        if cv_pdf_bytes:
+            attachments.append({
+                "filename": get_cv_pdf_filename(best_vibe),
+                "data": cv_pdf_bytes
+            })
+
+        draft_id = await create_gmail_draft_for_user(
+            user_id, contact_email, subject, cover_letter, attachments
+        )
+
     return {
         "success": True,
         "job": {
             "id": job.get("id"),
-            "title": job.get("title"),
+            "title": job_title,
             "company": job.get("company"),
-            "contact_email": job.get("contact_email"),
-            "contact_name": job.get("contact_name")
+            "contact_email": contact_email,
+            "contact_name": contact_name
         },
         "matched_vibe": best_vibe,
+        "cv_filename": get_cv_pdf_filename(best_vibe),
         "cv": cv,
         "cover_letter": cover_letter,
-        "gmail_link": _create_gmail_link(job, cover_letter)
+        "draft_created": draft_id is not None,
+        "draft_id": draft_id,
+        "gmail_link": _create_gmail_link(job, cover_letter, subject)
     }
 
 
-def _create_gmail_link(job: Dict, letter: str) -> str:
-    """Create Gmail compose link"""
+def _create_gmail_link(job: Dict, letter: str, subject: str = "") -> str:
+    """Create Gmail compose link as fallback when no draft was created."""
     import urllib.parse
     to = job.get("contact_email", "")
-    subject = urllib.parse.quote(f"Ansökan: {job.get('title', 'Tjänst')}")
-    body = urllib.parse.quote(letter)
-    return f"https://mail.google.com/mail/?view=cm&fs=1&to={to}&su={subject}&body={body}"
+    if not subject:
+        subject = f"Ansökan: {job.get('title', 'Tjänst')}"
+    return (
+        f"https://mail.google.com/mail/?view=cm&fs=1"
+        f"&to={urllib.parse.quote(to)}"
+        f"&su={urllib.parse.quote(subject)}"
+        f"&body={urllib.parse.quote(letter)}"
+    )
 
 
 # ============== FRONTEND ==============
@@ -4437,126 +4533,98 @@ async def export_user_data(request: Request):
     }
 
 
-# ============== GMAIL API ENDPOINTS (User brings own credentials) ==============
-
-@app.post("/api/gmail/credentials")
-async def save_google_credentials(request: GoogleCredentialsRequest, user_id: str = "default_user"):
-    """
-    Save user's own Google Cloud credentials.
-    Users must create their own Google Cloud project and OAuth credentials.
-    """
-    data = {
-        "user_id": user_id,
-        "google_client_id": request.google_client_id,
-        "google_client_secret": request.google_client_secret,
-        "is_connected": False,
-        "updated_at": datetime.now().isoformat()
-    }
-
-    # Upsert credentials
-    existing = await db_request("GET", "user_google_credentials", params={"user_id": f"eq.{user_id}"})
-    if existing:
-        await db_request("PATCH", f"user_google_credentials?user_id=eq.{user_id}", data=data)
-    else:
-        await db_request("POST", "user_google_credentials", data=data)
-
-    return {"success": True, "message": "Credentials saved. Now connect your Gmail."}
-
+# ============== GMAIL OAUTH (App credentials shared, user tokens in Supabase) ==============
 
 @app.get("/api/gmail/auth-url")
 async def get_gmail_auth_url(user_id: str = "default_user", redirect_uri: str = None):
     """
     Get Google OAuth URL for user to authorize Gmail access.
-    Uses the user's own Google Cloud credentials.
+    Uses app-level credentials (GMAIL_CLIENT_ID env var).
     """
-    # Get user's credentials
-    creds = await db_request("GET", "user_google_credentials", params={"user_id": f"eq.{user_id}"})
-    if not creds:
-        raise HTTPException(status_code=400, detail="No Google credentials found. Save your credentials first.")
-
-    cred = creds[0]
-    client_id = cred.get("google_client_id")
+    if not GMAIL_CLIENT_ID:
+        raise HTTPException(status_code=500, detail="Gmail integration not configured. Set GMAIL_CLIENT_ID in env vars.")
 
     if not redirect_uri:
-        redirect_uri = f"{os.getenv('VERCEL_URL', 'http://localhost:8000')}/api/gmail/callback"
+        base = os.getenv("VERCEL_URL", "http://localhost:8000")
+        if base and not base.startswith("http"):
+            base = f"https://{base}"
+        redirect_uri = f"{base}/api/gmail/callback"
 
-    # Build OAuth URL
     params = {
-        "client_id": client_id,
+        "client_id": GMAIL_CLIENT_ID,
         "redirect_uri": redirect_uri,
         "response_type": "code",
-        "scope": GMAIL_SCOPES,
+        "scope": "https://www.googleapis.com/auth/gmail.compose",
         "access_type": "offline",
         "prompt": "consent",
-        "state": user_id  # Pass user_id through state
+        "state": user_id
     }
     auth_url = f"https://accounts.google.com/o/oauth2/v2/auth?{urlencode(params)}"
-
     return {"success": True, "auth_url": auth_url, "redirect_uri": redirect_uri}
 
 
 @app.get("/api/gmail/callback")
 async def gmail_oauth_callback(code: str, state: str = "default_user"):
-    """
-    Handle OAuth callback after user authorizes Gmail access.
-    Exchange code for tokens using user's own credentials.
-    """
+    """Handle OAuth callback. Exchange code for tokens using app credentials."""
+    if not all([GMAIL_CLIENT_ID, GMAIL_CLIENT_SECRET]):
+        raise HTTPException(status_code=500, detail="Gmail integration not configured.")
+
     user_id = state
+    base = os.getenv("VERCEL_URL", "http://localhost:8000")
+    if base and not base.startswith("http"):
+        base = f"https://{base}"
+    redirect_uri = f"{base}/api/gmail/callback"
 
-    # Get user's credentials
-    creds = await db_request("GET", "user_google_credentials", params={"user_id": f"eq.{user_id}"})
-    if not creds:
-        raise HTTPException(status_code=400, detail="No credentials found")
-
-    cred = creds[0]
-
-    # Exchange code for tokens
     async with httpx.AsyncClient() as client:
         response = await client.post(
             "https://oauth2.googleapis.com/token",
             data={
-                "client_id": cred["google_client_id"],
-                "client_secret": cred["google_client_secret"],
+                "client_id": GMAIL_CLIENT_ID,
+                "client_secret": GMAIL_CLIENT_SECRET,
                 "code": code,
                 "grant_type": "authorization_code",
-                "redirect_uri": f"{os.getenv('VERCEL_URL', 'http://localhost:8000')}/api/gmail/callback"
+                "redirect_uri": redirect_uri
             }
         )
-
         if response.status_code != 200:
-            logger.error(f"Token exchange failed with status {response.status_code}")
-            raise HTTPException(status_code=400, detail="Failed to exchange code for tokens")
+            logger.error(f"Token exchange failed: {response.text}")
+            raise HTTPException(status_code=400, detail="Kunde inte byta kod mot token. Försök igen.")
 
         tokens = response.json()
 
-        # Get user's Gmail address
         profile_response = await client.get(
             "https://www.googleapis.com/oauth2/v2/userinfo",
             headers={"Authorization": f"Bearer {tokens['access_token']}"}
         )
         gmail_address = profile_response.json().get("email", "")
 
-    # Save tokens
     expires_at = datetime.now() + timedelta(seconds=tokens.get("expires_in", 3600))
-    await db_request("PATCH", f"user_google_credentials?user_id=eq.{user_id}", data={
+
+    # Upsert — create or update
+    existing = await db_request("GET", "user_google_credentials", params={"user_id": f"eq.{user_id}"})
+    token_data = {
+        "user_id": user_id,
         "access_token": tokens["access_token"],
         "refresh_token": tokens.get("refresh_token"),
         "token_expires_at": expires_at.isoformat(),
         "gmail_address": gmail_address,
         "is_connected": True,
         "updated_at": datetime.now().isoformat()
-    })
+    }
+    if existing:
+        await db_request("PATCH", f"user_google_credentials?user_id=eq.{user_id}", data=token_data)
+    else:
+        await db_request("POST", "user_google_credentials", data=token_data)
 
-    # Return success HTML
     return HTMLResponse(content=f"""
     <!DOCTYPE html>
     <html>
-    <head><title>Gmail Connected!</title></head>
-    <body style="font-family: sans-serif; text-align: center; padding: 50px;">
-        <h1 style="color: #22c55e;">Gmail Connected!</h1>
-        <p>Your Gmail ({gmail_address}) is now connected.</p>
-        <p>You can close this window and return to the app.</p>
-        <script>setTimeout(() => window.close(), 3000);</script>
+    <head><title>Gmail kopplad!</title></head>
+    <body style="font-family: sans-serif; text-align: center; padding: 50px; background: #f0fdf4;">
+        <h1 style="color: #16a34a;">Gmail kopplad!</h1>
+        <p>Ditt Gmail-konto ({gmail_address}) är nu kopplat.</p>
+        <p>Du kan stänga det här fönstret och gå tillbaka till appen.</p>
+        <script>setTimeout(() => window.close(), 2000);</script>
     </body>
     </html>
     """)
@@ -4566,36 +4634,80 @@ async def gmail_oauth_callback(code: str, state: str = "default_user"):
 async def get_gmail_status(user_id: str = "default_user"):
     """Check if user has Gmail connected"""
     creds = await db_request("GET", "user_google_credentials", params={"user_id": f"eq.{user_id}"})
-    if not creds:
-        return {"connected": False, "has_credentials": False}
-
+    if not creds or not creds[0].get("is_connected"):
+        return {"connected": False, "gmail_address": None, "app_configured": bool(GMAIL_CLIENT_ID)}
     cred = creds[0]
     return {
-        "connected": cred.get("is_connected", False),
-        "has_credentials": bool(cred.get("google_client_id")),
-        "gmail_address": cred.get("gmail_address")
+        "connected": True,
+        "gmail_address": cred.get("gmail_address"),
+        "app_configured": bool(GMAIL_CLIENT_ID)
     }
 
 
-async def refresh_gmail_token(user_id: str) -> Optional[str]:
-    """Refresh Gmail access token if expired"""
+@app.post("/api/gmail/disconnect")
+async def disconnect_gmail(user_id: str = "default_user"):
+    """
+    Revoke Gmail access and delete all stored tokens for this user.
+    GDPR: user has the right to withdraw consent at any time.
+    """
     creds = await db_request("GET", "user_google_credentials", params={"user_id": f"eq.{user_id}"})
     if not creds:
+        return {"success": True, "message": "Ingen Gmail-koppling hittades."}
+
+    cred = creds[0]
+    access_token = cred.get("access_token")
+    refresh_token = cred.get("refresh_token")
+
+    # Revoke token at Google — this invalidates all tokens for this app+user combo
+    token_to_revoke = access_token or refresh_token
+    if token_to_revoke:
+        try:
+            async with httpx.AsyncClient() as client:
+                await client.post(
+                    "https://oauth2.googleapis.com/revoke",
+                    params={"token": token_to_revoke},
+                    headers={"Content-Type": "application/x-www-form-urlencoded"},
+                    timeout=10
+                )
+                # Google returns 200 on success, 400 if already revoked — both are fine
+        except Exception as e:
+            logger.warning(f"Could not revoke token at Google: {e}")
+
+    # Delete all stored credentials from Supabase
+    await db_request("DELETE", f"user_google_credentials?user_id=eq.{user_id}")
+
+    logger.info(f"Gmail disconnected for user {user_id}")
+    return {"success": True, "message": "Gmail frånkopplat. Appen har inte längre åtkomst till din Gmail."}
+
+
+async def refresh_gmail_token(user_id: str) -> Optional[str]:
+    """Get a valid Gmail access token for this user, refreshing if needed."""
+    if not all([GMAIL_CLIENT_ID, GMAIL_CLIENT_SECRET]):
+        return None
+
+    creds = await db_request("GET", "user_google_credentials", params={"user_id": f"eq.{user_id}"})
+    if not creds or not creds[0].get("is_connected"):
         return None
 
     cred = creds[0]
 
-    # Check if token is still valid
+    # Return existing token if still valid (with 5-min buffer)
     expires_at = cred.get("token_expires_at")
     if expires_at:
         try:
             exp_time = datetime.fromisoformat(expires_at.replace('Z', '+00:00'))
-            if exp_time > datetime.now(exp_time.tzinfo):
-                return cred.get("access_token")
+            buffer = timedelta(minutes=5)
+            if exp_time.tzinfo:
+                from datetime import timezone
+                if exp_time > datetime.now(timezone.utc) + buffer:
+                    return cred.get("access_token")
+            else:
+                if exp_time > datetime.now() + buffer:
+                    return cred.get("access_token")
         except (ValueError, TypeError):
             pass
 
-    # Refresh token
+    # Refresh using app credentials
     refresh_token = cred.get("refresh_token")
     if not refresh_token:
         return None
@@ -4604,26 +4716,95 @@ async def refresh_gmail_token(user_id: str) -> Optional[str]:
         response = await client.post(
             "https://oauth2.googleapis.com/token",
             data={
-                "client_id": cred["google_client_id"],
-                "client_secret": cred["google_client_secret"],
+                "client_id": GMAIL_CLIENT_ID,
+                "client_secret": GMAIL_CLIENT_SECRET,
                 "refresh_token": refresh_token,
                 "grant_type": "refresh_token"
-            }
+            },
+            timeout=10
         )
-
         if response.status_code != 200:
+            logger.error(f"Token refresh failed for user {user_id}: {response.text}")
             return None
 
         tokens = response.json()
         expires_at = datetime.now() + timedelta(seconds=tokens.get("expires_in", 3600))
-
         await db_request("PATCH", f"user_google_credentials?user_id=eq.{user_id}", data={
             "access_token": tokens["access_token"],
             "token_expires_at": expires_at.isoformat(),
             "updated_at": datetime.now().isoformat()
         })
-
         return tokens["access_token"]
+
+
+def generate_cover_letter_pdf(text: str, sender_name: str = "Linnea Moritz") -> bytes:
+    """Generate a simple PDF from cover letter text. Handles Swedish characters."""
+    from fpdf import FPDF
+
+    pdf = FPDF()
+    pdf.set_margins(25, 25, 25)
+    pdf.add_page()
+    pdf.set_auto_page_break(auto=True, margin=20)
+    pdf.set_font("Helvetica", size=11)
+
+    for line in text.split("\n"):
+        # Empty line = small spacer
+        if line.strip() == "":
+            pdf.ln(4)
+        else:
+            # Replace Swedish characters with latin-1 equivalents (fpdf core fonts)
+            safe_line = (line
+                .replace("\u2013", "-").replace("\u2014", "-")
+                .replace("\u2018", "'").replace("\u2019", "'")
+                .replace("\u201c", '"').replace("\u201d", '"'))
+            pdf.multi_cell(0, 6, safe_line)
+
+    return bytes(pdf.output())
+
+
+async def create_gmail_draft_for_user(
+    user_id: str,
+    to_email: str,
+    subject: str,
+    body: str,
+    attachments: Optional[List[Dict]] = None  # [{"filename": "...", "data": bytes}]
+) -> Optional[str]:
+    """Create a Gmail draft with optional PDF attachments. Returns draft ID or None."""
+    access_token = await refresh_gmail_token(user_id)
+    if not access_token:
+        return None
+    try:
+        from email.mime.multipart import MIMEMultipart
+        from email.mime.text import MIMEText
+        from email.mime.base import MIMEBase
+        from email import encoders
+
+        msg = MIMEMultipart()
+        msg["to"] = to_email
+        msg["subject"] = subject
+        msg.attach(MIMEText(body, "plain", "utf-8"))
+
+        for att in (attachments or []):
+            part = MIMEBase("application", "octet-stream")
+            part.set_payload(att["data"])
+            encoders.encode_base64(part)
+            part.add_header("Content-Disposition", "attachment", filename=att["filename"])
+            msg.attach(part)
+
+        raw = base64.urlsafe_b64encode(msg.as_bytes()).decode("utf-8")
+        async with httpx.AsyncClient() as client:
+            resp = await client.post(
+                "https://gmail.googleapis.com/gmail/v1/users/me/drafts",
+                headers={"Authorization": f"Bearer {access_token}", "Content-Type": "application/json"},
+                json={"message": {"raw": raw}},
+                timeout=20
+            )
+            if resp.status_code in [200, 201]:
+                return resp.json().get("id")
+            logger.error(f"Draft creation failed: {resp.status_code} {resp.text}")
+    except Exception as e:
+        logger.error(f"Gmail draft error: {e}")
+    return None
 
 
 @app.post("/api/gmail/draft")
@@ -5478,9 +5659,9 @@ async def get_letter_style(request: Request):
     return {"style_summary": style_summary}
 
 
-@app.post("/api/user/upload-training-letter")
-async def upload_user_training_letter(request: Request):
-    """Upload a training letter file and analyze the writing style"""
+@app.get("/api/user/training-letters")
+async def get_user_training_letters(request: Request):
+    """Get all training letters uploaded by the user"""
     auth_header = request.headers.get("Authorization", "")
     user_id = None
 
@@ -5497,6 +5678,80 @@ async def upload_user_training_letter(request: Request):
     if not user_id:
         raise HTTPException(status_code=401, detail="Ej inloggad")
 
+    letters = await db_request("GET", "user_training_letters",
+        params={"user_id": f"eq.{user_id}", "order": "uploaded_at.desc"})
+
+    return {"success": True, "letters": letters or []}
+
+
+@app.delete("/api/user/training-letters/{letter_id}")
+async def delete_user_training_letter(letter_id: str, request: Request):
+    """Delete a training letter"""
+    auth_header = request.headers.get("Authorization", "")
+    user_id = None
+
+    if auth_header.startswith("Bearer "):
+        token = auth_header.replace("Bearer ", "")
+        async with httpx.AsyncClient() as client:
+            user_response = await client.get(
+                f"{SUPABASE_URL}/auth/v1/user",
+                headers={"apikey": SUPABASE_ANON_KEY, "Authorization": f"Bearer {token}"}
+            )
+            if user_response.status_code == 200:
+                user_id = user_response.json().get("id")
+
+    if not user_id:
+        raise HTTPException(status_code=401, detail="Ej inloggad")
+
+    # Verify the letter belongs to this user before deleting
+    letter = await db_request("GET", "user_training_letters",
+        params={"id": f"eq.{letter_id}", "user_id": f"eq.{user_id}"})
+
+    if not letter or len(letter) == 0:
+        raise HTTPException(status_code=404, detail="Brev hittades inte")
+
+    # Delete from storage if file_url exists
+    file_url = letter[0].get("file_url", "")
+    if file_url and "training-letters/" in file_url:
+        storage_path = file_url.split("training-letters/")[-1]
+        async with httpx.AsyncClient() as client:
+            await client.delete(
+                f"{SUPABASE_URL}/storage/v1/object/training-letters/{storage_path}",
+                headers={"Authorization": f"Bearer {SUPABASE_KEY}"},
+                timeout=10
+            )
+
+    await db_request("DELETE", "user_training_letters",
+        params={"id": f"eq.{letter_id}", "user_id": f"eq.{user_id}"})
+
+    return {"success": True}
+
+
+@app.post("/api/user/upload-training-letter")
+async def upload_user_training_letter(request: Request):
+    """Upload a training letter file, save to storage + DB, and analyze writing style"""
+    auth_header = request.headers.get("Authorization", "")
+    user_id = None
+
+    if auth_header.startswith("Bearer "):
+        token = auth_header.replace("Bearer ", "")
+        async with httpx.AsyncClient() as client:
+            user_response = await client.get(
+                f"{SUPABASE_URL}/auth/v1/user",
+                headers={"apikey": SUPABASE_ANON_KEY, "Authorization": f"Bearer {token}"}
+            )
+            if user_response.status_code == 200:
+                user_id = user_response.json().get("id")
+
+    if not user_id:
+        raise HTTPException(status_code=401, detail="Ej inloggad")
+
+    # Check max 20 letters per user
+    existing_letters = await db_request("GET", "user_training_letters",
+        params={"user_id": f"eq.{user_id}", "select": "id"})
+    if existing_letters and len(existing_letters) >= 20:
+        raise HTTPException(status_code=400, detail="Max 20 brev. Ta bort ett för att ladda upp fler.")
+
     form = await request.form()
     file = form.get("file")
     if not file:
@@ -5508,10 +5763,50 @@ async def upload_user_training_letter(request: Request):
     if not letter_text:
         letter_text = "[Kunde inte extrahera text från filen]"
 
+    # Upload to Supabase Storage (training-letters bucket, PUBLIC)
+    import time
+    timestamp = int(time.time())
+    filename_lower = file.filename.lower()
+    file_ext = filename_lower.split('.')[-1] if '.' in filename_lower else 'pdf'
+    content_type_map = {
+        'pdf': 'application/pdf',
+        'docx': 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+        'doc': 'application/msword',
+        'txt': 'text/plain',
+        'rtf': 'application/rtf',
+        'odt': 'application/vnd.oasis.opendocument.text'
+    }
+    content_type = content_type_map.get(file_ext, 'application/pdf')
+    storage_path = f"{user_id}/letter_{timestamp}.{file_ext}"
+    file_url = None
+
+    async with httpx.AsyncClient() as client:
+        upload_response = await client.post(
+            f"{SUPABASE_URL}/storage/v1/object/training-letters/{storage_path}",
+            headers={
+                "Authorization": f"Bearer {SUPABASE_KEY}",
+                "Content-Type": content_type,
+                "x-upsert": "true"
+            },
+            content=file_content,
+            timeout=30
+        )
+        if upload_response.status_code in [200, 201]:
+            file_url = f"{SUPABASE_URL}/storage/v1/object/public/training-letters/{storage_path}"
+
+    # Save to user_training_letters table
+    await db_request("POST", "user_training_letters", data={
+        "user_id": user_id,
+        "filename": file.filename,
+        "letter_text": letter_text,
+        "file_url": file_url
+    })
+
+    # Analyze tone and update style preferences
     tone_analysis = await analyze_writing_tone_rich(letter_text)
     await save_letter_style(user_id, tone_analysis)
 
-    return {"success": True, "tone_analysis": tone_analysis}
+    return {"success": True, "tone_analysis": tone_analysis, "file_url": file_url}
 
 
 @app.post("/api/user/analyze-letter-text")

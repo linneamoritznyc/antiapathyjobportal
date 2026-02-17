@@ -249,6 +249,8 @@
             const [showFeedback, setShowFeedback] = useState(false);
             const [savingFeedback, setSavingFeedback] = useState(false);
             const [applicationSaved, setApplicationSaved] = useState(false);
+            const [copied, setCopied] = useState(false);
+            const [feedbackSaved, setFeedbackSaved] = useState(false);
 
             useEffect(() => {
                 if (result?.cover_letter) setLetter(result.cover_letter);
@@ -290,13 +292,13 @@
 
             const markAsSent = async () => {
                 await saveApplication('sent');
-                alert('Markerad som skickad!');
                 onClose();
             };
 
             const copyLetter = () => {
                 navigator.clipboard.writeText(letter);
-                alert('Kopierat!');
+                setCopied(true);
+                setTimeout(() => setCopied(false), 2000);
             };
 
             const saveFeedback = async () => {
@@ -318,7 +320,8 @@
                     });
                     setFeedback('');
                     setShowFeedback(false);
-                    alert('Feedback sparad! AI kommer använda denna nästa gång.');
+                    setFeedbackSaved(true);
+                    setTimeout(() => setFeedbackSaved(false), 3000);
                 } catch (err) {
                     console.error(err);
                 }
@@ -371,17 +374,52 @@
                                 )}
                             </div>
 
-                            {result?.cv && (
-                                <div className="mt-4 p-3 bg-slate-50 rounded-lg">
-                                    <p className="text-sm font-medium text-slate-700 mb-1">Bifogat CV: {result.cv.vibe_name}</p>
-                                    <p className="text-xs text-slate-500 line-clamp-2">{result.cv.cv_text?.slice(0, 150)}...</p>
+                            {/* Gmail draft status */}
+                            {result?.draft_created ? (
+                                <div className="mt-3 p-3 bg-green-50 border border-green-200 rounded-lg">
+                                    <div className="flex items-center gap-2 mb-2">
+                                        <span className="text-green-600 text-lg">✓</span>
+                                        <p className="text-sm font-medium text-green-800">Utkast sparat i Gmail med bilagor!</p>
+                                    </div>
+                                    <div className="flex gap-3 text-xs text-green-700">
+                                        <span>📄 Personligt_Brev_Linnea_Moritz.pdf</span>
+                                        <span>📄 {result.cv_filename || 'CV.pdf'}</span>
+                                    </div>
+                                    {job?.contact_email && (
+                                        <p className="text-xs text-green-600 mt-1">Till: {job.contact_email}</p>
+                                    )}
+                                </div>
+                            ) : job?.contact_email ? (
+                                <div className="mt-3 p-3 bg-amber-50 border border-amber-200 rounded-lg">
+                                    <p className="text-xs text-amber-800 font-medium">Gmail inte kopplat</p>
+                                    <p className="text-xs text-amber-700 mt-0.5">Koppla Gmail i Profil-fliken för att spara utkast automatiskt, eller öppna compose-länken nedan.</p>
+                                </div>
+                            ) : (
+                                <div className="mt-3 p-3 bg-slate-50 border border-slate-200 rounded-lg">
+                                    <p className="text-xs text-slate-600">Ingen e-postadress hittades. Kolla annonsen direkt eller kopiera brevet.</p>
                                 </div>
                             )}
 
+                            {/* Attachments info */}
+                            <div className="mt-3 flex gap-2 flex-wrap">
+                                <span className="inline-flex items-center gap-1 text-xs bg-slate-100 text-slate-600 px-2 py-1 rounded">
+                                    📄 Personligt brev (PDF)
+                                </span>
+                                <span className="inline-flex items-center gap-1 text-xs bg-slate-100 text-slate-600 px-2 py-1 rounded">
+                                    📄 {result?.cv_filename || 'CV (PDF)'}
+                                </span>
+                            </div>
+
+                            {feedbackSaved && (
+                                <div className="mt-2 text-sm text-green-600">✓ Feedback sparad! AI använder den nästa gång.</div>
+                            )}
+
                             <div className="flex gap-3 mt-4 flex-wrap">
-                                <button onClick={openGmail} className="flex-1 bg-green-600 text-white py-2.5 px-4 rounded-lg font-medium hover:bg-green-700">
-                                    Oppna i Gmail
-                                </button>
+                                {!result?.draft_created && job?.contact_email && (
+                                    <button onClick={openGmail} className="flex-1 bg-green-600 text-white py-2.5 px-4 rounded-lg font-medium hover:bg-green-700">
+                                        Öppna i Gmail
+                                    </button>
+                                )}
                                 <button
                                     onClick={markAsSent}
                                     className="px-4 py-2.5 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700"
@@ -389,7 +427,7 @@
                                     Markera skickad
                                 </button>
                                 <button onClick={copyLetter} className="px-4 py-2.5 border border-slate-200 rounded-lg hover:bg-slate-50">
-                                    Kopiera
+                                    {copied ? '✓ Kopierat' : 'Kopiera'}
                                 </button>
                                 <button
                                     onClick={() => {
@@ -412,7 +450,7 @@
                                     Feedback
                                 </button>
                                 <button onClick={onClose} className="px-4 py-2.5 border border-slate-200 rounded-lg hover:bg-slate-50">
-                                    Stang
+                                    Stäng
                                 </button>
                             </div>
                         </div>
@@ -641,18 +679,34 @@
                 {
                     id: 'location',
                     question: 'Var vill du jobba?',
-                    subtitle: 'Välj alla som funkar',
+                    subtitle: 'Välj alla kommuner som funkar — du kan ändra sen under Preferenser',
                     type: 'multi',
                     options: [
-                        { value: 'stockholm', label: 'Stockholm' },
-                        { value: 'sollentuna', label: 'Sollentuna' },
-                        { value: 'solna', label: 'Solna' },
-                        { value: 'vetlanda', label: 'Vetlanda' },
-                        { value: 'goteborg', label: 'Göteborg' },
-                        { value: 'malmo', label: 'Malmö' },
-                        { value: 'uppsala', label: 'Uppsala' },
+                        { value: 'anywhere', label: 'Hela Sverige' },
                         { value: 'remote', label: 'Distans/Remote' },
-                        { value: 'anywhere', label: 'Hela Sverige' }
+                        { value: 'stockholm', label: 'Stockholm' },
+                        { value: 'solna', label: 'Solna' },
+                        { value: 'sundbyberg', label: 'Sundbyberg' },
+                        { value: 'sollentuna', label: 'Sollentuna' },
+                        { value: 'nacka', label: 'Nacka' },
+                        { value: 'huddinge', label: 'Huddinge' },
+                        { value: 'taby', label: 'Täby' },
+                        { value: 'jarfalla', label: 'Järfälla' },
+                        { value: 'goteborg', label: 'Göteborg' },
+                        { value: 'molndal', label: 'Mölndal' },
+                        { value: 'boras', label: 'Borås' },
+                        { value: 'malmo', label: 'Malmö' },
+                        { value: 'helsingborg', label: 'Helsingborg' },
+                        { value: 'lund', label: 'Lund' },
+                        { value: 'uppsala', label: 'Uppsala' },
+                        { value: 'linkoping', label: 'Linköping' },
+                        { value: 'norrkoping', label: 'Norrköping' },
+                        { value: 'orebro', label: 'Örebro' },
+                        { value: 'vasteras', label: 'Västerås' },
+                        { value: 'jonkoping', label: 'Jönköping' },
+                        { value: 'eskilstuna', label: 'Eskilstuna' },
+                        { value: 'halmstad', label: 'Halmstad' },
+                        { value: 'gavle', label: 'Gävle' },
                     ]
                 },
                 {
@@ -882,11 +936,138 @@
         };
 
         // Profil page - Profile photo + Training letter
+        const GmailSettingsSection = () => {
+            const [gmailStatus, setGmailStatus] = useState(null); // null | {connected, gmail_address}
+            const [disconnecting, setDisconnecting] = useState(false);
+            const [connecting, setConnecting] = useState(false);
+            const [msg, setMsg] = useState(null);
+
+            const token = localStorage.getItem('auth_token');
+            const headers = token ? { 'Authorization': `Bearer ${token}` } : {};
+
+            useEffect(() => {
+                fetch('/api/gmail/status?user_id=default_user', { headers })
+                    .then(r => r.json())
+                    .then(d => setGmailStatus(d))
+                    .catch(() => setGmailStatus({ connected: false }));
+            }, []);
+
+            const connectGmail = async () => {
+                setConnecting(true);
+                setMsg(null);
+                try {
+                    const resp = await fetch('/api/gmail/auth-url?user_id=default_user', { headers });
+                    const data = await resp.json();
+                    if (!data.auth_url) {
+                        setMsg({ type: 'error', text: data.app_configured === false ? 'Gmail-integration är inte aktiverad av administratören.' : 'Kunde inte starta inloggning.' });
+                        setConnecting(false);
+                        return;
+                    }
+                    const popup = window.open(data.auth_url, 'gmail_auth', 'width=500,height=600');
+                    const timer = setInterval(async () => {
+                        if (popup.closed) {
+                            clearInterval(timer);
+                            const r2 = await fetch('/api/gmail/status?user_id=default_user', { headers });
+                            const d2 = await r2.json();
+                            setGmailStatus(d2);
+                            setConnecting(false);
+                            if (d2.connected) setMsg({ type: 'success', text: 'Gmail kopplat!' });
+                        }
+                    }, 1000);
+                } catch {
+                    setMsg({ type: 'error', text: 'Något gick fel. Försök igen.' });
+                    setConnecting(false);
+                }
+            };
+
+            const disconnectGmail = async () => {
+                if (!window.confirm('Är du säker? Appen kommer inte längre kunna spara utkast i din Gmail.')) return;
+                setDisconnecting(true);
+                setMsg(null);
+                try {
+                    const resp = await fetch('/api/gmail/disconnect?user_id=default_user', {
+                        method: 'POST',
+                        headers
+                    });
+                    const data = await resp.json();
+                    if (data.success) {
+                        setGmailStatus({ connected: false });
+                        setMsg({ type: 'success', text: 'Gmail frånkopplat. Appen har inte längre åtkomst till din Gmail.' });
+                    } else {
+                        setMsg({ type: 'error', text: 'Kunde inte koppla bort. Försök igen.' });
+                    }
+                } catch {
+                    setMsg({ type: 'error', text: 'Något gick fel.' });
+                }
+                setDisconnecting(false);
+            };
+
+            return (
+                <div className="bg-white rounded-xl p-6 border border-slate-200">
+                    <h3 className="text-lg font-semibold mb-1">📬 Gmail-koppling</h3>
+                    <p className="text-sm text-slate-500 mb-4">
+                        Appen kan spara personliga brev som utkast i din Gmail. Du bestämmer alltid själv om du vill skicka.
+                    </p>
+
+                    {gmailStatus === null ? (
+                        <p className="text-sm text-slate-400">Kontrollerar status...</p>
+                    ) : gmailStatus.connected ? (
+                        <div>
+                            <div className="flex items-center gap-3 p-4 bg-green-50 border border-green-200 rounded-lg mb-4">
+                                <span className="text-xl">✅</span>
+                                <div>
+                                    <p className="font-medium text-green-800">Gmail kopplat</p>
+                                    <p className="text-sm text-green-700">{gmailStatus.gmail_address}</p>
+                                </div>
+                            </div>
+                            <button
+                                onClick={disconnectGmail}
+                                disabled={disconnecting}
+                                className="text-sm text-red-600 hover:text-red-800 underline disabled:opacity-50"
+                            >
+                                {disconnecting ? 'Kopplar bort...' : 'Koppla bort Gmail (återkalla åtkomst)'}
+                            </button>
+                            <p className="text-xs text-slate-400 mt-1">
+                                Du kan också återkalla åtkomst via <a href="https://myaccount.google.com/permissions" target="_blank" className="underline">Googles kontoinställningar</a>.
+                            </p>
+                        </div>
+                    ) : (
+                        <div>
+                            <div className="bg-blue-50 border border-blue-100 rounded-lg p-3 mb-4 text-sm text-blue-900">
+                                <p className="font-medium mb-1">Vad händer när du kopplar Gmail?</p>
+                                <ul className="space-y-0.5 text-blue-800">
+                                    <li>✓ Utkast sparas i din Gmail — inget skickas automatiskt</li>
+                                    <li>✓ Du granskar och skickar alltid själv</li>
+                                    <li>✓ Google frågar om tillstånd innan något händer</li>
+                                    <li>✓ Du kan koppla bort här när som helst</li>
+                                </ul>
+                            </div>
+                            <button
+                                onClick={connectGmail}
+                                disabled={connecting}
+                                className="flex items-center gap-2 bg-white border-2 border-slate-300 text-slate-700 py-2.5 px-4 rounded-lg font-medium hover:border-indigo-400 hover:bg-indigo-50 transition disabled:opacity-50"
+                            >
+                                <svg width="18" height="18" viewBox="0 0 24 24"><path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/><path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/><path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l3.66-2.84z"/><path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"/></svg>
+                                {connecting ? 'Öppnar...' : 'Koppla Gmail via Google'}
+                            </button>
+                        </div>
+                    )}
+
+                    {msg && (
+                        <div className={`mt-3 p-2 rounded-lg text-sm ${msg.type === 'success' ? 'bg-green-50 text-green-700' : 'bg-red-50 text-red-700'}`}>
+                            {msg.text}
+                        </div>
+                    )}
+                </div>
+            );
+        };
+
         const ProfilPage = () => {
             const [uploadingPhoto, setUploadingPhoto] = useState(false);
             const [uploadingLetter, setUploadingLetter] = useState(false);
             const [photoUrl, setPhotoUrl] = useState(null);
             const [letterStatus, setLetterStatus] = useState(null);
+            const [photoStatus, setPhotoStatus] = useState(null);
 
             // Load existing profile data
             useEffect(() => {
@@ -894,7 +1075,7 @@
             }, []);
 
             const fetchProfileData = async () => {
-                const token = localStorage.getItem('supabase_token');
+                const token = localStorage.getItem('auth_token');
                 if (!token) return;
 
                 try {
@@ -923,7 +1104,7 @@
                     if (!file) return;
 
                     setUploadingPhoto(true);
-                    const token = localStorage.getItem('supabase_token');
+                    const token = localStorage.getItem('auth_token');
 
                     try {
                         const formData = new FormData();
@@ -938,13 +1119,13 @@
                         const data = await res.json();
                         if (res.ok) {
                             setPhotoUrl(data.photo_url);
-                            alert('Profilbild uppladdad!');
+                            setPhotoStatus('✓ Profilbild uppladdad!');
                         } else {
-                            alert(data.detail || 'Kunde inte ladda upp bild');
+                            setPhotoStatus(data.detail || 'Kunde inte ladda upp bild');
                         }
                     } catch (err) {
                         console.error(err);
-                        alert('Ett fel uppstod vid uppladdning');
+                        setPhotoStatus('Ett fel uppstod vid uppladdning');
                     } finally {
                         setUploadingPhoto(false);
                     }
@@ -962,13 +1143,13 @@
                     if (!file) return;
 
                     setUploadingLetter(true);
-                    const token = localStorage.getItem('supabase_token');
+                    const token = localStorage.getItem('auth_token');
 
                     try {
                         const formData = new FormData();
                         formData.append('file', file);
 
-                        const res = await fetch('/api/upload/training-letter', {
+                        const res = await fetch('/api/user/upload-training-letter', {
                             method: 'POST',
                             headers: { 'Authorization': `Bearer ${token}` },
                             body: formData
@@ -977,13 +1158,12 @@
                         const data = await res.json();
                         if (res.ok) {
                             setLetterStatus('Uppladdad och analyserad ✓');
-                            alert('Personligt brev uppladdad! AI har analyserat din skrivstil.');
                         } else {
-                            alert(data.detail || 'Kunde inte ladda upp brev');
+                            setLetterStatus(data.detail || 'Kunde inte ladda upp brev');
                         }
                     } catch (err) {
                         console.error(err);
-                        alert('Ett fel uppstod vid uppladdning');
+                        setLetterStatus('Ett fel uppstod vid uppladdning');
                     } finally {
                         setUploadingLetter(false);
                     }
@@ -1020,10 +1200,18 @@
                             </button>
                         </div>
 
+                        {photoStatus && (
+                            <div className={`mt-3 p-2 rounded-lg text-sm ${photoStatus.startsWith('✓') ? 'bg-green-50 text-green-700' : 'bg-red-50 text-red-700'}`}>
+                                {photoStatus}
+                            </div>
+                        )}
                         <p className="text-xs text-slate-400 mt-3">
                             Accepterade format: JPG, PNG
                         </p>
                     </div>
+
+                    {/* Gmail Connection Section */}
+                    <GmailSettingsSection />
 
                     {/* Training Letter Section */}
                     <div className="bg-white rounded-xl p-6 border border-slate-200">
@@ -1091,17 +1279,11 @@
                     <StatCard icon="🗣️" label="Språk" value={stats.languages || 0} />
                 </div>
 
-                <button
-                    onClick={onUploadCV}
-                    className="w-full bg-indigo-600 text-white py-3 rounded-lg hover:bg-indigo-700 transition"
-                >
-                    📥 Ladda upp CV för att lägga till data
-                </button>
             </div>
         );
 
         // Experience Card Component
-        const ExperienceCard = ({ exp, onEdit, onDelete }) => {
+        const ExperienceCard = ({ exp }) => {
             const iconMap = {
                 restaurant: '🍽️', retail: '🛒', tech: '💻', healthcare: '🏥',
                 art: '🎨', marketing: '📢', education: '📚', industry: '🏭',
@@ -1137,27 +1319,13 @@
                             </div>
                         </div>
 
-                        <div className="flex gap-2 ml-4">
-                            <button
-                                onClick={() => onEdit(exp)}
-                                className="text-indigo-600 hover:text-indigo-800 text-sm"
-                            >
-                                ✏️
-                            </button>
-                            <button
-                                onClick={() => onDelete(exp)}
-                                className="text-red-600 hover:text-red-800 text-sm"
-                            >
-                                🗑️
-                            </button>
-                        </div>
                     </div>
                 </div>
             );
         };
 
         // Education Card Component
-        const EducationCard = ({ item, onEdit, onDelete }) => (
+        const EducationCard = ({ item }) => (
             <div className="bg-slate-50 rounded-lg p-4 border border-slate-200 hover:border-indigo-300 transition">
                 <div className="flex justify-between items-start">
                     <div className="flex-1">
@@ -1173,16 +1341,13 @@
                             <p className="text-sm text-slate-700 line-clamp-2">{item.description}</p>
                         )}
                     </div>
-                    <div className="flex gap-2 ml-4">
-                        <button onClick={() => onEdit(item)} className="text-indigo-600 hover:text-indigo-800 text-sm">✏️</button>
-                        <button onClick={() => onDelete(item)} className="text-red-600 hover:text-red-800 text-sm">🗑️</button>
                     </div>
                 </div>
             </div>
         );
 
         // Project Card Component
-        const ProjectCard = ({ item, onEdit, onDelete }) => (
+        const ProjectCard = ({ item }) => (
             <div className="bg-slate-50 rounded-lg p-4 border border-slate-200 hover:border-indigo-300 transition">
                 <div className="flex justify-between items-start">
                     <div className="flex-1">
@@ -1198,29 +1363,19 @@
                         )}
                         <p className="text-sm text-slate-700 mt-2 line-clamp-2">{item.description}</p>
                     </div>
-                    <div className="flex gap-2 ml-4">
-                        <button onClick={() => onEdit(item)} className="text-indigo-600 hover:text-indigo-800 text-sm">✏️</button>
-                        <button onClick={() => onDelete(item)} className="text-red-600 hover:text-red-800 text-sm">🗑️</button>
-                    </div>
                 </div>
             </div>
         );
 
         // Generic Card for other types
-        const GenericCard = ({ item, icon, title, subtitle, onEdit, onDelete }) => (
+        const GenericCard = ({ item, icon, title, subtitle }) => (
             <div className="bg-slate-50 rounded-lg p-4 border border-slate-200 hover:border-indigo-300 transition">
-                <div className="flex justify-between items-start">
+                <div className="flex items-start gap-3">
+                    <span className="text-2xl flex-shrink-0">{icon}</span>
                     <div className="flex-1">
-                        <div className="flex items-center gap-2 mb-1">
-                            <span className="text-2xl">{icon}</span>
-                            <h4 className="font-semibold">{title}</h4>
-                        </div>
+                        <h4 className="font-semibold">{title}</h4>
                         {subtitle && <p className="text-sm text-slate-600">{subtitle}</p>}
                         {item.description && <p className="text-sm text-slate-700 mt-2 line-clamp-2">{item.description}</p>}
-                    </div>
-                    <div className="flex gap-2 ml-4">
-                        <button onClick={() => onEdit(item)} className="text-indigo-600 hover:text-indigo-800 text-sm">✏️</button>
-                        <button onClick={() => onDelete(item)} className="text-red-600 hover:text-red-800 text-sm">🗑️</button>
                     </div>
                 </div>
             </div>
@@ -1240,12 +1395,6 @@
                             <span className="text-slate-400">{isExpanded ? '▼' : '▶'}</span>
                             <h3 className="font-semibold">{icon} {title} ({count})</h3>
                         </div>
-                        <button
-                            onClick={(e) => { e.stopPropagation(); onAdd(); }}
-                            className="text-indigo-600 text-sm hover:text-indigo-800"
-                        >
-                            + Ny
-                        </button>
                     </div>
 
                     {isExpanded && items.length > 0 && (
@@ -1255,8 +1404,6 @@
                                     key={item.id || idx}
                                     item={item}
                                     exp={item}
-                                    onEdit={() => onEdit(item)}
-                                    onDelete={() => onDelete(item)}
                                 />
                             ))}
                         </div>
@@ -1264,7 +1411,7 @@
 
                     {isExpanded && items.length === 0 && (
                         <div className="mt-4 text-center text-slate-400 text-sm py-6">
-                            Inga objekt ännu. Klicka "+ Ny" för att lägga till.
+                            Inga objekt ännu.
                         </div>
                     )}
                 </div>
@@ -1302,12 +1449,6 @@
                                 className="text-xs bg-white border border-slate-300 py-2 rounded hover:bg-slate-50"
                             >
                                 👁️ Visa
-                            </button>
-                            <button
-                                onClick={() => onEdit(cv)}
-                                className="text-xs bg-indigo-600 text-white py-2 rounded hover:bg-indigo-700"
-                            >
-                                ✏️ Redigera
                             </button>
                         </div>
                     </div>
@@ -1349,12 +1490,6 @@
                                     className="px-4 py-2 bg-white border border-slate-300 rounded-lg hover:bg-slate-50"
                                 >
                                     📥 Ladda ner PDF
-                                </button>
-                                <button
-                                    onClick={() => { onClose(); onEdit(cv); }}
-                                    className="px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700"
-                                >
-                                    ✏️ Redigera
                                 </button>
                                 <button
                                     onClick={onClose}
@@ -1419,7 +1554,7 @@
             }, []);
 
             const fetchMasterCVData = async () => {
-                const token = localStorage.getItem('supabase_token');
+                const token = localStorage.getItem('auth_token');
                 if (!token) return;
 
                 try {
@@ -1449,7 +1584,7 @@
             };
 
             const fetchBranschCVs = async () => {
-                const token = localStorage.getItem('supabase_token');
+                const token = localStorage.getItem('auth_token');
                 if (!token) return;
 
                 try {
@@ -1464,7 +1599,7 @@
             };
 
             const handleDownloadMasterCV = async () => {
-                const token = localStorage.getItem('supabase_token');
+                const token = localStorage.getItem('auth_token');
                 if (!token) return;
 
                 try {
@@ -1485,7 +1620,7 @@
             };
 
             const handleDownloadBranschCV = async (cv) => {
-                const token = localStorage.getItem('supabase_token');
+                const token = localStorage.getItem('auth_token');
                 if (!token) return;
 
                 try {
@@ -1510,7 +1645,7 @@
                     {/* Section 1: Master CV Summary */}
                     <MasterCVSummary
                         stats={stats}
-                        onUploadCV={() => alert('CV upload kommer snart!')}
+                        onUploadCV={null}
                     />
 
                     {/* Download Master CV Button */}
@@ -1531,9 +1666,6 @@
                             icon="📊"
                             items={experiences}
                             ItemCard={ExperienceCard}
-                            onAdd={() => alert('Lägg till ny erfarenhet kommer snart!')}
-                            onEdit={(exp) => alert('Redigera erfarenhet kommer snart!')}
-                            onDelete={(exp) => alert('Ta bort erfarenhet kommer snart!')}
                         />
 
                         <CVBlockAccordion
@@ -1542,9 +1674,6 @@
                             icon="🎓"
                             items={education}
                             ItemCard={EducationCard}
-                            onAdd={() => alert('Lägg till ny utbildning kommer snart!')}
-                            onEdit={(edu) => alert('Redigera utbildning kommer snart!')}
-                            onDelete={(edu) => alert('Ta bort utbildning kommer snart!')}
                         />
 
                         <CVBlockAccordion
@@ -1553,9 +1682,6 @@
                             icon="💻"
                             items={projects}
                             ItemCard={ProjectCard}
-                            onAdd={() => alert('Lägg till nytt projekt kommer snart!')}
-                            onEdit={(proj) => alert('Redigera projekt kommer snart!')}
-                            onDelete={(proj) => alert('Ta bort projekt kommer snart!')}
                         />
 
                         <CVBlockAccordion
@@ -1563,19 +1689,14 @@
                             count={certifications.length}
                             icon="🏅"
                             items={certifications}
-                            ItemCard={({ item, onEdit, onDelete }) => (
+                            ItemCard={({ item }) => (
                                 <GenericCard
                                     item={item}
                                     icon="🏅"
                                     title={item.certification_name || item.name}
                                     subtitle={item.organization}
-                                    onEdit={onEdit}
-                                    onDelete={onDelete}
                                 />
                             )}
-                            onAdd={() => alert('Lägg till ny certifiering kommer snart!')}
-                            onEdit={(cert) => alert('Redigera certifiering kommer snart!')}
-                            onDelete={(cert) => alert('Ta bort certifiering kommer snart!')}
                         />
 
                         <CVBlockAccordion
@@ -1583,19 +1704,14 @@
                             count={awards.length}
                             icon="🏆"
                             items={awards}
-                            ItemCard={({ item, onEdit, onDelete }) => (
+                            ItemCard={({ item }) => (
                                 <GenericCard
                                     item={item}
                                     icon="🏆"
                                     title={item.award_name}
                                     subtitle={item.organization}
-                                    onEdit={onEdit}
-                                    onDelete={onDelete}
                                 />
                             )}
-                            onAdd={() => alert('Lägg till nytt pris kommer snart!')}
-                            onEdit={(award) => alert('Redigera pris kommer snart!')}
-                            onDelete={(award) => alert('Ta bort pris kommer snart!')}
                         />
 
                         <CVBlockAccordion
@@ -1603,19 +1719,14 @@
                             count={volunteer.length}
                             icon="🤝"
                             items={volunteer}
-                            ItemCard={({ item, onEdit, onDelete }) => (
+                            ItemCard={({ item }) => (
                                 <GenericCard
                                     item={item}
                                     icon="🤝"
                                     title={item.organization_name}
                                     subtitle={item.role}
-                                    onEdit={onEdit}
-                                    onDelete={onDelete}
                                 />
                             )}
-                            onAdd={() => alert('Lägg till nytt volontärarbete kommer snart!')}
-                            onEdit={(vol) => alert('Redigera volontärarbete kommer snart!')}
-                            onDelete={(vol) => alert('Ta bort volontärarbete kommer snart!')}
                         />
 
                         <CVBlockAccordion
@@ -1623,19 +1734,14 @@
                             count={skills.filter(s => s.skill_type === 'language').length}
                             icon="🗣️"
                             items={skills.filter(s => s.skill_type === 'language')}
-                            ItemCard={({ item, onEdit, onDelete }) => (
+                            ItemCard={({ item }) => (
                                 <GenericCard
                                     item={item}
                                     icon="🗣️"
                                     title={item.skill_name}
                                     subtitle={item.proficiency_level}
-                                    onEdit={onEdit}
-                                    onDelete={onDelete}
                                 />
                             )}
-                            onAdd={() => alert('Lägg till nytt språk kommer snart!')}
-                            onEdit={(lang) => alert('Redigera språk kommer snart!')}
-                            onDelete={(lang) => alert('Ta bort språk kommer snart!')}
                         />
                     </div>
 
@@ -1652,17 +1758,9 @@
                                     key={cv.id || idx}
                                     cv={cv}
                                     onView={(cv) => setViewingCV(cv)}
-                                    onEdit={(cv) => alert('Redigera Bransch-CV kommer snart!')}
                                 />
                             ))}
                         </div>
-
-                        <button
-                            onClick={() => alert('Skapa nytt Bransch-CV kommer snart!')}
-                            className="w-full mt-6 bg-indigo-600 text-white py-3 rounded-lg hover:bg-indigo-700"
-                        >
-                            + Skapa nytt bransch-CV
-                        </button>
                     </div>
 
                     {/* Bransch-CV Preview Modal */}
@@ -1670,7 +1768,6 @@
                         <BranschCVPreviewModal
                             cv={viewingCV}
                             onClose={() => setViewingCV(null)}
-                            onEdit={(cv) => alert('Redigera Bransch-CV kommer snart!')}
                             onDownloadPDF={handleDownloadBranschCV}
                         />
                     )}
@@ -1702,15 +1799,85 @@
             ]
         };
 
-        const LOCATION_OPTIONS = [
-            { id: 'stockholm', label: 'Stockholm' },
-            { id: 'sollentuna', label: 'Sollentuna' },
-            { id: 'solna', label: 'Solna' },
-            { id: 'goteborg', label: 'Göteborg' },
-            { id: 'malmo', label: 'Malmö' },
-            { id: 'uppsala', label: 'Uppsala' },
-            { id: 'remote', label: 'Remote' },
-            { id: 'anywhere', label: 'Var som helst' }
+        const LAN_DATA = [
+            { id: 'stockholm_lan', label: 'Stockholms län', kommuner: [
+                { id: 'stockholm', label: 'Stockholm' },
+                { id: 'solna', label: 'Solna' },
+                { id: 'sundbyberg', label: 'Sundbyberg' },
+                { id: 'sollentuna', label: 'Sollentuna' },
+                { id: 'taby', label: 'Täby' },
+                { id: 'nacka', label: 'Nacka' },
+                { id: 'lidingo', label: 'Lidingö' },
+                { id: 'jarfalla', label: 'Järfälla' },
+                { id: 'huddinge', label: 'Huddinge' },
+                { id: 'botkyrka', label: 'Botkyrka' },
+                { id: 'haninge', label: 'Haninge' },
+                { id: 'tyreso', label: 'Tyresö' },
+                { id: 'upplands_vasby', label: 'Upplands Väsby' },
+                { id: 'vaxholm', label: 'Vaxholm' },
+            ]},
+            { id: 'vastragotaland_lan', label: 'Västra Götalands län', kommuner: [
+                { id: 'goteborg', label: 'Göteborg' },
+                { id: 'molndal', label: 'Mölndal' },
+                { id: 'partille', label: 'Partille' },
+                { id: 'boras', label: 'Borås' },
+                { id: 'trollhattan', label: 'Trollhättan' },
+                { id: 'skovde', label: 'Skövde' },
+                { id: 'vanersborg', label: 'Vänersborg' },
+                { id: 'lidkoping', label: 'Lidköping' },
+                { id: 'alingsas', label: 'Alingsås' },
+            ]},
+            { id: 'skane_lan', label: 'Skåne län', kommuner: [
+                { id: 'malmo', label: 'Malmö' },
+                { id: 'helsingborg', label: 'Helsingborg' },
+                { id: 'lund', label: 'Lund' },
+                { id: 'kristianstad', label: 'Kristianstad' },
+                { id: 'landskrona', label: 'Landskrona' },
+                { id: 'trelleborg', label: 'Trelleborg' },
+                { id: 'ystad', label: 'Ystad' },
+            ]},
+            { id: 'uppsala_lan', label: 'Uppsala län', kommuner: [
+                { id: 'uppsala', label: 'Uppsala' },
+                { id: 'enkoping', label: 'Enköping' },
+                { id: 'knivsta', label: 'Knivsta' },
+            ]},
+            { id: 'jonkoping_lan', label: 'Jönköpings län', kommuner: [
+                { id: 'jonkoping', label: 'Jönköping' },
+                { id: 'varnamo', label: 'Värnamo' },
+                { id: 'nassjo', label: 'Nässjö' },
+                { id: 'eksjo', label: 'Eksjö' },
+            ]},
+            { id: 'ostergotland_lan', label: 'Östergötlands län', kommuner: [
+                { id: 'linkoping', label: 'Linköping' },
+                { id: 'norrkoping', label: 'Norrköping' },
+                { id: 'motala', label: 'Motala' },
+            ]},
+            { id: 'sodermanland_lan', label: 'Södermanlands län', kommuner: [
+                { id: 'eskilstuna', label: 'Eskilstuna' },
+                { id: 'nykoping', label: 'Nyköping' },
+                { id: 'katrineholm', label: 'Katrineholm' },
+            ]},
+            { id: 'vastmanland_lan', label: 'Västmanlands län', kommuner: [
+                { id: 'vasteras', label: 'Västerås' },
+                { id: 'sala', label: 'Sala' },
+            ]},
+            { id: 'orebro_lan', label: 'Örebro län', kommuner: [
+                { id: 'orebro', label: 'Örebro' },
+                { id: 'kumla', label: 'Kumla' },
+            ]},
+            { id: 'halland_lan', label: 'Hallands län', kommuner: [
+                { id: 'halmstad', label: 'Halmstad' },
+                { id: 'kungsbacka', label: 'Kungsbacka' },
+                { id: 'varberg', label: 'Varberg' },
+            ]},
+            { id: 'gavleborg_lan', label: 'Gävleborgs län', kommuner: [
+                { id: 'gavle', label: 'Gävle' },
+                { id: 'sandviken', label: 'Sandviken' },
+            ]},
+            { id: 'dalarna_lan', label: 'Dalarnas län', kommuner: [
+                { id: 'falun', label: 'Falun' },
+                { id: 'borlange', label: 'Borlänge' },
+            ]},
         ];
 
         const WORKING_HOURS_OPTIONS = [
@@ -1721,11 +1888,27 @@
         ];
 
         const DEALBREAKER_OPTIONS = [
-            { id: 'natt', label: 'Nattarbete' },
-            { id: 'helg', label: 'Helgarbete' },
-            { id: 'telefon', label: 'Telefonförsäljning' },
-            { id: 'tunga_lyft', label: 'Tunga lyft' },
-            { id: 'utomhus', label: 'Utomhusarbete' }
+            // Arbetstider
+            { id: 'natt', label: 'Nattarbete', group: 'Arbetstider' },
+            { id: 'helg', label: 'Helgarbete', group: 'Arbetstider' },
+            { id: 'tidiga_mornar', label: 'Tidiga morgnar (före 07)', group: 'Arbetstider' },
+            { id: 'delade_turer', label: 'Delade turer', group: 'Arbetstider' },
+            // Kommunikation
+            { id: 'telefonförsäljning', label: 'Telefonförsäljning', group: 'Kommunikation' },
+            { id: 'telefonarbete', label: 'Telefonarbete (kundtjänst, support)', group: 'Kommunikation' },
+            { id: 'forsaljning', label: 'Försäljning / säljmål', group: 'Kommunikation' },
+            // Fysiskt
+            { id: 'tunga_lyft', label: 'Tunga lyft', group: 'Fysiskt' },
+            { id: 'utomhus', label: 'Utomhusarbete', group: 'Fysiskt' },
+            { id: 'stressig_miljo', label: 'Stressig / hög-tempo miljö', group: 'Fysiskt' },
+            { id: 'kemikalier', label: 'Kemikalier / starkt rengöringsmedel', group: 'Fysiskt' },
+            // Ansvar & villkor
+            { id: 'obetald_praktik', label: 'Obetald praktik', group: 'Villkor' },
+            { id: 'resor_utomlands', label: 'Resor utomlands', group: 'Villkor' },
+            { id: 'resor_i_tjanst', label: 'Tjänsteresor (övernattning)', group: 'Villkor' },
+            { id: 'korkort', label: 'Kräver körkort / bil', group: 'Villkor' },
+            { id: 'ensamarbete', label: 'Ensamarbete (inga kollegor)', group: 'Villkor' },
+            { id: 'djur', label: 'Arbete med djur (allergi)', group: 'Villkor' },
         ];
 
         const PreferencesPage = () => {
@@ -1745,7 +1928,14 @@
             const [customNegKw, setCustomNegKw] = useState('');
 
             // Location & hours
-            const [selectedLocations, setSelectedLocations] = useState(prefs.location || []);
+            const [selectedKommuner, setSelectedKommuner] = useState(prefs.location || []);
+            const [expandedLan, setExpandedLan] = useState(() => {
+                // Auto-expand the county that contains saved kommuner
+                const saved = prefs.location || [];
+                if (!saved.length) return null;
+                const found = LAN_DATA.find(lan => lan.kommuner.some(k => saved.includes(k.id)));
+                return found ? found.id : null;
+            });
             const [selectedHours, setSelectedHours] = useState(prefs.working_hours || []);
 
             // Dealbreakers
@@ -1778,9 +1968,13 @@
                 setNewPosKw('');
             };
 
-            const toggleLocation = (id) => {
-                setSelectedLocations(prev =>
-                    prev.includes(id) ? prev.filter(l => l !== id) : [...prev, id]
+            const toggleLan = (lanId) => {
+                setExpandedLan(prev => prev === lanId ? null : lanId);
+            };
+
+            const toggleKommun = (kommunId) => {
+                setSelectedKommuner(prev =>
+                    prev.includes(kommunId) ? prev.filter(k => k !== kommunId) : [...prev, kommunId]
                 );
             };
 
@@ -1801,7 +1995,7 @@
                     ...prefs,
                     custom_search: posKeywords.join(', '),
                     negative_keywords: negKeywords,
-                    location: selectedLocations,
+                    location: selectedKommuner,
                     working_hours: selectedHours,
                     dealbreakers: selectedDealbreakers
                 };
@@ -1949,21 +2143,90 @@
                         <h3 className="text-lg font-semibold mb-4">📍 Plats & Arbetstid</h3>
 
                         <p className="text-xs font-semibold text-slate-400 uppercase tracking-wide mb-2">Plats</p>
-                        <div className="flex flex-wrap gap-2 mb-5">
-                            {LOCATION_OPTIONS.map(opt => (
+
+                        {/* Special options */}
+                        <div className="flex flex-wrap gap-2 mb-4">
+                            {[{ id: 'remote', label: 'Remote' }, { id: 'anywhere', label: 'Var som helst' }].map(opt => (
                                 <button
                                     key={opt.id}
-                                    onClick={() => toggleLocation(opt.id)}
+                                    onClick={() => toggleKommun(opt.id)}
                                     className={`px-3 py-1.5 rounded-full text-sm border transition ${
-                                        selectedLocations.includes(opt.id)
+                                        selectedKommuner.includes(opt.id)
                                             ? 'bg-indigo-100 border-indigo-400 text-indigo-800 font-medium'
                                             : 'bg-slate-50 border-slate-200 text-slate-700 hover:border-indigo-300'
                                     }`}
                                 >
-                                    {selectedLocations.includes(opt.id) ? '✓ ' : ''}{opt.label}
+                                    {selectedKommuner.includes(opt.id) ? '✓ ' : ''}{opt.label}
                                 </button>
                             ))}
                         </div>
+
+                        {/* Level 1: Välj län */}
+                        <p className="text-xs text-slate-400 mb-2">Välj län för att se kommuner:</p>
+                        <div className="flex flex-wrap gap-2 mb-3">
+                            {LAN_DATA.map(lan => {
+                                const kommunerSelected = lan.kommuner.filter(k => selectedKommuner.includes(k.id)).length;
+                                const isExpanded = expandedLan === lan.id;
+                                return (
+                                    <button
+                                        key={lan.id}
+                                        onClick={() => toggleLan(lan.id)}
+                                        className={`px-3 py-1.5 rounded-full text-sm border transition flex items-center gap-1 ${
+                                            isExpanded
+                                                ? 'bg-indigo-600 border-indigo-600 text-white font-medium'
+                                                : kommunerSelected > 0
+                                                    ? 'bg-indigo-100 border-indigo-400 text-indigo-800 font-medium'
+                                                    : 'bg-slate-50 border-slate-200 text-slate-700 hover:border-indigo-300'
+                                        }`}
+                                    >
+                                        {isExpanded ? '▾ ' : kommunerSelected > 0 ? '✓ ' : ''}{lan.label}
+                                        {kommunerSelected > 0 && !isExpanded && (
+                                            <span className="bg-indigo-500 text-white text-xs rounded-full px-1.5 py-0.5 leading-none">{kommunerSelected}</span>
+                                        )}
+                                    </button>
+                                );
+                            })}
+                        </div>
+
+                        {/* Level 2: Kommuner inom valt län */}
+                        {expandedLan && (() => {
+                            const lan = LAN_DATA.find(l => l.id === expandedLan);
+                            return lan ? (
+                                <div className="bg-indigo-50 border border-indigo-200 rounded-xl p-3 mb-3">
+                                    <p className="text-xs font-semibold text-indigo-600 mb-2">{lan.label} — välj kommuner:</p>
+                                    <div className="flex flex-wrap gap-2">
+                                        {lan.kommuner.map(k => (
+                                            <button
+                                                key={k.id}
+                                                onClick={() => toggleKommun(k.id)}
+                                                className={`px-3 py-1.5 rounded-full text-sm border transition ${
+                                                    selectedKommuner.includes(k.id)
+                                                        ? 'bg-indigo-500 border-indigo-500 text-white font-medium'
+                                                        : 'bg-white border-indigo-200 text-slate-700 hover:border-indigo-400'
+                                                }`}
+                                            >
+                                                {selectedKommuner.includes(k.id) ? '✓ ' : ''}{k.label}
+                                            </button>
+                                        ))}
+                                    </div>
+                                </div>
+                            ) : null;
+                        })()}
+
+                        {/* Summary of selected kommuner */}
+                        {selectedKommuner.filter(k => k !== 'remote' && k !== 'anywhere').length > 0 && (
+                            <div className="flex flex-wrap gap-1 mb-2">
+                                {selectedKommuner.filter(k => k !== 'remote' && k !== 'anywhere').map(kId => {
+                                    const found = LAN_DATA.flatMap(l => l.kommuner).find(k => k.id === kId);
+                                    return found ? (
+                                        <span key={kId} className="bg-indigo-100 text-indigo-800 text-xs px-2 py-1 rounded-full flex items-center gap-1">
+                                            {found.label}
+                                            <button onClick={() => toggleKommun(kId)} className="text-indigo-500 hover:text-indigo-800 font-bold">×</button>
+                                        </span>
+                                    ) : null;
+                                })}
+                            </div>
+                        )}
 
                         <p className="text-xs font-semibold text-slate-400 uppercase tracking-wide mb-2">Arbetstid</p>
                         <div className="flex flex-wrap gap-2">
@@ -1986,23 +2249,28 @@
                     {/* Dealbreakers */}
                     <div className="bg-white rounded-xl p-6 border border-slate-200">
                         <h3 className="text-lg font-semibold mb-1">⚡ Undvik på jobbet</h3>
-                        <p className="text-sm text-slate-500 mb-4">Jobb med dessa egenskaper filtreras bort</p>
+                        <p className="text-sm text-slate-500 mb-4">Jobb med dessa egenskaper filtreras bort automatiskt</p>
 
-                        <div className="flex flex-wrap gap-2">
-                            {DEALBREAKER_OPTIONS.map(opt => (
-                                <button
-                                    key={opt.id}
-                                    onClick={() => toggleDealbreaker(opt.id)}
-                                    className={`px-3 py-1.5 rounded-full text-sm border transition ${
-                                        selectedDealbreakers.includes(opt.id)
-                                            ? 'bg-orange-100 border-orange-400 text-orange-800 font-medium'
-                                            : 'bg-slate-50 border-slate-200 text-slate-700 hover:border-orange-300'
-                                    }`}
-                                >
-                                    {selectedDealbreakers.includes(opt.id) ? '✕ ' : ''}{opt.label}
-                                </button>
-                            ))}
-                        </div>
+                        {['Arbetstider', 'Kommunikation', 'Fysiskt', 'Villkor'].map(group => (
+                            <div key={group} className="mb-4">
+                                <p className="text-xs font-semibold text-slate-400 uppercase tracking-wide mb-2">{group}</p>
+                                <div className="flex flex-wrap gap-2">
+                                    {DEALBREAKER_OPTIONS.filter(o => o.group === group).map(opt => (
+                                        <button
+                                            key={opt.id}
+                                            onClick={() => toggleDealbreaker(opt.id)}
+                                            className={`px-3 py-1.5 rounded-full text-sm border transition ${
+                                                selectedDealbreakers.includes(opt.id)
+                                                    ? 'bg-orange-100 border-orange-400 text-orange-800 font-medium'
+                                                    : 'bg-slate-50 border-slate-200 text-slate-700 hover:border-orange-300'
+                                            }`}
+                                        >
+                                            {selectedDealbreakers.includes(opt.id) ? '✕ ' : ''}{opt.label}
+                                        </button>
+                                    ))}
+                                </div>
+                            </div>
+                        ))}
                     </div>
 
                     {/* Save button */}
@@ -2030,13 +2298,47 @@
             const [letterStyle, setLetterStyle] = useState(null);
             const [loadingStyle, setLoadingStyle] = useState(true);
             const [saveStatus, setSaveStatus] = useState('');
+            const [dragOver, setDragOver] = useState(false);
+            const [uploadedLetters, setUploadedLetters] = useState([]);
+            const [deletingId, setDeletingId] = useState(null);
 
             useEffect(() => {
                 fetchLetterStyle();
+                fetchUploadedLetters();
             }, []);
 
+            const fetchUploadedLetters = async () => {
+                const token = localStorage.getItem('auth_token');
+                if (!token) return;
+                try {
+                    const res = await fetch('/api/user/training-letters', {
+                        headers: { 'Authorization': `Bearer ${token}` }
+                    });
+                    if (res.ok) {
+                        const data = await res.json();
+                        setUploadedLetters(data.letters || []);
+                    }
+                } catch(e) {}
+            };
+
+            const deleteLetter = async (id) => {
+                const token = localStorage.getItem('auth_token');
+                if (!token) return;
+                setDeletingId(id);
+                try {
+                    const res = await fetch(`/api/user/training-letters/${id}`, {
+                        method: 'DELETE',
+                        headers: { 'Authorization': `Bearer ${token}` }
+                    });
+                    if (res.ok) {
+                        setUploadedLetters(prev => prev.filter(l => l.id !== id));
+                    }
+                } catch(e) {}
+                setDeletingId(null);
+            };
+
             const fetchLetterStyle = async () => {
-                const token = localStorage.getItem('supabase_token');
+                const token = localStorage.getItem('auth_token');
                 if (!token) { setLoadingStyle(false); return; }
                 try {
                     const res = await fetch('/api/user/letter-style', {
@@ -2050,44 +2352,52 @@
                 setLoadingStyle(false);
             };
 
-            const handleUpload = async () => {
-                const token = localStorage.getItem('supabase_token');
-                if (!token) return;
+            const uploadFile = async (file) => {
+                const token = localStorage.getItem('auth_token');
+                if (!token || !file) return;
+                setUploading(true);
+                setSaveStatus('Analyserar brev...');
+                const formData = new FormData();
+                formData.append('file', file);
+                formData.append('type', 'cover_letter');
+                try {
+                    const res = await fetch('/api/user/upload-training-letter', {
+                        method: 'POST',
+                        headers: { 'Authorization': `Bearer ${token}` },
+                        body: formData
+                    });
+                    const data = await res.json();
+                    if (data.success) {
+                        setSaveStatus('✓ AI har analyserat ditt brev!');
+                        await fetchLetterStyle();
+                        await fetchUploadedLetters();
+                    } else {
+                        setSaveStatus(data.detail || 'Något gick fel. Försök igen.');
+                    }
+                } catch(e) {
+                    setSaveStatus('Något gick fel. Försök igen.');
+                }
+                setUploading(false);
+            };
+
+            const handleUpload = () => {
                 const input = document.createElement('input');
                 input.type = 'file';
                 input.accept = '.pdf,.docx,.doc,.txt,.rtf,.odt';
-                input.onchange = async (e) => {
-                    const file = e.target.files[0];
-                    if (!file) return;
-                    setUploading(true);
-                    setSaveStatus('Analyserar brev...');
-                    const formData = new FormData();
-                    formData.append('file', file);
-                    formData.append('type', 'cover_letter');
-                    try {
-                        const res = await fetch('/api/user/upload-training-letter', {
-                            method: 'POST',
-                            headers: { 'Authorization': `Bearer ${token}` },
-                            body: formData
-                        });
-                        const data = await res.json();
-                        if (data.success) {
-                            setSaveStatus('✓ AI har analyserat ditt brev!');
-                            await fetchLetterStyle();
-                        } else {
-                            setSaveStatus('Något gick fel. Försök igen.');
-                        }
-                    } catch(e) {
-                        setSaveStatus('Något gick fel. Försök igen.');
-                    }
-                    setUploading(false);
-                };
+                input.onchange = (e) => uploadFile(e.target.files[0]);
                 input.click();
+            };
+
+            const handleDrop = (e) => {
+                e.preventDefault();
+                setDragOver(false);
+                const file = e.dataTransfer.files[0];
+                if (file) uploadFile(file);
             };
 
             const handlePasteSubmit = async () => {
                 if (!pastedText.trim()) return;
-                const token = localStorage.getItem('supabase_token');
+                const token = localStorage.getItem('auth_token');
                 if (!token) return;
                 setLoading(true);
                 setSaveStatus('Analyserar text...');
@@ -2131,7 +2441,11 @@
 
                     {/* Upload or paste */}
                     <div className="bg-white rounded-xl p-6 border border-slate-200">
-                        <h3 className="text-lg font-semibold mb-4">📤 Ladda upp eller klistra in ett brev</h3>
+                        <h3 className="text-lg font-semibold mb-1">📤 Träna din AI</h3>
+                        <p className="text-sm text-slate-500 mb-4">
+                            Vi säljer aldrig din data. Brevet används enbart för att göra dina ansökningar bättre.{' '}
+                            <a href="https://gdpr.eu/what-is-gdpr/" target="_blank" rel="noopener noreferrer" className="text-indigo-500 underline hover:text-indigo-700">Läs mer om GDPR</a>.
+                        </p>
 
                         {/* Mode toggle */}
                         <div className="flex gap-2 mb-5 p-1 bg-slate-100 rounded-lg w-fit">
@@ -2150,16 +2464,22 @@
                         </div>
 
                         {mode === 'upload' && (
-                            <div>
-                                <button
-                                    onClick={handleUpload}
-                                    disabled={uploading}
-                                    className="w-full border-2 border-dashed border-slate-300 hover:border-indigo-400 rounded-xl py-10 text-center text-slate-500 hover:text-indigo-600 transition disabled:opacity-50"
-                                >
-                                    <div className="text-4xl mb-2">📂</div>
-                                    <div className="font-medium">{uploading ? 'Analyserar...' : 'Klicka för att välja fil'}</div>
-                                    <div className="text-xs mt-1">PDF, DOCX, DOC, TXT, RTF, ODT</div>
-                                </button>
+                            <div
+                                onDragOver={(e) => { e.preventDefault(); setDragOver(true); }}
+                                onDragLeave={() => setDragOver(false)}
+                                onDrop={handleDrop}
+                                onClick={!uploading ? handleUpload : undefined}
+                                className={`w-full border-2 border-dashed rounded-xl py-12 text-center transition cursor-pointer select-none ${
+                                    uploading ? 'opacity-50 cursor-default' :
+                                    dragOver ? 'border-indigo-500 bg-indigo-50 text-indigo-600 scale-[1.01]' :
+                                    'border-slate-300 hover:border-indigo-400 text-slate-500 hover:text-indigo-600'
+                                }`}
+                            >
+                                <div className="text-4xl mb-2">{dragOver ? '📥' : uploading ? '⏳' : '📂'}</div>
+                                <div className="font-medium text-base">
+                                    {uploading ? 'Analyserar...' : dragOver ? 'Släpp filen här' : 'Dra hit en fil, eller klicka för att välja'}
+                                </div>
+                                <div className="text-xs mt-1 text-slate-400">PDF, DOCX, DOC, TXT, RTF, ODT</div>
                             </div>
                         )}
 
@@ -2188,6 +2508,50 @@
                             </div>
                         )}
                     </div>
+
+                    {/* Uploaded letters list */}
+                    {uploadedLetters.length > 0 && (
+                        <div className="bg-white rounded-xl p-6 border border-slate-200">
+                            <h3 className="text-lg font-semibold mb-1">📚 Dina uppladdade brev</h3>
+                            <p className="text-sm text-slate-500 mb-4">
+                                {uploadedLetters.length} av 20 brev uppladdade
+                            </p>
+                            <div className="space-y-2">
+                                {uploadedLetters.map(letter => (
+                                    <div key={letter.id} className="flex items-center justify-between bg-slate-50 rounded-lg px-4 py-3 border border-slate-100">
+                                        <div className="flex items-center gap-3 min-w-0">
+                                            <span className="text-lg flex-shrink-0">📄</span>
+                                            <div className="min-w-0">
+                                                <div className="text-sm font-medium text-slate-700 truncate">{letter.filename}</div>
+                                                <div className="text-xs text-slate-400">
+                                                    {new Date(letter.uploaded_at).toLocaleDateString('sv-SE')}
+                                                </div>
+                                            </div>
+                                        </div>
+                                        <div className="flex items-center gap-2 flex-shrink-0">
+                                            {letter.file_url && (
+                                                <a
+                                                    href={letter.file_url}
+                                                    target="_blank"
+                                                    rel="noopener noreferrer"
+                                                    className="text-indigo-600 hover:text-indigo-800 text-sm font-medium"
+                                                >
+                                                    Visa
+                                                </a>
+                                            )}
+                                            <button
+                                                onClick={() => deleteLetter(letter.id)}
+                                                disabled={deletingId === letter.id}
+                                                className="text-red-400 hover:text-red-600 text-sm disabled:opacity-50"
+                                            >
+                                                {deletingId === letter.id ? '...' : '✕'}
+                                            </button>
+                                        </div>
+                                    </div>
+                                ))}
+                            </div>
+                        </div>
+                    )}
 
                     {/* AI style summary */}
                     <div className="bg-white rounded-xl p-6 border border-slate-200">
@@ -2255,7 +2619,7 @@
                             <div className="text-center py-10 text-slate-400">
                                 <div className="text-4xl mb-3">📭</div>
                                 <div className="font-medium mb-1">Inget brev analyserat ännu</div>
-                                <div className="text-sm">Ladda upp eller klistra in ett brev ovan för att träna AI</div>
+                                <div className="text-sm">Ladda upp eller klistra in ett brev ovan för att träna din AI</div>
                             </div>
                         )}
                     </div>
@@ -2373,11 +2737,7 @@
                 })
                 .sort((a, b) => {
                     if (sortBy === 'deadline') {
-                        // Urgent first, then by deadline date
-                        const priorityOrder = { urgent: 0, soon: 1, normal: 2 };
-                        const aPriority = priorityOrder[a.priority] ?? 2;
-                        const bPriority = priorityOrder[b.priority] ?? 2;
-                        if (aPriority !== bPriority) return aPriority - bPriority;
+                        // Pure deadline sort — soonest deadline first
                         return new Date(a.deadline || '2099-12-31') - new Date(b.deadline || '2099-12-31');
                     }
                     if (sortBy === 'company') {
@@ -3507,6 +3867,133 @@
             );
         };
 
+        // ============== GMAIL CONNECT STEP ==============
+
+        const GmailConnectStep = ({ onNext, onBack }) => {
+            const [status, setStatus] = React.useState(null); // null | 'loading' | 'connected' | 'error'
+            const [gmailAddress, setGmailAddress] = React.useState('');
+
+            React.useEffect(() => {
+                const check = async () => {
+                    try {
+                        const token = localStorage.getItem('auth_token');
+                        const resp = await fetch('/api/gmail/status?user_id=default_user', {
+                            headers: token ? { 'Authorization': `Bearer ${token}` } : {}
+                        });
+                        const data = await resp.json();
+                        if (data.connected) {
+                            setStatus('connected');
+                            setGmailAddress(data.gmail_address || '');
+                        } else {
+                            setStatus('idle');
+                        }
+                    } catch {
+                        setStatus('idle');
+                    }
+                };
+                check();
+            }, []);
+
+            const connectGmail = async () => {
+                setStatus('loading');
+                try {
+                    const token = localStorage.getItem('auth_token');
+                    const resp = await fetch('/api/gmail/auth-url?user_id=default_user', {
+                        headers: token ? { 'Authorization': `Bearer ${token}` } : {}
+                    });
+                    const data = await resp.json();
+                    if (data.auth_url) {
+                        const popup = window.open(data.auth_url, 'gmail_auth', 'width=500,height=600');
+                        // Poll until popup closes
+                        const timer = setInterval(async () => {
+                            if (popup.closed) {
+                                clearInterval(timer);
+                                // Re-check status
+                                const r2 = await fetch('/api/gmail/status?user_id=default_user', {
+                                    headers: token ? { 'Authorization': `Bearer ${token}` } : {}
+                                });
+                                const d2 = await r2.json();
+                                if (d2.connected) {
+                                    setStatus('connected');
+                                    setGmailAddress(d2.gmail_address || '');
+                                } else {
+                                    setStatus('idle');
+                                }
+                            }
+                        }, 1000);
+                    } else if (!data.app_configured) {
+                        setStatus('not_configured');
+                    } else {
+                        setStatus('error');
+                    }
+                } catch {
+                    setStatus('error');
+                }
+            };
+
+            return (
+                <div>
+                    <h2 className="text-2xl font-bold text-slate-800 mb-2">Koppla Gmail</h2>
+                    <p className="text-slate-600 mb-6">
+                        Så sparas personliga brev automatiskt som utkast i din inkorg.
+                    </p>
+
+                    {status === 'connected' ? (
+                        <div className="bg-green-50 border border-green-200 rounded-xl p-5 mb-6 flex items-center gap-3">
+                            <span className="text-2xl">✅</span>
+                            <div>
+                                <p className="font-semibold text-green-800">Gmail kopplad!</p>
+                                <p className="text-sm text-green-700">{gmailAddress}</p>
+                            </div>
+                        </div>
+                    ) : status === 'not_configured' ? (
+                        <div className="bg-amber-50 border border-amber-200 rounded-xl p-5 mb-6">
+                            <p className="text-sm text-amber-800">
+                                Gmail-integrationen är inte aktiverad än. Kontakta administratören.
+                            </p>
+                        </div>
+                    ) : (
+                        <div className="space-y-4 mb-6">
+                            <div className="bg-blue-50 border border-blue-200 rounded-xl p-4 text-sm text-blue-900 space-y-2">
+                                <p className="font-semibold">Vad händer när du kopplar Gmail?</p>
+                                <ul className="space-y-1 text-blue-800">
+                                    <li>✓ Appen sparar personliga brev som <strong>utkast</strong> i din Gmail — inget skickas automatiskt</li>
+                                    <li>✓ Du granskar och skickar alltid själv</li>
+                                    <li>✓ Google frågar om ditt tillstånd — du ser exakt vad appen får göra</li>
+                                    <li>✓ Du kan koppla bort när som helst via dina Google-kontoinställningar</li>
+                                </ul>
+                            </div>
+                            <div className="bg-white border border-slate-200 rounded-xl p-5">
+                                <button
+                                    onClick={connectGmail}
+                                    disabled={status === 'loading'}
+                                    className="w-full flex items-center justify-center gap-3 bg-white border-2 border-slate-300 text-slate-700 py-3 px-4 rounded-lg font-semibold hover:border-indigo-400 hover:bg-indigo-50 transition disabled:opacity-50"
+                                >
+                                    <svg width="20" height="20" viewBox="0 0 24 24"><path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/><path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/><path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l3.66-2.84z"/><path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"/></svg>
+                                    {status === 'loading' ? 'Öppnar inloggning...' : 'Koppla Gmail via Google'}
+                                </button>
+                                <p className="text-xs text-slate-400 mt-3 text-center">
+                                    Google visar vilka rättigheter appen begär innan du godkänner.
+                                </p>
+                                {status === 'error' && (
+                                    <p className="text-sm text-red-600 mt-2 text-center">Något gick fel. Försök igen.</p>
+                                )}
+                            </div>
+                        </div>
+                    )}
+
+                    <div className="flex gap-3 mt-4">
+                        <button onClick={onBack} className="flex-1 border border-slate-200 py-3 rounded-lg font-semibold hover:bg-slate-50">
+                            Tillbaka
+                        </button>
+                        <button onClick={onNext} className="flex-1 bg-indigo-600 text-white py-3 rounded-lg font-semibold hover:bg-indigo-700">
+                            {status === 'connected' ? 'Fortsätt' : 'Hoppa över'}
+                        </button>
+                    </div>
+                </div>
+            );
+        };
+
         // ============== ONBOARDING ==============
 
         const OnboardingWizard = ({ onComplete }) => {
@@ -3868,65 +4355,7 @@
 
                         {/* Step 3: Gmail Setup */}
                         {step === 3 && (
-                            <div>
-                                <h2 className="text-2xl font-bold text-slate-800 mb-2">Koppla Gmail (valfritt)</h2>
-                                <p className="text-slate-600 mb-6">
-                                    För att skicka ansökningar direkt från portalen.
-                                </p>
-
-                                <div className="bg-amber-50 border border-amber-200 rounded-lg p-4 mb-6">
-                                    <p className="text-sm text-amber-800">
-                                        <strong>Så här får du en API-nyckel:</strong><br/>
-                                        1. Gå till <a href="https://console.cloud.google.com" target="_blank" className="underline">Google Cloud Console</a><br/>
-                                        2. Skapa ett projekt och aktivera Gmail API<br/>
-                                        3. Skapa OAuth 2.0-uppgifter<br/>
-                                        4. Kopiera Client ID och Client Secret
-                                    </p>
-                                </div>
-
-                                <div className="space-y-4">
-                                    <div>
-                                        <label className="block text-sm font-medium text-slate-700 mb-1">
-                                            Gmail Client ID
-                                        </label>
-                                        <input
-                                            type="text"
-                                            value={preferences.gmail_client_id}
-                                            onChange={(e) => setPreferences({...preferences, gmail_client_id: e.target.value})}
-                                            placeholder="xxxx.apps.googleusercontent.com"
-                                            className="w-full px-4 py-3 border border-slate-200 rounded-lg focus:ring-2 focus:ring-indigo-500 font-mono text-sm"
-                                        />
-                                    </div>
-
-                                    <div>
-                                        <label className="block text-sm font-medium text-slate-700 mb-1">
-                                            Gmail Client Secret
-                                        </label>
-                                        <input
-                                            type="password"
-                                            value={preferences.gmail_client_secret}
-                                            onChange={(e) => setPreferences({...preferences, gmail_client_secret: e.target.value})}
-                                            placeholder="GOCSPX-xxxx"
-                                            className="w-full px-4 py-3 border border-slate-200 rounded-lg focus:ring-2 focus:ring-indigo-500 font-mono text-sm"
-                                        />
-                                    </div>
-                                </div>
-
-                                <div className="flex gap-3 mt-8">
-                                    <button
-                                        onClick={() => setStep(2)}
-                                        className="flex-1 border border-slate-200 py-3 rounded-lg font-semibold hover:bg-slate-50"
-                                    >
-                                        Tillbaka
-                                    </button>
-                                    <button
-                                        onClick={() => setStep(4)}
-                                        className="flex-1 bg-indigo-600 text-white py-3 rounded-lg font-semibold hover:bg-indigo-700"
-                                    >
-                                        {preferences.gmail_client_id ? 'Fortsätt' : 'Hoppa över'}
-                                    </button>
-                                </div>
-                            </div>
+                            <GmailConnectStep onNext={() => setStep(4)} onBack={() => setStep(2)} />
                         )}
 
                         {/* Step 4: Summary */}
@@ -3958,7 +4387,7 @@
                                     </div>
                                     <div>
                                         <span className="text-sm text-slate-500">Gmail:</span>
-                                        <p className="font-medium">{preferences.gmail_client_id ? 'Kopplad' : 'Inte kopplad'}</p>
+                                        <p className="font-medium text-green-700">Kontrolleras separat i steg 3</p>
                                     </div>
                                 </div>
 
@@ -4445,14 +4874,36 @@
                 }} />;
             }
 
+            // Landing page state
+            const [landingTab, setLandingTab] = useState('hem');
+
             // Landing page for non-logged-in users
             if (!user) {
                 return (
                     <div className="min-h-screen bg-gradient-to-br from-indigo-600 via-purple-600 to-pink-500">
-                        <header className="px-6 py-5">
+                        <header className="px-6 py-5 border-b border-white/10">
                             <div className="max-w-5xl mx-auto flex justify-between items-center">
-                                <span className="text-white/90 font-mono text-sm tracking-wide">anti-apathy</span>
-                                <a href="/login" className="text-white/70 hover:text-white text-sm transition">
+                                <div className="flex items-center gap-8">
+                                    <span className="text-white/90 font-mono text-sm tracking-wide cursor-pointer" onClick={() => setLandingTab('hem')}>anti-apathy</span>
+                                    <div className="flex gap-1">
+                                        {[
+                                            { id: 'hem', label: 'Hem' },
+                                            { id: 'funktioner', label: 'Varför oss?' },
+                                            { id: 'priser', label: 'Priser' }
+                                        ].map(t => (
+                                            <button
+                                                key={t.id}
+                                                onClick={() => setLandingTab(t.id)}
+                                                className={`px-3 py-1.5 rounded-lg text-sm transition ${
+                                                    landingTab === t.id
+                                                        ? 'bg-white/20 text-white font-medium'
+                                                        : 'text-white/60 hover:text-white hover:bg-white/10'
+                                                }`}
+                                            >{t.label}</button>
+                                        ))}
+                                    </div>
+                                </div>
+                                <a href="/login" className="bg-white/10 hover:bg-white/20 text-white text-sm px-4 py-2 rounded-lg transition">
                                     Logga in →
                                 </a>
                             </div>
@@ -4460,68 +4911,320 @@
 
                         <main className="px-6">
                             <div className="max-w-5xl mx-auto">
-                                {/* Hero - left aligned */}
-                                <div className="py-20 max-w-xl">
-                                    <h1 className="text-4xl md:text-5xl font-bold text-white leading-tight mb-6">
-                                        Jobbsökande<br/>
-                                        utan ångest.
-                                    </h1>
-                                    <p className="text-white/80 text-lg mb-8 leading-relaxed">
-                                        Skräddarsydda CV:n för olika branscher. AI-genererade personliga brev.
-                                        Allt på ett ställe så du kan fokusera på det som spelar roll.
-                                    </p>
-                                    <a href="/login" className="inline-block bg-white text-indigo-700 px-6 py-3 text-sm font-semibold hover:bg-white/90 transition">
-                                        Kom igång
-                                    </a>
-                                </div>
 
-                                {/* Features - asymmetric grid */}
-                                <div className="border-t border-white/20 py-16">
-                                    <div className="grid md:grid-cols-2 gap-x-16 gap-y-10">
-                                        <div>
-                                            <h3 className="text-white font-semibold mb-2">Master CV</h3>
-                                            <p className="text-white/60 text-sm leading-relaxed">
-                                                All din erfarenhet, utbildning och kompetenser samlade.
-                                                Uppdatera en gång, använd överallt.
-                                            </p>
+                            {/* ============ HEM TAB ============ */}
+                            {landingTab === 'hem' && (
+                                <div>
+                                    <div className="py-20 max-w-xl">
+                                        <h1 className="text-4xl md:text-5xl font-bold text-white leading-tight mb-6">
+                                            Jobbsökande<br/>utan ångest.
+                                        </h1>
+                                        <p className="text-white/80 text-lg mb-8 leading-relaxed">
+                                            Skräddarsydda CV:n för olika branscher. AI-genererade personliga brev.
+                                            Allt på ett ställe så du kan fokusera på det som spelar roll.
+                                        </p>
+                                        <div className="flex gap-4 items-center">
+                                            <a href="/login" className="inline-block bg-white text-indigo-700 px-6 py-3 text-sm font-semibold hover:bg-white/90 transition rounded-lg">
+                                                Kom igång gratis
+                                            </a>
+                                            <button onClick={() => setLandingTab('funktioner')} className="text-white/70 hover:text-white text-sm underline transition">
+                                                Se alla funktioner →
+                                            </button>
                                         </div>
-                                        <div>
-                                            <h3 className="text-white font-semibold mb-2">Branschanpassade versioner</h3>
-                                            <p className="text-white/60 text-sm leading-relaxed">
-                                                Restaurang, kundtjänst, tech, butik, vård. Varje version
-                                                lyfter rätt erfarenheter för rätt jobb.
-                                            </p>
+                                    </div>
+
+                                    <div className="border-t border-white/20 py-16">
+                                        <div className="grid md:grid-cols-2 gap-x-16 gap-y-10">
+                                            <div>
+                                                <h3 className="text-white font-semibold mb-2">Master CV</h3>
+                                                <p className="text-white/60 text-sm leading-relaxed">
+                                                    All din erfarenhet, utbildning och kompetenser samlade.
+                                                    Uppdatera en gång, använd överallt.
+                                                </p>
+                                            </div>
+                                            <div>
+                                                <h3 className="text-white font-semibold mb-2">Branschanpassade versioner</h3>
+                                                <p className="text-white/60 text-sm leading-relaxed">
+                                                    Restaurang, kundtjänst, tech, butik, vård. Varje version
+                                                    lyfter rätt erfarenheter för rätt jobb.
+                                                </p>
+                                            </div>
+                                            <div>
+                                                <h3 className="text-white font-semibold mb-2">Platsbanken-integration</h3>
+                                                <p className="text-white/60 text-sm leading-relaxed">
+                                                    Hämta jobb direkt från Arbetsförmedlingen. Se vilka som
+                                                    accepterar mail-ansökningar.
+                                                </p>
+                                            </div>
+                                            <div>
+                                                <h3 className="text-white font-semibold mb-2">Personliga brev</h3>
+                                                <p className="text-white/60 text-sm leading-relaxed">
+                                                    AI skriver brevet baserat på ditt CV och jobbannonsen.
+                                                    Granska, justera, skicka.
+                                                </p>
+                                            </div>
                                         </div>
-                                        <div>
-                                            <h3 className="text-white font-semibold mb-2">Platsbanken-integration</h3>
-                                            <p className="text-white/60 text-sm leading-relaxed">
-                                                Hämta jobb direkt från Arbetsförmedlingen. Se vilka som
-                                                accepterar mail-ansökningar.
-                                            </p>
+                                    </div>
+
+                                    <div className="border-t border-white/20 py-12">
+                                        <p className="text-white/50 text-sm mb-6">Så funkar det</p>
+                                        <div className="flex flex-wrap gap-6 text-white/80 text-sm">
+                                            <span>1. Skapa konto</span>
+                                            <span className="text-white/30">→</span>
+                                            <span>2. Fyll i Master CV</span>
+                                            <span className="text-white/30">→</span>
+                                            <span>3. Generera bransch-CV:n</span>
+                                            <span className="text-white/30">→</span>
+                                            <span>4. Sök jobb</span>
                                         </div>
-                                        <div>
-                                            <h3 className="text-white font-semibold mb-2">Personliga brev</h3>
-                                            <p className="text-white/60 text-sm leading-relaxed">
-                                                AI skriver brevet baserat på ditt CV och jobbannonsen.
-                                                Granska, justera, skicka.
+                                    </div>
+                                </div>
+                            )}
+
+                            {/* ============ FUNKTIONER / MARKETING TAB ============ */}
+                            {landingTab === 'funktioner' && (
+                                <div className="py-16">
+                                    {/* Marketing hero */}
+                                    <div className="text-center max-w-3xl mx-auto mb-20">
+                                        <p className="text-indigo-200 text-sm font-medium uppercase tracking-widest mb-4">Byggd för verkligheten</p>
+                                        <h2 className="text-3xl md:text-4xl font-bold text-white mb-6">
+                                            Det enda jobbsökarverktyget som faktiskt förstår hur det är att söka jobb i Sverige
+                                        </h2>
+                                        <p className="text-white/70 text-lg leading-relaxed">
+                                            Anti-Apathy är inte ytterligare en generisk AI-generator. Det är ett komplett system byggt från grunden
+                                            för den svenska arbetsmarknaden — speciellt för dig som tycker att jobbsökande är överväldigande.
+                                        </p>
+                                    </div>
+
+                                    {/* What makes us different */}
+                                    <div className="mb-20">
+                                        <h3 className="text-white/50 text-xs uppercase tracking-widest mb-8">Det andra verktyg saknar</h3>
+                                        <div className="grid md:grid-cols-3 gap-6">
+                                            {[
+                                                {
+                                                    icon: '🧠',
+                                                    title: 'Designad för neurodivergenta',
+                                                    desc: 'ADHD? Autism? Jobbsökande kan kännas omöjligt. Vi bryter ner processen i hanterbara steg. Ingen överväldigande. En sak i taget.',
+                                                    tag: 'Unikt'
+                                                },
+                                                {
+                                                    icon: '🇸🇪',
+                                                    title: '100% svenska arbetsmarknaden',
+                                                    desc: 'Allt på svenska. Platsbanken-integration. Svenska jobbkulturen. Inga amerikanska mallar som inte funkar här.',
+                                                    tag: 'Unikt'
+                                                },
+                                                {
+                                                    icon: '✍️',
+                                                    title: 'AI som lär sig DIN stil',
+                                                    desc: 'Ladda upp gamla personliga brev. AI analyserar din ton, dina fraser, din struktur — och skriver nya brev som låter som DIG, inte en robot.',
+                                                    tag: 'Unikt'
+                                                },
+                                                {
+                                                    icon: '📄',
+                                                    title: 'Ett CV → 8 branschversioner',
+                                                    desc: 'Fyll i ditt Master CV en gång. AI skapar skräddarsydda versioner för restaurang, tech, vård, kundtjänst, butik och fler. Rätt erfarenheter lyfts för rätt jobb.',
+                                                    tag: 'Unikt'
+                                                },
+                                                {
+                                                    icon: '🚫',
+                                                    title: 'Smarta dealbreaker-filter',
+                                                    desc: 'Hatar nattjobb? Allergisk mot djur? Vill undvika obetald praktik? Sätt dina dealbreakers och se bara jobb som faktiskt passar dig.',
+                                                    tag: 'Unikt'
+                                                },
+                                                {
+                                                    icon: '🎯',
+                                                    title: 'Quiz: Hitta din bransch',
+                                                    desc: 'Osäker på vad du vill jobba med? Vårt quiz hjälper dig upptäcka vilka branscher som matchar din personlighet och dina styrkor.',
+                                                    tag: 'Unikt'
+                                                },
+                                            ].map((f, i) => (
+                                                <div key={i} className="bg-white/10 backdrop-blur-sm rounded-2xl p-6 border border-white/10">
+                                                    <div className="flex items-start justify-between mb-3">
+                                                        <span className="text-3xl">{f.icon}</span>
+                                                        <span className="bg-indigo-400/20 text-indigo-200 text-xs px-2 py-0.5 rounded-full font-medium">{f.tag}</span>
+                                                    </div>
+                                                    <h4 className="text-white font-semibold mb-2">{f.title}</h4>
+                                                    <p className="text-white/60 text-sm leading-relaxed">{f.desc}</p>
+                                                </div>
+                                            ))}
+                                        </div>
+                                    </div>
+
+                                    {/* Full feature list */}
+                                    <div className="mb-20">
+                                        <h3 className="text-white/50 text-xs uppercase tracking-widest mb-8">Allt som ingår</h3>
+                                        <div className="grid md:grid-cols-2 gap-x-16 gap-y-6">
+                                            {[
+                                                { title: 'Master CV', desc: 'Samla all erfarenhet, utbildning, volontärarbete, projekt och kompetenser på ett ställe' },
+                                                { title: '8+ branschanpassade CV:n', desc: 'Restaurang, Tech, Vård, Butik, Kundtjänst, Hotell, Industri, Content Moderation' },
+                                                { title: 'Platsbanken-sökning', desc: 'Sök jobb direkt från Arbetsförmedlingen med smarta filter för plats, arbetstid och bransch' },
+                                                { title: 'AI-personliga brev', desc: 'Genereras automatiskt baserat på ditt CV, din stil och jobbannonsen — inte generiska mallar' },
+                                                { title: 'Ladda upp 20 CV-versioner', desc: 'Ladda upp befintliga CV:n som PDF. AI analyserar och ger feedback per bransch' },
+                                                { title: 'Stilanalys av brev', desc: 'Ladda upp gamla personliga brev. AI lär sig din ton, struktur och favoritfraser' },
+                                                { title: 'Negativa nyckelord', desc: 'Filtrera bort jobb du vet att du inte vill ha — typ "telefonförsäljning" eller "nattjobb"' },
+                                                { title: 'Dealbreaker-system', desc: '18 filterkategorier: nattarbete, tunga lyft, obetald praktik, kräver körkort, med mera' },
+                                                { title: 'Län + kommun-filter', desc: 'Välj län, sedan specifika kommuner — precis som Arbetsförmedlingen' },
+                                                { title: 'Gmail-utkast', desc: 'Skapa ansökningsmail direkt i ditt Gmail med rätt CV bifogat — ett klick' },
+                                                { title: 'Ansökningsstatistik', desc: 'Se hur många jobb du sökt, sparat, fått intervju på — håll koll på din progress' },
+                                                { title: 'Profilbild + GDPR', desc: 'Din data säljs aldrig. Ladda upp profilbild, hantera dina uppgifter. Fullständig GDPR-efterlevnad' },
+                                            ].map((f, i) => (
+                                                <div key={i} className="flex gap-3 items-start">
+                                                    <span className="text-green-300 mt-0.5 flex-shrink-0">✓</span>
+                                                    <div>
+                                                        <span className="text-white font-medium text-sm">{f.title}</span>
+                                                        <p className="text-white/50 text-sm">{f.desc}</p>
+                                                    </div>
+                                                </div>
+                                            ))}
+                                        </div>
+                                    </div>
+
+                                    {/* Comparison table */}
+                                    <div className="mb-20">
+                                        <h3 className="text-white/50 text-xs uppercase tracking-widest mb-8">Anti-Apathy vs andra AI-jobbverktyg</h3>
+                                        <div className="bg-white/5 rounded-2xl border border-white/10 overflow-hidden">
+                                            <table className="w-full text-sm">
+                                                <thead>
+                                                    <tr className="border-b border-white/10">
+                                                        <th className="text-left text-white/50 py-4 px-6 font-normal">Funktion</th>
+                                                        <th className="text-center text-white font-semibold py-4 px-4">Anti-Apathy</th>
+                                                        <th className="text-center text-white/40 py-4 px-4">Generiska AI-verktyg</th>
+                                                    </tr>
+                                                </thead>
+                                                <tbody>
+                                                    {[
+                                                        ['Helt på svenska', true, false],
+                                                        ['Platsbanken-integration', true, false],
+                                                        ['Branschanpassade CV:n', true, false],
+                                                        ['Lär sig din skrivstil', true, false],
+                                                        ['Dealbreaker-filter', true, false],
+                                                        ['Län + kommun-sökning', true, false],
+                                                        ['Neurodivergent-anpassad UX', true, false],
+                                                        ['Gmail-integration', true, '~'],
+                                                        ['AI-personliga brev', true, true],
+                                                    ].map(([label, us, them], i) => (
+                                                        <tr key={i} className="border-b border-white/5">
+                                                            <td className="text-white/70 py-3 px-6">{label}</td>
+                                                            <td className="text-center py-3 px-4">
+                                                                <span className="text-green-400 text-lg">{us === true ? '✓' : us}</span>
+                                                            </td>
+                                                            <td className="text-center py-3 px-4">
+                                                                <span className={them === true ? 'text-green-400/50 text-lg' : them === '~' ? 'text-yellow-400/50' : 'text-red-400/50 text-lg'}>
+                                                                    {them === true ? '✓' : them === '~' ? '~' : '✗'}
+                                                                </span>
+                                                            </td>
+                                                        </tr>
+                                                    ))}
+                                                </tbody>
+                                            </table>
+                                        </div>
+                                    </div>
+
+                                    {/* Coming soon */}
+                                    <div className="mb-16">
+                                        <h3 className="text-white/50 text-xs uppercase tracking-widest mb-8">Kommer snart</h3>
+                                        <div className="grid md:grid-cols-3 gap-6">
+                                            {[
+                                                {
+                                                    icon: '🌍',
+                                                    title: 'Fler jobbkällor',
+                                                    desc: 'Idag söker vi på Platsbanken. Snart: LinkedIn, Indeed, Jobbsafari, Blocket Jobb och fler — alla på samma ställe.'
+                                                },
+                                                {
+                                                    icon: '📨',
+                                                    title: 'Automatisk ansökan',
+                                                    desc: 'Låt appen skicka ansökningar automatiskt baserat på dina preferenser. Du godkänner — appen skickar.'
+                                                },
+                                                {
+                                                    icon: '📊',
+                                                    title: 'Jobbmarknads-insikter',
+                                                    desc: 'Se trender: vilka branscher anställer just nu? Vilka kompetenser efterfrågas mest i din region?'
+                                                },
+                                            ].map((f, i) => (
+                                                <div key={i} className="bg-white/5 rounded-2xl p-6 border border-dashed border-white/20">
+                                                    <span className="text-2xl mb-3 block">{f.icon}</span>
+                                                    <h4 className="text-white font-semibold mb-2">{f.title}</h4>
+                                                    <p className="text-white/50 text-sm leading-relaxed">{f.desc}</p>
+                                                </div>
+                                            ))}
+                                        </div>
+                                    </div>
+
+                                    {/* CTA */}
+                                    <div className="text-center py-12 border-t border-white/10">
+                                        <h3 className="text-2xl font-bold text-white mb-4">Redo att sluta hata jobbsökande?</h3>
+                                        <p className="text-white/60 mb-8">Testa gratis. Ingen bindningstid.</p>
+                                        <div className="flex gap-4 justify-center">
+                                            <a href="/login" className="bg-white text-indigo-700 px-8 py-3 font-semibold rounded-lg hover:bg-white/90 transition text-sm">
+                                                Skapa konto
+                                            </a>
+                                            <button onClick={() => setLandingTab('priser')} className="border border-white/30 text-white px-8 py-3 rounded-lg hover:bg-white/10 transition text-sm">
+                                                Se priser
+                                            </button>
+                                        </div>
+                                    </div>
+                                </div>
+                            )}
+
+                            {/* ============ PRISER TAB ============ */}
+                            {landingTab === 'priser' && (
+                                <div className="py-20">
+                                    <div className="text-center max-w-2xl mx-auto mb-16">
+                                        <p className="text-indigo-200 text-sm font-medium uppercase tracking-widest mb-4">Enkel prissättning</p>
+                                        <h2 className="text-3xl md:text-4xl font-bold text-white mb-6">
+                                            En plan. Allt ingår.
+                                        </h2>
+                                        <p className="text-white/70 text-lg">
+                                            Inget krångel med olika nivåer. Du får tillgång till alla funktioner.
+                                        </p>
+                                    </div>
+
+                                    <div className="max-w-md mx-auto">
+                                        <div className="bg-white/10 backdrop-blur-sm rounded-3xl p-8 border border-white/20 text-center">
+                                            <p className="text-white/60 text-sm mb-2">Per månad</p>
+                                            <div className="flex items-baseline justify-center gap-1 mb-2">
+                                                <span className="text-5xl font-bold text-white">499</span>
+                                                <span className="text-white/60 text-lg">kr</span>
+                                            </div>
+                                            <p className="text-white/40 text-sm mb-8">Ingen bindningstid. Avsluta när du vill.</p>
+
+                                            <a href="/login" className="block w-full bg-white text-indigo-700 py-3 rounded-xl font-semibold hover:bg-white/90 transition mb-8">
+                                                Kom igång nu
+                                            </a>
+
+                                            <div className="text-left space-y-3">
+                                                {[
+                                                    'Master CV + 8 branschversioner',
+                                                    'Obegränsat antal personliga brev',
+                                                    'Platsbanken-sökning med smarta filter',
+                                                    'AI som lär sig din skrivstil',
+                                                    'Dealbreaker-filter (18 kategorier)',
+                                                    'Gmail-integration med rätt CV bifogat',
+                                                    'Ladda upp 20 CV:n + 20 brev',
+                                                    'Ansökningsstatistik',
+                                                    'Quiz: hitta din bransch',
+                                                    'GDPR — din data säljs aldrig',
+                                                    'Kommande: LinkedIn, Indeed, Jobbsafari',
+                                                ].map((f, i) => (
+                                                    <div key={i} className="flex items-center gap-3">
+                                                        <span className="text-green-400 flex-shrink-0">✓</span>
+                                                        <span className="text-white/80 text-sm">{f}</span>
+                                                    </div>
+                                                ))}
+                                            </div>
+                                        </div>
+
+                                        <div className="mt-8 bg-white/5 rounded-2xl p-6 border border-white/10 text-center">
+                                            <p className="text-white/80 text-sm font-medium mb-2">Billigare än en kopp kaffe om dagen</p>
+                                            <p className="text-white/50 text-xs leading-relaxed">
+                                                499 kr/mån = ca 16 kr/dag. Du lägger mer på en latte. Men det här kan leda till jobbet
+                                                som förändrar allt. Tänk på vad det kostar att INTE söka jobb.
                                             </p>
                                         </div>
                                     </div>
                                 </div>
+                            )}
 
-                                {/* How it works - minimal */}
-                                <div className="border-t border-white/20 py-12">
-                                    <p className="text-white/50 text-sm mb-6">Så funkar det</p>
-                                    <div className="flex flex-wrap gap-6 text-white/80 text-sm">
-                                        <span>1. Skapa konto</span>
-                                        <span className="text-white/30">→</span>
-                                        <span>2. Fyll i Master CV</span>
-                                        <span className="text-white/30">→</span>
-                                        <span>3. Generera bransch-CV:n</span>
-                                        <span className="text-white/30">→</span>
-                                        <span>4. Sök jobb</span>
-                                    </div>
-                                </div>
                             </div>
                         </main>
 
