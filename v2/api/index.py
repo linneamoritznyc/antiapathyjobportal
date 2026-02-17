@@ -3646,12 +3646,11 @@ async def upload_and_analyze_cv(request: Request):
         file = form.get("file")
         if file:
             file_content = await file.read()
-            # Try to decode as text (for plain text CVs)
-            try:
-                cv_text = file_content.decode('utf-8')
-            except (UnicodeDecodeError, AttributeError):
-                # For PDF, we'd need a PDF parser - for now return helpful message
-                cv_text = "[PDF-fil uppladdad - texten extraheras]"
+            # Extract text from file (PDF, DOCX, TXT, etc.)
+            cv_text = extract_text_from_file(file_content, file.filename)
+
+            if not cv_text:
+                raise HTTPException(status_code=400, detail="Kunde inte extrahera text från filen")
     else:
         # Handle JSON with text content
         body = await request.json()
