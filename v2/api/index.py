@@ -4577,6 +4577,42 @@ async def get_gmail_status(user_id: str = "default_user"):
     }
 
 
+@app.post("/api/gmail/disconnect")
+async def disconnect_gmail(user_id: str = "default_user"):
+    """
+    Revoke Gmail access and delete all stored tokens for this user.
+    GDPR: user has the right to withdraw consent at any time.
+    """
+    creds = await db_request("GET", "user_google_credentials", params={"user_id": f"eq.{user_id}"})
+    if not creds:
+        return {"success": True, "message": "Ingen Gmail-koppling hittades."}
+
+    cred = creds[0]
+    access_token = cred.get("access_token")
+    refresh_token = cred.get("refresh_token")
+
+    # Revoke token at Google — this invalidates all tokens for this app+user combo
+    token_to_revoke = access_token or refresh_token
+    if token_to_revoke:
+        try:
+            async with httpx.AsyncClient() as client:
+                await client.post(
+                    "https://oauth2.googleapis.com/revoke",
+                    params={"token": token_to_revoke},
+                    headers={"Content-Type": "application/x-www-form-urlencoded"},
+                    timeout=10
+                )
+                # Google returns 200 on success, 400 if already revoked — both are fine
+        except Exception as e:
+            logger.warning(f"Could not revoke token at Google: {e}")
+
+    # Delete all stored credentials from Supabase
+    await db_request("DELETE", f"user_google_credentials?user_id=eq.{user_id}")
+
+    logger.info(f"Gmail disconnected for user {user_id}")
+    return {"success": True, "message": "Gmail frånkopplat. Appen har inte längre åtkomst till din Gmail."}
+
+
 async def refresh_gmail_token(user_id: str) -> Optional[str]:
     """Get a valid Gmail access token for this user, refreshing if needed."""
     if not all([GMAIL_CLIENT_ID, GMAIL_CLIENT_SECRET]):
