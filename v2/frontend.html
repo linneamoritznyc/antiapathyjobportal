@@ -463,6 +463,15 @@
             const [step, setStep] = useState(0);
             const [customSearch, setCustomSearch] = useState('');
             const [answers, setAnswers] = useState({
+                // Personal info
+                full_name: '',
+                phone: '',
+                age: '',
+                drivers_license: '',
+                linkedin: '',
+                earliest_start: '',
+                education_level: '',
+                // Job preferences
                 search_terms: [],
                 custom_search: '',
                 location: [],
@@ -474,6 +483,78 @@
             });
 
             const questions = [
+                // === PERSONAL INFO (for applications & cover letters) ===
+                {
+                    id: 'full_name',
+                    question: 'Vad heter du?',
+                    subtitle: 'Ditt namn anvands i personliga brev och ansokningar',
+                    type: 'text',
+                    placeholder: 'Fornamn Efternamn'
+                },
+                {
+                    id: 'phone',
+                    question: 'Vad ar ditt telefonnummer?',
+                    subtitle: 'Arbetsgivare vill kunna ringa dig',
+                    type: 'text',
+                    placeholder: '07X XXX XX XX'
+                },
+                {
+                    id: 'age',
+                    question: 'Hur gammal ar du?',
+                    type: 'single',
+                    options: [
+                        { value: '16-19', label: '16-19 ar' },
+                        { value: '20-25', label: '20-25 ar' },
+                        { value: '26-35', label: '26-35 ar' },
+                        { value: '36-50', label: '36-50 ar' },
+                        { value: '50+', label: '50+ ar' }
+                    ]
+                },
+                {
+                    id: 'drivers_license',
+                    question: 'Har du korkort?',
+                    subtitle: 'Manga jobb kraver korkort',
+                    type: 'single',
+                    options: [
+                        { value: 'manuell', label: 'Ja, manuell (och automat)' },
+                        { value: 'automat', label: 'Ja, bara automat' },
+                        { value: 'no', label: 'Nej, inget korkort' }
+                    ]
+                },
+                {
+                    id: 'earliest_start',
+                    question: 'Nar kan du borja jobba?',
+                    type: 'single',
+                    options: [
+                        { value: 'omgaende', label: 'Omgaende / direkt' },
+                        { value: '2veckor', label: 'Inom 2 veckor' },
+                        { value: '1manad', label: 'Inom 1 manad' },
+                        { value: '2manader', label: 'Inom 2-3 manader' },
+                        { value: 'later', label: 'Senare (sommar/host)' }
+                    ]
+                },
+                {
+                    id: 'linkedin',
+                    question: 'Har du en LinkedIn-profil?',
+                    subtitle: 'Valfritt - men bra att ha med i ansokningar',
+                    type: 'text',
+                    placeholder: 'linkedin.com/in/ditt-namn',
+                    allowEmpty: true
+                },
+                {
+                    id: 'education_level',
+                    question: 'Vilken utbildning har du?',
+                    subtitle: 'Hjalper oss visa ratt jobb - t.ex. lakare kraver lakarexamen',
+                    type: 'single',
+                    options: [
+                        { value: 'grundskola', label: 'Grundskola' },
+                        { value: 'gymnasie', label: 'Gymnasie' },
+                        { value: 'yrkeshogskola', label: 'Yrkeshogskola/KY' },
+                        { value: 'hogskola', label: 'Hogskola/Universitet' },
+                        { value: 'annat', label: 'Annat / Pagar utbildning' }
+                    ]
+                },
+                // === JOB PREFERENCES (for search & filtering) ===
                 {
                     id: 'search_terms',
                     question: 'Vad vill du jobba med?',
@@ -600,11 +681,13 @@
             };
 
             const canProceed = currentQ.allowEmpty ? true :
-                currentQ.type === 'freetext_multi'
-                    ? ((answers[currentQ.id] || []).length > 0 || customSearch.trim().length > 0)
-                    : currentQ.type === 'single'
-                        ? !!answers[currentQ.id]
-                        : (answers[currentQ.id] || []).length > 0;
+                currentQ.type === 'text'
+                    ? (answers[currentQ.id] || '').trim().length > 0
+                    : currentQ.type === 'freetext_multi'
+                        ? ((answers[currentQ.id] || []).length > 0 || customSearch.trim().length > 0)
+                        : currentQ.type === 'single'
+                            ? !!answers[currentQ.id]
+                            : (answers[currentQ.id] || []).length > 0;
 
             return (
                 <div className="min-h-screen bg-slate-900 flex flex-col items-center justify-center p-6">
@@ -646,7 +729,19 @@
 
                         {/* Options */}
                         <div className="space-y-3">
-                            {/* Freetext input for search_terms question */}
+                            {/* Text input for personal info questions */}
+                            {currentQ.type === 'text' && (
+                                <input
+                                    type="text"
+                                    value={answers[currentQ.id] || ''}
+                                    onChange={(e) => setAnswers({...answers, [currentQ.id]: e.target.value})}
+                                    placeholder={currentQ.placeholder || ''}
+                                    className="w-full p-4 rounded-xl bg-white/10 text-white placeholder-white/30 border border-white/20 focus:border-indigo-400 focus:ring-1 focus:ring-indigo-400 outline-none text-lg"
+                                    autoFocus
+                                />
+                            )}
+
+                            {/* Freetext + chips for search_terms question */}
                             {currentQ.type === 'freetext_multi' && (
                                 <div className="mb-4">
                                     <input
@@ -665,7 +760,9 @@
                                     <p className="text-white/30 text-xs mt-2 ml-1">Eller valj fran forslagen:</p>
                                 </div>
                             )}
-                            {currentQ.options.map(opt => (
+
+                            {/* Button options for single/multi/freetext_multi */}
+                            {currentQ.options && currentQ.options.map(opt => (
                                 <button
                                     key={opt.value}
                                     onClick={() => handleSelect(opt.value)}
@@ -1955,21 +2052,53 @@
                 setSaving(true);
                 try {
                     const token = localStorage.getItem('auth_token');
+                    const headers = {
+                        'Content-Type': 'application/json',
+                        ...(token ? { 'Authorization': `Bearer ${token}` } : {})
+                    };
+
+                    // 1. Save personal info to user_profiles
+                    const profileData = {
+                        full_name: answers.full_name,
+                        phone: answers.phone,
+                        age: answers.age,
+                        drivers_license: answers.drivers_license,
+                        linkedin: answers.linkedin,
+                        earliest_start: answers.earliest_start,
+                        education_level: answers.education_level
+                    };
+                    await fetch('/api/user/profile-from-quiz', {
+                        method: 'POST',
+                        headers,
+                        body: JSON.stringify(profileData)
+                    });
+
+                    // 2. Save job preferences
+                    const prefData = {
+                        search_terms: answers.search_terms,
+                        custom_search: answers.custom_search,
+                        location: answers.location,
+                        working_hours: answers.working_hours,
+                        employment_form: answers.employment_form,
+                        duration: answers.duration,
+                        salary: answers.salary,
+                        dealbreakers: answers.dealbreakers
+                    };
                     await fetch('/api/user/preferences', {
                         method: 'POST',
-                        headers: {
-                            'Content-Type': 'application/json',
-                            ...(token ? { 'Authorization': `Bearer ${token}` } : {})
-                        },
-                        body: JSON.stringify(answers)
+                        headers,
+                        body: JSON.stringify(prefData)
                     });
+
                     localStorage.setItem('onboarding_complete', 'true');
-                    localStorage.setItem('job_preferences', JSON.stringify(answers));
+                    localStorage.setItem('job_preferences', JSON.stringify(prefData));
+                    localStorage.setItem('user_profile', JSON.stringify(profileData));
                     onComplete();
                 } catch (err) {
                     // Save locally even if server fails
                     localStorage.setItem('onboarding_complete', 'true');
                     localStorage.setItem('job_preferences', JSON.stringify(answers));
+                    localStorage.setItem('user_profile', JSON.stringify(answers));
                     onComplete();
                 }
                 setSaving(false);

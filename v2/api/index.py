@@ -439,7 +439,7 @@ def detect_job_category(title: str, description: str) -> str:
     return "default"
 
 
-async def generate_cover_letter(job: Dict, user_cv_text: Optional[str] = None) -> str:
+async def generate_cover_letter(job: Dict, user_cv_text: Optional[str] = None, user_profile: Optional[Dict] = None) -> str:
     """Generate personalized cover letter using Claude"""
 
     if not ANTHROPIC_API_KEY:
@@ -448,6 +448,15 @@ async def generate_cover_letter(job: Dict, user_cv_text: Optional[str] = None) -
     # Get relevant experience
     category = detect_job_category(job.get("title", ""), job.get("description", ""))
     experience = user_cv_text or DEFAULT_EXPERIENCE.get(category, DEFAULT_EXPERIENCE["default"])
+
+    # Use profile data from database, fall back to defaults
+    p = user_profile or {}
+    name = p.get("full_name", "Linnea Moritz")
+    phone = p.get("phone", "0761166109")
+    email = p.get("email", "linneamoritzCV@gmail.com")
+    location = p.get("location", "Sollentuna")
+    has_license = p.get("drivers_license", True)
+    linkedin = p.get("linkedin", "")
 
     contact_greeting = f"Hej {job.get('contact_name', '')}!" if job.get('contact_name') else "Hej!"
 
@@ -464,6 +473,18 @@ async def generate_cover_letter(job: Dict, user_cv_text: Optional[str] = None) -
         job_extras.append(f"- Lön: {sal}")
     extras_text = "\n".join(job_extras) if job_extras else ""
 
+    # Build user info section
+    user_info = f"- {name}"
+    user_info += f", bor i {location}"
+    if has_license:
+        user_info += f"\n- Har B-körkort, egen bil, flexibel med arbetstider"
+    else:
+        user_info += f"\n- Flexibel med arbetstider"
+    user_info += f"\n- Telefon: {phone}"
+    user_info += f"\n- Svenska (modersmål), Engelska (flytande)"
+    if linkedin:
+        user_info += f"\n- LinkedIn: {linkedin}"
+
     prompt = f"""Skriv ett personligt brev på svenska för denna jobbansökan.
 
 JOBBET:
@@ -477,22 +498,19 @@ MIN ERFARENHET:
 {experience}
 
 OM MIG:
-- Linnea Moritz, 28 år, bor i Sollentuna
-- B-körkort, egen bil, flexibel med arbetstider
-- Telefon: 0761166109
-- Svenska (modersmål), Engelska (flytande)
+{user_info}
 
 INSTRUKTIONER:
 1. Börja med: {contact_greeting}
 2. Skriv 150-200 ord på naturlig, varm svenska
 3. Lyft fram 2-3 specifika erfarenheter som matchar jobbet
 4. VIKTIGT: Om annonsen nämner specifika krav (t.ex. körkort, bil, språk, kvällar, helger, fysiska krav), bekräfta att jag uppfyller dem
-5. Nämn att jag bor i Sollentuna och är flexibel med arbetstider
+5. Nämn var jag bor och att jag är flexibel med arbetstider
 6. Avsluta med:
    Med vänlig hälsning,
-   Linnea Moritz
-   0761166109
-   linneamoritzCV@gmail.com
+   {name}
+   {phone}
+   {email}
 
 Skriv ENDAST brevet, inget annat."""
 
@@ -1550,18 +1568,22 @@ async def apply_with_cv(request: Request, job_id: str):
     best_vibe = match_job_to_cv_vibe(job.get("title", ""), job.get("description", ""))
     logger.info(f"Job '{job.get('title')}' matched to CV vibe: {best_vibe}")
 
-    # Try to get matching CV if user is logged in
+    # Try to get matching CV and user profile if logged in
     cv = None
+    user_profile = None
     if user_id:
         cvs = await db_request("GET", "user_cvs", params={
             "user_id": f"eq.{user_id}",
             "vibe_id": f"eq.{best_vibe}"
         })
         cv = cvs[0] if cvs else None
+        # Fetch user profile for cover letter personalization
+        profiles = await db_request("GET", "user_profiles", params={"user_id": f"eq.{user_id}"})
+        user_profile = profiles[0] if profiles else None
 
-    # Generate cover letter (works with or without CV)
+    # Generate cover letter (works with or without CV/profile)
     cv_text_for_letter = cv.get("cv_text") if cv else None
-    cover_letter = await generate_cover_letter(job, cv_text_for_letter)
+    cover_letter = await generate_cover_letter(job, cv_text_for_letter, user_profile)
 
     return {
         "success": True,
@@ -3112,9 +3134,20 @@ UTMÄRKELSER
     return response_data
 
 
+class QuizProfileData(BaseModel):
+    full_name: Optional[str] = None
+    phone: Optional[str] = None
+    age: Optional[str] = None
+    drivers_license: Optional[str] = None
+    linkedin: Optional[str] = None
+    earliest_start: Optional[str] = None
+    education_level: Optional[str] = None
+
+
 class UserPreferences(BaseModel):
     # Quiz fields (maps to Platsbanken data)
     search_terms: Optional[list] = None
+    custom_search: Optional[str] = None
     location: Optional[list] = None
     working_hours: Optional[str] = None
     employment_form: Optional[list] = None
@@ -3133,6 +3166,73 @@ class UserPreferences(BaseModel):
     job_types: Optional[list] = None
     gmail_client_id: Optional[str] = None
     gmail_client_secret: Optional[str] = None
+
+
+@app.post("/api/user/profile-from-quiz")
+async def save_profile_from_quiz(request: Request, profile: QuizProfileData):
+    """Save personal info from onboarding quiz to user_profiles."""
+    auth_header = request.headers.get("Authorization", "")
+    if not auth_header.startswith("Bearer "):
+        # Still save locally if not logged in - data stored in localStorage
+        return {"success": True, "saved_to_db": False, "reason": "not_logged_in"}
+
+    token = auth_header.replace("Bearer ", "")
+
+    # Get user ID
+    async with httpx.AsyncClient() as client:
+        user_response = await client.get(
+            f"{SUPABASE_URL}/auth/v1/user",
+            headers={"apikey": SUPABASE_ANON_KEY, "Authorization": f"Bearer {token}"}
+        )
+        if user_response.status_code != 200:
+            return {"success": True, "saved_to_db": False, "reason": "invalid_token"}
+
+        user = user_response.json()
+        user_id = user.get("id")
+        user_email = user.get("email", "")
+
+    # Build profile data for upsert
+    profile_data = {
+        "user_id": user_id,
+        "email": user_email,
+        "updated_at": datetime.now().isoformat()
+    }
+    if profile.full_name:
+        profile_data["full_name"] = profile.full_name
+    if profile.phone:
+        profile_data["phone"] = profile.phone
+    if profile.drivers_license:
+        profile_data["drivers_license"] = profile.drivers_license != "no"
+    if profile.linkedin:
+        profile_data["linkedin"] = profile.linkedin
+
+    # Store extra quiz fields in a JSONB column or as individual fields
+    # age, earliest_start, education_level go into quiz_profile JSONB
+    quiz_profile = {}
+    if profile.age:
+        quiz_profile["age"] = profile.age
+    if profile.earliest_start:
+        quiz_profile["earliest_start"] = profile.earliest_start
+    if profile.education_level:
+        quiz_profile["education_level"] = profile.education_level
+    if profile.drivers_license:
+        quiz_profile["drivers_license_type"] = profile.drivers_license
+
+    # Upsert to user_profiles
+    async with httpx.AsyncClient() as client:
+        res = await client.post(
+            f"{SUPABASE_URL}/rest/v1/user_profiles",
+            headers={
+                "apikey": SUPABASE_KEY,
+                "Authorization": f"Bearer {SUPABASE_KEY}",
+                "Content-Type": "application/json",
+                "Prefer": "resolution=merge-duplicates"
+            },
+            json=profile_data
+        )
+        logger.info(f"Profile save: {res.status_code}")
+
+    return {"success": True, "saved_to_db": True}
 
 
 @app.get("/api/user/preferences")
@@ -3204,18 +3304,20 @@ async def save_user_preferences(request: Request, prefs: UserPreferences):
     # Upsert preferences - store all quiz answers as JSONB
     prefs_data = {
         "user_id": user_id,
-        "job_titles": ','.join(prefs.role_type or []) if prefs.role_type else (prefs.job_titles or ''),
+        "job_titles": prefs.custom_search if hasattr(prefs, 'custom_search') and prefs.custom_search else (
+            ','.join(prefs.search_terms or prefs.role_type or []) if (prefs.search_terms or prefs.role_type) else (prefs.job_titles or '')
+        ),
         "locations": ','.join(prefs.location or []) if prefs.location else (prefs.locations or ''),
-        "job_types": prefs.role_type or prefs.job_types or [],
+        "job_types": prefs.search_terms or prefs.role_type or prefs.job_types or [],
         "experience_level": prefs.experience_level or '',
         "quiz_answers": {
-            "role_type": prefs.role_type,
-            "industry": prefs.industry,
-            "experience_level": prefs.experience_level,
+            "search_terms": prefs.search_terms,
+            "custom_search": getattr(prefs, 'custom_search', None),
             "location": prefs.location,
-            "salary_range": prefs.salary_range,
-            "skills": prefs.skills,
-            "culture": prefs.culture,
+            "working_hours": prefs.working_hours,
+            "employment_form": prefs.employment_form,
+            "duration": prefs.duration,
+            "salary": prefs.salary,
             "dealbreakers": prefs.dealbreakers
         },
         "updated_at": "now()"
