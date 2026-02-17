@@ -707,7 +707,7 @@
         };
 
         // Jobs page
-        const JobsPage = ({ jobs, onScrape, onApply, scraping, applyingJob, savedJobs, onSaveJob }) => {
+        const JobsPage = ({ jobs, onScrape, onApply, scraping, applyingJob, savedJobs, onSaveJob, onOpenQuiz }) => {
             const [keywords, setKeywords] = useState('');
             const [filterText, setFilterText] = useState('');
             const [filterPriority, setFilterPriority] = useState('all');
@@ -789,7 +789,23 @@
                             <>
                                 {jobs.length === 0 ? (
                                     <div className="bg-white rounded-xl p-10 text-center shadow-sm">
-                                        <p className="text-slate-500">Inga jobb ännu. Sök för att hitta nya!</p>
+                                        <p className="text-slate-500 mb-4">Inga jobb annu.</p>
+                                        {!localStorage.getItem('job_preferences') ? (
+                                            <button
+                                                onClick={onOpenQuiz}
+                                                className="bg-indigo-600 text-white px-6 py-3 rounded-xl font-medium hover:bg-indigo-700 transition"
+                                            >
+                                                Fyll i quiz for att hitta ratt jobb
+                                            </button>
+                                        ) : (
+                                            <button
+                                                onClick={() => onScrape('')}
+                                                disabled={scraping}
+                                                className="bg-indigo-600 text-white px-6 py-3 rounded-xl font-medium hover:bg-indigo-700 disabled:opacity-50 transition"
+                                            >
+                                                {scraping ? 'Soker...' : 'Sok jobb baserat pa dina preferenser'}
+                                            </button>
+                                        )}
                                     </div>
                                 ) : filteredJobs.length === 0 ? (
                                     <div className="bg-white rounded-xl p-10 text-center shadow-sm">
@@ -2851,6 +2867,7 @@
                                 applyingJob={applyingJob}
                                 savedJobs={savedJobs}
                                 onSaveJob={handleSaveJob}
+                                onOpenQuiz={() => setShowOnboarding(true)}
                             />
                         )}
 
