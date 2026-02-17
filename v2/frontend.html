@@ -2552,18 +2552,23 @@
                 setApplyingJob(job.id);
                 setSelectedJob(job);
 
-                const token = localStorage.getItem('auth_token');
-                const res = await fetch(`/api/jobs/${job.id}/apply-with-cv`, {
-                    method: 'POST',
-                    headers: token ? { 'Authorization': `Bearer ${token}` } : {}
-                });
-                const data = await res.json();
+                try {
+                    const token = localStorage.getItem('auth_token');
+                    const res = await fetch(`/api/jobs/${job.id}/apply-with-cv`, {
+                        method: 'POST',
+                        headers: token ? { 'Authorization': `Bearer ${token}` } : {}
+                    });
+                    const data = await res.json();
 
-                if (data.success) {
-                    setApplyResult(data);
-                    setShowApplyModal(true);
-                } else {
-                    alert(data.detail || 'Kunde inte skapa ansökan. Har du genererat CV:n?');
+                    if (data.success) {
+                        setApplyResult(data);
+                        setShowApplyModal(true);
+                    } else {
+                        alert(data.detail || 'Kunde inte skapa ansökan.');
+                    }
+                } catch (err) {
+                    console.error('Apply error:', err);
+                    alert('Något gick fel. Försök igen.');
                 }
                 setApplyingJob(null);
             };
