@@ -3033,12 +3033,21 @@ UTMÄRKELSER
 
 
 class UserPreferences(BaseModel):
-    job_titles: str = ""
-    locations: str = ""
-    job_types: list = []
-    experience_level: str = ""
-    gmail_client_id: str = ""
-    gmail_client_secret: str = ""
+    # New quiz format
+    role_type: Optional[list] = None
+    industry: Optional[list] = None
+    experience_level: Optional[str] = None
+    location: Optional[list] = None
+    salary_range: Optional[str] = None
+    skills: Optional[list] = None
+    culture: Optional[list] = None
+    dealbreakers: Optional[list] = None
+    # Legacy fields
+    job_titles: Optional[str] = None
+    locations: Optional[str] = None
+    job_types: Optional[list] = None
+    gmail_client_id: Optional[str] = None
+    gmail_client_secret: Optional[str] = None
 
 
 @app.get("/api/user/preferences")
@@ -3107,13 +3116,23 @@ async def save_user_preferences(request: Request, prefs: UserPreferences):
         user = user_response.json()
         user_id = user.get("id")
 
-    # Upsert preferences
+    # Upsert preferences - store all quiz answers as JSONB
     prefs_data = {
         "user_id": user_id,
-        "job_titles": prefs.job_titles,
-        "locations": prefs.locations,
-        "job_types": prefs.job_types,
-        "experience_level": prefs.experience_level,
+        "job_titles": ','.join(prefs.role_type or []) if prefs.role_type else (prefs.job_titles or ''),
+        "locations": ','.join(prefs.location or []) if prefs.location else (prefs.locations or ''),
+        "job_types": prefs.role_type or prefs.job_types or [],
+        "experience_level": prefs.experience_level or '',
+        "quiz_answers": {
+            "role_type": prefs.role_type,
+            "industry": prefs.industry,
+            "experience_level": prefs.experience_level,
+            "location": prefs.location,
+            "salary_range": prefs.salary_range,
+            "skills": prefs.skills,
+            "culture": prefs.culture,
+            "dealbreakers": prefs.dealbreakers
+        },
         "updated_at": "now()"
     }
 

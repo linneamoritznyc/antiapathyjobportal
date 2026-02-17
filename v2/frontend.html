@@ -458,35 +458,53 @@
 
         // ============== PAGES ==============
 
-        // Quiz page - step by step job preferences
+        // Quiz page - step by step job preferences (dark theme, one Q per screen)
         const QuizPage = ({ onComplete, saving }) => {
             const [step, setStep] = useState(0);
             const [answers, setAnswers] = useState({
-                job_titles: [],
-                industries: [],
+                role_type: [],
+                industry: [],
                 experience_level: '',
-                work_type: [],
-                locations: [],
+                location: [],
                 salary_range: '',
-                company_size: [],
+                skills: [],
+                culture: [],
                 dealbreakers: []
             });
 
             const questions = [
                 {
-                    id: 'job_titles',
-                    question: 'Vilken typ av jobb soker du?',
+                    id: 'role_type',
+                    question: 'Vilken typ av roll soker du?',
+                    subtitle: 'Valj alla som passar',
+                    type: 'multi',
+                    options: [
+                        { value: 'servitor', label: 'Servering/Restaurang' },
+                        { value: 'kundtjanst', label: 'Kundtjanst/Support' },
+                        { value: 'butik', label: 'Butik/Kassa/Forsaljning' },
+                        { value: 'lager', label: 'Lager/Logistik' },
+                        { value: 'kontor', label: 'Kontor/Admin' },
+                        { value: 'tech', label: 'IT/Tech/Utveckling' },
+                        { value: 'vard', label: 'Vard/Omsorg' },
+                        { value: 'hotell', label: 'Hotell/Reception' },
+                        { value: 'content', label: 'Content/Moderation' },
+                        { value: 'tradgard', label: 'Tradgard/Industri' }
+                    ]
+                },
+                {
+                    id: 'industry',
+                    question: 'Vilken bransch intresserar dig?',
                     subtitle: 'Valj en eller flera',
                     type: 'multi',
                     options: [
-                        { value: 'servitor', label: 'Servitor/Restaurang' },
-                        { value: 'kundtjanst', label: 'Kundtjanst/Support' },
-                        { value: 'butik', label: 'Butik/Kassa' },
-                        { value: 'lager', label: 'Lager/Logistik' },
-                        { value: 'kontor', label: 'Kontor/Admin' },
-                        { value: 'tech', label: 'IT/Tech' },
-                        { value: 'vard', label: 'Vard/Omsorg' },
-                        { value: 'annat', label: 'Annat' }
+                        { value: 'food', label: 'Mat & Dryck' },
+                        { value: 'retail', label: 'Handel & Butik' },
+                        { value: 'tech', label: 'Tech & IT' },
+                        { value: 'health', label: 'Halsa & Vard' },
+                        { value: 'service', label: 'Service & Gastfrihet' },
+                        { value: 'culture', label: 'Kultur & Media' },
+                        { value: 'finance', label: 'Ekonomi & Bank' },
+                        { value: 'anything', label: 'Oppet for allt' }
                     ]
                 },
                 {
@@ -494,28 +512,21 @@
                     question: 'Hur mycket erfarenhet har du?',
                     type: 'single',
                     options: [
-                        { value: 'entry', label: 'Nybörjare (0-1 år)' },
-                        { value: 'mid', label: 'Lite erfarenhet (1-3 år)' },
-                        { value: 'senior', label: 'Erfaren (3+ år)' }
+                        { value: 'none', label: 'Forsta jobbet' },
+                        { value: 'entry', label: 'Under 1 ar' },
+                        { value: 'mid', label: '1-3 ar' },
+                        { value: 'senior', label: '3+ ar' }
                     ]
                 },
                 {
-                    id: 'work_type',
-                    question: 'Vilken typ av anställning passar dig?',
-                    type: 'multi',
-                    options: [
-                        { value: 'heltid', label: 'Heltid' },
-                        { value: 'deltid', label: 'Deltid' },
-                        { value: 'extra', label: 'Extra/Timmar' },
-                        { value: 'sommar', label: 'Sommarjobb' }
-                    ]
-                },
-                {
-                    id: 'locations',
+                    id: 'location',
                     question: 'Var vill du jobba?',
+                    subtitle: 'Valj alla som funkar',
                     type: 'multi',
                     options: [
                         { value: 'stockholm', label: 'Stockholm' },
+                        { value: 'sollentuna', label: 'Sollentuna' },
+                        { value: 'vetlanda', label: 'Vetlanda' },
                         { value: 'goteborg', label: 'Goteborg' },
                         { value: 'malmo', label: 'Malmo' },
                         { value: 'remote', label: 'Distans/Remote' },
@@ -523,16 +534,59 @@
                     ]
                 },
                 {
+                    id: 'salary_range',
+                    question: 'Vad ar din loneforvantning?',
+                    type: 'single',
+                    options: [
+                        { value: 'any', label: 'Spelar ingen roll' },
+                        { value: '20-25k', label: '20 000 - 25 000 kr/man' },
+                        { value: '25-30k', label: '25 000 - 30 000 kr/man' },
+                        { value: '30k+', label: '30 000+ kr/man' }
+                    ]
+                },
+                {
+                    id: 'skills',
+                    question: 'Vilka ar dina starkaste sidor?',
+                    subtitle: 'Valj de som stammer bast',
+                    type: 'multi',
+                    options: [
+                        { value: 'kundkontakt', label: 'Kundkontakt' },
+                        { value: 'teamwork', label: 'Teamwork' },
+                        { value: 'tech', label: 'Teknisk kompetens' },
+                        { value: 'sprak', label: 'Sprak (EN/SV)' },
+                        { value: 'stress', label: 'Stresshantering' },
+                        { value: 'kreativ', label: 'Kreativitet' },
+                        { value: 'sjalvstandig', label: 'Sjalvstandig' },
+                        { value: 'korkort', label: 'B-korkort' }
+                    ]
+                },
+                {
+                    id: 'culture',
+                    question: 'Vilken typ av arbetsplats trivs du pa?',
+                    subtitle: 'Valj det som kanns ratt',
+                    type: 'multi',
+                    options: [
+                        { value: 'litet', label: 'Litet team (under 20)' },
+                        { value: 'stort', label: 'Stort foretag' },
+                        { value: 'flexibelt', label: 'Flexibla tider' },
+                        { value: 'struktur', label: 'Tydlig struktur' },
+                        { value: 'lugnt', label: 'Lugnt tempo' },
+                        { value: 'snabbt', label: 'Snabbt tempo' }
+                    ]
+                },
+                {
                     id: 'dealbreakers',
-                    question: 'Finns det något du INTE vill gora?',
+                    question: 'Finns det nagot du INTE vill gora?',
                     subtitle: 'Vi filtrerar bort dessa jobb',
                     type: 'multi',
+                    allowEmpty: true,
                     options: [
                         { value: 'natt', label: 'Nattarbete' },
                         { value: 'helg', label: 'Helgarbete' },
-                        { value: 'kall', label: 'Utomhus/Kallt' },
+                        { value: 'kall', label: 'Utomhus i kylan' },
                         { value: 'telefon', label: 'Telefonforssaljning' },
-                        { value: 'aldrevard', label: 'Aldrevård' }
+                        { value: 'tunga_lyft', label: 'Tunga lyft' },
+                        { value: 'ingen', label: 'Inget speciellt - jag ar oppen' }
                     ]
                 }
             ];
@@ -555,80 +609,98 @@
             };
 
             const isSelected = (value) => {
-                if (currentQ.type === 'single') {
-                    return answers[currentQ.id] === value;
-                }
+                if (currentQ.type === 'single') return answers[currentQ.id] === value;
                 return (answers[currentQ.id] || []).includes(value);
             };
 
-            const canProceed = currentQ.type === 'single'
-                ? !!answers[currentQ.id]
-                : (answers[currentQ.id] || []).length > 0;
+            const canProceed = currentQ.allowEmpty ? true :
+                currentQ.type === 'single'
+                    ? !!answers[currentQ.id]
+                    : (answers[currentQ.id] || []).length > 0;
 
             return (
-                <div className="min-h-[60vh] flex flex-col">
-                    {/* Progress bar */}
-                    <div className="mb-8">
-                        <div className="h-2 bg-slate-200 rounded-full overflow-hidden">
-                            <div
-                                className="h-full bg-gradient-to-r from-indigo-500 to-purple-500 transition-all duration-500"
-                                style={{ width: `${progress}%` }}
-                            />
+                <div className="min-h-screen bg-slate-900 flex flex-col items-center justify-center p-6">
+                    <div className="w-full max-w-lg">
+                        {/* Header */}
+                        <div className="flex justify-between items-center mb-8">
+                            <span className="text-white/40 font-mono text-xs tracking-wide">anti-apathy</span>
+                            <button
+                                onClick={() => onComplete(answers)}
+                                className="text-white/30 hover:text-white/60 text-sm transition"
+                            >
+                                Hoppa over
+                            </button>
                         </div>
-                        <p className="text-sm text-slate-500 mt-2">Steg {step + 1} av {questions.length}</p>
-                    </div>
 
-                    {/* Question */}
-                    <div className="flex-1">
-                        <h2 className="text-2xl font-bold text-slate-800 mb-2">{currentQ.question}</h2>
-                        {currentQ.subtitle && (
-                            <p className="text-slate-500 mb-6">{currentQ.subtitle}</p>
-                        )}
+                        {/* Progress dots */}
+                        <div className="flex gap-2 mb-10">
+                            {questions.map((_, i) => (
+                                <div
+                                    key={i}
+                                    className={`h-1.5 flex-1 rounded-full transition-all duration-300 ${
+                                        i < step ? 'bg-indigo-500' :
+                                        i === step ? 'bg-white' :
+                                        'bg-white/10'
+                                    }`}
+                                />
+                            ))}
+                        </div>
 
-                        <div className="grid grid-cols-2 md:grid-cols-3 gap-3 mt-6">
+                        {/* Question */}
+                        <div className="mb-10">
+                            <h1 className="text-2xl md:text-3xl font-bold text-white mb-2 leading-tight">
+                                {currentQ.question}
+                            </h1>
+                            {currentQ.subtitle && (
+                                <p className="text-white/50 text-sm">{currentQ.subtitle}</p>
+                            )}
+                        </div>
+
+                        {/* Options */}
+                        <div className="space-y-3">
                             {currentQ.options.map(opt => (
                                 <button
                                     key={opt.value}
                                     onClick={() => handleSelect(opt.value)}
-                                    className={`p-4 rounded-xl border-2 text-left transition ${
+                                    className={`w-full p-4 rounded-xl text-left transition-all duration-200 ${
                                         isSelected(opt.value)
-                                            ? 'border-indigo-500 bg-indigo-50 text-indigo-700'
-                                            : 'border-slate-200 hover:border-slate-300 text-slate-700'
+                                            ? 'bg-indigo-600 text-white ring-2 ring-indigo-400'
+                                            : 'bg-white/5 text-white/80 hover:bg-white/10 border border-white/10'
                                     }`}
                                 >
-                                    <span className="font-medium">{opt.label}</span>
+                                    <span className="font-medium text-base">{opt.label}</span>
                                 </button>
                             ))}
                         </div>
-                    </div>
 
-                    {/* Navigation */}
-                    <div className="flex justify-between mt-8 pt-6 border-t border-slate-200">
-                        <button
-                            onClick={() => setStep(Math.max(0, step - 1))}
-                            disabled={step === 0}
-                            className="px-6 py-3 text-slate-600 hover:text-slate-800 disabled:opacity-30 transition"
-                        >
-                            Tillbaka
-                        </button>
+                        {/* Navigation */}
+                        <div className="flex justify-between mt-10">
+                            <button
+                                onClick={() => setStep(Math.max(0, step - 1))}
+                                disabled={step === 0}
+                                className="px-6 py-3 text-white/40 hover:text-white/70 disabled:opacity-0 transition"
+                            >
+                                Tillbaka
+                            </button>
 
-                        {isLastStep ? (
-                            <button
-                                onClick={() => onComplete(answers)}
-                                disabled={!canProceed || saving}
-                                className="px-8 py-3 bg-indigo-600 text-white font-semibold rounded-lg hover:bg-indigo-700 disabled:opacity-50 transition"
-                            >
-                                {saving ? 'Sparar...' : 'Klar - Borja soka jobb!'}
-                            </button>
-                        ) : (
-                            <button
-                                onClick={() => setStep(step + 1)}
-                                disabled={!canProceed}
-                                className="px-8 py-3 bg-indigo-600 text-white font-semibold rounded-lg hover:bg-indigo-700 disabled:opacity-50 transition"
-                            >
-                                Nasta
-                            </button>
-                        )}
+                            {isLastStep ? (
+                                <button
+                                    onClick={() => onComplete(answers)}
+                                    disabled={!canProceed || saving}
+                                    className="px-8 py-3 bg-white text-slate-900 font-semibold rounded-xl hover:bg-white/90 disabled:opacity-30 transition"
+                                >
+                                    {saving ? 'Sparar...' : 'Klar!'}
+                                </button>
+                            ) : (
+                                <button
+                                    onClick={() => setStep(step + 1)}
+                                    disabled={!canProceed}
+                                    className="px-8 py-3 bg-white text-slate-900 font-semibold rounded-xl hover:bg-white/90 disabled:opacity-30 transition"
+                                >
+                                    Nasta
+                                </button>
+                            )}
+                        </div>
                     </div>
                 </div>
             );
@@ -1753,153 +1825,39 @@
         // ============== ONBOARDING ==============
 
         const OnboardingWizard = ({ onComplete }) => {
-            const [step, setStep] = useState(1);
             const [saving, setSaving] = useState(false);
-            const [importing, setImporting] = useState(false);
-            const [preferences, setPreferences] = useState({
-                job_titles: '',
-                locations: '',
-                job_types: [],
-                experience_level: '',
-                gmail_client_id: '',
-                gmail_client_secret: ''
-            });
-            const [profile, setProfile] = useState({
-                full_name: '',
-                email: '',
-                phone: '',
-                linkedin_url: '',
-                summary: '',
-                skills: '',
-                experiences: [],
-                education: []
-            });
 
-            const jobTypes = [
-                { id: 'full_time', label: 'Heltid' },
-                { id: 'part_time', label: 'Deltid' },
-                { id: 'temporary', label: 'Visstid' },
-                { id: 'internship', label: 'Praktik' },
-                { id: 'remote', label: 'Distans' }
-            ];
-
-            const experienceLevels = [
-                { id: 'entry', label: 'Nyutexaminerad / Första jobbet' },
-                { id: 'junior', label: '1-2 års erfarenhet' },
-                { id: 'mid', label: '3-5 års erfarenhet' },
-                { id: 'senior', label: '5+ års erfarenhet' }
-            ];
-
-            const toggleJobType = (id) => {
-                setPreferences(prev => ({
-                    ...prev,
-                    job_types: prev.job_types.includes(id)
-                        ? prev.job_types.filter(t => t !== id)
-                        : [...prev.job_types, id]
-                }));
-            };
-
-            const addExperience = () => {
-                setProfile(prev => ({
-                    ...prev,
-                    experiences: [...prev.experiences, { company: '', title: '', start_date: '', end_date: '', description: '' }]
-                }));
-            };
-
-            const updateExperience = (index, field, value) => {
-                setProfile(prev => ({
-                    ...prev,
-                    experiences: prev.experiences.map((exp, i) => i === index ? { ...exp, [field]: value } : exp)
-                }));
-            };
-
-            const addEducation = () => {
-                setProfile(prev => ({
-                    ...prev,
-                    education: [...prev.education, { school: '', degree: '', field: '', start_date: '', end_date: '' }]
-                }));
-            };
-
-            const updateEducation = (index, field, value) => {
-                setProfile(prev => ({
-                    ...prev,
-                    education: prev.education.map((edu, i) => i === index ? { ...edu, [field]: value } : edu)
-                }));
-            };
-
-            const importFromLinkedIn = async () => {
-                if (!profile.linkedin_url) {
-                    alert('Klistra in din LinkedIn-URL först');
-                    return;
-                }
-                setImporting(true);
-                const token = localStorage.getItem('auth_token');
-                try {
-                    const res = await fetch('/api/user/import-linkedin', {
-                        method: 'POST',
-                        headers: {
-                            'Content-Type': 'application/json',
-                            'Authorization': `Bearer ${token}`
-                        },
-                        body: JSON.stringify({ linkedin_url: profile.linkedin_url })
-                    });
-                    const data = await res.json();
-                    if (data.success && data.profile) {
-                        setProfile(prev => ({
-                            ...prev,
-                            ...data.profile,
-                            linkedin_url: prev.linkedin_url
-                        }));
-                        alert('LinkedIn-profil importerad!');
-                    } else {
-                        alert(data.message || 'Kunde inte importera från LinkedIn. Fyll i manuellt.');
-                    }
-                } catch (err) {
-                    alert('Kunde inte importera. Fyll i manuellt.');
-                } finally {
-                    setImporting(false);
-                }
-            };
-
-            const handleSave = async () => {
+            const handleQuizComplete = async (answers) => {
                 setSaving(true);
-                const token = localStorage.getItem('auth_token');
                 try {
-                    // Save preferences
+                    const token = localStorage.getItem('auth_token');
                     await fetch('/api/user/preferences', {
                         method: 'POST',
                         headers: {
                             'Content-Type': 'application/json',
-                            'Authorization': `Bearer ${token}`
+                            ...(token ? { 'Authorization': `Bearer ${token}` } : {})
                         },
-                        body: JSON.stringify(preferences)
+                        body: JSON.stringify(answers)
                     });
-
-                    // Save profile/CV data
-                    await fetch('/api/user/profile', {
-                        method: 'POST',
-                        headers: {
-                            'Content-Type': 'application/json',
-                            'Authorization': `Bearer ${token}`
-                        },
-                        body: JSON.stringify(profile)
-                    });
-
                     localStorage.setItem('onboarding_complete', 'true');
+                    localStorage.setItem('job_preferences', JSON.stringify(answers));
                     onComplete();
                 } catch (err) {
-                    alert('Kunde inte spara. Försök igen.');
-                } finally {
-                    setSaving(false);
+                    // Save locally even if server fails
+                    localStorage.setItem('onboarding_complete', 'true');
+                    localStorage.setItem('job_preferences', JSON.stringify(answers));
+                    onComplete();
                 }
+                setSaving(false);
             };
 
-            const totalSteps = 4;
+            return <QuizPage onComplete={handleQuizComplete} saving={saving} />;
+        };
 
+        const _ONBOARDING_OLD_UNUSED = () => {
+            // OLD onboarding wizard kept for reference - not rendered
             return (
-                <div className="min-h-screen bg-gradient-to-br from-indigo-50 to-slate-100 flex items-center justify-center p-4">
-                    <div className="bg-white rounded-2xl shadow-xl max-w-2xl w-full p-8 max-h-[90vh] overflow-y-auto">
-                        {/* Skip button */}
+                <div className="hidden">
                         <div className="flex justify-end mb-4">
                             <button
                                 onClick={() => {
@@ -2304,7 +2262,6 @@
                                 </div>
                             </div>
                         )}
-                    </div>
                 </div>
             );
         };
@@ -2345,28 +2302,12 @@
             }, []);
 
             const checkOnboarding = async () => {
-                const token = localStorage.getItem('auth_token');
-                if (!token) return;
-
-                // Check if onboarding is complete
+                // Check if quiz was completed locally
                 const onboardingComplete = localStorage.getItem('onboarding_complete');
                 if (onboardingComplete) return;
 
-                // Check with server
-                try {
-                    const res = await fetch('/api/user/preferences', {
-                        headers: { 'Authorization': `Bearer ${token}` }
-                    });
-                    const data = await res.json();
-                    if (!data.success || !data.preferences?.job_titles) {
-                        setShowOnboarding(true);
-                    } else {
-                        localStorage.setItem('onboarding_complete', 'true');
-                    }
-                } catch (err) {
-                    // If error, show onboarding
-                    setShowOnboarding(true);
-                }
+                // No quiz done yet - show it
+                setShowOnboarding(true);
             };
 
             const fetchJobs = async () => {
@@ -2534,11 +2475,31 @@
 
             const handleScrape = async (keywords) => {
                 setScraping(true);
-                const kw = keywords.trim() ? keywords.split(',').map(k => k.trim()) : null;
+
+                // Use quiz preferences as defaults if no manual keywords
+                let kw = keywords.trim() ? keywords.split(',').map(k => k.trim()) : null;
+                let location = 'Stockholm';
+
+                if (!kw) {
+                    const prefs = JSON.parse(localStorage.getItem('job_preferences') || '{}');
+                    const roleMap = {
+                        'servitor': 'servitör', 'kundtjanst': 'kundtjänst', 'butik': 'butik',
+                        'lager': 'lager', 'kontor': 'kontor', 'tech': 'IT', 'vard': 'vård',
+                        'hotell': 'hotell', 'content': 'content moderation', 'tradgard': 'trädgård'
+                    };
+                    if (prefs.role_type && prefs.role_type.length > 0) {
+                        kw = prefs.role_type.map(r => roleMap[r] || r);
+                    }
+                    if (prefs.location && prefs.location.length > 0) {
+                        const loc = prefs.location.find(l => l !== 'anywhere' && l !== 'remote');
+                        if (loc) location = loc.charAt(0).toUpperCase() + loc.slice(1);
+                    }
+                }
+
                 const res = await fetch('/api/scrape', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ keywords: kw })
+                    body: JSON.stringify({ keywords: kw, location: location })
                 });
                 const data = await res.json();
                 if (data.success) {
@@ -2754,9 +2715,13 @@
                 window.location.href = '/login';
             };
 
-            // Show onboarding if needed
+            // Show quiz if needed
             if (showOnboarding && user) {
-                return <OnboardingWizard onComplete={() => setShowOnboarding(false)} />;
+                return <OnboardingWizard onComplete={() => {
+                    setShowOnboarding(false);
+                    // Auto-scrape with new preferences
+                    handleScrape('');
+                }} />;
             }
 
             // Landing page for non-logged-in users
@@ -2861,7 +2826,15 @@
                                     <h1 className="text-2xl font-bold">Anti-Apathy Job Portal</h1>
                                     <p className="opacity-80 text-sm">Sök jobb utan apati. En ansökan i taget.</p>
                                 </div>
-                                <UserMenu user={user} onLogout={handleLogout} />
+                                <div className="flex items-center gap-3">
+                                    <button
+                                        onClick={() => setShowOnboarding(true)}
+                                        className="text-white/60 hover:text-white text-sm transition px-3 py-1 rounded-lg hover:bg-white/10"
+                                    >
+                                        Preferenser
+                                    </button>
+                                    <UserMenu user={user} onLogout={handleLogout} />
+                                </div>
                             </div>
                             <NavTabs activeTab={activeTab} setActiveTab={setActiveTab} />
                         </div>
