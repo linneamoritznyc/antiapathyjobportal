@@ -312,20 +312,20 @@ async def scrape_platsbanken(keyword: str, location: str = "Stockholm", max_jobs
                 if not contact_email and app_details.get("email"):
                     contact_email = app_details.get("email")
 
-                # Skip jobs without email (portal-only applications)
-                if not contact_email:
-                    continue
+                # NOTE: Allowing portal jobs too (email optional)
+                # if not contact_email:
+                #     continue
 
                 # Extract contact name
                 contact_name = extract_contact_name(description)
                 if not contact_name and app_details.get("name"):
                     contact_name = app_details.get("name")
 
-                # Check location match (fuzzy)
-                if location.lower() not in job_location.lower() and job_location.lower() not in location.lower():
-                    # Allow "Sverige" as fallback
-                    if "sverige" not in job_location.lower():
-                        continue
+                # Check location match (fuzzy) - DISABLED for now to show all jobs
+                # if location.lower() not in job_location.lower() and job_location.lower() not in location.lower():
+                #     # Allow "Sverige" as fallback
+                #     if "sverige" not in job_location.lower():
+                #         continue
 
                 job = {
                     "id": job_id,
@@ -1442,27 +1442,27 @@ async def apply_with_cv(request: Request, job_id: str):
     Smart apply: Auto-selects best CV, generates cover letter, returns both.
     This is the main "one-click apply" endpoint.
     """
-    # Get user_id from auth token
+    # Get user_id from auth token (optional - works without login too)
     auth_header = request.headers.get("Authorization", "")
     user_id = None
 
     if auth_header.startswith("Bearer "):
         token = auth_header.replace("Bearer ", "")
-        async with httpx.AsyncClient() as client:
-            user_response = await client.get(
-                f"{SUPABASE_URL}/auth/v1/user",
-                headers={"apikey": SUPABASE_ANON_KEY, "Authorization": f"Bearer {token}"}
-            )
-            if user_response.status_code == 200:
-                user_id = user_response.json().get("id")
+        try:
+            async with httpx.AsyncClient() as client:
+                user_response = await client.get(
+                    f"{SUPABASE_URL}/auth/v1/user",
+                    headers={"apikey": SUPABASE_ANON_KEY, "Authorization": f"Bearer {token}"}
+                )
+                if user_response.status_code == 200:
+                    user_id = user_response.json().get("id")
+        except Exception as e:
+            logger.warning(f"Auth check failed: {e}")
 
-    if not user_id:
-        raise HTTPException(status_code=401, detail="Ej inloggad")
-
-    # Get job
+    # Get job from database
     jobs = await db_request("GET", "jobs", params={"id": f"eq.{job_id}"})
     if not jobs:
-        raise HTTPException(status_code=404, detail="Job not found")
+        raise HTTPException(status_code=404, detail="Jobbet hittades inte")
 
     job = jobs[0]
 
@@ -1470,15 +1470,16 @@ async def apply_with_cv(request: Request, job_id: str):
     best_vibe = match_job_to_cv_vibe(job.get("title", ""), job.get("description", ""))
     logger.info(f"Job '{job.get('title')}' matched to CV vibe: {best_vibe}")
 
-    # Get the matching CV
-    cvs = await db_request("GET", "user_cvs", params={
-        "user_id": f"eq.{user_id}",
-        "vibe_id": f"eq.{best_vibe}"
-    })
+    # Try to get matching CV if user is logged in
+    cv = None
+    if user_id:
+        cvs = await db_request("GET", "user_cvs", params={
+            "user_id": f"eq.{user_id}",
+            "vibe_id": f"eq.{best_vibe}"
+        })
+        cv = cvs[0] if cvs else None
 
-    cv = cvs[0] if cvs else None
-
-    # Generate cover letter using the CV
+    # Generate cover letter (works with or without CV)
     cv_text_for_letter = cv.get("cv_text") if cv else None
     cover_letter = await generate_cover_letter(job, cv_text_for_letter)
 
@@ -1688,6 +1689,37 @@ async def sign_in(request: SignInRequest):
                 "full_name": data.get("user", {}).get("user_metadata", {}).get("full_name")
             }
         }
+
+
+@app.post("/api/auth/refresh")
+async def refresh_auth_token(request: Request):
+    """Refresh an expired access token using refresh_token."""
+    try:
+        body = await request.json()
+    except Exception:
+        body = {}
+
+    refresh_token = body.get("refresh_token")
+    if not refresh_token:
+        raise HTTPException(status_code=400, detail="refresh_token krävs")
+
+    async with httpx.AsyncClient() as client:
+        res = await client.post(
+            f"{SUPABASE_URL}/auth/v1/token?grant_type=refresh_token",
+            headers={"apikey": SUPABASE_ANON_KEY, "Content-Type": "application/json"},
+            json={"refresh_token": refresh_token}
+        )
+
+    if res.status_code == 200:
+        data = res.json()
+        return {
+            "success": True,
+            "access_token": data.get("access_token"),
+            "refresh_token": data.get("refresh_token"),
+            "user": {"id": data.get("user", {}).get("id"), "email": data.get("user", {}).get("email")}
+        }
+
+    raise HTTPException(status_code=401, detail="Kunde inte förnya session. Logga in igen.")
 
 
 @app.post("/api/auth/signout")
@@ -3001,12 +3033,21 @@ UTMÄRKELSER
 
 
 class UserPreferences(BaseModel):
-    job_titles: str = ""
-    locations: str = ""
-    job_types: list = []
-    experience_level: str = ""
-    gmail_client_id: str = ""
-    gmail_client_secret: str = ""
+    # New quiz format
+    role_type: Optional[list] = None
+    industry: Optional[list] = None
+    experience_level: Optional[str] = None
+    location: Optional[list] = None
+    salary_range: Optional[str] = None
+    skills: Optional[list] = None
+    culture: Optional[list] = None
+    dealbreakers: Optional[list] = None
+    # Legacy fields
+    job_titles: Optional[str] = None
+    locations: Optional[str] = None
+    job_types: Optional[list] = None
+    gmail_client_id: Optional[str] = None
+    gmail_client_secret: Optional[str] = None
 
 
 @app.get("/api/user/preferences")
@@ -3075,13 +3116,23 @@ async def save_user_preferences(request: Request, prefs: UserPreferences):
         user = user_response.json()
         user_id = user.get("id")
 
-    # Upsert preferences
+    # Upsert preferences - store all quiz answers as JSONB
     prefs_data = {
         "user_id": user_id,
-        "job_titles": prefs.job_titles,
-        "locations": prefs.locations,
-        "job_types": prefs.job_types,
-        "experience_level": prefs.experience_level,
+        "job_titles": ','.join(prefs.role_type or []) if prefs.role_type else (prefs.job_titles or ''),
+        "locations": ','.join(prefs.location or []) if prefs.location else (prefs.locations or ''),
+        "job_types": prefs.role_type or prefs.job_types or [],
+        "experience_level": prefs.experience_level or '',
+        "quiz_answers": {
+            "role_type": prefs.role_type,
+            "industry": prefs.industry,
+            "experience_level": prefs.experience_level,
+            "location": prefs.location,
+            "salary_range": prefs.salary_range,
+            "skills": prefs.skills,
+            "culture": prefs.culture,
+            "dealbreakers": prefs.dealbreakers
+        },
         "updated_at": "now()"
     }
 

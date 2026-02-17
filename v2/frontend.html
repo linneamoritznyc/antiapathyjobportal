@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="sv">
 <head>
-    <!-- VERSION: 2025-02-16-v4-debug-data-loading -->
+    <!-- VERSION: 2025-02-17-PINK-TEST -->
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Anti-Apathy Job Portal</title>
@@ -11,7 +11,7 @@
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
     <style>
         * { font-family: system-ui, -apple-system, sans-serif; }
-        .gradient { background: linear-gradient(135deg, #6366f1 0%, #8b5cf6 50%, #a855f7 100%); }
+        .gradient { background: linear-gradient(135deg, #ec4899 0%, #f472b6 50%, #fb7185 100%); }
         .tab-active { border-bottom: 3px solid white; }
     </style>
 </head>
@@ -86,7 +86,8 @@
                 {[
                     { id: 'jobs', label: 'Jobb', icon: '🔍' },
                     { id: 'cvs', label: 'Mina CV', icon: '📄' },
-                    { id: 'applications', label: 'Ansökningar', icon: '📬' }
+                    { id: 'applications', label: 'Ansökningar', icon: '📬' },
+                    { id: 'metrics', label: 'Statistik', icon: '📊' }
                 ].map(tab => (
                     <button
                         key={tab.id}
@@ -457,35 +458,53 @@
 
         // ============== PAGES ==============
 
-        // Quiz page - step by step job preferences
+        // Quiz page - step by step job preferences (dark theme, one Q per screen)
         const QuizPage = ({ onComplete, saving }) => {
             const [step, setStep] = useState(0);
             const [answers, setAnswers] = useState({
-                job_titles: [],
-                industries: [],
+                role_type: [],
+                industry: [],
                 experience_level: '',
-                work_type: [],
-                locations: [],
+                location: [],
                 salary_range: '',
-                company_size: [],
+                skills: [],
+                culture: [],
                 dealbreakers: []
             });
 
             const questions = [
                 {
-                    id: 'job_titles',
-                    question: 'Vilken typ av jobb soker du?',
+                    id: 'role_type',
+                    question: 'Vilken typ av roll soker du?',
+                    subtitle: 'Valj alla som passar',
+                    type: 'multi',
+                    options: [
+                        { value: 'servitor', label: 'Servering/Restaurang' },
+                        { value: 'kundtjanst', label: 'Kundtjanst/Support' },
+                        { value: 'butik', label: 'Butik/Kassa/Forsaljning' },
+                        { value: 'lager', label: 'Lager/Logistik' },
+                        { value: 'kontor', label: 'Kontor/Admin' },
+                        { value: 'tech', label: 'IT/Tech/Utveckling' },
+                        { value: 'vard', label: 'Vard/Omsorg' },
+                        { value: 'hotell', label: 'Hotell/Reception' },
+                        { value: 'content', label: 'Content/Moderation' },
+                        { value: 'tradgard', label: 'Tradgard/Industri' }
+                    ]
+                },
+                {
+                    id: 'industry',
+                    question: 'Vilken bransch intresserar dig?',
                     subtitle: 'Valj en eller flera',
                     type: 'multi',
                     options: [
-                        { value: 'servitor', label: 'Servitor/Restaurang' },
-                        { value: 'kundtjanst', label: 'Kundtjanst/Support' },
-                        { value: 'butik', label: 'Butik/Kassa' },
-                        { value: 'lager', label: 'Lager/Logistik' },
-                        { value: 'kontor', label: 'Kontor/Admin' },
-                        { value: 'tech', label: 'IT/Tech' },
-                        { value: 'vard', label: 'Vard/Omsorg' },
-                        { value: 'annat', label: 'Annat' }
+                        { value: 'food', label: 'Mat & Dryck' },
+                        { value: 'retail', label: 'Handel & Butik' },
+                        { value: 'tech', label: 'Tech & IT' },
+                        { value: 'health', label: 'Halsa & Vard' },
+                        { value: 'service', label: 'Service & Gastfrihet' },
+                        { value: 'culture', label: 'Kultur & Media' },
+                        { value: 'finance', label: 'Ekonomi & Bank' },
+                        { value: 'anything', label: 'Oppet for allt' }
                     ]
                 },
                 {
@@ -493,28 +512,21 @@
                     question: 'Hur mycket erfarenhet har du?',
                     type: 'single',
                     options: [
-                        { value: 'entry', label: 'Nybörjare (0-1 år)' },
-                        { value: 'mid', label: 'Lite erfarenhet (1-3 år)' },
-                        { value: 'senior', label: 'Erfaren (3+ år)' }
+                        { value: 'none', label: 'Forsta jobbet' },
+                        { value: 'entry', label: 'Under 1 ar' },
+                        { value: 'mid', label: '1-3 ar' },
+                        { value: 'senior', label: '3+ ar' }
                     ]
                 },
                 {
-                    id: 'work_type',
-                    question: 'Vilken typ av anställning passar dig?',
-                    type: 'multi',
-                    options: [
-                        { value: 'heltid', label: 'Heltid' },
-                        { value: 'deltid', label: 'Deltid' },
-                        { value: 'extra', label: 'Extra/Timmar' },
-                        { value: 'sommar', label: 'Sommarjobb' }
-                    ]
-                },
-                {
-                    id: 'locations',
+                    id: 'location',
                     question: 'Var vill du jobba?',
+                    subtitle: 'Valj alla som funkar',
                     type: 'multi',
                     options: [
                         { value: 'stockholm', label: 'Stockholm' },
+                        { value: 'sollentuna', label: 'Sollentuna' },
+                        { value: 'vetlanda', label: 'Vetlanda' },
                         { value: 'goteborg', label: 'Goteborg' },
                         { value: 'malmo', label: 'Malmo' },
                         { value: 'remote', label: 'Distans/Remote' },
@@ -522,16 +534,59 @@
                     ]
                 },
                 {
+                    id: 'salary_range',
+                    question: 'Vad ar din loneforvantning?',
+                    type: 'single',
+                    options: [
+                        { value: 'any', label: 'Spelar ingen roll' },
+                        { value: '20-25k', label: '20 000 - 25 000 kr/man' },
+                        { value: '25-30k', label: '25 000 - 30 000 kr/man' },
+                        { value: '30k+', label: '30 000+ kr/man' }
+                    ]
+                },
+                {
+                    id: 'skills',
+                    question: 'Vilka ar dina starkaste sidor?',
+                    subtitle: 'Valj de som stammer bast',
+                    type: 'multi',
+                    options: [
+                        { value: 'kundkontakt', label: 'Kundkontakt' },
+                        { value: 'teamwork', label: 'Teamwork' },
+                        { value: 'tech', label: 'Teknisk kompetens' },
+                        { value: 'sprak', label: 'Sprak (EN/SV)' },
+                        { value: 'stress', label: 'Stresshantering' },
+                        { value: 'kreativ', label: 'Kreativitet' },
+                        { value: 'sjalvstandig', label: 'Sjalvstandig' },
+                        { value: 'korkort', label: 'B-korkort' }
+                    ]
+                },
+                {
+                    id: 'culture',
+                    question: 'Vilken typ av arbetsplats trivs du pa?',
+                    subtitle: 'Valj det som kanns ratt',
+                    type: 'multi',
+                    options: [
+                        { value: 'litet', label: 'Litet team (under 20)' },
+                        { value: 'stort', label: 'Stort foretag' },
+                        { value: 'flexibelt', label: 'Flexibla tider' },
+                        { value: 'struktur', label: 'Tydlig struktur' },
+                        { value: 'lugnt', label: 'Lugnt tempo' },
+                        { value: 'snabbt', label: 'Snabbt tempo' }
+                    ]
+                },
+                {
                     id: 'dealbreakers',
-                    question: 'Finns det något du INTE vill gora?',
+                    question: 'Finns det nagot du INTE vill gora?',
                     subtitle: 'Vi filtrerar bort dessa jobb',
                     type: 'multi',
+                    allowEmpty: true,
                     options: [
                         { value: 'natt', label: 'Nattarbete' },
                         { value: 'helg', label: 'Helgarbete' },
-                        { value: 'kall', label: 'Utomhus/Kallt' },
+                        { value: 'kall', label: 'Utomhus i kylan' },
                         { value: 'telefon', label: 'Telefonforssaljning' },
-                        { value: 'aldrevard', label: 'Aldrevård' }
+                        { value: 'tunga_lyft', label: 'Tunga lyft' },
+                        { value: 'ingen', label: 'Inget speciellt - jag ar oppen' }
                     ]
                 }
             ];
@@ -554,80 +609,98 @@
             };
 
             const isSelected = (value) => {
-                if (currentQ.type === 'single') {
-                    return answers[currentQ.id] === value;
-                }
+                if (currentQ.type === 'single') return answers[currentQ.id] === value;
                 return (answers[currentQ.id] || []).includes(value);
             };
 
-            const canProceed = currentQ.type === 'single'
-                ? !!answers[currentQ.id]
-                : (answers[currentQ.id] || []).length > 0;
+            const canProceed = currentQ.allowEmpty ? true :
+                currentQ.type === 'single'
+                    ? !!answers[currentQ.id]
+                    : (answers[currentQ.id] || []).length > 0;
 
             return (
-                <div className="min-h-[60vh] flex flex-col">
-                    {/* Progress bar */}
-                    <div className="mb-8">
-                        <div className="h-2 bg-slate-200 rounded-full overflow-hidden">
-                            <div
-                                className="h-full bg-gradient-to-r from-indigo-500 to-purple-500 transition-all duration-500"
-                                style={{ width: `${progress}%` }}
-                            />
+                <div className="min-h-screen bg-slate-900 flex flex-col items-center justify-center p-6">
+                    <div className="w-full max-w-lg">
+                        {/* Header */}
+                        <div className="flex justify-between items-center mb-8">
+                            <span className="text-white/40 font-mono text-xs tracking-wide">anti-apathy</span>
+                            <button
+                                onClick={() => onComplete(answers)}
+                                className="text-white/30 hover:text-white/60 text-sm transition"
+                            >
+                                Hoppa over
+                            </button>
                         </div>
-                        <p className="text-sm text-slate-500 mt-2">Steg {step + 1} av {questions.length}</p>
-                    </div>
 
-                    {/* Question */}
-                    <div className="flex-1">
-                        <h2 className="text-2xl font-bold text-slate-800 mb-2">{currentQ.question}</h2>
-                        {currentQ.subtitle && (
-                            <p className="text-slate-500 mb-6">{currentQ.subtitle}</p>
-                        )}
+                        {/* Progress dots */}
+                        <div className="flex gap-2 mb-10">
+                            {questions.map((_, i) => (
+                                <div
+                                    key={i}
+                                    className={`h-1.5 flex-1 rounded-full transition-all duration-300 ${
+                                        i < step ? 'bg-indigo-500' :
+                                        i === step ? 'bg-white' :
+                                        'bg-white/10'
+                                    }`}
+                                />
+                            ))}
+                        </div>
 
-                        <div className="grid grid-cols-2 md:grid-cols-3 gap-3 mt-6">
+                        {/* Question */}
+                        <div className="mb-10">
+                            <h1 className="text-2xl md:text-3xl font-bold text-white mb-2 leading-tight">
+                                {currentQ.question}
+                            </h1>
+                            {currentQ.subtitle && (
+                                <p className="text-white/50 text-sm">{currentQ.subtitle}</p>
+                            )}
+                        </div>
+
+                        {/* Options */}
+                        <div className="space-y-3">
                             {currentQ.options.map(opt => (
                                 <button
                                     key={opt.value}
                                     onClick={() => handleSelect(opt.value)}
-                                    className={`p-4 rounded-xl border-2 text-left transition ${
+                                    className={`w-full p-4 rounded-xl text-left transition-all duration-200 ${
                                         isSelected(opt.value)
-                                            ? 'border-indigo-500 bg-indigo-50 text-indigo-700'
-                                            : 'border-slate-200 hover:border-slate-300 text-slate-700'
+                                            ? 'bg-indigo-600 text-white ring-2 ring-indigo-400'
+                                            : 'bg-white/5 text-white/80 hover:bg-white/10 border border-white/10'
                                     }`}
                                 >
-                                    <span className="font-medium">{opt.label}</span>
+                                    <span className="font-medium text-base">{opt.label}</span>
                                 </button>
                             ))}
                         </div>
-                    </div>
 
-                    {/* Navigation */}
-                    <div className="flex justify-between mt-8 pt-6 border-t border-slate-200">
-                        <button
-                            onClick={() => setStep(Math.max(0, step - 1))}
-                            disabled={step === 0}
-                            className="px-6 py-3 text-slate-600 hover:text-slate-800 disabled:opacity-30 transition"
-                        >
-                            Tillbaka
-                        </button>
+                        {/* Navigation */}
+                        <div className="flex justify-between mt-10">
+                            <button
+                                onClick={() => setStep(Math.max(0, step - 1))}
+                                disabled={step === 0}
+                                className="px-6 py-3 text-white/40 hover:text-white/70 disabled:opacity-0 transition"
+                            >
+                                Tillbaka
+                            </button>
 
-                        {isLastStep ? (
-                            <button
-                                onClick={() => onComplete(answers)}
-                                disabled={!canProceed || saving}
-                                className="px-8 py-3 bg-indigo-600 text-white font-semibold rounded-lg hover:bg-indigo-700 disabled:opacity-50 transition"
-                            >
-                                {saving ? 'Sparar...' : 'Klar - Borja soka jobb!'}
-                            </button>
-                        ) : (
-                            <button
-                                onClick={() => setStep(step + 1)}
-                                disabled={!canProceed}
-                                className="px-8 py-3 bg-indigo-600 text-white font-semibold rounded-lg hover:bg-indigo-700 disabled:opacity-50 transition"
-                            >
-                                Nasta
-                            </button>
-                        )}
+                            {isLastStep ? (
+                                <button
+                                    onClick={() => onComplete(answers)}
+                                    disabled={!canProceed || saving}
+                                    className="px-8 py-3 bg-white text-slate-900 font-semibold rounded-xl hover:bg-white/90 disabled:opacity-30 transition"
+                                >
+                                    {saving ? 'Sparar...' : 'Klar!'}
+                                </button>
+                            ) : (
+                                <button
+                                    onClick={() => setStep(step + 1)}
+                                    disabled={!canProceed}
+                                    className="px-8 py-3 bg-white text-slate-900 font-semibold rounded-xl hover:bg-white/90 disabled:opacity-30 transition"
+                                >
+                                    Nasta
+                                </button>
+                            )}
+                        </div>
                     </div>
                 </div>
             );
@@ -704,65 +777,16 @@
                                 {scraping ? 'Söker...' : 'Sök'}
                             </button>
                         </div>
-                        <p className="text-xs text-slate-500 mt-2">Visar endast jobb med e-postansökan.</p>
                     </div>
 
-                    {/* Filter bar */}
-                    {jobs.length > 0 && (
-                        <div className="bg-white rounded-xl p-4 shadow-sm mb-6">
-                            <div className="flex flex-wrap gap-3 items-center">
-                                <div className="flex-1 min-w-[200px]">
-                                    <input
-                                        type="text"
-                                        value={filterText}
-                                        onChange={(e) => setFilterText(e.target.value)}
-                                        placeholder="Filtrera: titel, företag, plats..."
-                                        className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm"
-                                    />
-                                </div>
-                                <select
-                                    value={filterPriority}
-                                    onChange={(e) => setFilterPriority(e.target.value)}
-                                    className="border border-slate-200 rounded-lg px-3 py-2 text-sm"
-                                >
-                                    <option value="all">Alla prioriteter</option>
-                                    <option value="urgent">⚡ Akut (3 dagar)</option>
-                                    <option value="soon">⏰ Snart (7 dagar)</option>
-                                    <option value="normal">✓ Normal</option>
-                                </select>
-                                <select
-                                    value={sortBy}
-                                    onChange={(e) => setSortBy(e.target.value)}
-                                    className="border border-slate-200 rounded-lg px-3 py-2 text-sm"
-                                >
-                                    <option value="deadline">Sortera: Deadline</option>
-                                    <option value="company">Sortera: Företag</option>
-                                    <option value="title">Sortera: Titel</option>
-                                </select>
-                                {(filterText || filterPriority !== 'all') && (
-                                    <button
-                                        onClick={() => { setFilterText(''); setFilterPriority('all'); }}
-                                        className="text-sm text-slate-500 hover:text-slate-700"
-                                    >
-                                        Rensa filter
-                                    </button>
-                                )}
-                            </div>
-                        </div>
-                    )}
 
-                    {/* Pagination calculation */}
+                    {/* ONE JOB AT A TIME */}
                     {(() => {
-                        const totalPages = Math.ceil(filteredJobs.length / jobsPerPage);
-                        const startIdx = (currentPage - 1) * jobsPerPage;
-                        const paginatedJobs = filteredJobs.slice(startIdx, startIdx + jobsPerPage);
+                        const jobIndex = currentPage - 1;
+                        const currentJob = filteredJobs[jobIndex];
 
                         return (
                             <>
-                                <h2 className="text-lg font-semibold mb-4">
-                                    📋 Jobb ({filteredJobs.length}{filteredJobs.length !== jobs.length ? ` av ${jobs.length}` : ''})
-                                    {totalPages > 1 && <span className="text-slate-400 font-normal text-sm ml-2">Sida {currentPage} av {totalPages}</span>}
-                                </h2>
                                 {jobs.length === 0 ? (
                                     <div className="bg-white rounded-xl p-10 text-center shadow-sm">
                                         <p className="text-slate-500">Inga jobb ännu. Sök för att hitta nya!</p>
@@ -777,68 +801,105 @@
                                             Rensa filter
                                         </button>
                                     </div>
-                                ) : (
-                                    <>
-                                        <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-4">
-                                            {paginatedJobs.map(job => (
-                                                <JobCard
-                                                    key={job.id}
-                                                    job={job}
-                                                    onApply={onApply}
-                                                    onSave={onSaveJob}
-                                                    loading={applyingJob === job.id}
-                                                    savedJobs={savedJobs || []}
-                                                />
-                                            ))}
-                                        </div>
+                                ) : currentJob ? (
+                                    <div className="max-w-xl mx-auto">
+                                        {/* Job card - large single view */}
+                                        <div className="bg-white rounded-2xl shadow-sm border border-slate-100 p-6">
+                                            <div className="flex justify-between items-start mb-3">
+                                                <span className={`text-xs px-2 py-1 rounded-full ${
+                                                    currentJob.priority === 'urgent' ? 'bg-red-100 text-red-700' :
+                                                    currentJob.priority === 'soon' ? 'bg-amber-100 text-amber-700' :
+                                                    'bg-green-100 text-green-700'
+                                                }`}>
+                                                    {currentJob.priority === 'urgent' ? 'Akut' : currentJob.priority === 'soon' ? 'Snart' : 'Ny'}
+                                                </span>
+                                                {currentJob.deadline && (
+                                                    <span className="text-xs text-slate-400">
+                                                        Deadline: {new Date(currentJob.deadline).toLocaleDateString('sv-SE')}
+                                                    </span>
+                                                )}
+                                            </div>
 
-                                        {/* Pagination controls */}
-                                        {totalPages > 1 && (
-                                            <div className="flex justify-center items-center gap-2 mt-6">
-                                                <button
-                                                    onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
-                                                    disabled={currentPage === 1}
-                                                    className="px-4 py-2 border border-slate-200 rounded-lg text-sm hover:bg-slate-50 disabled:opacity-30 disabled:cursor-not-allowed"
-                                                >
-                                                    ← Föregående
-                                                </button>
-                                                <div className="flex gap-1">
-                                                    {Array.from({ length: Math.min(5, totalPages) }, (_, i) => {
-                                                        let pageNum;
-                                                        if (totalPages <= 5) {
-                                                            pageNum = i + 1;
-                                                        } else if (currentPage <= 3) {
-                                                            pageNum = i + 1;
-                                                        } else if (currentPage >= totalPages - 2) {
-                                                            pageNum = totalPages - 4 + i;
-                                                        } else {
-                                                            pageNum = currentPage - 2 + i;
-                                                        }
-                                                        return (
-                                                            <button
-                                                                key={pageNum}
-                                                                onClick={() => setCurrentPage(pageNum)}
-                                                                className={`w-10 h-10 rounded-lg text-sm font-medium ${
-                                                                    currentPage === pageNum
-                                                                        ? 'bg-indigo-600 text-white'
-                                                                        : 'border border-slate-200 hover:bg-slate-50'
-                                                                }`}
-                                                            >
-                                                                {pageNum}
-                                                            </button>
-                                                        );
-                                                    })}
+                                            <h3 className="text-xl font-bold text-slate-800 mb-1">{currentJob.title}</h3>
+                                            <p className="text-pink-600 font-semibold mb-1">{currentJob.company}</p>
+                                            <p className="text-slate-400 text-sm mb-4">{currentJob.location}</p>
+
+                                            {currentJob.description && (
+                                                <div className="bg-slate-50 rounded-lg p-4 mb-4 max-h-48 overflow-y-auto">
+                                                    <p className="text-sm text-slate-600 leading-relaxed">
+                                                        {currentJob.description.substring(0, 500)}
+                                                        {currentJob.description.length > 500 ? '...' : ''}
+                                                    </p>
                                                 </div>
+                                            )}
+
+                                            {currentJob.contact_email && (
+                                                <div className="bg-pink-50 rounded-lg p-3 mb-4">
+                                                    <p className="text-sm text-slate-600">
+                                                        Kontakt: <a href={`mailto:${currentJob.contact_email}`} className="text-pink-600 font-medium">{currentJob.contact_email}</a>
+                                                    </p>
+                                                </div>
+                                            )}
+
+                                            {/* Action buttons - big and clear */}
+                                            <div className="flex gap-3 mt-6">
                                                 <button
-                                                    onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
-                                                    disabled={currentPage === totalPages}
-                                                    className="px-4 py-2 border border-slate-200 rounded-lg text-sm hover:bg-slate-50 disabled:opacity-30 disabled:cursor-not-allowed"
+                                                    onClick={() => setCurrentPage(p => Math.min(filteredJobs.length, p + 1))}
+                                                    className="flex-1 py-3 px-4 border-2 border-slate-200 rounded-xl text-slate-500 font-medium hover:bg-slate-50 transition"
                                                 >
-                                                    Nästa →
+                                                    Hoppa over
+                                                </button>
+                                                <button
+                                                    onClick={() => onApply(currentJob)}
+                                                    disabled={applyingJob === currentJob.id}
+                                                    className="flex-1 py-3 px-4 bg-pink-600 text-white rounded-xl font-medium hover:bg-pink-700 disabled:opacity-50 transition"
+                                                >
+                                                    {applyingJob === currentJob.id ? 'Skapar...' : 'Ansok'}
                                                 </button>
                                             </div>
-                                        )}
-                                    </>
+
+                                            <div className="flex justify-between mt-3">
+                                                <a href={currentJob.url} target="_blank" className="text-sm text-slate-400 hover:text-slate-600">
+                                                    Se pa Platsbanken
+                                                </a>
+                                                <button
+                                                    onClick={() => onSaveJob(currentJob.id, !(savedJobs || []).includes(currentJob.id))}
+                                                    className="text-sm text-slate-400 hover:text-pink-600"
+                                                >
+                                                    {(savedJobs || []).includes(currentJob.id) ? 'Sparad' : 'Spara for senare'}
+                                                </button>
+                                            </div>
+                                        </div>
+
+                                        {/* Navigation */}
+                                        <div className="flex justify-between mt-4">
+                                            <button
+                                                onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
+                                                disabled={jobIndex === 0}
+                                                className="text-sm text-slate-400 hover:text-slate-600 disabled:opacity-30"
+                                            >
+                                                Foregaende jobb
+                                            </button>
+                                            <button
+                                                onClick={() => setCurrentPage(p => Math.min(filteredJobs.length, p + 1))}
+                                                disabled={jobIndex >= filteredJobs.length - 1}
+                                                className="text-sm text-slate-400 hover:text-slate-600 disabled:opacity-30"
+                                            >
+                                                Nasta jobb
+                                            </button>
+                                        </div>
+                                    </div>
+                                ) : (
+                                    <div className="bg-white rounded-xl p-10 text-center shadow-sm max-w-xl mx-auto">
+                                        <p className="text-lg font-semibold text-slate-700 mb-2">Klart!</p>
+                                        <p className="text-slate-500">Du har gatt igenom alla jobb.</p>
+                                        <button
+                                            onClick={() => setCurrentPage(1)}
+                                            className="mt-4 px-4 py-2 bg-pink-600 text-white rounded-lg hover:bg-pink-700"
+                                        >
+                                            Borja om
+                                        </button>
+                                    </div>
                                 )}
                             </>
                         );
@@ -1471,12 +1532,6 @@
                     </div>
                 </div>
 
-                <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 mb-6">
-                    <p className="text-sm text-amber-800">
-                        <strong>Tips:</strong> Klicka "Ladda min data" for att hamta dina fardiga CV:n och erfarenheter.
-                    </p>
-                </div>
-
                 <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-4">
                     {vibes.map(vibe => {
                         const userCV = userCVs.find(cv => cv.vibe_id === vibe.id);
@@ -1770,153 +1825,39 @@
         // ============== ONBOARDING ==============
 
         const OnboardingWizard = ({ onComplete }) => {
-            const [step, setStep] = useState(1);
             const [saving, setSaving] = useState(false);
-            const [importing, setImporting] = useState(false);
-            const [preferences, setPreferences] = useState({
-                job_titles: '',
-                locations: '',
-                job_types: [],
-                experience_level: '',
-                gmail_client_id: '',
-                gmail_client_secret: ''
-            });
-            const [profile, setProfile] = useState({
-                full_name: '',
-                email: '',
-                phone: '',
-                linkedin_url: '',
-                summary: '',
-                skills: '',
-                experiences: [],
-                education: []
-            });
 
-            const jobTypes = [
-                { id: 'full_time', label: 'Heltid' },
-                { id: 'part_time', label: 'Deltid' },
-                { id: 'temporary', label: 'Visstid' },
-                { id: 'internship', label: 'Praktik' },
-                { id: 'remote', label: 'Distans' }
-            ];
-
-            const experienceLevels = [
-                { id: 'entry', label: 'Nyutexaminerad / Första jobbet' },
-                { id: 'junior', label: '1-2 års erfarenhet' },
-                { id: 'mid', label: '3-5 års erfarenhet' },
-                { id: 'senior', label: '5+ års erfarenhet' }
-            ];
-
-            const toggleJobType = (id) => {
-                setPreferences(prev => ({
-                    ...prev,
-                    job_types: prev.job_types.includes(id)
-                        ? prev.job_types.filter(t => t !== id)
-                        : [...prev.job_types, id]
-                }));
-            };
-
-            const addExperience = () => {
-                setProfile(prev => ({
-                    ...prev,
-                    experiences: [...prev.experiences, { company: '', title: '', start_date: '', end_date: '', description: '' }]
-                }));
-            };
-
-            const updateExperience = (index, field, value) => {
-                setProfile(prev => ({
-                    ...prev,
-                    experiences: prev.experiences.map((exp, i) => i === index ? { ...exp, [field]: value } : exp)
-                }));
-            };
-
-            const addEducation = () => {
-                setProfile(prev => ({
-                    ...prev,
-                    education: [...prev.education, { school: '', degree: '', field: '', start_date: '', end_date: '' }]
-                }));
-            };
-
-            const updateEducation = (index, field, value) => {
-                setProfile(prev => ({
-                    ...prev,
-                    education: prev.education.map((edu, i) => i === index ? { ...edu, [field]: value } : edu)
-                }));
-            };
-
-            const importFromLinkedIn = async () => {
-                if (!profile.linkedin_url) {
-                    alert('Klistra in din LinkedIn-URL först');
-                    return;
-                }
-                setImporting(true);
-                const token = localStorage.getItem('auth_token');
-                try {
-                    const res = await fetch('/api/user/import-linkedin', {
-                        method: 'POST',
-                        headers: {
-                            'Content-Type': 'application/json',
-                            'Authorization': `Bearer ${token}`
-                        },
-                        body: JSON.stringify({ linkedin_url: profile.linkedin_url })
-                    });
-                    const data = await res.json();
-                    if (data.success && data.profile) {
-                        setProfile(prev => ({
-                            ...prev,
-                            ...data.profile,
-                            linkedin_url: prev.linkedin_url
-                        }));
-                        alert('LinkedIn-profil importerad!');
-                    } else {
-                        alert(data.message || 'Kunde inte importera från LinkedIn. Fyll i manuellt.');
-                    }
-                } catch (err) {
-                    alert('Kunde inte importera. Fyll i manuellt.');
-                } finally {
-                    setImporting(false);
-                }
-            };
-
-            const handleSave = async () => {
+            const handleQuizComplete = async (answers) => {
                 setSaving(true);
-                const token = localStorage.getItem('auth_token');
                 try {
-                    // Save preferences
+                    const token = localStorage.getItem('auth_token');
                     await fetch('/api/user/preferences', {
                         method: 'POST',
                         headers: {
                             'Content-Type': 'application/json',
-                            'Authorization': `Bearer ${token}`
+                            ...(token ? { 'Authorization': `Bearer ${token}` } : {})
                         },
-                        body: JSON.stringify(preferences)
+                        body: JSON.stringify(answers)
                     });
-
-                    // Save profile/CV data
-                    await fetch('/api/user/profile', {
-                        method: 'POST',
-                        headers: {
-                            'Content-Type': 'application/json',
-                            'Authorization': `Bearer ${token}`
-                        },
-                        body: JSON.stringify(profile)
-                    });
-
                     localStorage.setItem('onboarding_complete', 'true');
+                    localStorage.setItem('job_preferences', JSON.stringify(answers));
                     onComplete();
                 } catch (err) {
-                    alert('Kunde inte spara. Försök igen.');
-                } finally {
-                    setSaving(false);
+                    // Save locally even if server fails
+                    localStorage.setItem('onboarding_complete', 'true');
+                    localStorage.setItem('job_preferences', JSON.stringify(answers));
+                    onComplete();
                 }
+                setSaving(false);
             };
 
-            const totalSteps = 4;
+            return <QuizPage onComplete={handleQuizComplete} saving={saving} />;
+        };
 
+        const _ONBOARDING_OLD_UNUSED = () => {
+            // OLD onboarding wizard kept for reference - not rendered
             return (
-                <div className="min-h-screen bg-gradient-to-br from-indigo-50 to-slate-100 flex items-center justify-center p-4">
-                    <div className="bg-white rounded-2xl shadow-xl max-w-2xl w-full p-8 max-h-[90vh] overflow-y-auto">
-                        {/* Skip button */}
+                <div className="hidden">
                         <div className="flex justify-end mb-4">
                             <button
                                 onClick={() => {
@@ -2321,7 +2262,6 @@
                                 </div>
                             </div>
                         )}
-                    </div>
                 </div>
             );
         };
@@ -2362,28 +2302,12 @@
             }, []);
 
             const checkOnboarding = async () => {
-                const token = localStorage.getItem('auth_token');
-                if (!token) return;
-
-                // Check if onboarding is complete
+                // Check if quiz was completed locally
                 const onboardingComplete = localStorage.getItem('onboarding_complete');
                 if (onboardingComplete) return;
 
-                // Check with server
-                try {
-                    const res = await fetch('/api/user/preferences', {
-                        headers: { 'Authorization': `Bearer ${token}` }
-                    });
-                    const data = await res.json();
-                    if (!data.success || !data.preferences?.job_titles) {
-                        setShowOnboarding(true);
-                    } else {
-                        localStorage.setItem('onboarding_complete', 'true');
-                    }
-                } catch (err) {
-                    // If error, show onboarding
-                    setShowOnboarding(true);
-                }
+                // No quiz done yet - show it
+                setShowOnboarding(true);
             };
 
             const fetchJobs = async () => {
@@ -2551,11 +2475,31 @@
 
             const handleScrape = async (keywords) => {
                 setScraping(true);
-                const kw = keywords.trim() ? keywords.split(',').map(k => k.trim()) : null;
+
+                // Use quiz preferences as defaults if no manual keywords
+                let kw = keywords.trim() ? keywords.split(',').map(k => k.trim()) : null;
+                let location = 'Stockholm';
+
+                if (!kw) {
+                    const prefs = JSON.parse(localStorage.getItem('job_preferences') || '{}');
+                    const roleMap = {
+                        'servitor': 'servitör', 'kundtjanst': 'kundtjänst', 'butik': 'butik',
+                        'lager': 'lager', 'kontor': 'kontor', 'tech': 'IT', 'vard': 'vård',
+                        'hotell': 'hotell', 'content': 'content moderation', 'tradgard': 'trädgård'
+                    };
+                    if (prefs.role_type && prefs.role_type.length > 0) {
+                        kw = prefs.role_type.map(r => roleMap[r] || r);
+                    }
+                    if (prefs.location && prefs.location.length > 0) {
+                        const loc = prefs.location.find(l => l !== 'anywhere' && l !== 'remote');
+                        if (loc) location = loc.charAt(0).toUpperCase() + loc.slice(1);
+                    }
+                }
+
                 const res = await fetch('/api/scrape', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ keywords: kw })
+                    body: JSON.stringify({ keywords: kw, location: location })
                 });
                 const data = await res.json();
                 if (data.success) {
@@ -2569,18 +2513,23 @@
                 setApplyingJob(job.id);
                 setSelectedJob(job);
 
-                const token = localStorage.getItem('auth_token');
-                const res = await fetch(`/api/jobs/${job.id}/apply-with-cv`, {
-                    method: 'POST',
-                    headers: token ? { 'Authorization': `Bearer ${token}` } : {}
-                });
-                const data = await res.json();
+                try {
+                    const token = localStorage.getItem('auth_token');
+                    const res = await fetch(`/api/jobs/${job.id}/apply-with-cv`, {
+                        method: 'POST',
+                        headers: token ? { 'Authorization': `Bearer ${token}` } : {}
+                    });
+                    const data = await res.json();
 
-                if (data.success) {
-                    setApplyResult(data);
-                    setShowApplyModal(true);
-                } else {
-                    alert(data.detail || 'Kunde inte skapa ansökan. Har du genererat CV:n?');
+                    if (data.success) {
+                        setApplyResult(data);
+                        setShowApplyModal(true);
+                    } else {
+                        alert(data.detail || 'Kunde inte skapa ansökan.');
+                    }
+                } catch (err) {
+                    console.error('Apply error:', err);
+                    alert('Något gick fel. Försök igen.');
                 }
                 setApplyingJob(null);
             };
@@ -2730,10 +2679,30 @@
             // Check auth on mount
             const [user, setUser] = useState(null);
 
+            // Auto-refresh token on app load
             useEffect(() => {
                 const storedUser = localStorage.getItem('user');
                 if (storedUser) {
                     setUser(JSON.parse(storedUser));
+                }
+
+                // Refresh token silently
+                const refreshToken = localStorage.getItem('refresh_token');
+                if (refreshToken) {
+                    fetch('/api/auth/refresh', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ refresh_token: refreshToken })
+                    })
+                    .then(r => r.json())
+                    .then(data => {
+                        if (data.success && data.access_token) {
+                            localStorage.setItem('auth_token', data.access_token);
+                            if (data.refresh_token) localStorage.setItem('refresh_token', data.refresh_token);
+                            if (data.user) localStorage.setItem('user', JSON.stringify(data.user));
+                        }
+                    })
+                    .catch(() => {});
                 }
             }, []);
 
@@ -2746,9 +2715,13 @@
                 window.location.href = '/login';
             };
 
-            // Show onboarding if needed
+            // Show quiz if needed
             if (showOnboarding && user) {
-                return <OnboardingWizard onComplete={() => setShowOnboarding(false)} />;
+                return <OnboardingWizard onComplete={() => {
+                    setShowOnboarding(false);
+                    // Auto-scrape with new preferences
+                    handleScrape('');
+                }} />;
             }
 
             // Landing page for non-logged-in users
@@ -2853,14 +2826,21 @@
                                     <h1 className="text-2xl font-bold">Anti-Apathy Job Portal</h1>
                                     <p className="opacity-80 text-sm">Sök jobb utan apati. En ansökan i taget.</p>
                                 </div>
-                                <UserMenu user={user} onLogout={handleLogout} />
+                                <div className="flex items-center gap-3">
+                                    <button
+                                        onClick={() => setShowOnboarding(true)}
+                                        className="text-white/60 hover:text-white text-sm transition px-3 py-1 rounded-lg hover:bg-white/10"
+                                    >
+                                        Preferenser
+                                    </button>
+                                    <UserMenu user={user} onLogout={handleLogout} />
+                                </div>
                             </div>
                             <NavTabs activeTab={activeTab} setActiveTab={setActiveTab} />
                         </div>
                     </header>
 
                     <main className="max-w-6xl mx-auto px-4 py-6">
-                        <Stats stats={{...stats, cv_vibes: userCVs.length}} />
 
                         {activeTab === 'jobs' && (
                             <JobsPage
@@ -2893,6 +2873,41 @@
                                 applications={applications}
                                 onRefresh={fetchApplications}
                             />
+                        )}
+
+                        {activeTab === 'metrics' && (
+                            <div className="max-w-3xl mx-auto space-y-6">
+                                <h2 className="text-lg font-semibold">Din statistik</h2>
+
+                                <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                                    <div className="bg-white rounded-xl p-5 border border-slate-100">
+                                        <div className="text-3xl font-bold text-pink-600">{stats.total_jobs || 0}</div>
+                                        <div className="text-slate-500 text-sm mt-1">Jobb hittade</div>
+                                    </div>
+                                    <div className="bg-white rounded-xl p-5 border border-slate-100">
+                                        <div className="text-3xl font-bold text-green-600">{stats.sent || 0}</div>
+                                        <div className="text-slate-500 text-sm mt-1">Ansokningar skickade</div>
+                                    </div>
+                                    <div className="bg-white rounded-xl p-5 border border-slate-100">
+                                        <div className="text-3xl font-bold text-amber-600">{stats.interviews || 0}</div>
+                                        <div className="text-slate-500 text-sm mt-1">Intervjuer</div>
+                                    </div>
+                                    <div className="bg-white rounded-xl p-5 border border-slate-100">
+                                        <div className="text-3xl font-bold text-purple-600">{userCVs.length || 0}</div>
+                                        <div className="text-slate-500 text-sm mt-1">CV-versioner</div>
+                                    </div>
+                                </div>
+
+                                <div className="bg-white rounded-xl p-5 border border-slate-100">
+                                    <h3 className="font-semibold text-slate-700 mb-3">Sparade jobb</h3>
+                                    <div className="text-3xl font-bold text-blue-600">{(savedJobs || []).length}</div>
+                                </div>
+
+                                <div className="bg-white rounded-xl p-5 border border-slate-100">
+                                    <h3 className="font-semibold text-slate-700 mb-3">Deadline idag</h3>
+                                    <div className="text-3xl font-bold text-red-600">{stats.deadline_today || 0}</div>
+                                </div>
+                            </div>
                         )}
                     </main>
 
