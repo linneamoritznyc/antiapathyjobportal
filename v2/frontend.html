@@ -462,21 +462,20 @@
         const QuizPage = ({ onComplete, saving }) => {
             const [step, setStep] = useState(0);
             const [answers, setAnswers] = useState({
-                role_type: [],
-                industry: [],
-                experience_level: '',
+                search_terms: [],
                 location: [],
-                salary_range: '',
-                skills: [],
-                culture: [],
+                working_hours: '',
+                employment_form: [],
+                duration: '',
+                salary: '',
                 dealbreakers: []
             });
 
             const questions = [
                 {
-                    id: 'role_type',
-                    question: 'Vilken typ av roll soker du?',
-                    subtitle: 'Valj alla som passar',
+                    id: 'search_terms',
+                    question: 'Vad vill du jobba med?',
+                    subtitle: 'Valj alla som passar dig',
                     type: 'multi',
                     options: [
                         { value: 'servitor', label: 'Servering/Restaurang' },
@@ -487,35 +486,10 @@
                         { value: 'tech', label: 'IT/Tech/Utveckling' },
                         { value: 'vard', label: 'Vard/Omsorg' },
                         { value: 'hotell', label: 'Hotell/Reception' },
-                        { value: 'content', label: 'Content/Moderation' },
-                        { value: 'tradgard', label: 'Tradgard/Industri' }
-                    ]
-                },
-                {
-                    id: 'industry',
-                    question: 'Vilken bransch intresserar dig?',
-                    subtitle: 'Valj en eller flera',
-                    type: 'multi',
-                    options: [
-                        { value: 'food', label: 'Mat & Dryck' },
-                        { value: 'retail', label: 'Handel & Butik' },
-                        { value: 'tech', label: 'Tech & IT' },
-                        { value: 'health', label: 'Halsa & Vard' },
-                        { value: 'service', label: 'Service & Gastfrihet' },
-                        { value: 'culture', label: 'Kultur & Media' },
-                        { value: 'finance', label: 'Ekonomi & Bank' },
-                        { value: 'anything', label: 'Oppet for allt' }
-                    ]
-                },
-                {
-                    id: 'experience_level',
-                    question: 'Hur mycket erfarenhet har du?',
-                    type: 'single',
-                    options: [
-                        { value: 'none', label: 'Forsta jobbet' },
-                        { value: 'entry', label: 'Under 1 ar' },
-                        { value: 'mid', label: '1-3 ar' },
-                        { value: 'senior', label: '3+ ar' }
+                        { value: 'barn', label: 'Barn/Forskola/Nanny' },
+                        { value: 'skola', label: 'Skola/Utbildning' },
+                        { value: 'tradgard', label: 'Tradgard/Industri' },
+                        { value: 'stad', label: 'Stad/Lokalvard' }
                     ]
                 },
                 {
@@ -526,66 +500,76 @@
                     options: [
                         { value: 'stockholm', label: 'Stockholm' },
                         { value: 'sollentuna', label: 'Sollentuna' },
+                        { value: 'solna', label: 'Solna' },
                         { value: 'vetlanda', label: 'Vetlanda' },
                         { value: 'goteborg', label: 'Goteborg' },
                         { value: 'malmo', label: 'Malmo' },
+                        { value: 'uppsala', label: 'Uppsala' },
                         { value: 'remote', label: 'Distans/Remote' },
                         { value: 'anywhere', label: 'Hela Sverige' }
                     ]
                 },
                 {
-                    id: 'salary_range',
-                    question: 'Vad ar din loneforvantning?',
+                    id: 'working_hours',
+                    question: 'Hur mycket vill du jobba?',
+                    subtitle: 'Matchar Platsbanken-faltet "Omfattning"',
                     type: 'single',
                     options: [
-                        { value: 'any', label: 'Spelar ingen roll' },
-                        { value: '20-25k', label: '20 000 - 25 000 kr/man' },
-                        { value: '25-30k', label: '25 000 - 30 000 kr/man' },
-                        { value: '30k+', label: '30 000+ kr/man' }
+                        { value: 'heltid', label: 'Heltid' },
+                        { value: 'deltid', label: 'Deltid' },
+                        { value: 'both', label: 'Bade heltid och deltid' },
+                        { value: 'extra', label: 'Extrajobb/Timanstallning' }
                     ]
                 },
                 {
-                    id: 'skills',
-                    question: 'Vilka ar dina starkaste sidor?',
-                    subtitle: 'Valj de som stammer bast',
+                    id: 'employment_form',
+                    question: 'Vilken anstallningsform passar dig?',
+                    subtitle: 'Valj alla du kan tanka dig',
                     type: 'multi',
                     options: [
-                        { value: 'kundkontakt', label: 'Kundkontakt' },
-                        { value: 'teamwork', label: 'Teamwork' },
-                        { value: 'tech', label: 'Teknisk kompetens' },
-                        { value: 'sprak', label: 'Sprak (EN/SV)' },
-                        { value: 'stress', label: 'Stresshantering' },
-                        { value: 'kreativ', label: 'Kreativitet' },
-                        { value: 'sjalvstandig', label: 'Sjalvstandig' },
-                        { value: 'korkort', label: 'B-korkort' }
+                        { value: 'tillsvidare', label: 'Tillsvidareanstallning (fast)' },
+                        { value: 'tidsbegransad', label: 'Tidsbegransad anstallning' },
+                        { value: 'behov', label: 'Behovsanstallning' },
+                        { value: 'sommar', label: 'Sommarjobb/Sasongsarbete' },
+                        { value: 'anything', label: 'Spelar ingen roll' }
                     ]
                 },
                 {
-                    id: 'culture',
-                    question: 'Vilken typ av arbetsplats trivs du pa?',
-                    subtitle: 'Valj det som kanns ratt',
-                    type: 'multi',
+                    id: 'duration',
+                    question: 'Hur lange vill du jobba?',
+                    subtitle: 'Matchar Platsbanken-faltet "Varaktighet"',
+                    type: 'single',
                     options: [
-                        { value: 'litet', label: 'Litet team (under 20)' },
-                        { value: 'stort', label: 'Stort foretag' },
-                        { value: 'flexibelt', label: 'Flexibla tider' },
-                        { value: 'struktur', label: 'Tydlig struktur' },
-                        { value: 'lugnt', label: 'Lugnt tempo' },
-                        { value: 'snabbt', label: 'Snabbt tempo' }
+                        { value: 'tillsvidare', label: 'Tillsvidare (permanent)' },
+                        { value: 'over6', label: '6 manader eller langre' },
+                        { value: '3to6', label: '3-6 manader' },
+                        { value: 'under3', label: 'Under 3 manader' },
+                        { value: 'anything', label: 'Spelar ingen roll' }
+                    ]
+                },
+                {
+                    id: 'salary',
+                    question: 'Vad ar viktigt med lonen?',
+                    subtitle: 'Matchar Platsbanken-faltet "Lonetyp"',
+                    type: 'single',
+                    options: [
+                        { value: 'fast', label: 'Fast lon' },
+                        { value: 'provision', label: 'Provision/Ackord' },
+                        { value: 'anything', label: 'Spelar ingen roll' }
                     ]
                 },
                 {
                     id: 'dealbreakers',
-                    question: 'Finns det nagot du INTE vill gora?',
-                    subtitle: 'Vi filtrerar bort dessa jobb',
+                    question: 'Finns det nagot du INTE vill?',
+                    subtitle: 'Vi filtrerar bort jobb som matchar detta',
                     type: 'multi',
                     allowEmpty: true,
                     options: [
                         { value: 'natt', label: 'Nattarbete' },
                         { value: 'helg', label: 'Helgarbete' },
-                        { value: 'kall', label: 'Utomhus i kylan' },
-                        { value: 'telefon', label: 'Telefonforssaljning' },
+                        { value: 'telefon', label: 'Telefonforsaljning' },
                         { value: 'tunga_lyft', label: 'Tunga lyft' },
+                        { value: 'utomhus', label: 'Utomhusarbete' },
                         { value: 'ingen', label: 'Inget speciellt - jag ar oppen' }
                     ]
                 }
@@ -720,6 +704,12 @@
                 setCurrentPage(1);
             }, [filterText, filterPriority, sortBy, jobs.length]);
 
+            // Load quiz preferences for filtering
+            const quizPrefs = useMemo(() => {
+                try { return JSON.parse(localStorage.getItem('job_preferences') || '{}'); }
+                catch { return {}; }
+            }, [jobs]);
+
             // Filter and sort jobs
             const filteredJobs = jobs
                 .filter(job => {
@@ -736,6 +726,65 @@
                     if (filterPriority !== 'all' && job.priority !== filterPriority) {
                         return false;
                     }
+
+                    // Quiz preference filters
+                    const wh = quizPrefs.working_hours;
+                    if (wh && wh !== 'both') {
+                        const jobWH = (job.working_hours || '').toLowerCase();
+                        if (wh === 'heltid' && jobWH && !jobWH.includes('heltid')) return false;
+                        if (wh === 'deltid' && jobWH && !jobWH.includes('deltid')) return false;
+                        if (wh === 'extra' && jobWH && !jobWH.includes('deltid') && !jobWH.includes('timm')) return false;
+                    }
+
+                    const ef = quizPrefs.employment_form;
+                    if (ef && ef.length > 0 && !ef.includes('anything')) {
+                        const jobET = (job.employment_type || '').toLowerCase();
+                        if (jobET) {
+                            const matchMap = {
+                                'tillsvidare': 'tillsvidare', 'tidsbegransad': 'tidsbegräns',
+                                'behov': 'behov', 'sommar': 'sommar'
+                            };
+                            const matches = ef.some(f => jobET.includes(matchMap[f] || f));
+                            if (!matches) return false;
+                        }
+                    }
+
+                    const dur = quizPrefs.duration;
+                    if (dur && dur !== 'anything') {
+                        const jobDur = (job.duration || '').toLowerCase();
+                        if (jobDur) {
+                            if (dur === 'tillsvidare' && !jobDur.includes('tillsvidare')) return false;
+                            if (dur === 'over6' && !jobDur.includes('6 mån') && !jobDur.includes('längre')) return false;
+                            if (dur === '3to6' && !jobDur.includes('3') && !jobDur.includes('6')) return false;
+                            if (dur === 'under3' && !jobDur.includes('3 mån') && !jobDur.includes('kort')) return false;
+                        }
+                    }
+
+                    const sal = quizPrefs.salary;
+                    if (sal && sal !== 'anything') {
+                        const jobSal = (job.salary_type || job.salary_description || '').toLowerCase();
+                        if (jobSal) {
+                            if (sal === 'fast' && !jobSal.includes('fast')) return false;
+                            if (sal === 'provision' && !jobSal.includes('provision') && !jobSal.includes('ackord')) return false;
+                        }
+                    }
+
+                    // Dealbreakers: exclude jobs matching these keywords in description
+                    const db = quizPrefs.dealbreakers;
+                    if (db && db.length > 0 && !db.includes('ingen')) {
+                        const desc = (job.description || '').toLowerCase();
+                        const title = (job.title || '').toLowerCase();
+                        const dbMap = {
+                            'natt': 'natt', 'helg': 'helg', 'telefon': 'telefon',
+                            'tunga_lyft': 'tunga lyft', 'utomhus': 'utomhus'
+                        };
+                        const hasBreaker = db.some(d => {
+                            const keyword = dbMap[d] || d;
+                            return desc.includes(keyword) || title.includes(keyword);
+                        });
+                        if (hasBreaker) return false;
+                    }
+
                     return true;
                 })
                 .sort((a, b) => {
@@ -2537,10 +2586,11 @@
                     const roleMap = {
                         'servitor': 'servitör', 'kundtjanst': 'kundtjänst', 'butik': 'butik',
                         'lager': 'lager', 'kontor': 'kontor', 'tech': 'IT', 'vard': 'vård',
-                        'hotell': 'hotell', 'content': 'content moderation', 'tradgard': 'trädgård'
+                        'hotell': 'hotell', 'barn': 'barnvakt', 'skola': 'lärare',
+                        'tradgard': 'trädgård', 'stad': 'städ'
                     };
-                    if (prefs.role_type && prefs.role_type.length > 0) {
-                        kw = prefs.role_type.map(r => roleMap[r] || r);
+                    if (prefs.search_terms && prefs.search_terms.length > 0) {
+                        kw = prefs.search_terms.map(r => roleMap[r] || r);
                     }
                     if (prefs.location && prefs.location.length > 0) {
                         const loc = prefs.location.find(l => l !== 'anywhere' && l !== 'remote');

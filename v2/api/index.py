@@ -3094,16 +3094,21 @@ UTMÄRKELSER
 
 
 class UserPreferences(BaseModel):
-    # New quiz format
+    # Quiz fields (maps to Platsbanken data)
+    search_terms: Optional[list] = None
+    location: Optional[list] = None
+    working_hours: Optional[str] = None
+    employment_form: Optional[list] = None
+    duration: Optional[str] = None
+    salary: Optional[str] = None
+    dealbreakers: Optional[list] = None
+    # Legacy fields (backwards compat)
     role_type: Optional[list] = None
     industry: Optional[list] = None
     experience_level: Optional[str] = None
-    location: Optional[list] = None
     salary_range: Optional[str] = None
     skills: Optional[list] = None
     culture: Optional[list] = None
-    dealbreakers: Optional[list] = None
-    # Legacy fields
     job_titles: Optional[str] = None
     locations: Optional[str] = None
     job_types: Optional[list] = None
