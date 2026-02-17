@@ -4422,6 +4422,7 @@
             const [applications, setApplications] = useState([]);
             const [stats, setStats] = useState({});
             const [showOnboarding, setShowOnboarding] = useState(false);
+            const [landingTab, setLandingTab] = useState('hem');
 
             const [scraping, setScraping] = useState(false);
             const [generating, setGenerating] = useState(false);
@@ -4873,9 +4874,6 @@
                     handleScrape('');
                 }} />;
             }
-
-            // Landing page state
-            const [landingTab, setLandingTab] = useState('hem');
 
             // Landing page for non-logged-in users
             if (!user) {
@@ -5387,7 +5385,7 @@
 
                     {/* Version badge */}
                     <div style={{position:'fixed',bottom:'10px',right:'10px',fontSize:'10px',color:'#999',background:'#fff',padding:'4px 8px',borderRadius:'4px',border:'1px solid #ddd',zIndex:9999}}>
-                        v4-debug-2025-02-16
+                        v5-fix-2026-02-17
                     </div>
                 </div>
             );
