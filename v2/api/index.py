@@ -1932,7 +1932,7 @@ def get_frontend_html():
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Anti-Apathy Job Portal</title>
-    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://cdn.jsdelivr.net/npm/tailwindcss@3.4.16/dist/tailwind.min.css" rel="stylesheet">
 </head>
 <body class="bg-slate-50 min-h-screen flex items-center justify-center">
     <div class="text-center p-8">
