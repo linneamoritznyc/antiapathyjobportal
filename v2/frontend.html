@@ -88,7 +88,8 @@
                     { id: 'cvs', label: 'Mina CV', icon: '📄' },
                     { id: 'applications', label: 'Ansökningar', icon: '📬' },
                     { id: 'metrics', label: 'Statistik', icon: '📊' },
-                    { id: 'quiz', label: 'Quiz', icon: '✨' }
+                    { id: 'quiz', label: 'Quiz', icon: '✨' },
+                    { id: 'profil', label: 'Profil', icon: '👤' }
                 ].map(tab => (
                     <button
                         key={tab.id}
@@ -872,6 +873,191 @@
                                     Nästa
                                 </button>
                             )}
+                        </div>
+                    </div>
+                </div>
+            );
+        };
+
+        // Profil page - Profile photo + Training letter
+        const ProfilPage = () => {
+            const [uploadingPhoto, setUploadingPhoto] = useState(false);
+            const [uploadingLetter, setUploadingLetter] = useState(false);
+            const [photoUrl, setPhotoUrl] = useState(null);
+            const [letterStatus, setLetterStatus] = useState(null);
+
+            // Load existing profile data
+            useEffect(() => {
+                fetchProfileData();
+            }, []);
+
+            const fetchProfileData = async () => {
+                const token = localStorage.getItem('supabase_token');
+                if (!token) return;
+
+                try {
+                    const res = await fetch('/api/profile', {
+                        headers: { 'Authorization': `Bearer ${token}` }
+                    });
+                    const data = await res.json();
+                    if (data.profile_photo_url) {
+                        setPhotoUrl(data.profile_photo_url);
+                    }
+                    if (data.training_letter_analyzed) {
+                        setLetterStatus('Uppladdad och analyserad ✓');
+                    }
+                } catch (err) {
+                    console.error('Error fetching profile:', err);
+                }
+            };
+
+            const handlePhotoUpload = async () => {
+                const input = document.createElement('input');
+                input.type = 'file';
+                input.accept = 'image/jpeg,image/jpg,image/png';
+
+                input.onchange = async (e) => {
+                    const file = e.target.files[0];
+                    if (!file) return;
+
+                    setUploadingPhoto(true);
+                    const token = localStorage.getItem('supabase_token');
+
+                    try {
+                        const formData = new FormData();
+                        formData.append('file', file);
+
+                        const res = await fetch('/api/upload/profile-photo', {
+                            method: 'POST',
+                            headers: { 'Authorization': `Bearer ${token}` },
+                            body: formData
+                        });
+
+                        const data = await res.json();
+                        if (res.ok) {
+                            setPhotoUrl(data.photo_url);
+                            alert('Profilbild uppladdad!');
+                        } else {
+                            alert(data.detail || 'Kunde inte ladda upp bild');
+                        }
+                    } catch (err) {
+                        console.error(err);
+                        alert('Ett fel uppstod vid uppladdning');
+                    } finally {
+                        setUploadingPhoto(false);
+                    }
+                };
+                input.click();
+            };
+
+            const handleLetterUpload = async () => {
+                const input = document.createElement('input');
+                input.type = 'file';
+                input.accept = '.pdf,.docx,.doc,.txt,.rtf,.odt';
+
+                input.onchange = async (e) => {
+                    const file = e.target.files[0];
+                    if (!file) return;
+
+                    setUploadingLetter(true);
+                    const token = localStorage.getItem('supabase_token');
+
+                    try {
+                        const formData = new FormData();
+                        formData.append('file', file);
+
+                        const res = await fetch('/api/upload/training-letter', {
+                            method: 'POST',
+                            headers: { 'Authorization': `Bearer ${token}` },
+                            body: formData
+                        });
+
+                        const data = await res.json();
+                        if (res.ok) {
+                            setLetterStatus('Uppladdad och analyserad ✓');
+                            alert('Personligt brev uppladdad! AI har analyserat din skrivstil.');
+                        } else {
+                            alert(data.detail || 'Kunde inte ladda upp brev');
+                        }
+                    } catch (err) {
+                        console.error(err);
+                        alert('Ett fel uppstod vid uppladdning');
+                    } finally {
+                        setUploadingLetter(false);
+                    }
+                };
+                input.click();
+            };
+
+            return (
+                <div className="max-w-3xl mx-auto space-y-8">
+                    <h2 className="text-2xl font-bold">Profil</h2>
+
+                    {/* Profile Photo Section */}
+                    <div className="bg-white rounded-xl p-6 border border-slate-200">
+                        <h3 className="text-lg font-semibold mb-4">🖼️ Profilbild</h3>
+                        <p className="text-sm text-slate-600 mb-4">
+                            Ladda upp en profilbild som kan användas i ansökningar
+                        </p>
+
+                        <div className="flex items-center gap-6">
+                            {photoUrl && (
+                                <img
+                                    src={photoUrl}
+                                    alt="Profilbild"
+                                    className="w-24 h-24 rounded-full object-cover border-2 border-slate-200"
+                                />
+                            )}
+
+                            <button
+                                onClick={handlePhotoUpload}
+                                disabled={uploadingPhoto}
+                                className="bg-indigo-600 text-white px-6 py-3 rounded-lg font-medium hover:bg-indigo-700 disabled:opacity-50 transition"
+                            >
+                                {uploadingPhoto ? 'Laddar upp...' : (photoUrl ? 'Byt profilbild' : '📤 Ladda upp profilbild')}
+                            </button>
+                        </div>
+
+                        <p className="text-xs text-slate-400 mt-3">
+                            Accepterade format: JPG, PNG
+                        </p>
+                    </div>
+
+                    {/* Training Letter Section */}
+                    <div className="bg-white rounded-xl p-6 border border-slate-200">
+                        <h3 className="text-lg font-semibold mb-4">✍️ Exempel-personligt brev</h3>
+                        <p className="text-sm text-slate-600 mb-4">
+                            Ladda upp ett personligt brev du skrivit tidigare. AI analyserar din skrivstil och använder den som mall för framtida ansökningar.
+                        </p>
+
+                        {letterStatus && (
+                            <div className="bg-green-50 border border-green-200 rounded-lg p-3 mb-4">
+                                <p className="text-green-700 text-sm">✓ {letterStatus}</p>
+                            </div>
+                        )}
+
+                        <button
+                            onClick={handleLetterUpload}
+                            disabled={uploadingLetter}
+                            className="bg-indigo-600 text-white px-6 py-3 rounded-lg font-medium hover:bg-indigo-700 disabled:opacity-50 transition"
+                        >
+                            {uploadingLetter ? 'Analyserar...' : '📤 Ladda upp personligt brev'}
+                        </button>
+
+                        <p className="text-xs text-slate-400 mt-3">
+                            Accepterade format: PDF, DOCX, DOC, TXT, RTF, ODT
+                        </p>
+
+                        <div className="mt-6 bg-amber-50 border border-amber-200 rounded-lg p-4">
+                            <p className="text-sm text-amber-800">
+                                <strong>💡 Tips:</strong> Välj ett personligt brev där du känner att tonen och stilen är professionell och representerar dig väl. AI kommer att lära sig:
+                            </p>
+                            <ul className="text-sm text-amber-700 mt-2 ml-4 list-disc">
+                                <li>Din skrivstil och tonalitet</li>
+                                <li>Hur du introducerar dig själv</li>
+                                <li>Vilka fraser och uttryck du använder</li>
+                                <li>Din struktur på personliga brev</li>
+                            </ul>
                         </div>
                     </div>
                 </div>
@@ -3246,6 +3432,10 @@
                                     saving={false}
                                 />
                             </div>
+                        )}
+
+                        {activeTab === 'profil' && (
+                            <ProfilPage />
                         )}
                     </main>
 
