@@ -2899,7 +2899,7 @@
                                             {currentJob.description && (
                                                 <div className="bg-slate-50 rounded-xl p-5 mb-5 max-h-96 overflow-y-auto">
                                                     <p className="text-sm text-slate-700 leading-relaxed whitespace-pre-line">
-                                                        {currentJob.description.substring(0, 3000)}
+                                                        {currentJob.description.substring(0, 3000).replace(/([^\n])\s*•/g, '$1\n\n•')}
                                                         {currentJob.description.length > 3000 ? (
                                                             <span className="text-slate-400"> …<a href={currentJob.url} target="_blank" className="text-indigo-500 hover:underline ml-1">Läs mer på Platsbanken</a></span>
                                                         ) : ''}
