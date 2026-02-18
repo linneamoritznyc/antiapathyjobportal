@@ -274,6 +274,8 @@
             const [savingDraft, setSavingDraft] = useState(false);
             const [draftSaved, setDraftSaved] = useState(false);
             const [experienceHints, setExperienceHints] = useState([]);
+            const [savingAsExample, setSavingAsExample] = useState(false);
+            const [savedAsExample, setSavedAsExample] = useState(false);
 
             // Load user's actual experiences from Master CV when modal opens
             useEffect(() => {
@@ -385,6 +387,25 @@
                     console.error('Regenerate error:', err);
                 }
                 setRegenerating(false);
+            };
+
+            const saveAsTrainingExample = async () => {
+                setSavingAsExample(true);
+                try {
+                    const res = await authFetch('/api/user/save-letter-as-example', {
+                        method: 'POST',
+                        body: JSON.stringify({
+                            letter_text: letter,
+                            job_title: job?.title || 'Okänt jobb'
+                        })
+                    });
+                    if (res.ok) {
+                        setSavedAsExample(true);
+                    }
+                } catch(e) {
+                    console.error('Save as example error:', e);
+                }
+                setSavingAsExample(false);
             };
 
             const saveGmailDraftWithAttachments = async () => {
@@ -578,6 +599,18 @@
                                     className={`px-4 py-2.5 rounded-lg ${showFeedback ? 'bg-amber-100 border-amber-300 text-amber-700' : 'border border-slate-200 hover:bg-slate-50'}`}
                                 >
                                     Feedback
+                                </button>
+                                <button
+                                    onClick={saveAsTrainingExample}
+                                    disabled={savingAsExample || savedAsExample}
+                                    className={`px-4 py-2.5 rounded-lg text-sm ${
+                                        savedAsExample
+                                            ? 'bg-emerald-100 text-emerald-700 border border-emerald-300'
+                                            : 'border border-slate-200 hover:bg-emerald-50 hover:border-emerald-300 hover:text-emerald-700'
+                                    } disabled:opacity-60`}
+                                    title="Spara detta brev som ett bra exempel som AI lär sig av"
+                                >
+                                    {savingAsExample ? '...' : savedAsExample ? '✓ Sparat som exempel' : '⭐ Bra brev!'}
                                 </button>
                                 <button onClick={onClose} className="px-4 py-2.5 border border-slate-200 rounded-lg hover:bg-slate-50">
                                     Stäng

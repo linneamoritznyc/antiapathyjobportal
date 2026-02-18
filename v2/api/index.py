@@ -5763,8 +5763,12 @@ async def upload_user_training_letter(request: Request):
         "file_url": file_url
     })
 
-    # Analyze tone and update style preferences
-    tone_analysis = await analyze_writing_tone_rich(letter_text)
+    # Analyze tone and extract anecdotes in parallel
+    import asyncio as _asyncio
+    tone_analysis, _ = await _asyncio.gather(
+        analyze_writing_tone_rich(letter_text),
+        extract_anecdotes_from_letter(user_id, letter_text)
+    )
     await save_letter_style(user_id, tone_analysis)
 
     return {"success": True, "tone_analysis": tone_analysis, "file_url": file_url}
@@ -5789,7 +5793,12 @@ async def analyze_pasted_letter_text(request: Request):
         "file_url": None
     })
 
-    tone_analysis = await analyze_writing_tone_rich(text)
+    # Analyze tone and extract anecdotes in parallel
+    import asyncio as _asyncio
+    tone_analysis, _ = await _asyncio.gather(
+        analyze_writing_tone_rich(text),
+        extract_anecdotes_from_letter(user_id, text)
+    )
     await save_letter_style(user_id, tone_analysis)
 
     return {"success": True, "tone_analysis": tone_analysis}
@@ -5824,6 +5833,91 @@ async def save_letter_style(user_id: str, analysis: dict):
     else:
         await db_request("POST", "user_cover_letter_preferences",
             data={"user_id": user_id, **data})
+
+
+async def extract_anecdotes_from_letter(user_id: str, letter_text: str):
+    """Extract personal anecdotes and hobbies from a cover letter using AI.
+    Adds new anecdotes to user_anecdotes, skipping duplicates by title."""
+    if not ANTHROPIC_API_KEY or not letter_text or len(letter_text) < 50:
+        return
+
+    prompt = f"""Analysera detta personliga brev och extrahera ALLA personliga anekdoter, hobbys och personliga kopplingar som personen nämner.
+
+Brev (kan vara på svenska ELLER engelska — extrahera oavsett språk):
+{letter_text[:3000]}
+
+Returnera ett JSON-objekt med en enda nyckel "anecdotes" som är en lista. Varje element ska ha:
+- "title": kort titel (max 5 ord, på svenska), t.ex. "Svenska Kyrkan" eller "Gymma"
+- "type": "anecdote" eller "hobby"
+- "content": hela berättelsen/beskrivningen extraherad ur brevet (på svenska, översätt om brevet är på engelska)
+- "keywords": lista med 3-8 nyckelord som matchar vilka jobb anekdoten passar för
+
+Extrahera BARA saker som är personliga/unika — inte generell arbetslivserfarenhet.
+Exempel på vad som räknas:
+- Volontärarbete, ideellt engagemang
+- Personliga kopplingar till organisationer
+- Hobbys som nämns
+- Personliga historier/berättelser
+- Kopplingar till specifika platser eller kulturer
+
+Om inga personliga anekdoter finns i brevet, returnera {{"anecdotes": []}}.
+
+Svara ENDAST med JSON."""
+
+    try:
+        async with httpx.AsyncClient() as client:
+            response = await client.post(
+                "https://api.anthropic.com/v1/messages",
+                headers={
+                    "x-api-key": ANTHROPIC_API_KEY,
+                    "anthropic-version": "2023-06-01",
+                    "content-type": "application/json"
+                },
+                json={
+                    "model": "claude-haiku-4-5-20251001",
+                    "max_tokens": 800,
+                    "messages": [{"role": "user", "content": prompt}]
+                },
+                timeout=25
+            )
+            if response.status_code == 200:
+                result = response.json()
+                raw = result["content"][0]["text"].strip()
+                import json as json_lib
+                start = raw.find('{')
+                end = raw.rfind('}') + 1
+                if start >= 0 and end > start:
+                    parsed = json_lib.loads(raw[start:end])
+                    new_anecdotes = parsed.get("anecdotes", [])
+
+                    if not new_anecdotes:
+                        return
+
+                    # Fetch existing anecdotes to avoid duplicates
+                    existing = await db_request("GET", "user_anecdotes",
+                        params={"user_id": f"eq.{user_id}", "select": "title"}) or []
+                    existing_titles = {a["title"].lower().strip() for a in existing}
+
+                    for a in new_anecdotes:
+                        title = a.get("title", "").strip()
+                        if not title or title.lower() in existing_titles:
+                            continue
+                        a_type = a.get("type", "anecdote")
+                        if a_type not in ("anecdote", "hobby"):
+                            a_type = "anecdote"
+                        try:
+                            await db_request("POST", "user_anecdotes", data={
+                                "user_id": user_id,
+                                "title": title,
+                                "type": a_type,
+                                "content": a.get("content", title),
+                                "keywords": a.get("keywords", [])
+                            })
+                            existing_titles.add(title.lower())
+                        except Exception as e:
+                            logger.error(f"Error saving anecdote '{title}': {e}")
+    except Exception as e:
+        logger.error(f"Anecdote extraction error: {e}")
 
 
 async def analyze_writing_tone_rich(text: str) -> dict:
@@ -5980,6 +6074,40 @@ Svara ENDAST med JSON, inget annat."""
         logger.error(f"Tone analysis error: {e}")
 
     return {"tone": "neutral", "favorite_phrases": []}
+
+
+# ============== SAVE GENERATED LETTER AS TRAINING EXAMPLE ==============
+
+@app.post("/api/user/save-letter-as-example")
+async def save_letter_as_example(request: Request):
+    """Save a generated cover letter as a training example.
+    This re-trains the AI style and extracts any new anecdotes."""
+    user_id = await get_user_id_from_request(request, required=True)
+
+    body = await request.json()
+    letter_text = body.get("letter_text", "").strip()
+    job_title = body.get("job_title", "AI-genererat brev")
+
+    if not letter_text:
+        raise HTTPException(status_code=400, detail="Inget brev att spara")
+
+    # Save as training letter
+    await db_request("POST", "user_training_letters", data={
+        "user_id": user_id,
+        "filename": f"Bra exempel: {job_title}",
+        "letter_text": letter_text,
+        "file_url": None
+    })
+
+    # Re-analyze style and extract anecdotes in parallel
+    import asyncio as _asyncio
+    tone_analysis, _ = await _asyncio.gather(
+        analyze_writing_tone_rich(letter_text),
+        extract_anecdotes_from_letter(user_id, letter_text)
+    )
+    await save_letter_style(user_id, tone_analysis)
+
+    return {"success": True, "message": "Brevet sparades som träningsexempel!"}
 
 
 # ============== ANECDOTES & HOBBIES ==============
