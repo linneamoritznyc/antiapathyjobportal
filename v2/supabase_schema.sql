@@ -516,7 +516,6 @@ CREATE TABLE IF NOT EXISTS applications (
 
 -- Indexes for performance
 CREATE INDEX IF NOT EXISTS idx_jobs_scraped_at ON jobs(scraped_at DESC);
-CREATE INDEX IF NOT EXISTS idx_jobs_priority ON jobs(priority);
 CREATE INDEX IF NOT EXISTS idx_jobs_contact_email ON jobs(contact_email) WHERE contact_email IS NOT NULL;
 CREATE INDEX IF NOT EXISTS idx_master_cv_exports_user ON master_cv_exports(user_id);
 CREATE INDEX IF NOT EXISTS idx_user_cvs_user ON user_cvs(user_id);
@@ -554,6 +553,44 @@ COMMENT ON TABLE user_training_letters IS 'User-uploaded training letters for AI
 COMMENT ON TABLE user_cv_uploads IS 'User-uploaded CVs as PDFs (max 20 per user)';
 COMMENT ON TABLE bransch_cvs IS 'Industry-specific CV variants shown in MinaCVPage';
 
+-- CV version history per CV — added from actual DB state (Feb 18 2026)
+CREATE TABLE IF NOT EXISTS user_cv_versions (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    cv_id UUID NOT NULL,
+    version_number INT NOT NULL,
+    cv_text TEXT NOT NULL,
+    change_description TEXT,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+-- Chat history for AI-built CVs — added from actual DB state (Feb 18 2026)
+CREATE TABLE IF NOT EXISTS user_cv_creation_conversations (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    user_id TEXT NOT NULL,
+    cv_id UUID,
+    messages JSONB NOT NULL DEFAULT '[]'::JSONB,
+    started_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    completed_at TIMESTAMPTZ
+);
+
+-- ============== KNOWN user_id TYPE INCONSISTENCY ==============
+-- Some tables use UUID, others use TEXT for user_id:
+--
+-- UUID: user_profiles, user_education, user_experiences, user_skills,
+--       user_cvs, user_cv_uploads, user_training_letters, applications,
+--       user_cover_letter_preferences, user_job_preferences
+--
+-- TEXT: user_volunteer, user_awards, user_certifications, tech_certifications,
+--       tech_projects, user_cv_branscher, user_experience_tags, bransch_cvs,
+--       master_cv_exports, artist_exhibitions, artist_residencies,
+--       artist_collections, academic_publications,
+--       user_cv_creation_conversations
+--
+-- When inserting data, cast accordingly:
+--   UUID tables: 'da8ed517-...'::UUID
+--   TEXT tables: 'da8ed517-...' (no cast)
+-- Linneas user_id: 1e9d7392-b0d6-4f35-b69d-090c2fe2c671
+
 -- ============== SUPABASE STORAGE BUCKETS ==============
 -- All 3 buckets are PUBLIC with 4 RLS policies each (SELECT/INSERT/UPDATE/DELETE).
 -- Confirmed existing in Supabase dashboard 2026-02-18.
@@ -581,3 +618,149 @@ COMMENT ON TABLE bransch_cvs IS 'Industry-specific CV variants shown in MinaCVPa
 --    Path pattern: {user_id}/{vibe_id}_cv.{ext}
 --    Public URL: {SUPABASE_URL}/storage/v1/object/public/cv-files/{path}
 --    Policies (4): Allow public read, Allow authenticated upload, Allow owner update, Allow owner delete
+
+-- ============== TRIGGER FUNCTIONS ==============
+-- Confirmed live in DB via information_schema.routines (Feb 2026)
+
+-- Sets updated_at = NOW() on every UPDATE (used by: user_cvs)
+CREATE OR REPLACE FUNCTION update_updated_at_column()
+RETURNS TRIGGER AS $$
+BEGIN
+    NEW.updated_at = NOW();
+    RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+-- Sets last_updated = NOW() on every UPDATE (used by: user_experiences)
+CREATE OR REPLACE FUNCTION update_experience_timestamp()
+RETURNS TRIGGER AS $$
+BEGIN
+    NEW.last_updated = NOW();
+    RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+-- ============== TRIGGERS ==============
+-- Confirmed live in DB via information_schema.triggers (Feb 2026)
+
+-- Auto-updates user_cvs.updated_at on every row update
+CREATE TRIGGER update_user_cvs_updated_at
+    BEFORE UPDATE ON user_cvs
+    FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+
+-- Auto-updates user_experiences.last_updated on every row update
+CREATE TRIGGER trigger_update_experience_timestamp
+    BEFORE UPDATE ON user_experiences
+    FOR EACH ROW EXECUTE FUNCTION update_experience_timestamp();
+
+-- ============== UTILITY FUNCTIONS ==============
+-- Confirmed live in DB via information_schema.routines (Feb 2026)
+-- Bodies below are inferred from names + return types — actual Supabase bodies may differ slightly.
+
+-- Returns the best description text for an experience given a target bransch.
+-- Priority: description_variants->bransch > description_short > description
+CREATE OR REPLACE FUNCTION get_best_description(p_experience_id UUID, p_bransch TEXT)
+RETURNS TEXT AS $$
+DECLARE
+    result TEXT;
+BEGIN
+    SELECT COALESCE(
+        (description_variants ->> p_bransch),
+        description_short,
+        description
+    )
+    INTO result
+    FROM user_experiences
+    WHERE id = p_experience_id;
+    RETURN result;
+END;
+$$ LANGUAGE plpgsql;
+
+-- Returns experiences for a user relevant to a given bransch, ordered by relevance score.
+-- Used by cover letter generator to select which jobs to include.
+CREATE OR REPLACE FUNCTION get_experiences_for_industry(p_user_id TEXT, p_bransch TEXT)
+RETURNS TABLE (
+    id              UUID,
+    company         TEXT,
+    title           TEXT,
+    dates           TEXT,
+    description     TEXT,
+    bullets         TEXT[],
+    relevance_score INT,
+    sort_order      INT
+) AS $$
+BEGIN
+    RETURN QUERY
+    SELECT
+        e.id,
+        e.company,
+        e.title,
+        e.dates,
+        get_best_description(e.id, p_bransch),
+        e.bullets,
+        COALESCE((e.relevance_scores ->> p_bransch)::INT, 0),
+        e.sort_order
+    FROM user_experiences e
+    WHERE e.user_id = p_user_id
+      AND (p_bransch = ANY(e.categories) OR e.categories = ARRAY[]::TEXT[])
+    ORDER BY COALESCE((e.relevance_scores ->> p_bransch)::INT, 0) DESC, e.sort_order;
+END;
+$$ LANGUAGE plpgsql;
+
+-- GDPR / account deletion: removes all data for a user across every table.
+-- NOTE: user_id is TEXT in most tables but UUID in user_cv_uploads + user_training_letters.
+-- Call with: SELECT delete_user_data('1e9d7392-b0d6-4f35-b69d-090c2fe2c671');
+CREATE OR REPLACE FUNCTION delete_user_data(p_user_id TEXT)
+RETURNS VOID AS $$
+BEGIN
+    -- Interaction / application data
+    DELETE FROM user_job_interactions     WHERE user_id = p_user_id;
+    DELETE FROM applications              WHERE user_id = p_user_id;
+
+    -- CV content
+    DELETE FROM user_experience_tags      WHERE user_id = p_user_id;
+    DELETE FROM user_experiences          WHERE user_id = p_user_id;
+    DELETE FROM user_education            WHERE user_id = p_user_id;
+    DELETE FROM user_volunteer            WHERE user_id = p_user_id;
+    DELETE FROM user_awards               WHERE user_id = p_user_id;
+    DELETE FROM user_certifications       WHERE user_id = p_user_id;
+    DELETE FROM user_skills               WHERE user_id = p_user_id;
+    DELETE FROM tech_projects             WHERE user_id = p_user_id;
+    DELETE FROM tech_certifications       WHERE user_id = p_user_id;
+    DELETE FROM artist_exhibitions        WHERE user_id = p_user_id;
+    DELETE FROM artist_residencies        WHERE user_id = p_user_id;
+    DELETE FROM artist_collections        WHERE user_id = p_user_id;
+    DELETE FROM academic_publications     WHERE user_id = p_user_id;
+
+    -- Generated CVs + exports
+    DELETE FROM user_cvs                  WHERE user_id = p_user_id;
+    DELETE FROM bransch_cvs               WHERE user_id = p_user_id;
+    DELETE FROM master_cv_exports         WHERE user_id = p_user_id;
+    DELETE FROM user_cv_branscher         WHERE user_id = p_user_id;
+    DELETE FROM user_cv_creation_conversations WHERE user_id = p_user_id;
+    DELETE FROM user_cv_versions          WHERE cv_id IN (
+        SELECT id FROM user_cv_creation_conversations WHERE user_id = p_user_id
+    );  -- cascade-safe: cv_id has no FK, delete manually
+
+    -- UUID-typed user_id columns (cast needed)
+    DELETE FROM user_cv_uploads           WHERE user_id = p_user_id::UUID;
+    DELETE FROM user_training_letters     WHERE user_id = p_user_id::UUID;
+
+    -- Preferences + credentials
+    DELETE FROM user_cover_letter_preferences WHERE user_id = p_user_id;
+    DELETE FROM user_job_preferences          WHERE user_id = p_user_id;
+    DELETE FROM user_google_credentials       WHERE user_id = p_user_id;
+    DELETE FROM user_ai_feedback              WHERE user_id = p_user_id;
+
+    -- Profile last (other tables may reference user_id but no FK enforced)
+    DELETE FROM user_profiles             WHERE user_id = p_user_id;
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER;
+
+-- ============== TABLES NOT YET CREATED IN LIVE DB ==============
+-- The following table is defined in this schema but does NOT exist in the live DB.
+-- Run the CREATE TABLE statement to create it if needed.
+--
+-- user_ai_feedback — AI feedback for personalized cover letters
+--   (Not in DB as of Feb 2026. Row counts query returned no entry for this table.)
+--   To create: run the CREATE TABLE IF NOT EXISTS user_ai_feedback block above.

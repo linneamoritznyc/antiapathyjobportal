@@ -3,111 +3,150 @@
 ## What this project is
 AI-powered job application portal for neurodivergent job seekers in Sweden. Scrapes Platsbanken, generates cover letters via Claude API, creates Gmail drafts with industry-matched CVs.
 
-## Active files ONLY (v2 — Vercel deployed)
-- `v2/api/index.py` — FastAPI backend (Vercel serverless, Supabase, auth, all features)
-- `v2/frontend.html` — React + Tailwind single-file app
-- `v2/api/cv_files/CV_Linnea_Moritz_*.pdf` (x8) — Industry CVs for email attachments
-- `v2/supabase_schema.sql` — Source-of-truth DB schema
+---
 
-## Active files ONLY (v1 — local only, legacy)
-- `api_server.py` — FastAPI server (the one you run locally)
-- `job_portal_backend.py` — All business logic (scraping, AI, Gmail, DB)
-- `data/jobs.db` — SQLite database
+## ⚠️ CRITICAL: REPO STRUCTURE — TWO APPS EXIST, ONLY ONE IS LIVE
 
-## DO NOT TOUCH
-- `v1/` — Abandoned. Ignore completely.
-- `fix_my_backend.py` — One-shot script. Already run.
-- `api_server_updated.py` — Experimental. Not the active server.
-- `Olika CV/` — Old CV folder with duplicates.
-- `config.py`, `auth.py`, `rate_limit.py` — Only used by `api_server_updated.py`, not the active server.
+This repo is a mess. There are two `frontend.html`, two `api/index.py`, and two `vercel.json`. You WILL edit the wrong file if you're not careful.
 
-## v2 is deployed separately
-- `v2/api/index.py` is the Vercel-deployed backend (Supabase, auth, full features)
-- The frontend expects some v2 endpoints that don't exist locally
-- Don't merge v1 and v2 logic without explicit instruction
+```
+antiapathyjobportal/
+├── vercel.json              ← ROOT vercel config (NOT deployed — Vercel root dir = v2/)
+├── api/index.py             ← ROOT backend (NOT deployed — dead code)
+├── frontend.html            ← ROOT frontend (NOT deployed — dead code)
+│
+└── v2/                      ← ✅ THIS IS THE LIVE APP (Vercel root dir = v2/)
+    ├── vercel.json          ← ✅ Active Vercel config
+    ├── frontend.html        ← ✅ THE UI — edit this for all frontend changes
+    └── api/
+        ├── index.py         ← ✅ THE BACKEND — all API endpoints, business logic
+        └── cv_files/        ← PDF CVs for Gmail attachments
+```
+
+### THE RULE: If you're changing anything — it goes in `v2/`
+
+**Frontend/UI changes → `v2/frontend.html`**
+**Backend/API changes → `v2/api/index.py`**
+**DB schema reference → `v2/supabase_schema.sql`**
+
+Everything else in the repo root is legacy/dead. Don't touch it.
+
+---
+
+## Deployment pipeline
+
+```
+GitHub (branch: main, root dir: v2/) → Vercel → serves v2/api/index.py
+                                                  reads v2/frontend.html
+                                                        ↓
+                                                    Supabase (cloud DB)
+```
+
+How `v2/api/index.py` finds the frontend:
+```python
+frontend_path = pathlib.Path(__file__).parent.parent / "frontend.html"
+# __file__ = v2/api/index.py
+# parent   = v2/api/
+# parent.parent = v2/
+# result   = v2/frontend.html  ✅
+```
+
+---
+
+## Active files (v2 — the live deployed app)
+
+| File | Purpose |
+|------|---------|
+| `v2/frontend.html` | React + Tailwind single-file UI |
+| `v2/api/index.py` | FastAPI backend (Vercel serverless) |
+| `v2/api/cv_files/CV_Linnea_Moritz_*.pdf` | 8 industry CVs for Gmail attachments |
+| `v2/supabase_schema.sql` | Source-of-truth DB schema (keep updated) |
+| `v2/vercel.json` | Vercel config (root dir for project = v2/) |
+
+---
+
+## Dead files — DO NOT TOUCH
+
+| Path | Why it exists | Status |
+|------|--------------|--------|
+| `api/index.py` | Old v1 backend | Dead — not deployed |
+| `frontend.html` | Old v1 frontend | Dead — not deployed |
+| `vercel.json` (root) | Old v1 config | Ignored — Vercel uses v2/ as root |
+| `v1/` | Abandoned experiments | Ignore completely |
+| `api_server.py` | Old local dev server | Dead |
+| `job_portal_backend.py` | Old business logic | Dead |
+| `api_server_updated.py` | Experiment | Not active |
+| `config.py`, `auth.py`, `rate_limit.py` | Only for api_server_updated | Dead |
+| `Olika CV/` | Old CV duplicates | Dead |
+| `fix_my_backend.py` | One-shot script, already run | Dead |
+
+---
 
 ## Key constraints
+
 - All UI text in Swedish
 - Never mention art, painting, exhibitions, or Shopify in generated content
-- CV category detection must match: restaurant, retail, industri, healthcare, tech, customerservice, contentmoderation, art
+- CV category detection must match: `restaurant`, `retail`, `industri`, `healthcare`, `tech`, `customerservice`, `contentmoderation`, `art`
 - Gmail OAuth connected via Supabase (user connects Gmail in Profile tab)
 
-## Gmail draft spec — EXACTLY 4 assets
-When the user clicks "Spara i Gmail med bilagor", the resulting Gmail draft must contain:
-1. **Subject line**: `Ansökan: [Jobbtitel] – [Användarens namn]` (e.g. `Ansökan: SERVITRIS/SERVITÖR – Linnea Moritz`)
-2. **Email body**: the generated/edited cover letter text (plain text)
-3. **Attachment 1**: `Personligt_Brev_[Förnamn]_[Efternamn].pdf` — generated PDF from cover letter text
-4. **Attachment 2**: `CV_[Förnamn]_[Efternamn]_[Branch].pdf` — the matched industry CV (e.g. `CV_Linnea_Moritz_Restaurang_Cafe.pdf`)
-
-The v1 screenshot (BBQ Steakhouse application) shows this working correctly and is the reference implementation.
-
-This is handled by:
-- Auto-draft: `apply_with_cv` creates draft at apply-time if Gmail is connected
-- On-demand: `POST /api/jobs/{job_id}/save-draft` creates draft with current (edited) letter
+---
 
 ## CV branch → filename mapping
-- restaurant → `CV_Linnea_Moritz_Restaurang_Cafe.pdf`
-- retail → `CV_Linnea_Moritz_Butik_Kassa.pdf`
-- customerservice → `CV_Linnea_Moritz_Kundtjanst.pdf`
-- tech → `CV_Linnea_Moritz_Tech_Kontor.pdf`
-- healthcare → `CV_Linnea_Moritz_Vard_Omsorg.pdf`
-- industri → `CV_Linnea_Moritz_Industri_Tradgard.pdf`
-- contentmoderation → `CV_Linnea_Moritz_Content_Moderation.pdf`
-- art → `CV_Linnea_Moritz_Konst_Kultur.pdf`
 
-## Current priority
-Get the basics working reliably: scraping, CV matching, cover letter generation, Gmail drafts with both PDFs attached.
-Do not add new features until the core flow works end-to-end.
+| Category | Filename |
+|----------|---------|
+| restaurant | `CV_Linnea_Moritz_Restaurang_Cafe.pdf` |
+| retail | `CV_Linnea_Moritz_Butik_Kassa.pdf` |
+| customerservice | `CV_Linnea_Moritz_Kundtjanst.pdf` |
+| tech | `CV_Linnea_Moritz_Tech_Kontor.pdf` |
+| healthcare | `CV_Linnea_Moritz_Vard_Omsorg.pdf` |
+| industri | `CV_Linnea_Moritz_Industri_Tradgard.pdf` |
+| contentmoderation | `CV_Linnea_Moritz_Content_Moderation.pdf` |
+| art | `CV_Linnea_Moritz_Konst_Kultur.pdf` |
 
-## CRITICAL: Common Claude Code Mistakes to AVOID
+---
 
-### Why Claude Code wastes your time:
+## Gmail draft spec — EXACTLY 4 assets
 
-1. **Doesn't read documentation before starting** - You have .claude/CLAUDE.md, CURRENT_TASK.md, handoff documents. READ THESE FIRST. Don't jump to coding and guess what's needed.
+When "Spara i Gmail med bilagor" is clicked:
+1. **Subject**: `Ansökan: [Jobbtitel] – [Användarens namn]`
+2. **Body**: generated cover letter (plain text)
+3. **Attachment 1**: `Personligt_Brev_[Förnamn]_[Efternamn].pdf`
+4. **Attachment 2**: `CV_[Förnamn]_[Efternamn]_[Branch].pdf`
 
-2. **Defaults to "write more code" for everything** - Sometimes the answer is:
-   - Use existing tools (Supabase SQL Editor)
-   - Check existing files
-   - Run a simple query
-   - Don't think "I'm a coding assistant, so I must write code" when code is the WRONG solution.
+Handled by:
+- Auto-draft: `apply_with_cv` creates draft at apply-time if Gmail is connected
+- On-demand: `POST /api/jobs/{job_id}/save-draft`
 
-3. **Doesn't understand "simple" vs "correct"** - Instructions say: "Keep it simple, get basics working." You hear: "Build elaborate infrastructure with API endpoints, migration systems, complex workflows." STOP.
+---
 
-4. **Forgets context every 10 minutes**:
-   - Told "No local development" → Still suggests running scripts locally
-   - Told "Cloud-based app" → Creates local migration scripts
-   - Told "Just use Supabase dashboard" → Builds API endpoints
+## Database rules
 
-5. **Treats every problem as greenfield** - This app EXISTS. Database EXISTS. Schema EXISTS. Data definitions EXIST. Don't act like building from scratch. USE WHAT'S THERE.
+- **Reading DB**: Ask user to run SELECT in Supabase SQL Editor and paste results. Don't build API endpoints for this.
+- **Writing migrations**: Ask user to show actual schema first. Don't write blind.
+- **Migration files**: Give SQL directly in chat — never create SQL files in the repo. Update `v2/supabase_schema.sql` to reflect changes.
+- **Direct DB connection**: Blocked by network. Don't try.
 
-6. **Can't distinguish "development tools" vs "user features"**:
-   - Need to READ database → Development task → Use SQL Editor
-   - DON'T think: "Database reading = user feature = build API endpoint"
+---
 
-### Database work specifically:
+## Architecture
 
-**When asked to "look at the database":**
-- Ask user to run SELECT queries in Supabase SQL Editor
-- User pastes results
-- That's it
-- DON'T build API endpoints to query the database
-- DON'T try to connect directly (network blocked)
-- DON'T overcomplicate it
+```
+GitHub → Vercel (v2/ as root dir) → FastAPI (v2/api/index.py)
+                                          ↓
+                              Supabase (auth, jobs, CVs, Gmail tokens)
+```
 
-**When writing database migrations:**
-1. ASK user to show you actual schema first (SELECT from information_schema)
-2. ASK user to show you actual data (SELECT * LIMIT 5)
-3. THEN write migration SQL based on THEIR reality, not your assumptions
-4. Don't write blind
+Core flow: job scraping → CV matching → cover letter generation → Gmail draft with 2 PDFs
 
-### Database changes:
-- NEVER create separate SQL migration files in the repo. It clutters GitHub and is overwhelming.
-- Instead: give SQL directly to the user in chat to run in Supabase SQL Editor.
-- ALWAYS update `v2/supabase_schema.sql` to reflect any DB changes (this is the source of truth).
-- One schema file, no migration folder spam.
+**Current priority**: Get this core flow working reliably. No new features until it's solid end-to-end.
 
-### Architecture reminders:
-- GitHub → Vercel → Supabase
-- All text in Swedish
-- Core flow: job scraping → CV matching → cover letter → Gmail draft
-- Get THIS working before adding anything else
+---
+
+## Common mistakes to AVOID
+
+1. **Editing root `frontend.html` or root `api/index.py`** — these are dead. Always edit in `v2/`.
+2. **Building API endpoints to read the DB** — just ask user to run SQL in Supabase dashboard.
+3. **Creating SQL migration files in the repo** — give SQL in chat, update `v2/supabase_schema.sql`.
+4. **Suggesting local development** — this is a cloud app. No local dev environment exists.
+5. **Over-engineering** — keep it simple. Get basics working first.
