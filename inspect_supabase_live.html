@@ -1,0 +1,137 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Supabase Database Inspector</title>
+    <style>
+        body {
+            font-family: monospace;
+            background: #1a1a1a;
+            color: #0f0;
+            padding: 20px;
+        }
+        h1 { color: #0ff; }
+        .table {
+            margin: 20px 0;
+            padding: 15px;
+            border: 1px solid #0f0;
+            background: #0a0a0a;
+        }
+        .table h2 { color: #ff0; }
+        pre {
+            white-space: pre-wrap;
+            background: #000;
+            padding: 10px;
+            border: 1px solid #333;
+        }
+        button {
+            background: #0f0;
+            color: #000;
+            padding: 10px 20px;
+            border: none;
+            cursor: pointer;
+            font-family: monospace;
+            font-size: 16px;
+        }
+        button:hover { background: #0ff; }
+        #loading { color: #ff0; }
+        .error { color: #f00; }
+    </style>
+</head>
+<body>
+    <h1>🔍 Live Supabase Database Inspector</h1>
+    <p>Database: <strong>https://apqrvyeujsetxdjkwupx.supabase.co</strong></p>
+    <button onclick="inspect()">Inspect Database Now</button>
+    <div id="loading"></div>
+    <div id="output"></div>
+
+    <script>
+        const SUPABASE_URL = 'https://apqrvyeujsetxdjkwupx.supabase.co';
+        const SERVICE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImFwcXJ2eWV1anNldHhkamt3dXB4Iiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc3MDc1OTczOSwiZXhwIjoyMDg2MzM1NzM5fQ.J35GpamK_n-1mxr4tbw178fckdV6z8_Apbz04sTlG3M';
+
+        async function fetchTable(tableName) {
+            const headers = {
+                'apikey': SERVICE_KEY,
+                'Authorization': `Bearer ${SERVICE_KEY}`,
+                'Content-Type': 'application/json',
+                'Prefer': 'count=exact'
+            };
+
+            try {
+                // Get count
+                const countResponse = await fetch(`${SUPABASE_URL}/rest/v1/${tableName}?limit=0`, {
+                    headers: {...headers, 'Prefer': 'count=exact'}
+                });
+                const range = countResponse.headers.get('Content-Range');
+                const count = range ? range.split('/')[1] : '0';
+
+                // Get sample data
+                const dataResponse = await fetch(`${SUPABASE_URL}/rest/v1/${tableName}?limit=5`, {
+                    headers
+                });
+                const data = await dataResponse.json();
+
+                return {
+                    table: tableName,
+                    count: count,
+                    columns: data[0] ? Object.keys(data[0]) : [],
+                    sample: data
+                };
+            } catch (error) {
+                return {
+                    table: tableName,
+                    error: error.message
+                };
+            }
+        }
+
+        async function inspect() {
+            const loading = document.getElementById('loading');
+            const output = document.getElementById('output');
+
+            loading.innerHTML = 'Loading database structure...';
+            output.innerHTML = '';
+
+            const tables = [
+                'user_profiles',
+                'user_experiences',
+                'user_education',
+                'user_skills',
+                'user_volunteer',
+                'user_awards',
+                'user_cover_letter_preferences',
+                'user_job_preferences',
+                'user_cv_branscher',
+                'user_cvs',
+                'jobs',
+                'applications'
+            ];
+
+            let html = '';
+            for (const tableName of tables) {
+                loading.innerHTML = `Inspecting: ${tableName}...`;
+                const info = await fetchTable(tableName);
+
+                html += `
+                    <div class="table">
+                        <h2>📋 ${info.table}</h2>
+                        ${info.error ?
+                            `<p class="error">❌ Error: ${info.error}</p>` :
+                            `
+                            <p><strong>Row count:</strong> ${info.count}</p>
+                            <p><strong>Columns (${info.columns.length}):</strong> ${info.columns.join(', ')}</p>
+                            <details open>
+                                <summary><strong>Sample Data (first 5 rows)</strong></summary>
+                                <pre>${JSON.stringify(info.sample, null, 2)}</pre>
+                            </details>
+                            `
+                        }
+                    </div>
+                `;
+            }
+
+            loading.innerHTML = '✅ Done!';
+            output.innerHTML = html;
+        }
+    </script>
+</body>
+</html>

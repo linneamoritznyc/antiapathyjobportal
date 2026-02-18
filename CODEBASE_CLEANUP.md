@@ -1,138 +1,149 @@
 # Codebase Cleanup Guide
+*Senast uppdaterad: 18 februari 2026*
 
-## System Map
+---
+
+## ⚠️ VIKTIGASTE REGELN
+
+Det finns **två appar i detta repo**. Vercel deployas ALLTID från `v2/`. Root-nivån är referensmaterial.
 
 ```
-Anti-Apathy Job Portal
-├── Local v1 (ACTIVE - what you develop on)
-│   ├── Backend:  api_server.py + job_portal_backend.py
-│   ├── Frontend: frontend.html (React + Tailwind via CDN)
-│   ├── Database: data/jobs.db (SQLite)
-│   └── Server:   python3 api_server.py → localhost:8000
+antiapathyjobportal/
 │
-├── Deployed v2 (LIVE on Vercel + Supabase)
-│   ├── Backend:  v2/api/index.py (FastAPI, 3570 lines)
-│   ├── Frontend: v2/frontend.html + v2/login.html + v2/account.html
-│   ├── Database: Supabase (PostgreSQL, cloud)
-│   └── Schema:   v2/supabase_schema.sql + v2/setup_and_migrate.sql
+├── v2/                        ← ✅ LIVE APP — redigera alltid här
+│   ├── frontend.html          ← ALL design/UI
+│   ├── api/index.py           ← ALL backend/API
+│   ├── api/cv_files/          ← 8 bransch-CVer (PDF)
+│   ├── vercel.json            ← Vercel config
+│   ├── requirements.txt       ← Python deps
+│   └── supabase_schema.sql    ← Source-of-truth DB schema
 │
-└── CV PDFs (8 industry-specific, used by both versions)
-    ├── CV_Linnea_Moritz_Restaurang_Cafe.pdf
-    ├── CV_Linnea_Moritz_Butik_Kassa.pdf
-    ├── CV_Linnea_Moritz_Kundtjanst.pdf
-    ├── CV_Linnea_Moritz_Tech_Kontor.pdf
-    ├── CV_Linnea_Moritz_Content_Moderation.pdf
-    ├── CV_Linnea_Moritz_Industri_Tradgard.pdf
-    ├── CV_Linnea_Moritz_Vard_Omsorg.pdf
-    └── CV_Linnea_Moritz_Konst_Kultur.pdf
+├── api_server.py              ← v1 lokal server (referensmaterial, ALDRIG deployad)
+├── job_portal_backend.py      ← v1 business logic (referensmaterial)
+├── .claude/CLAUDE.md          ← LÄSAS AV CLAUDE — projektinstruktioner
+├── HANDOFF_2026-02-18.md      ← Aktuellt handoff-dokument
+└── CODEBASE_CLEANUP.md        ← DETTA DOKUMENT
 ```
 
 ---
 
-## Active Files (DO edit these)
+## System Map (nuläge feb 2026)
 
-### Core Backend (local v1)
-| File | Purpose | Lines |
-|------|---------|-------|
-| `api_server.py` | FastAPI server — all REST endpoints | ~600 |
-| `job_portal_backend.py` | Business logic — scraping, AI, Gmail, DB | ~1150 |
-| `requirements.txt` | Python dependencies | 5 |
-
-### Frontend
-| File | Purpose | Size |
-|------|---------|------|
-| `frontend.html` | Main React app (jobs, CVs, applications, today) | ~3050 lines |
-| `login.html` | Login/signup page (Supabase auth) | 25KB |
-| `account.html` | User account/settings page | 27KB |
-
-### Data
-| File | Purpose |
-|------|---------|
-| `data/jobs.db` | SQLite database (auto-created) |
-| `CV_Linnea_Moritz_*.pdf` (x8) | Industry-specific CVs for attachments |
-
-### Configuration
-| File | Purpose |
-|------|---------|
-| `.env` (create if needed) | API keys, passwords |
-| `.gitignore` | Git ignore rules |
-| `vercel.json` | Vercel deployment config |
-
-### Deployed v2 (edit carefully — it's live)
-| File | Purpose |
-|------|---------|
-| `v2/api/index.py` | Full backend with auth, Supabase, all features | 3570 lines |
-| `v2/supabase_schema.sql` | Database schema (the real one) |
-| `v2/setup_and_migrate.sql` | Migration scripts |
-| `v2/migrate_user_data.py` | Data migration utility |
+```
+GitHub (main branch, root dir: v2/)
+    → Vercel (serverless Python)
+        → v2/api/index.py  (FastAPI, ~5500 rader)
+                ↓
+        Supabase (PostgreSQL, cloud)
+                ↓
+        v2/frontend.html  (React + Tailwind, single-file, ~3000 rader)
+```
 
 ---
 
-## Files to IGNORE (legacy / deprecated / one-shot)
+## Active Files — REDIGERA DESSA
 
-### Can be deleted
-| File | Why |
-|------|-----|
-| `fix_my_backend.py` | One-shot regex surgery script. Already run. |
-| `api_server_updated.py` | Experimental version with auth. Never used as primary. |
-| `v1/` (entire directory) | Abandoned first Vercel attempt. Empty shell. |
-| `Olika CV/anti-apathy-portal-final/` | Pre-GitHub copy of original project. |
-| `Olika CV/Skarmavbild 2025-12-20 kl. 13.10.27.png` | Random screenshot. |
+### v2/ (live appen)
+| Fil | Syfte | Redigera? |
+|-----|-------|-----------|
+| `v2/frontend.html` | All UI — React + Tailwind, single HTML-fil | ✅ JA |
+| `v2/api/index.py` | All backend — FastAPI, endpoints, AI, Gmail, Supabase | ✅ JA |
+| `v2/vercel.json` | Vercel config (includeFiles, routes, maxDuration=60s) | Sällan |
+| `v2/requirements.txt` | Python-deps (fastapi, httpx, PyPDF2, python-docx, etc.) | Sällan |
+| `v2/supabase_schema.sql` | DB-schema source-of-truth — uppdatera när schema ändras | ✅ JA |
 
-### Keep but don't edit (reference only)
-| File | Why |
-|------|-----|
-| `app-changes-Feb-8-2026.md` | Architecture brief for v2 rebuild. Reference. |
-| `supabase_schema.sql` (root) | Outdated schema. v2 version is canonical. |
-| `config.py` | Settings class for `api_server_updated.py`. Not used by active server. |
-| `auth.py` | Auth utilities for `api_server_updated.py`. Not used by active server. |
-| `rate_limit.py` | Rate limiting for `api_server_updated.py`. Not used by active server. |
-
-### Documentation (reference only)
-| Directory | Contents |
-|-----------|----------|
-| `anti apathy job portal DOCUMENTATION AND PROJECT MANAGEMENT/` | README, philosophy, specs, changelog, next steps |
-| `docs/` | Design history, GDPR guide |
-| `SECURITY.md` | Security guidelines |
+### Root-nivå (referensmaterial — läs, redigera inte)
+| Fil | Syfte |
+|-----|-------|
+| `api_server.py` | v1 lokal server. Innehåller endpoints som inte finns i v2. Referens. |
+| `job_portal_backend.py` | v1 business logic. Har Linneas CV-sammanfattning, kategori-logik, scraping. Referens. |
+| `auth.py`, `config.py`, `rate_limit.py` | Tillhör api_server_updated.py (experimentell). Referens. |
+| `supabase_helper.py` | v1 Supabase-klient. Referens. |
+| `HANDOFF_2026-02-18.md` | Aktuellt handoff — läs detta när ny session startar |
+| `HANDOFF_2025-02-16.md` | Gammalt handoff — migrationsproblem från feb 2025 |
+| `CODEBASE_CLEANUP.md` | Detta dokument |
 
 ---
 
-## Frontend-Backend Mismatch Warning
+## CV-bransch-mapping (KRITISK — ändra inte utan att uppdatera alla ställen)
 
-The frontend (`frontend.html`) was copied from v2 and expects these endpoints that **only exist in v2/api/index.py**, NOT in `api_server.py`:
+| Kategori-ID | CV-fil | Trigger-ord |
+|------------|--------|-------------|
+| `restaurant` | `CV_Linnea_Moritz_Restaurang_Cafe.pdf` | restaurang, kock, café, barista, kök |
+| `retail` | `CV_Linnea_Moritz_Butik_Kassa.pdf` | butik, kassa, försäljare |
+| `customerservice` | `CV_Linnea_Moritz_Kundtjanst.pdf` | kundtjänst, support, kundservice |
+| `tech` | `CV_Linnea_Moritz_Tech_Kontor.pdf` | it, tech, utvecklare, developer |
+| `healthcare` | `CV_Linnea_Moritz_Vard_Omsorg.pdf` | vård, omsorg, undersköterska |
+| `industri` | `CV_Linnea_Moritz_Industri_Tradgard.pdf` | lager, industri, trädgård |
+| `contentmoderation` | `CV_Linnea_Moritz_Content_Moderation.pdf` | moderator, content, trust & safety |
+| `art` | `CV_Linnea_Moritz_Konst_Kultur.pdf` | konst, kultur, galleri |
 
-| Frontend calls... | Exists in `api_server.py`? | Exists in `v2/api/index.py`? |
-|---|---|---|
-| `GET /api/jobs` | YES | YES |
-| `POST /api/scrape` | YES | YES |
-| `GET /api/stats` | YES | YES |
-| `GET /api/today` | YES (new) | NO |
-| `POST /api/quick-apply/{id}` | YES (new) | NO |
-| `POST /api/batch-apply` | YES (new) | NO |
-| `GET /api/cv/vibes` | NO | YES |
-| `GET /api/cv/all` | NO | YES |
-| `POST /api/cv/generate-branscher` | NO | YES |
-| `GET /api/cv/master` | NO | YES |
-| `POST /api/jobs/{id}/apply-with-cv` | NO | YES |
-| `GET /api/user/preferences` | NO | YES |
-| `POST /api/user/profile` | NO | YES |
-| `POST /api/user/experience` | NO | YES |
-| `POST /api/migrate-my-data` | NO | YES |
-| `GET /api/applications` | YES (basic) | YES (full) |
-
-This means: **locally, the CV/profile/auth features in the frontend won't work**. They only work when deployed to Vercel where `v2/api/index.py` handles them.
+**OBS:** Kategorin `art` ska ALDRIG nämna konst/målningar i generererat text (Linnea vill inte söka konstjobb med det personliga brevet).
 
 ---
 
-## File Size Reality Check
+## Hårdkodat i koden som borde vara i Supabase
 
-| Category | Files | Total size |
-|----------|-------|------------|
-| Active Python backend | 2 files | ~63KB |
-| Frontend HTML | 3 files | ~230KB |
-| v2 backend | 1 file | ~127KB |
-| CV PDFs | 8 files | ~800KB |
-| Documentation | ~12 .md files | ~100KB |
-| Legacy/deletable | ~5 files | ~25KB |
+Följande finns hårdkodat i `v2/api/index.py` och är Linneas data. Det borde lagras i Supabase:
 
-The codebase is not huge — it just feels overwhelming because of the v1/v2 split and files that should have been cleaned up.
+### 1. DEFAULT_EXPERIENCE (rad ~488)
+Per-kategori korta CV-sammanfattningar som används när Supabase-data saknas i cover letter-generering.
+
+**SQL för att lagra detta ordentligt:** Se `v2/supabase/migrations/add_cv_category_hints.sql` (att skapas).
+
+### 2. Profil-fallbacks (rad ~555-560)
+```python
+phone = p.get("phone", "0761166109")         # Linneas telefon
+email = p.get("email", "linneamoritzCV@gmail.com")
+location = p.get("location", "Sollentuna")
+```
+Dessa är fallbacks om user_profiles-tabellen är tom. Bör vara ifyllda i Supabase.
+
+### 3. always_mention / never_mention (rad ~2647-2648)
+```python
+"always_mention": ["flexibel med tider", "korkort", "flytande engelska"],
+"never_mention": ["konst", "malning", "utstallningar", "Shopify", ...]
+```
+Dessa är migration-defaults. Lagras i `user_cover_letter_prefs` i Supabase efter migration.
+
+---
+
+## SQL-filer i v2/ (förklaring)
+
+| Fil | Status | Innehåll |
+|-----|--------|---------|
+| `v2/supabase_schema.sql` | ✅ AKTIV (source-of-truth) | Hela DB-schemat |
+| `v2/supabase_schema_wed_feb_18.sql` | Snapshot 18 feb 2026 | Faktiskt DB-tillstånd exporterat från Supabase |
+| `v2/setup_and_migrate.sql` | Körts | Initial setup + migration |
+| `v2/migrate_complete.sql` | Körts | Komplett migrationsskript |
+| `v2/migrate_complete_data.sql` | Körts | Migrationsskript med data |
+| `v2/master_cv_data.sql` | Referens | Linneas CV-data i SQL-format |
+| `v2/MIGRATE_COMPLETE_DATA.sql` | Körts | Komplett data-migration |
+| `v2/supabase/migrations/*.sql` | Körts | Alla partiella migrations |
+
+**DB-regel:** Ge SQL direkt i chatten. Uppdatera `v2/supabase_schema.sql`. Skapa ALDRIG nya SQL-filer i repot.
+
+---
+
+## Ändringslogg (18 februari 2026)
+
+### Städning gjord
+- ✅ Raderat från root: `frontend.html`, `api/index.py`, `vercel.json`, `requirements.txt` — exakta duplicat av v2/-versioner
+- ✅ Raderat: `account.html`, `login.html`, `setup-guide.html`, `anvandarvillkor.html`, `integritetspolicy.html`, `cv_template.html` — duplicat (finns i v2/)
+- ✅ Raderat: `CV_Linnea_Moritz_*.pdf` × 8 från root — duplicat (finns i v2/api/cv_files/)
+- ✅ Behållit: `api_server.py`, `job_portal_backend.py`, docs — referensmaterial, ej duplicat
+
+### Förbättringar
+- ✅ Lagt till `includeFiles` i `v2/vercel.json` — Vercel bundlar nu explicit alla HTML-filer
+- ✅ Skapat `HANDOFF_2026-02-18.md` — aktuellt handoff med nuläge
+- ✅ Uppdaterat `CODEBASE_CLEANUP.md` (detta dokument)
+
+---
+
+## Vanliga misstag (för Claude)
+
+1. **Redigera root-filer** — de är DÖDA. Allt i v2/.
+2. **Bygga API-endpoints för att läsa DB** — be användaren köra SQL i Supabase dashboard.
+3. **Skapa SQL-filer i repot** — ge SQL i chatten, uppdatera supabase_schema.sql.
+4. **Anta att design-ändringar syns direkt** — behöver merge till main + hard refresh.
+5. **Radera context-docs** — HANDOFF, PROJECT_CONTEXT, MODULARITY_GUIDE är INTE dead code.
