@@ -20,6 +20,27 @@
     <script type="text/babel">
         const { useState, useEffect, useMemo } = React;
 
+        // ============== SHARED HELPERS ==============
+
+        // Authenticated fetch — wraps fetch() with auth token from localStorage
+        const authFetch = async (url, options = {}) => {
+            const token = localStorage.getItem('auth_token');
+            const headers = {
+                'Content-Type': 'application/json',
+                ...(token ? { 'Authorization': `Bearer ${token}` } : {}),
+                ...options.headers
+            };
+            return fetch(url, { ...options, headers });
+        };
+
+        // Common button style constants
+        const BTN = {
+            primary: "bg-indigo-600 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-indigo-700 transition",
+            secondary: "border border-slate-200 px-4 py-2 rounded-lg text-sm font-medium hover:bg-slate-50 transition",
+            danger: "bg-red-600 text-white px-3 py-1.5 rounded-lg text-sm font-medium hover:bg-red-700 transition",
+            small: "px-3 py-1.5 rounded-lg text-xs font-medium transition",
+        };
+
         // ============== COMPONENTS ==============
 
         // User menu dropdown
@@ -137,12 +158,8 @@
                 e.stopPropagation();
                 setSaving(true);
                 try {
-                    const token = localStorage.getItem('auth_token');
                     const method = isSaved ? 'DELETE' : 'POST';
-                    await fetch(`/api/jobs/${job.id}/save`, {
-                        method,
-                        headers: { 'Authorization': `Bearer ${token}` }
-                    });
+                    await authFetch(`/api/jobs/${job.id}/save`, { method });
                     if (onSave) onSave(job.id, !isSaved);
                 } catch (err) {
                     console.error('Error saving job:', err);
@@ -279,13 +296,8 @@
             const saveApplication = async (status = 'draft') => {
                 if (applicationSaved && status === 'draft') return;
                 try {
-                    const token = localStorage.getItem('auth_token');
-                    await fetch('/api/applications', {
+                    await authFetch('/api/applications', {
                         method: 'POST',
-                        headers: {
-                            'Content-Type': 'application/json',
-                            'Authorization': `Bearer ${token}`
-                        },
                         body: JSON.stringify({
                             job_id: job.id,
                             cover_letter: letter,
@@ -322,13 +334,8 @@
                 if (!feedback.trim()) return;
                 setSavingFeedback(true);
                 try {
-                    const token = localStorage.getItem('auth_token');
-                    await fetch('/api/user/ai-feedback', {
+                    await authFetch('/api/user/ai-feedback', {
                         method: 'POST',
-                        headers: {
-                            'Content-Type': 'application/json',
-                            'Authorization': `Bearer ${token}`
-                        },
                         body: JSON.stringify({
                             feedback_text: feedback,
                             feedback_type: 'cover_letter',
@@ -348,17 +355,12 @@
             const regenerateLetter = async () => {
                 setRegenerating(true);
                 try {
-                    const token = localStorage.getItem('auth_token');
                     const extraHintText = EXPERIENCE_HINTS
                         .filter(e => selectedHints.includes(e.id))
                         .map(e => e.hint)
                         .join('\n');
-                    const res = await fetch(`/api/jobs/${job.id}/apply-with-cv`, {
+                    const res = await authFetch(`/api/jobs/${job.id}/apply-with-cv`, {
                         method: 'POST',
-                        headers: {
-                            'Content-Type': 'application/json',
-                            ...(token ? { 'Authorization': `Bearer ${token}` } : {})
-                        },
                         body: JSON.stringify({ job, extra_hints: extraHintText })
                     });
                     const data = await res.json();
@@ -376,13 +378,8 @@
             const saveGmailDraftWithAttachments = async () => {
                 setSavingDraft(true);
                 try {
-                    const token = localStorage.getItem('auth_token');
-                    const res = await fetch(`/api/jobs/${job.id}/save-draft`, {
+                    const res = await authFetch(`/api/jobs/${job.id}/save-draft`, {
                         method: 'POST',
-                        headers: {
-                            'Content-Type': 'application/json',
-                            ...(token ? { 'Authorization': `Bearer ${token}` } : {})
-                        },
                         body: JSON.stringify({
                             job,
                             cover_letter: letter,
@@ -1053,11 +1050,8 @@
             const [connecting, setConnecting] = useState(false);
             const [msg, setMsg] = useState(null);
 
-            const token = localStorage.getItem('auth_token');
-            const headers = token ? { 'Authorization': `Bearer ${token}` } : {};
-
             useEffect(() => {
-                fetch('/api/gmail/status?user_id=default_user', { headers })
+                authFetch('/api/gmail/status?user_id=default_user')
                     .then(r => r.json())
                     .then(d => setGmailStatus(d))
                     .catch(() => setGmailStatus({ connected: false }));
@@ -1067,7 +1061,7 @@
                 setConnecting(true);
                 setMsg(null);
                 try {
-                    const resp = await fetch('/api/gmail/auth-url?user_id=default_user', { headers });
+                    const resp = await authFetch('/api/gmail/auth-url?user_id=default_user');
                     const data = await resp.json();
                     if (!data.auth_url) {
                         setMsg({ type: 'error', text: data.app_configured === false ? 'Gmail-integration är inte aktiverad av administratören.' : 'Kunde inte starta inloggning.' });
@@ -1078,7 +1072,7 @@
                     const timer = setInterval(async () => {
                         if (popup.closed) {
                             clearInterval(timer);
-                            const r2 = await fetch('/api/gmail/status?user_id=default_user', { headers });
+                            const r2 = await authFetch('/api/gmail/status?user_id=default_user');
                             const d2 = await r2.json();
                             setGmailStatus(d2);
                             setConnecting(false);
@@ -1096,9 +1090,8 @@
                 setDisconnecting(true);
                 setMsg(null);
                 try {
-                    const resp = await fetch('/api/gmail/disconnect?user_id=default_user', {
-                        method: 'POST',
-                        headers
+                    const resp = await authFetch('/api/gmail/disconnect?user_id=default_user', {
+                        method: 'POST'
                     });
                     const data = await resp.json();
                     if (data.success) {
@@ -1192,13 +1185,10 @@
             }, []);
 
             const fetchProfileData = async () => {
-                const token = localStorage.getItem('auth_token');
-                if (!token) return;
+                if (!localStorage.getItem('auth_token')) return;
 
                 try {
-                    const res = await fetch('/api/profile', {
-                        headers: { 'Authorization': `Bearer ${token}` }
-                    });
+                    const res = await authFetch('/api/profile');
                     const data = await res.json();
                     if (data.profile_photo_url) {
                         setPhotoUrl(data.profile_photo_url);
@@ -1222,13 +1212,8 @@
                 setSavingSignature(true);
                 setSignatureStatus(null);
                 try {
-                    const token = localStorage.getItem('auth_token');
-                    const res = await fetch('/api/profile/signature', {
+                    const res = await authFetch('/api/profile/signature', {
                         method: 'PATCH',
-                        headers: {
-                            'Content-Type': 'application/json',
-                            'Authorization': `Bearer ${token}`
-                        },
                         body: JSON.stringify({ signature })
                     });
                     if (res.ok) {
@@ -1800,13 +1785,10 @@
             }, []);
 
             const fetchMasterCVData = async () => {
-                const token = localStorage.getItem('auth_token');
-                if (!token) return;
+                if (!localStorage.getItem('auth_token')) return;
 
                 try {
-                    const res = await fetch('/api/master-cv', {
-                        headers: { 'Authorization': `Bearer ${token}` }
-                    });
+                    const res = await authFetch('/api/master-cv');
                     const data = await res.json();
 
                     setStats({
@@ -1830,13 +1812,10 @@
             };
 
             const fetchBranschCVs = async () => {
-                const token = localStorage.getItem('auth_token');
-                if (!token) return;
+                if (!localStorage.getItem('auth_token')) return;
 
                 try {
-                    const res = await fetch('/api/bransch-cvs', {
-                        headers: { 'Authorization': `Bearer ${token}` }
-                    });
+                    const res = await authFetch('/api/bransch-cvs');
                     const data = await res.json();
                     setBranschCVs(data.bransch_cvs || []);
                 } catch (err) {
@@ -1845,13 +1824,10 @@
             };
 
             const handleDownloadMasterCV = async () => {
-                const token = localStorage.getItem('auth_token');
-                if (!token) return;
+                if (!localStorage.getItem('auth_token')) return;
 
                 try {
-                    const res = await fetch('/api/master-cv/download-pdf', {
-                        headers: { 'Authorization': `Bearer ${token}` }
-                    });
+                    const res = await authFetch('/api/master-cv/download-pdf');
                     const blob = await res.blob();
                     const url = window.URL.createObjectURL(blob);
                     const a = document.createElement('a');
@@ -1866,13 +1842,10 @@
             };
 
             const handleDownloadBranschCV = async (cv) => {
-                const token = localStorage.getItem('auth_token');
-                if (!token) return;
+                if (!localStorage.getItem('auth_token')) return;
 
                 try {
-                    const res = await fetch(`/api/bransch-cvs/${cv.id}/download-pdf`, {
-                        headers: { 'Authorization': `Bearer ${token}` }
-                    });
+                    const res = await authFetch(`/api/bransch-cvs/${cv.id}/download-pdf`);
                     const blob = await res.blob();
                     const url = window.URL.createObjectURL(blob);
                     const a = document.createElement('a');
@@ -2555,12 +2528,9 @@
             }, []);
 
             const fetchUploadedLetters = async () => {
-                const token = localStorage.getItem('auth_token');
-                if (!token) return;
+                if (!localStorage.getItem('auth_token')) return;
                 try {
-                    const res = await fetch('/api/user/training-letters', {
-                        headers: { 'Authorization': `Bearer ${token}` }
-                    });
+                    const res = await authFetch('/api/user/training-letters');
                     if (res.ok) {
                         const data = await res.json();
                         setUploadedLetters(data.letters || []);
@@ -2569,13 +2539,11 @@
             };
 
             const deleteLetter = async (id) => {
-                const token = localStorage.getItem('auth_token');
-                if (!token) return;
+                if (!localStorage.getItem('auth_token')) return;
                 setDeletingId(id);
                 try {
-                    const res = await fetch(`/api/user/training-letters/${id}`, {
-                        method: 'DELETE',
-                        headers: { 'Authorization': `Bearer ${token}` }
+                    const res = await authFetch(`/api/user/training-letters/${id}`, {
+                        method: 'DELETE'
                     });
                     if (res.ok) {
                         setUploadedLetters(prev => prev.filter(l => l.id !== id));
@@ -2585,12 +2553,9 @@
             };
 
             const fetchLetterStyle = async () => {
-                const token = localStorage.getItem('auth_token');
-                if (!token) { setLoadingStyle(false); return; }
+                if (!localStorage.getItem('auth_token')) { setLoadingStyle(false); return; }
                 try {
-                    const res = await fetch('/api/user/letter-style', {
-                        headers: { 'Authorization': `Bearer ${token}` }
-                    });
+                    const res = await authFetch('/api/user/letter-style');
                     if (res.ok) {
                         const data = await res.json();
                         setLetterStyle(data.style_summary || null);
@@ -2644,17 +2609,12 @@
 
             const handlePasteSubmit = async () => {
                 if (!pastedText.trim()) return;
-                const token = localStorage.getItem('auth_token');
-                if (!token) return;
+                if (!localStorage.getItem('auth_token')) return;
                 setLoading(true);
                 setSaveStatus('Analyserar text...');
                 try {
-                    const res = await fetch('/api/user/analyze-letter-text', {
+                    const res = await authFetch('/api/user/analyze-letter-text', {
                         method: 'POST',
-                        headers: {
-                            'Authorization': `Bearer ${token}`,
-                            'Content-Type': 'application/json'
-                        },
                         body: JSON.stringify({ text: pastedText })
                     });
                     const data = await res.json();
@@ -2888,15 +2848,10 @@
 
             // Log interaction signal to backend (Meta-style event collection)
             const logInteraction = async (jobId, action, context = {}) => {
-                const token = localStorage.getItem('auth_token');
-                if (!token) return;
+                if (!localStorage.getItem('auth_token')) return;
                 try {
-                    await fetch(`/api/jobs/${jobId}/interaction`, {
+                    await authFetch(`/api/jobs/${jobId}/interaction`, {
                         method: 'POST',
-                        headers: {
-                            'Content-Type': 'application/json',
-                            'Authorization': `Bearer ${token}`
-                        },
                         body: JSON.stringify({ action, context })
                     });
                 } catch (e) {
@@ -3965,13 +3920,8 @@
             const handleStatusChange = async (appId, newStatus) => {
                 setUpdating(appId);
                 try {
-                    const token = localStorage.getItem('auth_token');
-                    const response = await fetch(`/api/applications/${appId}`, {
+                    const response = await authFetch(`/api/applications/${appId}`, {
                         method: 'PATCH',
-                        headers: {
-                            'Content-Type': 'application/json',
-                            'Authorization': `Bearer ${token}`
-                        },
                         body: JSON.stringify({ status: newStatus })
                     });
                     if (response.ok && onRefresh) {
@@ -3986,13 +3936,8 @@
             const handleSaveNotes = async (appId) => {
                 setUpdating(appId);
                 try {
-                    const token = localStorage.getItem('auth_token');
-                    await fetch(`/api/applications/${appId}`, {
+                    await authFetch(`/api/applications/${appId}`, {
                         method: 'PATCH',
-                        headers: {
-                            'Content-Type': 'application/json',
-                            'Authorization': `Bearer ${token}`
-                        },
                         body: JSON.stringify({ notes: noteText })
                     });
                     setEditingNotes(null);
@@ -4006,10 +3951,8 @@
             const handleDelete = async (appId) => {
                 if (!confirm('Ta bort denna ansökan?')) return;
                 try {
-                    const token = localStorage.getItem('auth_token');
-                    await fetch(`/api/applications/${appId}`, {
-                        method: 'DELETE',
-                        headers: { 'Authorization': `Bearer ${token}` }
+                    await authFetch(`/api/applications/${appId}`, {
+                        method: 'DELETE'
                     });
                     if (onRefresh) await onRefresh();
                 } catch (err) {
@@ -4224,10 +4167,7 @@
             React.useEffect(() => {
                 const check = async () => {
                     try {
-                        const token = localStorage.getItem('auth_token');
-                        const resp = await fetch('/api/gmail/status?user_id=default_user', {
-                            headers: token ? { 'Authorization': `Bearer ${token}` } : {}
-                        });
+                        const resp = await authFetch('/api/gmail/status?user_id=default_user');
                         const data = await resp.json();
                         if (data.connected) {
                             setStatus('connected');
@@ -4245,10 +4185,7 @@
             const connectGmail = async () => {
                 setStatus('loading');
                 try {
-                    const token = localStorage.getItem('auth_token');
-                    const resp = await fetch('/api/gmail/auth-url?user_id=default_user', {
-                        headers: token ? { 'Authorization': `Bearer ${token}` } : {}
-                    });
+                    const resp = await authFetch('/api/gmail/auth-url?user_id=default_user');
                     const data = await resp.json();
                     if (data.auth_url) {
                         const popup = window.open(data.auth_url, 'gmail_auth', 'width=500,height=600');
@@ -4257,9 +4194,7 @@
                             if (popup.closed) {
                                 clearInterval(timer);
                                 // Re-check status
-                                const r2 = await fetch('/api/gmail/status?user_id=default_user', {
-                                    headers: token ? { 'Authorization': `Bearer ${token}` } : {}
-                                });
+                                const r2 = await authFetch('/api/gmail/status?user_id=default_user');
                                 const d2 = await r2.json();
                                 if (d2.connected) {
                                     setStatus('connected');
@@ -4350,12 +4285,6 @@
             const handleQuizComplete = async (answers) => {
                 setSaving(true);
                 try {
-                    const token = localStorage.getItem('auth_token');
-                    const headers = {
-                        'Content-Type': 'application/json',
-                        ...(token ? { 'Authorization': `Bearer ${token}` } : {})
-                    };
-
                     // 1. Save personal info to user_profiles
                     const profileData = {
                         full_name: answers.full_name,
@@ -4366,9 +4295,8 @@
                         earliest_start: answers.earliest_start,
                         education_level: answers.education_level
                     };
-                    await fetch('/api/user/profile-from-quiz', {
+                    await authFetch('/api/user/profile-from-quiz', {
                         method: 'POST',
-                        headers,
                         body: JSON.stringify(profileData)
                     });
 
@@ -4383,9 +4311,8 @@
                         salary: answers.salary,
                         dealbreakers: answers.dealbreakers
                     };
-                    await fetch('/api/user/preferences', {
+                    await authFetch('/api/user/preferences', {
                         method: 'POST',
-                        headers,
                         body: JSON.stringify(prefData)
                     });
 
@@ -4406,359 +4333,8 @@
             return <QuizPage onComplete={handleQuizComplete} saving={saving} />;
         };
 
-        const _ONBOARDING_OLD_UNUSED = () => {
-            // OLD onboarding wizard kept for reference - not rendered
-            return (
-                <div className="hidden">
-                        <div className="flex justify-end mb-4">
-                            <button
-                                onClick={() => {
-                                    localStorage.setItem('onboarding_complete', 'true');
-                                    onComplete();
-                                }}
-                                className="text-sm text-slate-400 hover:text-slate-600 transition"
-                            >
-                                Hoppa över →
-                            </button>
-                        </div>
-                        {/* Progress */}
-                        <div className="flex gap-2 mb-8">
-                            {[1, 2, 3, 4].map(i => (
-                                <div key={i} className={`flex-1 h-2 rounded-full ${i <= step ? 'bg-indigo-600' : 'bg-slate-200'}`} />
-                            ))}
-                        </div>
-
-                        {/* Step 1: Job Preferences */}
-                        {step === 1 && (
-                            <div>
-                                <h2 className="text-2xl font-bold text-slate-800 mb-2">Vad söker du för jobb?</h2>
-                                <p className="text-slate-600 mb-6">Berätta så vi kan hitta rätt jobb åt dig.</p>
-
-                                <div className="space-y-4">
-                                    <div>
-                                        <label className="block text-sm font-medium text-slate-700 mb-1">
-                                            Jobbtitlar du söker
-                                        </label>
-                                        <input
-                                            type="text"
-                                            value={preferences.job_titles}
-                                            onChange={(e) => setPreferences({...preferences, job_titles: e.target.value})}
-                                            placeholder="t.ex. servitör, kundtjänst, säljare"
-                                            className="w-full px-4 py-3 border border-slate-200 rounded-lg focus:ring-2 focus:ring-indigo-500"
-                                        />
-                                        <p className="text-xs text-slate-500 mt-1">Separera med komma</p>
-                                    </div>
-
-                                    <div>
-                                        <label className="block text-sm font-medium text-slate-700 mb-1">
-                                            Var vill du jobba?
-                                        </label>
-                                        <input
-                                            type="text"
-                                            value={preferences.locations}
-                                            onChange={(e) => setPreferences({...preferences, locations: e.target.value})}
-                                            placeholder="t.ex. Stockholm, Göteborg, Remote"
-                                            className="w-full px-4 py-3 border border-slate-200 rounded-lg focus:ring-2 focus:ring-indigo-500"
-                                        />
-                                    </div>
-
-                                    <div>
-                                        <label className="block text-sm font-medium text-slate-700 mb-2">
-                                            Vilken typ av anställning?
-                                        </label>
-                                        <div className="flex flex-wrap gap-2">
-                                            {jobTypes.map(type => (
-                                                <button
-                                                    key={type.id}
-                                                    onClick={() => toggleJobType(type.id)}
-                                                    className={`px-4 py-2 rounded-lg text-sm font-medium transition ${
-                                                        preferences.job_types.includes(type.id)
-                                                            ? 'bg-indigo-600 text-white'
-                                                            : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
-                                                    }`}
-                                                >
-                                                    {type.label}
-                                                </button>
-                                            ))}
-                                        </div>
-                                    </div>
-
-                                    <div>
-                                        <label className="block text-sm font-medium text-slate-700 mb-2">
-                                            Din erfarenhetsnivå
-                                        </label>
-                                        <div className="grid grid-cols-2 gap-2">
-                                            {experienceLevels.map(level => (
-                                                <button
-                                                    key={level.id}
-                                                    onClick={() => setPreferences({...preferences, experience_level: level.id})}
-                                                    className={`px-4 py-3 rounded-lg text-sm font-medium transition text-left ${
-                                                        preferences.experience_level === level.id
-                                                            ? 'bg-indigo-600 text-white'
-                                                            : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
-                                                    }`}
-                                                >
-                                                    {level.label}
-                                                </button>
-                                            ))}
-                                        </div>
-                                    </div>
-                                </div>
-
-                                <button
-                                    onClick={() => setStep(2)}
-                                    className="w-full mt-8 bg-indigo-600 text-white py-3 rounded-lg font-semibold hover:bg-indigo-700"
-                                >
-                                    Fortsätt
-                                </button>
-                            </div>
-                        )}
-
-                        {/* Step 2: CV/Profile */}
-                        {step === 2 && (
-                            <div>
-                                <h2 className="text-2xl font-bold text-slate-800 mb-2">Berätta om dig själv</h2>
-                                <p className="text-slate-600 mb-6">
-                                    Importera från LinkedIn eller fyll i manuellt.
-                                </p>
-
-                                {/* LinkedIn Import */}
-                                <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-6">
-                                    <label className="block text-sm font-medium text-blue-800 mb-2">
-                                        Importera från LinkedIn
-                                    </label>
-                                    <div className="flex gap-2">
-                                        <input
-                                            type="text"
-                                            value={profile.linkedin_url}
-                                            onChange={(e) => setProfile({...profile, linkedin_url: e.target.value})}
-                                            placeholder="https://linkedin.com/in/ditt-namn"
-                                            className="flex-1 px-3 py-2 border border-blue-200 rounded-lg text-sm"
-                                        />
-                                        <button
-                                            onClick={importFromLinkedIn}
-                                            disabled={importing}
-                                            className="px-4 py-2 bg-blue-600 text-white rounded-lg text-sm font-medium hover:bg-blue-700 disabled:opacity-50"
-                                        >
-                                            {importing ? 'Importerar...' : 'Importera'}
-                                        </button>
-                                    </div>
-                                </div>
-
-                                <div className="space-y-4">
-                                    <div className="grid grid-cols-2 gap-4">
-                                        <div>
-                                            <label className="block text-sm font-medium text-slate-700 mb-1">Namn</label>
-                                            <input
-                                                type="text"
-                                                value={profile.full_name}
-                                                onChange={(e) => setProfile({...profile, full_name: e.target.value})}
-                                                className="w-full px-3 py-2 border border-slate-200 rounded-lg"
-                                            />
-                                        </div>
-                                        <div>
-                                            <label className="block text-sm font-medium text-slate-700 mb-1">Telefon</label>
-                                            <input
-                                                type="text"
-                                                value={profile.phone}
-                                                onChange={(e) => setProfile({...profile, phone: e.target.value})}
-                                                className="w-full px-3 py-2 border border-slate-200 rounded-lg"
-                                            />
-                                        </div>
-                                    </div>
-
-                                    <div>
-                                        <label className="block text-sm font-medium text-slate-700 mb-1">Sammanfattning</label>
-                                        <textarea
-                                            value={profile.summary}
-                                            onChange={(e) => setProfile({...profile, summary: e.target.value})}
-                                            rows={3}
-                                            placeholder="Kort beskrivning av dig själv..."
-                                            className="w-full px-3 py-2 border border-slate-200 rounded-lg"
-                                        />
-                                    </div>
-
-                                    <div>
-                                        <label className="block text-sm font-medium text-slate-700 mb-1">Färdigheter</label>
-                                        <input
-                                            type="text"
-                                            value={profile.skills}
-                                            onChange={(e) => setProfile({...profile, skills: e.target.value})}
-                                            placeholder="t.ex. Kundservice, Excel, Kassasystem"
-                                            className="w-full px-3 py-2 border border-slate-200 rounded-lg"
-                                        />
-                                        <p className="text-xs text-slate-500 mt-1">Separera med komma</p>
-                                    </div>
-
-                                    {/* Work Experience */}
-                                    <div>
-                                        <div className="flex justify-between items-center mb-2">
-                                            <label className="block text-sm font-medium text-slate-700">Arbetslivserfarenhet</label>
-                                            <button onClick={addExperience} className="text-sm text-indigo-600 hover:underline">+ Lägg till</button>
-                                        </div>
-                                        {profile.experiences.map((exp, i) => (
-                                            <div key={i} className="bg-slate-50 rounded-lg p-3 mb-2">
-                                                <div className="grid grid-cols-2 gap-2 mb-2">
-                                                    <input
-                                                        placeholder="Företag"
-                                                        value={exp.company}
-                                                        onChange={(e) => updateExperience(i, 'company', e.target.value)}
-                                                        className="px-2 py-1 border border-slate-200 rounded text-sm"
-                                                    />
-                                                    <input
-                                                        placeholder="Titel"
-                                                        value={exp.title}
-                                                        onChange={(e) => updateExperience(i, 'title', e.target.value)}
-                                                        className="px-2 py-1 border border-slate-200 rounded text-sm"
-                                                    />
-                                                </div>
-                                                <div className="grid grid-cols-2 gap-2 mb-2">
-                                                    <input
-                                                        placeholder="Från (2022)"
-                                                        value={exp.start_date}
-                                                        onChange={(e) => updateExperience(i, 'start_date', e.target.value)}
-                                                        className="px-2 py-1 border border-slate-200 rounded text-sm"
-                                                    />
-                                                    <input
-                                                        placeholder="Till (2024 eller Pågående)"
-                                                        value={exp.end_date}
-                                                        onChange={(e) => updateExperience(i, 'end_date', e.target.value)}
-                                                        className="px-2 py-1 border border-slate-200 rounded text-sm"
-                                                    />
-                                                </div>
-                                                <textarea
-                                                    placeholder="Beskrivning..."
-                                                    value={exp.description}
-                                                    onChange={(e) => updateExperience(i, 'description', e.target.value)}
-                                                    rows={2}
-                                                    className="w-full px-2 py-1 border border-slate-200 rounded text-sm"
-                                                />
-                                            </div>
-                                        ))}
-                                        {profile.experiences.length === 0 && (
-                                            <p className="text-sm text-slate-400 italic">Ingen erfarenhet tillagd ännu</p>
-                                        )}
-                                    </div>
-
-                                    {/* Education */}
-                                    <div>
-                                        <div className="flex justify-between items-center mb-2">
-                                            <label className="block text-sm font-medium text-slate-700">Utbildning</label>
-                                            <button onClick={addEducation} className="text-sm text-indigo-600 hover:underline">+ Lägg till</button>
-                                        </div>
-                                        {profile.education.map((edu, i) => (
-                                            <div key={i} className="bg-slate-50 rounded-lg p-3 mb-2">
-                                                <div className="grid grid-cols-2 gap-2 mb-2">
-                                                    <input
-                                                        placeholder="Skola"
-                                                        value={edu.school}
-                                                        onChange={(e) => updateEducation(i, 'school', e.target.value)}
-                                                        className="px-2 py-1 border border-slate-200 rounded text-sm"
-                                                    />
-                                                    <input
-                                                        placeholder="Program/Examen"
-                                                        value={edu.degree}
-                                                        onChange={(e) => updateEducation(i, 'degree', e.target.value)}
-                                                        className="px-2 py-1 border border-slate-200 rounded text-sm"
-                                                    />
-                                                </div>
-                                                <div className="grid grid-cols-2 gap-2">
-                                                    <input
-                                                        placeholder="Från (2020)"
-                                                        value={edu.start_date}
-                                                        onChange={(e) => updateEducation(i, 'start_date', e.target.value)}
-                                                        className="px-2 py-1 border border-slate-200 rounded text-sm"
-                                                    />
-                                                    <input
-                                                        placeholder="Till (2023)"
-                                                        value={edu.end_date}
-                                                        onChange={(e) => updateEducation(i, 'end_date', e.target.value)}
-                                                        className="px-2 py-1 border border-slate-200 rounded text-sm"
-                                                    />
-                                                </div>
-                                            </div>
-                                        ))}
-                                        {profile.education.length === 0 && (
-                                            <p className="text-sm text-slate-400 italic">Ingen utbildning tillagd ännu</p>
-                                        )}
-                                    </div>
-                                </div>
-
-                                <div className="flex gap-3 mt-8">
-                                    <button
-                                        onClick={() => setStep(1)}
-                                        className="flex-1 border border-slate-200 py-3 rounded-lg font-semibold hover:bg-slate-50"
-                                    >
-                                        Tillbaka
-                                    </button>
-                                    <button
-                                        onClick={() => setStep(3)}
-                                        className="flex-1 bg-indigo-600 text-white py-3 rounded-lg font-semibold hover:bg-indigo-700"
-                                    >
-                                        Fortsätt
-                                    </button>
-                                </div>
-                            </div>
-                        )}
-
-                        {/* Step 3: Gmail Setup */}
-                        {step === 3 && (
-                            <GmailConnectStep onNext={() => setStep(4)} onBack={() => setStep(2)} />
-                        )}
-
-                        {/* Step 4: Summary */}
-                        {step === 4 && (
-                            <div>
-                                <h2 className="text-2xl font-bold text-slate-800 mb-2">Allt klart!</h2>
-                                <p className="text-slate-600 mb-6">Här är en sammanfattning.</p>
-
-                                <div className="bg-slate-50 rounded-lg p-4 space-y-3">
-                                    <div>
-                                        <span className="text-sm text-slate-500">Namn:</span>
-                                        <p className="font-medium">{profile.full_name || 'Ej angivet'}</p>
-                                    </div>
-                                    <div>
-                                        <span className="text-sm text-slate-500">Söker:</span>
-                                        <p className="font-medium">{preferences.job_titles || 'Ej angivet'}</p>
-                                    </div>
-                                    <div>
-                                        <span className="text-sm text-slate-500">Plats:</span>
-                                        <p className="font-medium">{preferences.locations || 'Ej angivet'}</p>
-                                    </div>
-                                    <div>
-                                        <span className="text-sm text-slate-500">Anställningstyp:</span>
-                                        <p className="font-medium">
-                                            {preferences.job_types.length > 0
-                                                ? preferences.job_types.map(t => jobTypes.find(jt => jt.id === t)?.label).join(', ')
-                                                : 'Alla typer'}
-                                        </p>
-                                    </div>
-                                    <div>
-                                        <span className="text-sm text-slate-500">Gmail:</span>
-                                        <p className="font-medium text-green-700">Kontrolleras separat i steg 3</p>
-                                    </div>
-                                </div>
-
-                                <div className="flex gap-3 mt-8">
-                                    <button
-                                        onClick={() => setStep(3)}
-                                        className="flex-1 border border-slate-200 py-3 rounded-lg font-semibold hover:bg-slate-50"
-                                    >
-                                        Tillbaka
-                                    </button>
-                                    <button
-                                        onClick={handleSave}
-                                        disabled={saving}
-                                        className="flex-1 bg-indigo-600 text-white py-3 rounded-lg font-semibold hover:bg-indigo-700 disabled:opacity-50"
-                                    >
-                                        {saving ? 'Sparar...' : 'Starta jobbsökning!'}
-                                    </button>
-                                </div>
-                            </div>
-                        )}
-                </div>
-            );
-        };
+        // NOTE: Old onboarding wizard (_ONBOARDING_OLD_UNUSED) removed — 340 lines of dead code.
+        // See git history if needed.
 
         // ============== MAIN APP ==============
 
@@ -4806,10 +4382,7 @@
             };
 
             const fetchJobs = async () => {
-                const token = localStorage.getItem('auth_token');
-                const res = await fetch('/api/jobs', {
-                    headers: token ? { 'Authorization': `Bearer ${token}` } : {}
-                });
+                const res = await authFetch('/api/jobs');
                 const data = await res.json();
                 if (data.success) setJobs(data.jobs || []);
             };
@@ -4826,11 +4399,8 @@
             };
 
             const fetchUserCVs = async () => {
-                const token = localStorage.getItem('auth_token');
-                console.log('[DEBUG] Fetching user CVs... Auth token exists:', !!token);
-                const res = await fetch('/api/cv/all', {
-                    headers: token ? { 'Authorization': `Bearer ${token}` } : {}
-                });
+                console.log('[DEBUG] Fetching user CVs... Auth token exists:', !!localStorage.getItem('auth_token'));
+                const res = await authFetch('/api/cv/all');
                 const data = await res.json();
                 console.log('[DEBUG] User CVs response:', data);
                 if (data.success) {
@@ -4874,14 +4444,11 @@
 
             const fetchMasterCV = async () => {
                 try {
-                    const token = localStorage.getItem('auth_token');
-                    if (!token) {
+                    if (!localStorage.getItem('auth_token')) {
                         console.error('No auth token');
                         return false;
                     }
-                    const res = await fetch('/api/cv/master', {
-                        headers: { 'Authorization': `Bearer ${token}` }
-                    });
+                    const res = await authFetch('/api/cv/master');
                     if (!res.ok) {
                         console.error('Fetch master CV failed:', res.status);
                         return false;
@@ -4904,23 +4471,20 @@
 
             const handleSaveMasterCV = async (editedCV) => {
                 setSavingMasterCV(true);
-                const token = localStorage.getItem('auth_token');
 
                 try {
                     // Save experiences
                     for (const exp of editedCV.experiences) {
                         if (exp.id) {
                             // Update existing
-                            await fetch(`/api/user/experience/${exp.id}`, {
+                            await authFetch(`/api/user/experience/${exp.id}`, {
                                 method: 'PUT',
-                                headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
                                 body: JSON.stringify(exp)
                             });
                         } else {
                             // Create new
-                            await fetch('/api/user/experience', {
+                            await authFetch('/api/user/experience', {
                                 method: 'POST',
-                                headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
                                 body: JSON.stringify(exp)
                             });
                         }
@@ -4929,15 +4493,13 @@
                     // Save education
                     for (const edu of editedCV.education) {
                         if (edu.id) {
-                            await fetch(`/api/user/education/${edu.id}`, {
+                            await authFetch(`/api/user/education/${edu.id}`, {
                                 method: 'PUT',
-                                headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
                                 body: JSON.stringify(edu)
                             });
                         } else {
-                            await fetch('/api/user/education', {
+                            await authFetch('/api/user/education', {
                                 method: 'POST',
-                                headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
                                 body: JSON.stringify(edu)
                             });
                         }
@@ -4946,15 +4508,13 @@
                     // Save skills
                     for (const skill of (editedCV.skills || [])) {
                         if (skill.id) {
-                            await fetch(`/api/user/skill/${skill.id}`, {
+                            await authFetch(`/api/user/skill/${skill.id}`, {
                                 method: 'PUT',
-                                headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
                                 body: JSON.stringify(skill)
                             });
                         } else if (skill.skill_text) {
-                            await fetch('/api/user/skill', {
+                            await authFetch('/api/user/skill', {
                                 method: 'POST',
-                                headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
                                 body: JSON.stringify(skill)
                             });
                         }
@@ -5016,13 +4576,8 @@
                 setSelectedJob(job);
 
                 try {
-                    const token = localStorage.getItem('auth_token');
-                    const res = await fetch(`/api/jobs/${job.id}/apply-with-cv`, {
+                    const res = await authFetch(`/api/jobs/${job.id}/apply-with-cv`, {
                         method: 'POST',
-                        headers: {
-                            'Content-Type': 'application/json',
-                            ...(token ? { 'Authorization': `Bearer ${token}` } : {})
-                        },
                         body: JSON.stringify({ job })
                     });
                     const data = await res.json();
@@ -5031,10 +4586,9 @@
                         setApplyResult(data);
                         setShowApplyModal(true);
                         // Log 'applied' interaction so this job is hidden from the feed
-                        if (token) {
-                            fetch(`/api/jobs/${job.id}/interaction`, {
+                        if (localStorage.getItem('auth_token')) {
+                            authFetch(`/api/jobs/${job.id}/interaction`, {
                                 method: 'POST',
-                                headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
                                 body: JSON.stringify({ action: 'applied' })
                             }).catch(() => {});
                         }
@@ -5083,13 +4637,8 @@
             const handleGenerateVibes = async () => {
                 setGenerating(true);
                 try {
-                    const token = localStorage.getItem('auth_token');
-                    const res = await fetch('/api/cv/generate-branscher', {
+                    const res = await authFetch('/api/cv/generate-branscher', {
                         method: 'POST',
-                        headers: {
-                            'Content-Type': 'application/json',
-                            ...(token ? { 'Authorization': `Bearer ${token}` } : {})
-                        },
                         body: JSON.stringify({})
                     });
                     const data = await res.json();
@@ -5111,14 +4660,9 @@
                 if (!confirm('Vill du ladda in fardiga CV:n och erfarenheter?')) return;
                 setMigrating(true);
                 try {
-                    const token = localStorage.getItem('auth_token');
                     const refreshToken = localStorage.getItem('refresh_token');
-                    const res = await fetch('/api/migrate-my-data', {
+                    const res = await authFetch('/api/migrate-my-data', {
                         method: 'POST',
-                        headers: {
-                            'Authorization': `Bearer ${token}`,
-                            'Content-Type': 'application/json'
-                        },
                         body: JSON.stringify({ refresh_token: refreshToken })
                     });
                     const data = await res.json();
