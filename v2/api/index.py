@@ -2054,6 +2054,90 @@ def _create_gmail_link(job: Dict, letter: str, subject: str = "") -> str:
     )
 
 
+@app.post("/api/jobs/{job_id}/save-draft")
+async def save_gmail_draft_with_attachments(request: Request, job_id: str):
+    """
+    Create (or update) a Gmail draft with the edited cover letter + PDF attachments.
+    Called from the ApplyModal when the user clicks 'Spara i Gmail med bilagor'.
+    Requires Gmail OAuth to be connected.
+    """
+    auth_header = request.headers.get("Authorization", "")
+    user_id = None
+    if auth_header.startswith("Bearer "):
+        token = auth_header.replace("Bearer ", "")
+        try:
+            async with httpx.AsyncClient() as client:
+                user_response = await client.get(
+                    f"{SUPABASE_URL}/auth/v1/user",
+                    headers={"apikey": SUPABASE_ANON_KEY, "Authorization": f"Bearer {token}"}
+                )
+                if user_response.status_code == 200:
+                    user_id = user_response.json().get("id")
+        except Exception as e:
+            logger.warning(f"Auth check failed: {e}")
+
+    if not user_id:
+        raise HTTPException(status_code=401, detail="Inloggning krävs")
+
+    try:
+        body = await request.json()
+    except Exception:
+        body = {}
+
+    cover_letter_text = body.get("cover_letter", "")
+    vibe = body.get("vibe", "customerservice")
+    job = body.get("job", {})
+
+    if not cover_letter_text:
+        raise HTTPException(status_code=400, detail="Brevtext saknas")
+
+    contact_email = job.get("contact_email")
+    if not contact_email:
+        raise HTTPException(status_code=400, detail="Jobbets e-postadress saknas")
+
+    # Get user profile for sender name
+    profiles = await db_request("GET", "user_profiles", params={"user_id": f"eq.{user_id}"})
+    user_profile = profiles[0] if profiles else {}
+    sender_name = user_profile.get("full_name", "Linnea Moritz")
+
+    job_title = job.get("title", "Tjänst")
+    subject = f"Ansökan: {job_title} – {sender_name}"
+
+    attachments = []
+
+    # 1. Cover letter as PDF (from the edited text)
+    try:
+        cover_letter_pdf = generate_cover_letter_pdf(cover_letter_text, sender_name)
+        attachments.append({
+            "filename": f"Personligt_Brev_{sender_name.replace(' ', '_')}.pdf",
+            "data": cover_letter_pdf
+        })
+    except Exception as e:
+        logger.error(f"Cover letter PDF generation failed: {e}")
+
+    # 2. Matching CV PDF
+    cv_pdf_bytes = get_cv_pdf_bytes(vibe)
+    if cv_pdf_bytes:
+        attachments.append({
+            "filename": get_cv_pdf_filename(vibe),
+            "data": cv_pdf_bytes
+        })
+
+    draft_id = await create_gmail_draft_for_user(
+        user_id, contact_email, subject, cover_letter_text, attachments
+    )
+
+    if not draft_id:
+        raise HTTPException(status_code=500, detail="Kunde inte skapa Gmail-utkast. Är Gmail kopplat?")
+
+    return {
+        "success": True,
+        "draft_id": draft_id,
+        "cv_filename": get_cv_pdf_filename(vibe),
+        "attachments_count": len(attachments)
+    }
+
+
 # ============== FRONTEND ==============
 
 def get_setup_guide_html():

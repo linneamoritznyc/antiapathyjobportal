@@ -266,6 +266,8 @@
             const [feedbackSaved, setFeedbackSaved] = useState(false);
             const [selectedHints, setSelectedHints] = useState([]);
             const [regenerating, setRegenerating] = useState(false);
+            const [savingDraft, setSavingDraft] = useState(false);
+            const [draftSaved, setDraftSaved] = useState(false);
 
             useEffect(() => {
                 if (result?.cover_letter) setLetter(result.cover_letter);
@@ -363,11 +365,41 @@
                     if (data.success) {
                         setLetter(data.cover_letter);
                         setSelectedHints([]);
+                        setDraftSaved(false);
                     }
                 } catch (err) {
                     console.error('Regenerate error:', err);
                 }
                 setRegenerating(false);
+            };
+
+            const saveGmailDraftWithAttachments = async () => {
+                setSavingDraft(true);
+                try {
+                    const token = localStorage.getItem('auth_token');
+                    const res = await fetch(`/api/jobs/${job.id}/save-draft`, {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            ...(token ? { 'Authorization': `Bearer ${token}` } : {})
+                        },
+                        body: JSON.stringify({
+                            job,
+                            cover_letter: letter,
+                            vibe: result?.matched_vibe || 'customerservice'
+                        })
+                    });
+                    const data = await res.json();
+                    if (data.success) {
+                        setDraftSaved(true);
+                    } else {
+                        alert(data.detail || 'Kunde inte spara utkast. Är Gmail kopplat i Profil?');
+                    }
+                } catch (err) {
+                    console.error('Save draft error:', err);
+                    alert('Något gick fel. Försök igen.');
+                }
+                setSavingDraft(false);
             };
 
             return (
@@ -416,7 +448,7 @@
                             )}
 
                             {/* Gmail draft status */}
-                            {result?.draft_created ? (
+                            {(result?.draft_created || draftSaved) ? (
                                 <div className="mt-3 p-3 bg-green-50 border border-green-200 rounded-lg">
                                     <div className="flex items-center gap-2 mb-2">
                                         <span className="text-green-600 text-lg">✓</span>
@@ -424,22 +456,17 @@
                                     </div>
                                     <div className="flex gap-3 text-xs text-green-700">
                                         <span>📄 Personligt_Brev_Linnea_Moritz.pdf</span>
-                                        <span>📄 {result.cv_filename || 'CV.pdf'}</span>
+                                        <span>📄 {result?.cv_filename || 'CV.pdf'}</span>
                                     </div>
                                     {job?.contact_email && (
                                         <p className="text-xs text-green-600 mt-1">Till: {job.contact_email}</p>
                                     )}
                                 </div>
-                            ) : job?.contact_email ? (
-                                <div className="mt-3 p-3 bg-amber-50 border border-amber-200 rounded-lg">
-                                    <p className="text-xs text-amber-800 font-medium">Gmail inte kopplat</p>
-                                    <p className="text-xs text-amber-700 mt-0.5">Koppla Gmail i Profil-fliken för att spara utkast automatiskt, eller öppna compose-länken nedan.</p>
-                                </div>
-                            ) : (
+                            ) : !job?.contact_email ? (
                                 <div className="mt-3 p-3 bg-slate-50 border border-slate-200 rounded-lg">
                                     <p className="text-xs text-slate-600">Ingen e-postadress hittades. Kolla annonsen direkt eller kopiera brevet.</p>
                                 </div>
-                            )}
+                            ) : null}
 
                             {/* Attachments info */}
                             <div className="mt-3 flex gap-2 flex-wrap">
@@ -491,9 +518,17 @@
                             )}
 
                             <div className="flex gap-3 mt-4 flex-wrap">
-                                {!result?.draft_created && job?.contact_email && (
-                                    <button onClick={openGmail} className="flex-1 bg-green-600 text-white py-2.5 px-4 rounded-lg font-medium hover:bg-green-700">
-                                        Öppna i Gmail
+                                {job?.contact_email && (
+                                    <button
+                                        onClick={saveGmailDraftWithAttachments}
+                                        disabled={savingDraft}
+                                        className={`flex-1 py-2.5 px-4 rounded-lg font-medium transition-colors ${
+                                            draftSaved
+                                                ? 'bg-green-100 text-green-700 border border-green-300'
+                                                : 'bg-green-600 text-white hover:bg-green-700 disabled:opacity-60'
+                                        }`}
+                                    >
+                                        {savingDraft ? 'Sparar...' : draftSaved ? '✓ Sparat i Gmail' : 'Spara i Gmail med bilagor'}
                                     </button>
                                 )}
                                 <button
