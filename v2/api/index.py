@@ -5712,13 +5712,22 @@ async def upload_user_training_letter(request: Request):
 
 @app.post("/api/user/analyze-letter-text")
 async def analyze_pasted_letter_text(request: Request):
-    """Analyze pasted cover letter text to extract writing style"""
+    """Analyze pasted cover letter text to extract writing style.
+    Also saves text to user_training_letters so it's included in future aggregations."""
     user_id = await get_user_id_from_request(request, required=True)
 
     body = await request.json()
     text = body.get("text", "").strip()
     if not text:
         raise HTTPException(status_code=400, detail="Ingen text angiven")
+
+    # Save pasted text as a training letter so it's included in future re-analyses
+    await db_request("POST", "user_training_letters", data={
+        "user_id": user_id,
+        "filename": "Inklistrad text",
+        "letter_text": text,
+        "file_url": None
+    })
 
     tone_analysis = await analyze_writing_tone_rich(text)
     await save_letter_style(user_id, tone_analysis)
@@ -5727,7 +5736,19 @@ async def analyze_pasted_letter_text(request: Request):
 
 
 async def save_letter_style(user_id: str, analysis: dict):
-    """Save or update letter style analysis in DB"""
+    """Save or update letter style analysis in DB.
+    Re-analyzes ALL training letters together so styles from multiple letters are combined."""
+    # Fetch all training letters for this user
+    all_letters = await db_request("GET", "user_training_letters",
+        params={"user_id": f"eq.{user_id}", "select": "letter_text", "order": "uploaded_at.asc"}) or []
+
+    letter_texts = [l.get("letter_text", "") for l in all_letters if l.get("letter_text") and not l["letter_text"].startswith("[")]
+
+    # If we have multiple letters, re-analyze them all together
+    if len(letter_texts) > 1:
+        analysis = await analyze_writing_tone_multi(letter_texts)
+    # If only one letter (or none with text), use the single-letter analysis as-is
+
     existing = await db_request("GET", "user_cover_letter_preferences", params={"user_id": f"eq.{user_id}"})
     data = {
         "tone": analysis.get("tone"),
@@ -5791,6 +5812,61 @@ Svara ENDAST med JSON."""
                     return json_lib.loads(raw[start:end])
     except Exception as e:
         logger.error(f"Rich tone analysis error: {e}")
+
+    return {}
+
+
+async def analyze_writing_tone_multi(letter_texts: list) -> dict:
+    """Analyze writing style across multiple training letters, noting differences between them."""
+    if not ANTHROPIC_API_KEY:
+        return {}
+
+    letters_block = ""
+    for i, text in enumerate(letter_texts, 1):
+        letters_block += f"\n--- BREV {i} ---\n{text[:2000]}\n"
+
+    prompt = f"""Du analyserar {len(letter_texts)} personliga brev på svenska från samma person. Breven kan vara skrivna för OLIKA typer av jobb och ha olika stil.
+
+{letters_block}
+
+Returnera ett JSON-objekt med dessa exakta nycklar:
+- "tone": Beskriv tonen. Om breven har olika ton, beskriv BÅDA, t.ex. "Brev 1: Formellt och sakligt. Brev 2: Personligt och varmt"
+- "structure": Beskriv strukturen. Om breven är uppbyggda olika, beskriv BÅDA skillnaderna, t.ex. "Brev 1: Klassiskt format med inledning-kropp-avslut. Brev 2: Punktlista med konkreta resultat"
+- "phrases": Lista med ALLA unika fraser eller uttryck som personen faktiskt använder, samlade från ALLA brev. Ju fler brev, desto längre lista. Minst 3 per brev.
+- "avoid": Lista med ALLA ord eller fraser som personen konsekvent INTE använder (klichéer de undviker). Samla från alla brev. Ju fler brev, desto längre lista.
+- "length_preference": Beskriv längd och tempo. Om breven skiljer sig, nämn det.
+- "opening_style": Beskriv hur personen inleder. Om olika öppningar, beskriv båda.
+
+VIKTIGT: Om breven har tydligt olika stil, visa BÅDA stilarna. Slå inte ihop dem till en generisk beskrivning.
+
+Svara ENDAST med JSON."""
+
+    try:
+        async with httpx.AsyncClient() as client:
+            response = await client.post(
+                "https://api.anthropic.com/v1/messages",
+                headers={
+                    "x-api-key": ANTHROPIC_API_KEY,
+                    "anthropic-version": "2023-06-01",
+                    "content-type": "application/json"
+                },
+                json={
+                    "model": "claude-sonnet-4-5-20250929",
+                    "max_tokens": 1000,
+                    "messages": [{"role": "user", "content": prompt}]
+                },
+                timeout=30
+            )
+            if response.status_code == 200:
+                result = response.json()
+                raw = result["content"][0]["text"].strip()
+                import json as json_lib
+                start = raw.find('{')
+                end = raw.rfind('}') + 1
+                if start >= 0 and end > start:
+                    return json_lib.loads(raw[start:end])
+    except Exception as e:
+        logger.error(f"Multi-letter tone analysis error: {e}")
 
     return {}
 
