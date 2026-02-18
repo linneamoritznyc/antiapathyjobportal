@@ -3040,39 +3040,32 @@
 
             return (
                 <div>
-                    <div className="bg-white rounded-xl p-5 shadow-sm mb-6">
-                        <h2 className="text-lg font-semibold mb-3">🔍 Sök jobb på Platsbanken</h2>
-                        <div className="flex gap-3">
-                            <input
-                                type="text"
-                                value={keywords}
-                                onChange={(e) => setKeywords(e.target.value)}
-                                placeholder="t.ex. servitör, kundtjänst, butik"
-                                className="flex-1 border border-slate-200 rounded-lg px-4 py-2"
-                                onKeyDown={(e) => e.key === 'Enter' && onScrape(keywords)}
-                            />
-                            <button
-                                onClick={() => onScrape(keywords)}
-                                disabled={scraping}
-                                className="bg-indigo-600 text-white px-6 py-2 rounded-lg font-medium hover:bg-indigo-700 disabled:opacity-50"
-                            >
-                                {scraping ? 'Söker...' : 'Sök'}
-                            </button>
-                        </div>
-                    </div>
-
-
-                    {/* Rejected jobs toggle */}
-                    {hiddenJobIds.size > 0 && (
-                        <div className="flex items-center justify-end mb-3">
+                    {/* Compact top bar: search + count + hidden toggle */}
+                    <div className="flex items-center gap-3 mb-4">
+                        <input
+                            type="text"
+                            value={keywords}
+                            onChange={(e) => setKeywords(e.target.value)}
+                            placeholder="Sök jobb på Platsbanken..."
+                            className="flex-1 border border-slate-200 bg-white rounded-xl px-4 py-2.5 text-sm shadow-sm focus:outline-none focus:ring-2 focus:ring-indigo-300"
+                            onKeyDown={(e) => e.key === 'Enter' && onScrape(keywords)}
+                        />
+                        <button
+                            onClick={() => onScrape(keywords)}
+                            disabled={scraping}
+                            className="bg-indigo-600 text-white px-5 py-2.5 rounded-xl text-sm font-medium hover:bg-indigo-700 disabled:opacity-50 shadow-sm whitespace-nowrap"
+                        >
+                            {scraping ? '⏳ Söker...' : '🔍 Sök'}
+                        </button>
+                        {hiddenJobIds.size > 0 && (
                             <button
                                 onClick={() => setShowHidden(h => !h)}
-                                className="text-sm text-slate-400 hover:text-slate-700 transition"
+                                className="text-sm text-slate-400 hover:text-slate-600 transition whitespace-nowrap"
                             >
-                                {showHidden ? '🙈 Dölj bortvalde jobb' : `👁 Visa ${hiddenJobIds.size} bortvalt jobb`}
+                                {showHidden ? '🙈 Dölj' : `👁 ${hiddenJobIds.size} dolda`}
                             </button>
-                        </div>
-                    )}
+                        )}
+                    </div>
 
                     {/* ONE JOB AT A TIME */}
                     {(() => {
@@ -3138,11 +3131,11 @@
                                         </div>
 
                                         {/* Two-column card */}
-                                        <div className="bg-white rounded-2xl shadow-sm border border-slate-100 overflow-hidden">
-                                            <div className="flex" style={{minHeight: '70vh'}}>
+                                        <div className="bg-white rounded-2xl shadow-sm border border-slate-100" style={{minHeight: '75vh'}}>
+                                            <div className="flex h-full" style={{minHeight: '75vh'}}>
 
                                                 {/* LEFT: description */}
-                                                <div className="flex-1 p-7 border-r border-slate-100 overflow-y-auto" style={{maxHeight: '80vh'}}>
+                                                <div className="flex-1 p-8 border-r border-slate-100 overflow-y-auto" style={{maxHeight: '82vh'}}>
                                                     <p className="text-xs font-semibold text-slate-400 uppercase tracking-widest mb-3">Jobbannons</p>
                                                     {currentJob.description ? (
                                                         <div className="prose prose-sm max-w-none text-slate-700" style={{lineHeight: '1.7'}}>
@@ -5632,7 +5625,7 @@
                         </div>
                     </header>
 
-                    <main className="max-w-6xl mx-auto px-4 py-6">
+                    <main className="w-full px-6 py-4">
 
                         {activeTab === 'jobs' && (
                             <JobsPage
