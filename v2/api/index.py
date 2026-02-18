@@ -501,6 +501,20 @@ DEFAULT_EXPERIENCE = {
 - Deployment: Vercel, Supabase, API-integrationer
 - Innehållsanalytiker, Google Ads (2018-2019): Teknisk granskning, dataanalys""",
 
+    "industri": """- Siggesta Gård: Städning och praktiskt underhållsarbete
+- Max Hamburgare (Apr-Aug 2024): Kök, drive-in, fysiskt arbete i högt tempo
+- ICA Maxi (2015, 2017, 2019): Fysiskt butiksarbete, varumottagning, frukt/grönt
+- B-körkort och tillgång till bil
+- Van vid tidiga morgnar, kvällar och helger""",
+
+    "healthcare": """- Bred servicevana och empatisk kontakt med människor
+- Flexibel, pålitlig och van vid ansvar
+- B-körkort och flexibel med arbetstider""",
+
+    "contentmoderation": """- Innehållsmoderator, Clubhouse (Jun 2021-Jan 2022): Trust & Safety, granskning, support
+- Innehållsanalytiker, Google Ads (Maj 2018-Apr 2019): 100+ annonser/dag, policyhantering
+- Global Marketing, Minerva Project (Sep 2019-Apr 2020): Kundkommunikation via Intercom""",
+
     "default": """- Bred erfarenhet inom service, kundkontakt och administration
 - Flexibel, pålitlig och snabb på att lära mig nya system
 - B-körkort och flexibel med arbetstider"""
@@ -522,7 +536,7 @@ def detect_job_category(title: str, description: str) -> str:
     return "default"
 
 
-async def generate_cover_letter(job: Dict, user_cv_text: Optional[str] = None, user_profile: Optional[Dict] = None) -> str:
+async def generate_cover_letter(job: Dict, user_cv_text: Optional[str] = None, user_profile: Optional[Dict] = None, extra_hints: Optional[str] = None) -> str:
     """Generate personalized cover letter using Claude"""
 
     if not ANTHROPIC_API_KEY:
@@ -531,6 +545,10 @@ async def generate_cover_letter(job: Dict, user_cv_text: Optional[str] = None, u
     # Get relevant experience
     category = detect_job_category(job.get("title", ""), job.get("description", ""))
     experience = user_cv_text or DEFAULT_EXPERIENCE.get(category, DEFAULT_EXPERIENCE["default"])
+
+    # Append any extra hints the user selected in the UI
+    if extra_hints:
+        experience += f"\n\nEXTRA ERFARENHETER SOM MÅSTE NÄMNAS I BREVET:\n{extra_hints}"
 
     # Use profile data from database, fall back to defaults
     p = user_profile or {}
@@ -577,7 +595,7 @@ JOBBET:
 {extras_text}
 - Beskrivning: {job.get('description', '')[:2500]}
 
-MIN ERFARENHET:
+MIN BAKGRUND (använd som inspiration — plocka bara det som faktiskt är relevant):
 {experience}
 
 OM MIG:
@@ -586,16 +604,18 @@ OM MIG:
 INSTRUKTIONER:
 1. Börja med: {contact_greeting}
 2. Skriv 150-200 ord på naturlig, varm svenska
-3. Lyft fram 2-3 specifika erfarenheter som matchar jobbet
-4. VIKTIGT: Om annonsen nämner specifika krav (t.ex. körkort, bil, språk, kvällar, helger, fysiska krav), bekräfta att jag uppfyller dem
-5. Nämn var jag bor och att jag är flexibel med arbetstider
-6. Avsluta med:
+3. Matcha tonen mot jobbet: fysisk/praktisk tjänst → enkelt och jordnära; kontorsjobb → lite mer formellt
+4. Lyft BARA erfarenheter som faktiskt passar jobbet. Om inga erfarenheter matchar direkt, fokusera istället på personliga egenskaper som passar (t.ex. noggrannhet, pålitlighet, initiativförmåga, servicekänsla). Försök ALDRIG koppla irrelevant erfarenhet till jobbet på ett konstruerat sätt.
+5. VIKTIGT: Om annonsen nämner specifika krav eller önskemål (t.ex. körkort, bil, fysisk förmåga, kvällar/helger, sommarsäsong, "annan sysselsättning"), bekräfta kortfattat att jag uppfyller/passar dem — utan att överdriva
+6. Nämn var jag bor och att jag är flexibel med arbetstider
+7. Om "EXTRA ERFARENHETER SOM MÅSTE NÄMNAS I BREVET" finns ovan — nämn dem ALLTID specifikt i brevet, även om de inte är den starkaste matchningen
+8. Avsluta med:
    Med vänlig hälsning,
    {name}
    {phone}
    {email}
 
-Skriv ENDAST brevet, inget annat."""
+Skriv ENDAST det färdiga brevet, inget annat."""
 
     try:
         async with httpx.AsyncClient() as client:
@@ -607,11 +627,11 @@ Skriv ENDAST brevet, inget annat."""
                     "content-type": "application/json"
                 },
                 json={
-                    "model": "claude-sonnet-4-20250514",
+                    "model": "claude-haiku-4-5-20251001",
                     "max_tokens": 600,
                     "messages": [{"role": "user", "content": prompt}]
                 },
-                timeout=30
+                timeout=25
             )
 
             if response.status_code == 200:
@@ -800,18 +820,23 @@ def match_job_to_cv_vibe(job_title: str, job_description: str) -> str:
     """Match a job to the best CV vibe. Returns vibe_id that maps to a CV PDF."""
     text = f"{job_title} {job_description}".lower()
 
+    # Use whole-word matching via regex to avoid "it" matching inside "arbetstider" etc.
+    def word_match(keyword: str, haystack: str) -> bool:
+        return bool(re.search(r'\b' + re.escape(keyword) + r'\b', haystack))
+
     vibe_keywords = {
-        "restaurant":         ["servitör", "servitris", "restaurang", "kock", "café", "barista", "kök", "mat", "dryck", "bar"],
-        "retail":             ["butik", "kassa", "försäljare", "säljare", "retail", "handel", "klädbutik", "ica", "coop", "lidl", "hemköp"],
-        "customerservice":    ["kundtjänst", "kundservice", "customer service", "support", "helpdesk", "telefon", "chatt", "reception"],
-        "tech":               ["it", "tech", "utvecklare", "developer", "webbutvecklare", "frontend", "backend", "data", "programmering", "mjukvara"],
-        "healthcare":         ["vård", "omsorg", "sjuksköterska", "undersköterska", "äldreboende", "hemtjänst", "medicin", "rehab"],
-        "industri":           ["trädgård", "industri", "lager", "städ", "renhållning", "utomhus", "bygg", "produktion", "truck", "magasin"],
-        "contentmoderation":  ["moderator", "content moderation", "trust and safety", "granskning", "recensioner", "online safety"],
-        "art":                ["konst", "kultur", "galleri", "utställning", "kreativ", "design", "illustration", "media"],
+        "restaurant":        ["servitör", "servitris", "restaurang", "kock", "café", "barista", "kök", "matlagning", "dryck", "bar", "bageri", "konditori"],
+        "retail":            ["butik", "kassa", "kassaarbete", "försäljare", "säljare", "retail", "handel", "klädbutik", "ica", "coop", "lidl", "hemköp", "lagerarbete i butik"],
+        "customerservice":   ["kundtjänst", "kundservice", "kundmottagning", "support", "helpdesk", "telefonsupport", "chatt", "reception", "receptionist"],
+        "tech":              ["mjukvara", "programmering", "webbutvecklare", "frontend", "backend", "systemutvecklare", "it-tekniker", "it-support", "devops", "agile", "scrum"],
+        "healthcare":        ["vård", "omsorg", "sjuksköterska", "undersköterska", "äldreboende", "hemtjänst", "medicin", "rehab", "personlig assistent", "lss", "psykiatri"],
+        "industri":          ["trädgård", "industri", "lager", "städ", "städning", "renhållning", "utomhus", "bygg", "produktion", "truck", "magasin", "underhåll", "rastplats",
+                              "skötsel", "fastighet", "mark", "park", "reparation", "maskin", "montör", "svetsare", "godshantering", "bud", "chaufför", "sommarjobb utomhus"],
+        "contentmoderation": ["moderator", "content moderation", "trust and safety", "granskning", "recensioner", "online safety"],
+        "art":               ["konst", "kultur", "galleri", "utställning", "kreativ", "illustration", "foto", "film", "musik", "teater"],
     }
 
-    scores = {vibe: sum(1 for kw in kws if kw in text) for vibe, kws in vibe_keywords.items()}
+    scores = {vibe: sum(1 for kw in kws if word_match(kw, text)) for vibe, kws in vibe_keywords.items()}
     best_vibe = max(scores, key=scores.get) if max(scores.values()) > 0 else "customerservice"
     return best_vibe
 
@@ -1014,17 +1039,55 @@ async def scrape_jobs(request: JobSearchRequest = None):
 
 
 @app.get("/api/jobs")
-async def list_jobs(limit: int = 50):
-    """List all jobs"""
+async def list_jobs(request: Request, limit: int = 50):
+    """List all jobs, filtered by user's interaction history if logged in"""
+    # Get user_id from auth token (optional)
+    auth_header = request.headers.get("Authorization", "")
+    user_id = None
+    if auth_header.startswith("Bearer "):
+        token = auth_header.replace("Bearer ", "")
+        try:
+            async with httpx.AsyncClient() as client:
+                user_response = await client.get(
+                    f"{SUPABASE_URL}/auth/v1/user",
+                    headers={"apikey": SUPABASE_ANON_KEY, "Authorization": f"Bearer {token}"}
+                )
+                if user_response.status_code == 200:
+                    user_id = user_response.json().get("id")
+        except Exception:
+            pass
+
     # Try database first
     jobs = await get_jobs_from_db(limit)
 
-    if jobs:
-        return {"success": True, "source": "database", "jobs": jobs}
+    if not jobs:
+        # Fallback: scrape live AND save to DB so apply-with-cv can find them
+        jobs = await scrape_platsbanken("jobb", "Stockholm", max_jobs=limit)
+        if jobs:
+            await save_jobs_to_db(jobs)
 
-    # Fallback: scrape live
-    jobs = await scrape_platsbanken("jobb", "Stockholm", max_jobs=limit)
-    return {"success": True, "source": "live", "jobs": jobs}
+    if not jobs:
+        return {"success": True, "source": "empty", "jobs": []}
+
+    # If logged in, load user's interaction history and filter/score jobs
+    if user_id and jobs:
+        interactions = await db_request("GET", "user_job_interactions", params={
+            "user_id": f"eq.{user_id}",
+            "select": "job_id,action"
+        }) or []
+
+        rejected_ids = {i["job_id"] for i in interactions if i["action"] == "rejected"}
+        applied_ids = {i["job_id"] for i in interactions if i["action"] == "applied"}
+        skipped_ids = {i["job_id"] for i in interactions if i["action"] == "skipped"}
+
+        # Hard-filter rejected and applied jobs out of the feed
+        # Skipped jobs are moved to the end (deprioritized)
+        active_jobs = [j for j in jobs if j["id"] not in rejected_ids and j["id"] not in applied_ids]
+        skipped_jobs = [j for j in active_jobs if j["id"] in skipped_ids]
+        fresh_jobs = [j for j in active_jobs if j["id"] not in skipped_ids]
+        jobs = fresh_jobs + skipped_jobs  # Fresh first, skipped last
+
+    return {"success": True, "source": "database", "jobs": jobs}
 
 
 @app.get("/api/jobs/{job_id}")
@@ -1034,6 +1097,50 @@ async def get_job(job_id: str):
     if jobs and len(jobs) > 0:
         return {"success": True, "job": jobs[0]}
     raise HTTPException(status_code=404, detail="Job not found")
+
+
+@app.post("/api/jobs/{job_id}/interaction")
+async def log_job_interaction(job_id: str, request: Request):
+    """
+    Log a user's interaction with a job (viewed, skipped, applied, rejected).
+    This powers the smart feed — rejected/applied jobs are hidden, skipped pushed to end.
+    Modeled after Meta/TikTok engagement signal collection: every action is an event.
+    """
+    auth_header = request.headers.get("Authorization", "")
+    user_id = None
+    if auth_header.startswith("Bearer "):
+        token = auth_header.replace("Bearer ", "")
+        try:
+            async with httpx.AsyncClient() as client:
+                user_response = await client.get(
+                    f"{SUPABASE_URL}/auth/v1/user",
+                    headers={"apikey": SUPABASE_ANON_KEY, "Authorization": f"Bearer {token}"}
+                )
+                if user_response.status_code == 200:
+                    user_id = user_response.json().get("id")
+        except Exception:
+            pass
+
+    if not user_id:
+        raise HTTPException(status_code=401, detail="Ej inloggad")
+
+    body = await request.json()
+    action = body.get("action", "").lower()
+    valid_actions = {"viewed", "skipped", "applied", "saved", "rejected"}
+    if action not in valid_actions:
+        raise HTTPException(status_code=400, detail=f"Ogiltig action. Välj bland: {', '.join(valid_actions)}")
+
+    context = body.get("context", {})  # Optional metadata (time_spent, etc.)
+
+    # Upsert: one record per (user, job, action) — prevents duplicate signals
+    await db_request("POST", "user_job_interactions", data={
+        "user_id": user_id,
+        "job_id": job_id,
+        "action": action,
+        "context": context
+    })
+
+    return {"success": True, "job_id": job_id, "action": action}
 
 
 @app.post("/api/jobs/{job_id}/letter")
@@ -1833,33 +1940,44 @@ async def apply_with_cv(request: Request, job_id: str):
         except Exception as e:
             logger.warning(f"Auth check failed: {e}")
 
-    # Get job from database
+    # Parse request body (may contain job data as fallback)
+    try:
+        body = await request.json()
+    except Exception:
+        body = {}
+
+    # Get job from database; fall back to job data sent from frontend
     jobs = await db_request("GET", "jobs", params={"id": f"eq.{job_id}"})
     if not jobs:
-        raise HTTPException(status_code=404, detail="Jobbet hittades inte")
-
-    job = jobs[0]
+        job_from_body = body.get("job")
+        if job_from_body:
+            job = job_from_body
+            logger.info(f"Job {job_id} not in DB, using data from request body")
+        else:
+            raise HTTPException(status_code=404, detail="Jobbet hittades inte")
+    else:
+        job = jobs[0]
 
     # Match job to best CV vibe
     best_vibe = match_job_to_cv_vibe(job.get("title", ""), job.get("description", ""))
     logger.info(f"Job '{job.get('title')}' matched to CV vibe: {best_vibe}")
 
-    # Try to get matching CV and user profile if logged in
+    # Fetch CV and user profile in parallel to save time
     cv = None
     user_profile = None
     if user_id:
-        cvs = await db_request("GET", "user_cvs", params={
-            "user_id": f"eq.{user_id}",
-            "vibe_id": f"eq.{best_vibe}"
-        })
-        cv = cvs[0] if cvs else None
-        # Fetch user profile for cover letter personalization
-        profiles = await db_request("GET", "user_profiles", params={"user_id": f"eq.{user_id}"})
-        user_profile = profiles[0] if profiles else None
+        import asyncio as _asyncio
+        cvs_result, profiles_result = await _asyncio.gather(
+            db_request("GET", "user_cvs", params={"user_id": f"eq.{user_id}", "vibe_id": f"eq.{best_vibe}"}),
+            db_request("GET", "user_profiles", params={"user_id": f"eq.{user_id}"})
+        )
+        cv = cvs_result[0] if cvs_result else None
+        user_profile = profiles_result[0] if profiles_result else None
 
     # Generate cover letter (works with or without CV/profile)
     cv_text_for_letter = cv.get("cv_text") if cv else None
-    cover_letter = await generate_cover_letter(job, cv_text_for_letter, user_profile)
+    extra_hints = body.get("extra_hints")
+    cover_letter = await generate_cover_letter(job, cv_text_for_letter, user_profile, extra_hints)
 
     # Try to automatically create a Gmail draft using this user's connected Gmail
     contact_email = job.get("contact_email")
@@ -1875,14 +1993,29 @@ async def apply_with_cv(request: Request, job_id: str):
     job_title = job.get("title", "Tjänst")
     subject = f"Ansökan: {job_title} – {sender_name}"
 
+    # Append custom email signature if the user has one saved
+    email_signature = user_profile.get("email_signature", "") if user_profile else ""
+    email_body = cover_letter + ("\n\n" + email_signature if email_signature else "")
+
     # Create Gmail draft with PDF attachments if user has connected Gmail
     draft_id = None
     if contact_email and user_id:
         attachments = []
 
-        # 1. Cover letter as PDF
+        # 1. Cover letter as PDF (professional Swedish business letter design)
+        sender_phone = user_profile.get("phone", "0761166109") if user_profile else "0761166109"
+        sender_email_addr = user_profile.get("email", "linneamoritzCV@gmail.com") if user_profile else "linneamoritzCV@gmail.com"
+        sender_location = user_profile.get("location", "Sollentuna") if user_profile else "Sollentuna"
         try:
-            cover_letter_pdf = generate_cover_letter_pdf(cover_letter, sender_name)
+            cover_letter_pdf = generate_cover_letter_pdf(
+                email_body,
+                sender_name=sender_name,
+                sender_phone=sender_phone,
+                sender_email=sender_email_addr,
+                sender_location=sender_location,
+                job_title=job_title,
+                company=job.get("company", ""),
+            )
             attachments.append({
                 "filename": f"Personligt_Brev_{sender_name.replace(' ', '_')}.pdf",
                 "data": cover_letter_pdf
@@ -1899,7 +2032,7 @@ async def apply_with_cv(request: Request, job_id: str):
             })
 
         draft_id = await create_gmail_draft_for_user(
-            user_id, contact_email, subject, cover_letter, attachments
+            user_id, contact_email, subject, email_body, attachments
         )
 
     return {
@@ -1933,6 +2066,105 @@ def _create_gmail_link(job: Dict, letter: str, subject: str = "") -> str:
         f"&su={urllib.parse.quote(subject)}"
         f"&body={urllib.parse.quote(letter)}"
     )
+
+
+@app.post("/api/jobs/{job_id}/save-draft")
+async def save_gmail_draft_with_attachments(request: Request, job_id: str):
+    """
+    Create (or update) a Gmail draft with the edited cover letter + PDF attachments.
+    Called from the ApplyModal when the user clicks 'Spara i Gmail med bilagor'.
+    Requires Gmail OAuth to be connected.
+    """
+    auth_header = request.headers.get("Authorization", "")
+    user_id = None
+    if auth_header.startswith("Bearer "):
+        token = auth_header.replace("Bearer ", "")
+        try:
+            async with httpx.AsyncClient() as client:
+                user_response = await client.get(
+                    f"{SUPABASE_URL}/auth/v1/user",
+                    headers={"apikey": SUPABASE_ANON_KEY, "Authorization": f"Bearer {token}"}
+                )
+                if user_response.status_code == 200:
+                    user_id = user_response.json().get("id")
+        except Exception as e:
+            logger.warning(f"Auth check failed: {e}")
+
+    if not user_id:
+        raise HTTPException(status_code=401, detail="Inloggning krävs")
+
+    try:
+        body = await request.json()
+    except Exception:
+        body = {}
+
+    cover_letter_text = body.get("cover_letter", "")
+    vibe = body.get("vibe", "customerservice")
+    job = body.get("job", {})
+
+    if not cover_letter_text:
+        raise HTTPException(status_code=400, detail="Brevtext saknas")
+
+    contact_email = job.get("contact_email")
+    if not contact_email:
+        raise HTTPException(status_code=400, detail="Jobbets e-postadress saknas")
+
+    # Get user profile for sender name
+    profiles = await db_request("GET", "user_profiles", params={"user_id": f"eq.{user_id}"})
+    user_profile = profiles[0] if profiles else {}
+    sender_name = user_profile.get("full_name", "Linnea Moritz")
+
+    job_title = job.get("title", "Tjänst")
+    subject = f"Ansökan: {job_title} – {sender_name}"
+
+    # Append custom signature if the user has one saved
+    email_signature = user_profile.get("email_signature", "")
+    email_body = cover_letter_text + ("\n\n" + email_signature if email_signature else "")
+
+    attachments = []
+
+    # 1. Cover letter as PDF (professional Swedish business letter design)
+    sender_phone = user_profile.get("phone", "0761166109")
+    sender_email_addr = user_profile.get("email", "linneamoritzCV@gmail.com")
+    sender_location = user_profile.get("location", "Sollentuna")
+    try:
+        cover_letter_pdf = generate_cover_letter_pdf(
+            email_body,
+            sender_name=sender_name,
+            sender_phone=sender_phone,
+            sender_email=sender_email_addr,
+            sender_location=sender_location,
+            job_title=job_title,
+            company=job.get("company", ""),
+        )
+        attachments.append({
+            "filename": f"Personligt_Brev_{sender_name.replace(' ', '_')}.pdf",
+            "data": cover_letter_pdf
+        })
+    except Exception as e:
+        logger.error(f"Cover letter PDF generation failed: {e}")
+
+    # 2. Matching CV PDF
+    cv_pdf_bytes = get_cv_pdf_bytes(vibe)
+    if cv_pdf_bytes:
+        attachments.append({
+            "filename": get_cv_pdf_filename(vibe),
+            "data": cv_pdf_bytes
+        })
+
+    draft_id = await create_gmail_draft_for_user(
+        user_id, contact_email, subject, email_body, attachments
+    )
+
+    if not draft_id:
+        raise HTTPException(status_code=500, detail="Kunde inte skapa Gmail-utkast. Är Gmail kopplat?")
+
+    return {
+        "success": True,
+        "draft_id": draft_id,
+        "cv_filename": get_cv_pdf_filename(vibe),
+        "attachments_count": len(attachments)
+    }
 
 
 # ============== FRONTEND ==============
@@ -4817,29 +5049,100 @@ async def refresh_gmail_token(user_id: str) -> Optional[str]:
         return tokens["access_token"]
 
 
-def generate_cover_letter_pdf(text: str, sender_name: str = "Linnea Moritz") -> bytes:
-    """Generate a simple PDF from cover letter text. Handles Swedish characters."""
-    from fpdf import FPDF
+def generate_cover_letter_pdf(
+    text: str,
+    sender_name: str = "Linnea Moritz",
+    sender_phone: str = "0761166109",
+    sender_email: str = "linneamoritzCV@gmail.com",
+    sender_location: str = "Sollentuna",
+    job_title: str = "",
+    company: str = "",
+) -> bytes:
+    """
+    Generate a professional Swedish business letter PDF.
+    Layout: sender info top-right, date + recipient + subject left, body text.
+    Matches the v1 design (job_portal_backend.py) ported to ReportLab.
+    """
+    from reportlab.lib.pagesizes import A4
+    from reportlab.pdfgen import canvas as rl_canvas
+    from reportlab.lib.units import cm
+    from io import BytesIO
+    from datetime import datetime as dt
 
-    pdf = FPDF()
-    pdf.set_margins(25, 25, 25)
-    pdf.add_page()
-    pdf.set_auto_page_break(auto=True, margin=20)
-    pdf.set_font("Helvetica", size=11)
+    buffer = BytesIO()
+    c = rl_canvas.Canvas(buffer, pagesize=A4)
+    width, height = A4
 
-    for line in text.split("\n"):
-        # Empty line = small spacer
-        if line.strip() == "":
-            pdf.ln(4)
+    left_margin = 2.5 * cm
+    right_margin = 2.5 * cm
+    top_margin = 2.5 * cm
+    y = height - top_margin
+
+    # === AVSÄNDARE — top right ===
+    c.setFont("Helvetica-Bold", 12)
+    c.drawRightString(width - right_margin, y, sender_name)
+    y -= 16
+    c.setFont("Helvetica", 10)
+    c.drawRightString(width - right_margin, y, sender_location)
+    y -= 14
+    c.drawRightString(width - right_margin, y, sender_phone)
+    y -= 14
+    c.drawRightString(width - right_margin, y, sender_email)
+    y -= 30
+
+    # === DATUM — left ===
+    c.setFont("Helvetica", 10)
+    c.drawString(left_margin, y, dt.now().strftime("%Y-%m-%d"))
+    y -= 30
+
+    # === MOTTAGARE — left ===
+    if company:
+        c.setFont("Helvetica-Bold", 11)
+        c.drawString(left_margin, y, company)
+        y -= 40
+
+    # === ÄMNESRAD ===
+    if job_title:
+        c.setFont("Helvetica-Bold", 12)
+        subject_label = f"Ans\u00f6kan: {job_title}"
+        c.drawString(left_margin, y, subject_label)
+        y -= 30
+
+    # === BRÖDTEXT ===
+    c.setFont("Helvetica", 11)
+    max_width = width - left_margin - right_margin
+    line_height = 16
+
+    for paragraph in text.split("\n"):
+        if paragraph.strip():
+            words = paragraph.split()
+            line = ""
+            for word in words:
+                test_line = line + word + " "
+                if c.stringWidth(test_line, "Helvetica", 11) < max_width:
+                    line = test_line
+                else:
+                    c.drawString(left_margin, y, line.strip())
+                    y -= line_height
+                    line = word + " "
+                    if y < 3 * cm:
+                        c.showPage()
+                        y = height - top_margin
+                        c.setFont("Helvetica", 11)
+            if line:
+                c.drawString(left_margin, y, line.strip())
+                y -= line_height
         else:
-            # Replace Swedish characters with latin-1 equivalents (fpdf core fonts)
-            safe_line = (line
-                .replace("\u2013", "-").replace("\u2014", "-")
-                .replace("\u2018", "'").replace("\u2019", "'")
-                .replace("\u201c", '"').replace("\u201d", '"'))
-            pdf.multi_cell(0, 6, safe_line)
+            y -= 10  # paragraph spacing
 
-    return bytes(pdf.output())
+        if y < 3 * cm:
+            c.showPage()
+            y = height - top_margin
+            c.setFont("Helvetica", 11)
+
+    c.save()
+    buffer.seek(0)
+    return buffer.read()
 
 
 async def create_gmail_draft_for_user(
@@ -5580,11 +5883,12 @@ async def upload_profile_photo(request: Request):
     )
 
     # If PATCH returned empty (no row existed), create one
+    # full_name defaults to "" to satisfy NOT NULL constraint
     if not update_response or len(update_response) == 0:
         await db_request(
             "POST",
             "user_profiles",
-            data={"user_id": user_id, "photo_url": photo_url}
+            data={"user_id": user_id, "photo_url": photo_url, "full_name": ""}
         )
 
     return {
@@ -5633,11 +5937,49 @@ async def get_profile(request: Request):
         "email": user_email or profile.get("email", ""),
         "phone": profile.get("phone", ""),
         "location": profile.get("location", ""),
+        "email_signature": profile.get("email_signature", ""),
         "training_letter_analyzed": len(letters) > 0,
         "training_letter_count": len(letters),
         "cv_uploaded": len(cv_uploads) > 0,
         "cv_count": len(cv_uploads)
     }
+
+
+@app.patch("/api/profile/signature")
+async def update_email_signature(request: Request):
+    """Save the user's custom email signature."""
+    auth_header = request.headers.get("Authorization", "")
+    if not auth_header.startswith("Bearer "):
+        raise HTTPException(status_code=401, detail="Ej inloggad")
+
+    token = auth_header.replace("Bearer ", "")
+
+    async with httpx.AsyncClient() as client:
+        user_response = await client.get(
+            f"{SUPABASE_URL}/auth/v1/user",
+            headers={"apikey": SUPABASE_ANON_KEY, "Authorization": f"Bearer {token}"}
+        )
+        if user_response.status_code != 200:
+            raise HTTPException(status_code=401, detail="Ogiltig token")
+        user_id = user_response.json().get("id")
+
+    body = await request.json()
+    signature = body.get("signature", "")
+
+    result = await db_request(
+        "PATCH",
+        f"user_profiles?user_id=eq.{user_id}",
+        data={"email_signature": signature, "updated_at": datetime.now().isoformat()}
+    )
+    if not result:
+        # No row yet — create one
+        await db_request("POST", "user_profiles", data={
+            "user_id": user_id,
+            "full_name": "",
+            "email_signature": signature
+        })
+
+    return {"success": True}
 
 
 @app.post("/api/upload/training-letter")

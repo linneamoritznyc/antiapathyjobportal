@@ -243,6 +243,19 @@
         };
 
         // Application modal
+        const EXPERIENCE_HINTS = [
+            { id: 'siggesta', label: 'Siggesta Gård (städning)', hint: '- Siggesta Gård: städning och praktiskt underhållsarbete' },
+            { id: 'max', label: 'Max Hamburgare', hint: '- Max Hamburgare (2024): restaurang, kök, drive-in, kassaarbete i högt tempo' },
+            { id: 'hob', label: 'House of Beans (barista)', hint: '- House of Beans (2024-2025): barista, direktförsäljning, jobbat ensam i butik' },
+            { id: 'ica', label: 'ICA Maxi (kassa)', hint: '- ICA Maxi (2015/2017/2019): kassaarbete, varumottagning, frukt och grönt' },
+            { id: 'coffeehouse', label: 'Coffeehouse by George', hint: '- Coffeehouse by George (2014-2015): kafé, kassahantering, barista' },
+            { id: 'google', label: 'Google Ads (granskning)', hint: '- Google Ads (2018-2019): innehållsgranskning och annonsanalys, 100+ ärenden/dag' },
+            { id: 'clubhouse', label: 'Clubhouse (moderator)', hint: '- Clubhouse (2021-2022): content moderation, Trust & Safety, onlinegrammatik' },
+            { id: 'minerva', label: 'Minerva (marknadsföring)', hint: '- Minerva Project (2019-2020): global marknadsföring, kundkommunikation' },
+            { id: 'webdev', label: 'Webbutveckling (React/Python)', hint: '- Webbutveckling: fullstack-appar med React, Python, FastAPI, PostgreSQL' },
+            { id: 'korkort', label: 'B-körkort & bil', hint: '- Har B-körkort och tillgång till bil' },
+        ];
+
         const ApplyModal = ({ isOpen, job, result, onClose, onSaveApplication }) => {
             const [letter, setLetter] = useState('');
             const [feedback, setFeedback] = useState('');
@@ -251,6 +264,10 @@
             const [applicationSaved, setApplicationSaved] = useState(false);
             const [copied, setCopied] = useState(false);
             const [feedbackSaved, setFeedbackSaved] = useState(false);
+            const [selectedHints, setSelectedHints] = useState([]);
+            const [regenerating, setRegenerating] = useState(false);
+            const [savingDraft, setSavingDraft] = useState(false);
+            const [draftSaved, setDraftSaved] = useState(false);
 
             useEffect(() => {
                 if (result?.cover_letter) setLetter(result.cover_letter);
@@ -328,10 +345,67 @@
                 setSavingFeedback(false);
             };
 
+            const regenerateLetter = async () => {
+                setRegenerating(true);
+                try {
+                    const token = localStorage.getItem('auth_token');
+                    const extraHintText = EXPERIENCE_HINTS
+                        .filter(e => selectedHints.includes(e.id))
+                        .map(e => e.hint)
+                        .join('\n');
+                    const res = await fetch(`/api/jobs/${job.id}/apply-with-cv`, {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            ...(token ? { 'Authorization': `Bearer ${token}` } : {})
+                        },
+                        body: JSON.stringify({ job, extra_hints: extraHintText })
+                    });
+                    const data = await res.json();
+                    if (data.success) {
+                        setLetter(data.cover_letter);
+                        setSelectedHints([]);
+                        setDraftSaved(false);
+                    }
+                } catch (err) {
+                    console.error('Regenerate error:', err);
+                }
+                setRegenerating(false);
+            };
+
+            const saveGmailDraftWithAttachments = async () => {
+                setSavingDraft(true);
+                try {
+                    const token = localStorage.getItem('auth_token');
+                    const res = await fetch(`/api/jobs/${job.id}/save-draft`, {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            ...(token ? { 'Authorization': `Bearer ${token}` } : {})
+                        },
+                        body: JSON.stringify({
+                            job,
+                            cover_letter: letter,
+                            vibe: result?.matched_vibe || 'customerservice'
+                        })
+                    });
+                    const data = await res.json();
+                    if (data.success) {
+                        setDraftSaved(true);
+                    } else {
+                        alert(data.detail || 'Kunde inte spara utkast. Är Gmail kopplat i Profil?');
+                    }
+                } catch (err) {
+                    console.error('Save draft error:', err);
+                    alert('Något gick fel. Försök igen.');
+                }
+                setSavingDraft(false);
+            };
+
             return (
                 <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50">
-                    <div className="bg-white rounded-2xl max-w-3xl w-full max-h-[90vh] overflow-hidden">
-                        <div className="gradient text-white p-5">
+                    <div className="bg-white rounded-2xl max-w-5xl w-full max-h-[92vh] flex flex-col overflow-hidden">
+                        <div className="gradient text-white p-5 flex-shrink-0">
                             <h3 className="text-xl font-bold">{job.title}</h3>
                             <p className="opacity-90">{job.company}</p>
                             {result?.matched_vibe && (
@@ -340,42 +414,41 @@
                                 </span>
                             )}
                         </div>
-                        <div className="p-5">
-                            <div className="flex gap-4">
-                                <div className="flex-1">
-                                    <label className="block text-sm font-medium text-slate-700 mb-2">Personligt brev</label>
-                                    <textarea
-                                        value={letter}
-                                        onChange={(e) => setLetter(e.target.value)}
-                                        className="w-full h-48 p-3 border border-slate-200 rounded-lg text-sm"
-                                    />
-                                </div>
-
-                                {showFeedback && (
-                                    <div className="w-64">
-                                        <label className="block text-sm font-medium text-slate-700 mb-2">Feedback till AI</label>
-                                        <textarea
-                                            value={feedback}
-                                            onChange={(e) => setFeedback(e.target.value)}
-                                            placeholder="Ex: Nämna alltid min kundtjänst-erfarenhet för dessa jobb..."
-                                            className="w-full h-32 p-3 border border-amber-200 bg-amber-50 rounded-lg text-sm"
-                                        />
-                                        <button
-                                            onClick={saveFeedback}
-                                            disabled={savingFeedback || !feedback.trim()}
-                                            className="w-full mt-2 bg-amber-500 text-white py-2 rounded-lg text-sm font-medium hover:bg-amber-600 disabled:opacity-50"
-                                        >
-                                            {savingFeedback ? 'Sparar...' : 'Spara feedback'}
-                                        </button>
-                                        <p className="text-xs text-slate-500 mt-2">
-                                            AI använder din feedback för framtida brev.
-                                        </p>
-                                    </div>
-                                )}
+                        <div className="p-5 overflow-y-auto flex-1">
+                            <div>
+                                <label className="block text-sm font-medium text-slate-700 mb-2">Personligt brev</label>
+                                <textarea
+                                    value={letter}
+                                    onChange={(e) => setLetter(e.target.value)}
+                                    className="w-full p-3 border border-slate-200 rounded-lg text-sm resize-y"
+                                    style={{minHeight: '360px'}}
+                                />
                             </div>
 
+                            {showFeedback && (
+                                <div className="mt-3">
+                                    <label className="block text-sm font-medium text-slate-700 mb-2">Feedback till AI</label>
+                                    <textarea
+                                        value={feedback}
+                                        onChange={(e) => setFeedback(e.target.value)}
+                                        placeholder="Ex: Nämna alltid min kundtjänst-erfarenhet för dessa jobb..."
+                                        className="w-full h-24 p-3 border border-amber-200 bg-amber-50 rounded-lg text-sm"
+                                    />
+                                    <button
+                                        onClick={saveFeedback}
+                                        disabled={savingFeedback || !feedback.trim()}
+                                        className="w-full mt-2 bg-amber-500 text-white py-2 rounded-lg text-sm font-medium hover:bg-amber-600 disabled:opacity-50"
+                                    >
+                                        {savingFeedback ? 'Sparar...' : 'Spara feedback'}
+                                    </button>
+                                    <p className="text-xs text-slate-500 mt-2">
+                                        AI använder din feedback för framtida brev.
+                                    </p>
+                                </div>
+                            )}
+
                             {/* Gmail draft status */}
-                            {result?.draft_created ? (
+                            {(result?.draft_created || draftSaved) ? (
                                 <div className="mt-3 p-3 bg-green-50 border border-green-200 rounded-lg">
                                     <div className="flex items-center gap-2 mb-2">
                                         <span className="text-green-600 text-lg">✓</span>
@@ -383,22 +456,17 @@
                                     </div>
                                     <div className="flex gap-3 text-xs text-green-700">
                                         <span>📄 Personligt_Brev_Linnea_Moritz.pdf</span>
-                                        <span>📄 {result.cv_filename || 'CV.pdf'}</span>
+                                        <span>📄 {result?.cv_filename || 'CV.pdf'}</span>
                                     </div>
                                     {job?.contact_email && (
                                         <p className="text-xs text-green-600 mt-1">Till: {job.contact_email}</p>
                                     )}
                                 </div>
-                            ) : job?.contact_email ? (
-                                <div className="mt-3 p-3 bg-amber-50 border border-amber-200 rounded-lg">
-                                    <p className="text-xs text-amber-800 font-medium">Gmail inte kopplat</p>
-                                    <p className="text-xs text-amber-700 mt-0.5">Koppla Gmail i Profil-fliken för att spara utkast automatiskt, eller öppna compose-länken nedan.</p>
-                                </div>
-                            ) : (
+                            ) : !job?.contact_email ? (
                                 <div className="mt-3 p-3 bg-slate-50 border border-slate-200 rounded-lg">
                                     <p className="text-xs text-slate-600">Ingen e-postadress hittades. Kolla annonsen direkt eller kopiera brevet.</p>
                                 </div>
-                            )}
+                            ) : null}
 
                             {/* Attachments info */}
                             <div className="mt-3 flex gap-2 flex-wrap">
@@ -410,14 +478,57 @@
                                 </span>
                             </div>
 
+                            {/* Experience picker */}
+                            <div className="mt-4 p-3 bg-slate-50 rounded-lg border border-slate-200">
+                                <p className="text-xs font-medium text-slate-600 mb-2">Saknas något? Lägg till erfarenheter och generera om:</p>
+                                <div className="flex flex-wrap gap-1.5">
+                                    {EXPERIENCE_HINTS.map(exp => (
+                                        <button
+                                            key={exp.id}
+                                            onClick={() => setSelectedHints(prev =>
+                                                prev.includes(exp.id) ? prev.filter(h => h !== exp.id) : [...prev, exp.id]
+                                            )}
+                                            className={`text-xs px-2.5 py-1 rounded-full border transition-colors ${
+                                                selectedHints.includes(exp.id)
+                                                    ? 'bg-indigo-100 border-indigo-400 text-indigo-700 font-medium'
+                                                    : 'bg-white border-slate-300 text-slate-600 hover:bg-slate-100'
+                                            }`}
+                                        >
+                                            {selectedHints.includes(exp.id) ? '✓ ' : ''}{exp.label}
+                                        </button>
+                                    ))}
+                                </div>
+                                {selectedHints.length > 0 && !regenerating && (
+                                    <button
+                                        onClick={regenerateLetter}
+                                        className="mt-3 w-full bg-indigo-600 text-white py-2 rounded-lg text-sm font-medium hover:bg-indigo-700"
+                                    >
+                                        ✨ Generera om med valda erfarenheter ({selectedHints.length} valda)
+                                    </button>
+                                )}
+                                {regenerating && (
+                                    <div className="mt-3 text-center text-sm text-slate-500 py-2">
+                                        ✨ Genererar nytt brev...
+                                    </div>
+                                )}
+                            </div>
+
                             {feedbackSaved && (
                                 <div className="mt-2 text-sm text-green-600">✓ Feedback sparad! AI använder den nästa gång.</div>
                             )}
 
                             <div className="flex gap-3 mt-4 flex-wrap">
-                                {!result?.draft_created && job?.contact_email && (
-                                    <button onClick={openGmail} className="flex-1 bg-green-600 text-white py-2.5 px-4 rounded-lg font-medium hover:bg-green-700">
-                                        Öppna i Gmail
+                                {job?.contact_email && (
+                                    <button
+                                        onClick={saveGmailDraftWithAttachments}
+                                        disabled={savingDraft}
+                                        className={`flex-1 py-2.5 px-4 rounded-lg font-medium transition-colors ${
+                                            draftSaved
+                                                ? 'bg-green-100 text-green-700 border border-green-300'
+                                                : 'bg-green-600 text-white hover:bg-green-700 disabled:opacity-60'
+                                        }`}
+                                    >
+                                        {savingDraft ? 'Sparar...' : draftSaved ? '✓ Sparat i Gmail' : 'Spara i Gmail med bilagor'}
                                     </button>
                                 )}
                                 <button
@@ -1071,6 +1182,9 @@
             const [photoStatus, setPhotoStatus] = useState(null);
             const [cvStatus, setCvStatus] = useState(null);
             const [cvCount, setCvCount] = useState(0);
+            const [signature, setSignature] = useState('');
+            const [savingSignature, setSavingSignature] = useState(false);
+            const [signatureStatus, setSignatureStatus] = useState(null);
 
             // Load existing profile data
             useEffect(() => {
@@ -1096,8 +1210,36 @@
                         setCvCount(data.cv_count);
                         setCvStatus(`${data.cv_count} CV uppladdat ✓`);
                     }
+                    if (data.email_signature) {
+                        setSignature(data.email_signature);
+                    }
                 } catch (err) {
                     console.error('Error fetching profile:', err);
+                }
+            };
+
+            const saveSignature = async () => {
+                setSavingSignature(true);
+                setSignatureStatus(null);
+                try {
+                    const token = localStorage.getItem('auth_token');
+                    const res = await fetch('/api/profile/signature', {
+                        method: 'PATCH',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'Authorization': `Bearer ${token}`
+                        },
+                        body: JSON.stringify({ signature })
+                    });
+                    if (res.ok) {
+                        setSignatureStatus('✓ Signatur sparad!');
+                    } else {
+                        setSignatureStatus('Kunde inte spara signatur.');
+                    }
+                } catch (err) {
+                    setSignatureStatus('Fel vid sparande.');
+                } finally {
+                    setSavingSignature(false);
                 }
             };
 
@@ -1328,6 +1470,33 @@
                             Accepterade format: PDF, DOCX, DOC, TXT, RTF, ODT
                         </p>
                     </div>
+
+                    {/* Email Signature Section */}
+                    <div className="bg-white rounded-xl p-6 border border-slate-200">
+                        <h3 className="text-lg font-semibold mb-1">✍️ E-postsignatur</h3>
+                        <p className="text-sm text-slate-600 mb-4">
+                            Skrivs automatiskt längst ned i varje Gmail-utkast. Redigera hur du vill.
+                        </p>
+                        <textarea
+                            value={signature}
+                            onChange={(e) => setSignature(e.target.value)}
+                            rows={4}
+                            placeholder={"Med vänliga hälsningar,\nLinnea Moritz\n076-116 61 09\nLinneamoritzCV@gmail.com"}
+                            className="w-full px-4 py-3 border border-slate-200 rounded-lg text-sm font-mono resize-none focus:outline-none focus:ring-2 focus:ring-indigo-300"
+                        />
+                        {signatureStatus && (
+                            <div className={`mt-2 text-sm ${signatureStatus.startsWith('✓') ? 'text-green-600' : 'text-red-600'}`}>
+                                {signatureStatus}
+                            </div>
+                        )}
+                        <button
+                            onClick={saveSignature}
+                            disabled={savingSignature}
+                            className="mt-3 bg-indigo-600 text-white px-6 py-2.5 rounded-lg font-medium hover:bg-indigo-700 disabled:opacity-50 transition"
+                        >
+                            {savingSignature ? 'Sparar...' : 'Spara signatur'}
+                        </button>
+                    </div>
                 </div>
             );
         };
@@ -1413,10 +1582,10 @@
                         </div>
                         <p className="text-sm text-slate-600">{item.degree}</p>
                         <p className="text-xs text-slate-500 mb-2">
-                            {item.start_date} - {item.end_date || 'Pågående'}
+                            {item.dates || [item.start_date, item.end_date].filter(Boolean).join(' - ')}
                         </p>
-                        {item.description && (
-                            <p className="text-sm text-slate-700 line-clamp-2">{item.description}</p>
+                        {item.location && (
+                            <p className="text-xs text-slate-400">{item.location}</p>
                         )}
                     </div>
                 </div>
@@ -1432,7 +1601,7 @@
                             <span className="text-2xl">💻</span>
                             <h4 className="font-semibold">{item.project_name}</h4>
                         </div>
-                        <p className="text-sm text-slate-600">{item.tech_stack}</p>
+                        <p className="text-sm text-slate-600">{Array.isArray(item.tech_stack) ? item.tech_stack.join(', ') : item.tech_stack}</p>
                         {item.live_url && (
                             <a href={item.live_url} target="_blank" rel="noopener noreferrer" className="text-xs text-blue-600 hover:underline">
                                 {item.live_url}
@@ -1770,8 +1939,8 @@
                                 <GenericCard
                                     item={item}
                                     icon="🏅"
-                                    title={item.certification_name || item.name}
-                                    subtitle={item.organization}
+                                    title={item.certification_name}
+                                    subtitle={item.issuing_organization || item.issuer}
                                 />
                             )}
                         />
@@ -1785,8 +1954,8 @@
                                 <GenericCard
                                     item={item}
                                     icon="🏆"
-                                    title={item.award_name}
-                                    subtitle={item.organization}
+                                    title={item.award_text}
+                                    subtitle={null}
                                 />
                             )}
                         />
@@ -1800,8 +1969,8 @@
                                 <GenericCard
                                     item={item}
                                     icon="🤝"
-                                    title={item.organization_name}
-                                    subtitle={item.role}
+                                    title={item.organization}
+                                    subtitle={item.dates}
                                 />
                             )}
                         />
@@ -1815,8 +1984,8 @@
                                 <GenericCard
                                     item={item}
                                     icon="🗣️"
-                                    title={item.skill_name}
-                                    subtitle={item.proficiency_level}
+                                    title={item.skill_text}
+                                    subtitle={null}
                                 />
                             )}
                         />
@@ -2714,6 +2883,37 @@
             const [currentPage, setCurrentPage] = useState(1);
             const jobsPerPage = 12;
             const [prefsKey, setPrefsKey] = useState(0);
+            const [hiddenJobIds, setHiddenJobIds] = useState(new Set()); // locally rejected jobs
+            const [showHidden, setShowHidden] = useState(false);
+
+            // Log interaction signal to backend (Meta-style event collection)
+            const logInteraction = async (jobId, action, context = {}) => {
+                const token = localStorage.getItem('auth_token');
+                if (!token) return;
+                try {
+                    await fetch(`/api/jobs/${jobId}/interaction`, {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'Authorization': `Bearer ${token}`
+                        },
+                        body: JSON.stringify({ action, context })
+                    });
+                } catch (e) {
+                    console.error('Interaction log error:', e);
+                }
+            };
+
+            const handleSkip = (job) => {
+                logInteraction(job.id, 'skipped');
+                setCurrentPage(p => Math.min(filteredJobs.length, p + 1));
+            };
+
+            const handleReject = (job) => {
+                logInteraction(job.id, 'rejected');
+                setHiddenJobIds(prev => new Set([...prev, job.id]));
+                // Stay on same page index — next job slides in automatically
+            };
 
             // Re-read preferences when saved from Preferenser tab
             useEffect(() => {
@@ -2736,6 +2936,9 @@
             // Filter and sort jobs
             const filteredJobs = jobs
                 .filter(job => {
+                    // Hide locally rejected jobs unless "Visa dolda" is on
+                    if (!showHidden && hiddenJobIds.has(job.id)) return false;
+
                     // Text filter
                     if (filterText) {
                         const search = filterText.toLowerCase();
@@ -2859,6 +3062,18 @@
                     </div>
 
 
+                    {/* Rejected jobs toggle */}
+                    {hiddenJobIds.size > 0 && (
+                        <div className="flex items-center justify-end mb-3">
+                            <button
+                                onClick={() => setShowHidden(h => !h)}
+                                className="text-sm text-slate-400 hover:text-slate-700 transition"
+                            >
+                                {showHidden ? '🙈 Dölj bortvalde jobb' : `👁 Visa ${hiddenJobIds.size} bortvalt jobb`}
+                            </button>
+                        </div>
+                    )}
+
                     {/* ONE JOB AT A TIME */}
                     {(() => {
                         const jobIndex = currentPage - 1;
@@ -2897,7 +3112,7 @@
                                         </button>
                                     </div>
                                 ) : currentJob ? (
-                                    <div className="max-w-3xl mx-auto">
+                                    <div className="max-w-5xl mx-auto">
                                         {/* Progress indicator */}
                                         <div className="flex items-center justify-between mb-3 px-1">
                                             <span className="text-sm text-slate-500">Jobb {jobIndex + 1} av {filteredJobs.length}</span>
@@ -2973,15 +3188,46 @@
                                                 )}
                                             </div>
 
-                                            {/* Description - taller, more text */}
+                                            {/* Description - formatted */}
                                             {currentJob.description && (
-                                                <div className="bg-slate-50 rounded-xl p-5 mb-5 max-h-96 overflow-y-auto">
-                                                    <p className="text-sm text-slate-700 leading-relaxed whitespace-pre-line">
-                                                        {currentJob.description.substring(0, 3000).replace(/([^\n])\s*•/g, '$1\n\n•')}
-                                                        {currentJob.description.length > 3000 ? (
-                                                            <span className="text-slate-400"> …<a href={currentJob.url} target="_blank" className="text-indigo-500 hover:underline ml-1">Läs mer på Platsbanken</a></span>
-                                                        ) : ''}
-                                                    </p>
+                                                <div className="bg-slate-50 rounded-xl p-5 mb-5">
+                                                    <div className="text-sm text-slate-700 leading-relaxed space-y-2" dangerouslySetInnerHTML={{
+                                                        __html: (() => {
+                                                            let text = currentJob.description.substring(0, 4000);
+                                                            // Escape HTML
+                                                            text = text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+                                                            // Split into lines
+                                                            let lines = text.split(/\n/);
+                                                            let html = '';
+                                                            let inList = false;
+                                                            for (const line of lines) {
+                                                                const trimmed = line.trim();
+                                                                if (!trimmed) {
+                                                                    if (inList) { html += '</ul>'; inList = false; }
+                                                                    continue;
+                                                                }
+                                                                // Detect bullet points
+                                                                if (/^[•\-–—\*]\s/.test(trimmed)) {
+                                                                    if (!inList) { html += '<ul class="list-disc pl-5 space-y-1">'; inList = true; }
+                                                                    html += '<li>' + trimmed.replace(/^[•\-–—\*]\s*/, '') + '</li>';
+                                                                }
+                                                                // Detect section headers (ALL CAPS or short bold-like lines)
+                                                                else if (/^[A-ZÅÄÖÜ\s\-:]{5,}$/.test(trimmed) && trimmed.length < 60) {
+                                                                    if (inList) { html += '</ul>'; inList = false; }
+                                                                    html += '<h4 class="font-semibold text-slate-800 mt-3 mb-1">' + trimmed + '</h4>';
+                                                                }
+                                                                else {
+                                                                    if (inList) { html += '</ul>'; inList = false; }
+                                                                    html += '<p>' + trimmed + '</p>';
+                                                                }
+                                                            }
+                                                            if (inList) html += '</ul>';
+                                                            return html;
+                                                        })()
+                                                    }} />
+                                                    {currentJob.description.length > 4000 && (
+                                                        <p className="text-slate-400 mt-2 text-xs">…<a href={currentJob.url} target="_blank" className="text-indigo-500 hover:underline ml-1">Läs mer på Platsbanken</a></p>
+                                                    )}
                                                 </div>
                                             )}
 
@@ -3011,9 +3257,16 @@
                                             )}
 
                                             {/* Primary action buttons */}
-                                            <div className="flex gap-3">
+                                            <div className="flex gap-2">
                                                 <button
-                                                    onClick={() => setCurrentPage(p => Math.min(filteredJobs.length, p + 1))}
+                                                    onClick={() => handleReject(currentJob)}
+                                                    className="py-3.5 px-3 border-2 border-red-200 text-red-400 rounded-xl font-medium hover:bg-red-50 hover:border-red-300 transition"
+                                                    title="Inte intressant — dölj detta jobb"
+                                                >
+                                                    🚫
+                                                </button>
+                                                <button
+                                                    onClick={() => handleSkip(currentJob)}
                                                     className="flex-1 py-3.5 px-4 border-2 border-slate-200 rounded-xl text-slate-500 font-medium hover:bg-slate-50 hover:border-slate-300 transition"
                                                 >
                                                     Hoppa över →
@@ -4577,7 +4830,10 @@
             };
 
             const fetchJobs = async () => {
-                const res = await fetch('/api/jobs');
+                const token = localStorage.getItem('auth_token');
+                const res = await fetch('/api/jobs', {
+                    headers: token ? { 'Authorization': `Bearer ${token}` } : {}
+                });
                 const data = await res.json();
                 if (data.success) setJobs(data.jobs || []);
             };
@@ -4787,13 +5043,25 @@
                     const token = localStorage.getItem('auth_token');
                     const res = await fetch(`/api/jobs/${job.id}/apply-with-cv`, {
                         method: 'POST',
-                        headers: token ? { 'Authorization': `Bearer ${token}` } : {}
+                        headers: {
+                            'Content-Type': 'application/json',
+                            ...(token ? { 'Authorization': `Bearer ${token}` } : {})
+                        },
+                        body: JSON.stringify({ job })
                     });
                     const data = await res.json();
 
                     if (data.success) {
                         setApplyResult(data);
                         setShowApplyModal(true);
+                        // Log 'applied' interaction so this job is hidden from the feed
+                        if (token) {
+                            fetch(`/api/jobs/${job.id}/interaction`, {
+                                method: 'POST',
+                                headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+                                body: JSON.stringify({ action: 'applied' })
+                            }).catch(() => {});
+                        }
                     } else {
                         alert(data.detail || 'Kunde inte skapa ansökan.');
                     }

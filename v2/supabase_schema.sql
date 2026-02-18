@@ -31,6 +31,7 @@ CREATE TABLE IF NOT EXISTS user_profiles (
     languages TEXT[] DEFAULT ARRAY['Svenska (Modersmål)', 'Engelska (flytande)']::TEXT[],
     certificates TEXT[] DEFAULT ARRAY[]::TEXT[],  -- ['B-körkort', 'ICA kassahantering', etc.]
     about_me TEXT,  -- Professional bio/summary
+    email_signature TEXT DEFAULT '',  -- Custom email signature for Gmail drafts
     onboarding_completed BOOLEAN DEFAULT FALSE,
     privacy_policy_accepted BOOLEAN DEFAULT FALSE,
     data_consent_given_at TIMESTAMPTZ,
@@ -118,7 +119,10 @@ CREATE TABLE IF NOT EXISTS user_education (
     school TEXT NOT NULL,
     location TEXT,
     degree TEXT,
-    dates TEXT,  -- 'Aug 2017 - Maj 2021'
+    field_of_study TEXT,
+    start_date TEXT,
+    end_date TEXT,
+    dates TEXT,  -- 'Aug 2017 - Maj 2021' (combined display string)
     bullets TEXT[] DEFAULT ARRAY[]::TEXT[],
     sort_order INT DEFAULT 0,
     created_at TIMESTAMPTZ DEFAULT NOW()
@@ -135,8 +139,16 @@ CREATE TABLE IF NOT EXISTS user_experiences (
     start_date TEXT,           -- 'Juli 2024' (for AI sorting/matching)
     end_date TEXT,             -- 'Augusti 2025' or 'Pågående'
     description TEXT,          -- Free-text description of the role
+    description_long TEXT,     -- Extended description
+    description_short TEXT,    -- One-line summary
+    description_variants JSONB,  -- {'formal': '...', 'casual': '...'}
     bullets TEXT[] DEFAULT ARRAY[]::TEXT[],
     categories TEXT[] DEFAULT ARRAY[]::TEXT[],  -- ['restaurant', 'retail', 'customerservice', 'tech', etc.]
+    relevance_scores JSONB,      -- {'restaurant': 9, 'tech': 3}
+    key_achievements TEXT[] DEFAULT ARRAY[]::TEXT[],
+    keywords TEXT[] DEFAULT ARRAY[]::TEXT[],
+    is_featured BOOLEAN DEFAULT FALSE,
+    last_updated TIMESTAMPTZ,
     -- AI matching tags
     job_types TEXT[] DEFAULT ARRAY[]::TEXT[],        -- ['industri', 'fysiskt_arbete', 'kundtjänst']
     skill_level TEXT,                                 -- 'entry', 'mid', 'senior'
@@ -186,6 +198,8 @@ CREATE TABLE IF NOT EXISTS user_certifications (
     user_id TEXT NOT NULL,
     certification_name TEXT NOT NULL,
     issuing_organization TEXT,
+    issue_date TEXT,
+    expiry_date TEXT,
     sort_order INT DEFAULT 0,
     created_at TIMESTAMPTZ DEFAULT NOW()
 );
@@ -437,6 +451,26 @@ CREATE TABLE IF NOT EXISTS user_training_letters (
     uploaded_at TIMESTAMPTZ DEFAULT NOW()
 );
 
+-- Job interaction signals — Meta-style event log for smart feed ranking
+-- action: 'viewed' | 'skipped' | 'applied' | 'saved' | 'rejected'
+-- Skipped jobs move to end of feed; rejected + applied are hidden by default.
+-- context JSONB holds optional metadata (time_spent_seconds, etc.)
+-- Added 2026-02-18.
+CREATE TABLE IF NOT EXISTS user_job_interactions (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    user_id TEXT NOT NULL,
+    job_id TEXT NOT NULL,
+    action TEXT NOT NULL CHECK (action IN ('viewed', 'skipped', 'applied', 'saved', 'rejected')),
+    context JSONB DEFAULT '{}'::jsonb,
+    created_at TIMESTAMPTZ DEFAULT NOW()
+);
+-- Fast lookups per user (for feed filtering)
+CREATE INDEX IF NOT EXISTS idx_user_job_interactions_user ON user_job_interactions(user_id, created_at DESC);
+-- Fast lookups per job (for analytics)
+CREATE INDEX IF NOT EXISTS idx_user_job_interactions_job ON user_job_interactions(job_id);
+-- One record per (user, job, action) — prevents duplicate signals
+CREATE UNIQUE INDEX IF NOT EXISTS idx_user_job_interactions_unique ON user_job_interactions(user_id, job_id, action);
+
 -- User Google Cloud credentials (each user brings their own)
 -- This is more secure - users control their own API access
 CREATE TABLE IF NOT EXISTS user_google_credentials (
@@ -521,29 +555,29 @@ COMMENT ON TABLE user_cv_uploads IS 'User-uploaded CVs as PDFs (max 20 per user)
 COMMENT ON TABLE bransch_cvs IS 'Industry-specific CV variants shown in MinaCVPage';
 
 -- ============== SUPABASE STORAGE BUCKETS ==============
--- These are created automatically on app startup via the API.
--- If they don't exist, run this in Supabase SQL Editor:
+-- All 3 buckets are PUBLIC with 4 RLS policies each (SELECT/INSERT/UPDATE/DELETE).
+-- Confirmed existing in Supabase dashboard 2026-02-18.
 --
--- INSERT INTO storage.buckets (id, name, public) VALUES ('profile-photos', 'profile-photos', true) ON CONFLICT (id) DO NOTHING;
--- INSERT INTO storage.buckets (id, name, public) VALUES ('training-letters', 'training-letters', true) ON CONFLICT (id) DO NOTHING;
--- INSERT INTO storage.buckets (id, name, public) VALUES ('cv-files', 'cv-files', true) ON CONFLICT (id) DO NOTHING;
+-- 1. profile-photos
+--    Visibility: Public
+--    Allowed MIME types: image/jpeg, image/png, image/jpg, image/webp
+--    Max file size: 10 MB
+--    Path pattern: {user_id}/profile.{ext}
+--    Public URL: {SUPABASE_URL}/storage/v1/object/public/profile-photos/{path}
+--    Policies (4): Allow public read, Allow authenticated upload, Allow owner update, Allow owner delete
 --
--- Also add permissive storage policies so service_role can upload:
+-- 2. training-letters
+--    Visibility: Public
+--    Allowed MIME types: application/pdf, application/vnd.openxmlformats-officedocument.wordprocessingml.document, application/msword, text/plain
+--    Max file size: 50 MB
+--    Path pattern: {user_id}/letter_{timestamp}.{ext}
+--    Public URL: {SUPABASE_URL}/storage/v1/object/public/training-letters/{path}
+--    Policies (4): Allow public read, Allow authenticated upload, Allow owner update, Allow owner delete
 --
--- CREATE POLICY "Allow public read" ON storage.objects FOR SELECT USING (bucket_id IN ('profile-photos', 'training-letters', 'cv-files'));
--- CREATE POLICY "Allow service upload" ON storage.objects FOR INSERT WITH CHECK (true);
--- CREATE POLICY "Allow service update" ON storage.objects FOR UPDATE USING (true);
--- CREATE POLICY "Allow service delete" ON storage.objects FOR DELETE USING (true);
---
--- Bucket details:
--- 1. profile-photos    — User profile photos (one per user)
---    Path: {user_id}/profile.{ext}
---    URL:  {SUPABASE_URL}/storage/v1/object/public/profile-photos/{path}
---
--- 2. training-letters  — Personal letters uploaded to train AI style (max 20/user)
---    Path: {user_id}/letter_{timestamp}.{ext}
---    URL:  {SUPABASE_URL}/storage/v1/object/public/training-letters/{path}
---
--- 3. cv-files          — Uploaded CV PDFs (max 20/user)
---    Path: {user_id}/cv_{timestamp}.{ext}
---    URL:  {SUPABASE_URL}/storage/v1/object/public/cv-files/{path}
+-- 3. cv-files
+--    Visibility: Public
+--    Allowed MIME types: application/pdf, application/vnd.openxmlformats-officedocument.wordprocessingml.document, application/msword, text/plain, application/rtf, application/vnd.oasis.opendocument.text
+--    Max file size: 50 MB
+--    Path pattern: {user_id}/{vibe_id}_cv.{ext}
+--    Public URL: {SUPABASE_URL}/storage/v1/object/public/cv-files/{path}
+--    Policies (4): Allow public read, Allow authenticated upload, Allow owner update, Allow owner delete
