@@ -243,6 +243,19 @@
         };
 
         // Application modal
+        const EXPERIENCE_HINTS = [
+            { id: 'siggesta', label: 'Siggesta Gård (städning)', hint: '- Siggesta Gård: städning och praktiskt underhållsarbete' },
+            { id: 'max', label: 'Max Hamburgare', hint: '- Max Hamburgare (2024): restaurang, kök, drive-in, kassaarbete i högt tempo' },
+            { id: 'hob', label: 'House of Beans (barista)', hint: '- House of Beans (2024-2025): barista, direktförsäljning, jobbat ensam i butik' },
+            { id: 'ica', label: 'ICA Maxi (kassa)', hint: '- ICA Maxi (2015/2017/2019): kassaarbete, varumottagning, frukt och grönt' },
+            { id: 'coffeehouse', label: 'Coffeehouse by George', hint: '- Coffeehouse by George (2014-2015): kafé, kassahantering, barista' },
+            { id: 'google', label: 'Google Ads (granskning)', hint: '- Google Ads (2018-2019): innehållsgranskning och annonsanalys, 100+ ärenden/dag' },
+            { id: 'clubhouse', label: 'Clubhouse (moderator)', hint: '- Clubhouse (2021-2022): content moderation, Trust & Safety, onlinegrammatik' },
+            { id: 'minerva', label: 'Minerva (marknadsföring)', hint: '- Minerva Project (2019-2020): global marknadsföring, kundkommunikation' },
+            { id: 'webdev', label: 'Webbutveckling (React/Python)', hint: '- Webbutveckling: fullstack-appar med React, Python, FastAPI, PostgreSQL' },
+            { id: 'korkort', label: 'B-körkort & bil', hint: '- Har B-körkort och tillgång till bil' },
+        ];
+
         const ApplyModal = ({ isOpen, job, result, onClose, onSaveApplication }) => {
             const [letter, setLetter] = useState('');
             const [feedback, setFeedback] = useState('');
@@ -251,6 +264,8 @@
             const [applicationSaved, setApplicationSaved] = useState(false);
             const [copied, setCopied] = useState(false);
             const [feedbackSaved, setFeedbackSaved] = useState(false);
+            const [selectedHints, setSelectedHints] = useState([]);
+            const [regenerating, setRegenerating] = useState(false);
 
             useEffect(() => {
                 if (result?.cover_letter) setLetter(result.cover_letter);
@@ -328,10 +343,37 @@
                 setSavingFeedback(false);
             };
 
+            const regenerateLetter = async () => {
+                setRegenerating(true);
+                try {
+                    const token = localStorage.getItem('auth_token');
+                    const extraHintText = EXPERIENCE_HINTS
+                        .filter(e => selectedHints.includes(e.id))
+                        .map(e => e.hint)
+                        .join('\n');
+                    const res = await fetch(`/api/jobs/${job.id}/apply-with-cv`, {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            ...(token ? { 'Authorization': `Bearer ${token}` } : {})
+                        },
+                        body: JSON.stringify({ job, extra_hints: extraHintText })
+                    });
+                    const data = await res.json();
+                    if (data.success) {
+                        setLetter(data.cover_letter);
+                        setSelectedHints([]);
+                    }
+                } catch (err) {
+                    console.error('Regenerate error:', err);
+                }
+                setRegenerating(false);
+            };
+
             return (
                 <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50">
-                    <div className="bg-white rounded-2xl max-w-3xl w-full max-h-[90vh] overflow-hidden">
-                        <div className="gradient text-white p-5">
+                    <div className="bg-white rounded-2xl max-w-3xl w-full max-h-[92vh] flex flex-col overflow-hidden">
+                        <div className="gradient text-white p-5 flex-shrink-0">
                             <h3 className="text-xl font-bold">{job.title}</h3>
                             <p className="opacity-90">{job.company}</p>
                             {result?.matched_vibe && (
@@ -340,39 +382,38 @@
                                 </span>
                             )}
                         </div>
-                        <div className="p-5">
-                            <div className="flex gap-4">
-                                <div className="flex-1">
-                                    <label className="block text-sm font-medium text-slate-700 mb-2">Personligt brev</label>
-                                    <textarea
-                                        value={letter}
-                                        onChange={(e) => setLetter(e.target.value)}
-                                        className="w-full h-48 p-3 border border-slate-200 rounded-lg text-sm"
-                                    />
-                                </div>
-
-                                {showFeedback && (
-                                    <div className="w-64">
-                                        <label className="block text-sm font-medium text-slate-700 mb-2">Feedback till AI</label>
-                                        <textarea
-                                            value={feedback}
-                                            onChange={(e) => setFeedback(e.target.value)}
-                                            placeholder="Ex: Nämna alltid min kundtjänst-erfarenhet för dessa jobb..."
-                                            className="w-full h-32 p-3 border border-amber-200 bg-amber-50 rounded-lg text-sm"
-                                        />
-                                        <button
-                                            onClick={saveFeedback}
-                                            disabled={savingFeedback || !feedback.trim()}
-                                            className="w-full mt-2 bg-amber-500 text-white py-2 rounded-lg text-sm font-medium hover:bg-amber-600 disabled:opacity-50"
-                                        >
-                                            {savingFeedback ? 'Sparar...' : 'Spara feedback'}
-                                        </button>
-                                        <p className="text-xs text-slate-500 mt-2">
-                                            AI använder din feedback för framtida brev.
-                                        </p>
-                                    </div>
-                                )}
+                        <div className="p-5 overflow-y-auto flex-1">
+                            <div>
+                                <label className="block text-sm font-medium text-slate-700 mb-2">Personligt brev</label>
+                                <textarea
+                                    value={letter}
+                                    onChange={(e) => setLetter(e.target.value)}
+                                    className="w-full p-3 border border-slate-200 rounded-lg text-sm resize-y"
+                                    style={{minHeight: '360px'}}
+                                />
                             </div>
+
+                            {showFeedback && (
+                                <div className="mt-3">
+                                    <label className="block text-sm font-medium text-slate-700 mb-2">Feedback till AI</label>
+                                    <textarea
+                                        value={feedback}
+                                        onChange={(e) => setFeedback(e.target.value)}
+                                        placeholder="Ex: Nämna alltid min kundtjänst-erfarenhet för dessa jobb..."
+                                        className="w-full h-24 p-3 border border-amber-200 bg-amber-50 rounded-lg text-sm"
+                                    />
+                                    <button
+                                        onClick={saveFeedback}
+                                        disabled={savingFeedback || !feedback.trim()}
+                                        className="w-full mt-2 bg-amber-500 text-white py-2 rounded-lg text-sm font-medium hover:bg-amber-600 disabled:opacity-50"
+                                    >
+                                        {savingFeedback ? 'Sparar...' : 'Spara feedback'}
+                                    </button>
+                                    <p className="text-xs text-slate-500 mt-2">
+                                        AI använder din feedback för framtida brev.
+                                    </p>
+                                </div>
+                            )}
 
                             {/* Gmail draft status */}
                             {result?.draft_created ? (
@@ -408,6 +449,41 @@
                                 <span className="inline-flex items-center gap-1 text-xs bg-slate-100 text-slate-600 px-2 py-1 rounded">
                                     📄 {result?.cv_filename || 'CV (PDF)'}
                                 </span>
+                            </div>
+
+                            {/* Experience picker */}
+                            <div className="mt-4 p-3 bg-slate-50 rounded-lg border border-slate-200">
+                                <p className="text-xs font-medium text-slate-600 mb-2">Saknas något? Lägg till erfarenheter och generera om:</p>
+                                <div className="flex flex-wrap gap-1.5">
+                                    {EXPERIENCE_HINTS.map(exp => (
+                                        <button
+                                            key={exp.id}
+                                            onClick={() => setSelectedHints(prev =>
+                                                prev.includes(exp.id) ? prev.filter(h => h !== exp.id) : [...prev, exp.id]
+                                            )}
+                                            className={`text-xs px-2.5 py-1 rounded-full border transition-colors ${
+                                                selectedHints.includes(exp.id)
+                                                    ? 'bg-indigo-100 border-indigo-400 text-indigo-700 font-medium'
+                                                    : 'bg-white border-slate-300 text-slate-600 hover:bg-slate-100'
+                                            }`}
+                                        >
+                                            {selectedHints.includes(exp.id) ? '✓ ' : ''}{exp.label}
+                                        </button>
+                                    ))}
+                                </div>
+                                {selectedHints.length > 0 && !regenerating && (
+                                    <button
+                                        onClick={regenerateLetter}
+                                        className="mt-3 w-full bg-indigo-600 text-white py-2 rounded-lg text-sm font-medium hover:bg-indigo-700"
+                                    >
+                                        ✨ Generera om med valda erfarenheter ({selectedHints.length} valda)
+                                    </button>
+                                )}
+                                {regenerating && (
+                                    <div className="mt-3 text-center text-sm text-slate-500 py-2">
+                                        ✨ Genererar nytt brev...
+                                    </div>
+                                )}
                             </div>
 
                             {feedbackSaved && (

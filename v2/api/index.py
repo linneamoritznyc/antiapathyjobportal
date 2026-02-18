@@ -501,6 +501,20 @@ DEFAULT_EXPERIENCE = {
 - Deployment: Vercel, Supabase, API-integrationer
 - Innehållsanalytiker, Google Ads (2018-2019): Teknisk granskning, dataanalys""",
 
+    "industri": """- Siggesta Gård: Städning och praktiskt underhållsarbete
+- Max Hamburgare (Apr-Aug 2024): Kök, drive-in, fysiskt arbete i högt tempo
+- ICA Maxi (2015, 2017, 2019): Fysiskt butiksarbete, varumottagning, frukt/grönt
+- B-körkort och tillgång till bil
+- Van vid tidiga morgnar, kvällar och helger""",
+
+    "healthcare": """- Bred servicevana och empatisk kontakt med människor
+- Flexibel, pålitlig och van vid ansvar
+- B-körkort och flexibel med arbetstider""",
+
+    "contentmoderation": """- Innehållsmoderator, Clubhouse (Jun 2021-Jan 2022): Trust & Safety, granskning, support
+- Innehållsanalytiker, Google Ads (Maj 2018-Apr 2019): 100+ annonser/dag, policyhantering
+- Global Marketing, Minerva Project (Sep 2019-Apr 2020): Kundkommunikation via Intercom""",
+
     "default": """- Bred erfarenhet inom service, kundkontakt och administration
 - Flexibel, pålitlig och snabb på att lära mig nya system
 - B-körkort och flexibel med arbetstider"""
@@ -522,7 +536,7 @@ def detect_job_category(title: str, description: str) -> str:
     return "default"
 
 
-async def generate_cover_letter(job: Dict, user_cv_text: Optional[str] = None, user_profile: Optional[Dict] = None) -> str:
+async def generate_cover_letter(job: Dict, user_cv_text: Optional[str] = None, user_profile: Optional[Dict] = None, extra_hints: Optional[str] = None) -> str:
     """Generate personalized cover letter using Claude"""
 
     if not ANTHROPIC_API_KEY:
@@ -531,6 +545,10 @@ async def generate_cover_letter(job: Dict, user_cv_text: Optional[str] = None, u
     # Get relevant experience
     category = detect_job_category(job.get("title", ""), job.get("description", ""))
     experience = user_cv_text or DEFAULT_EXPERIENCE.get(category, DEFAULT_EXPERIENCE["default"])
+
+    # Append any extra hints the user selected in the UI
+    if extra_hints:
+        experience += f"\n\nEXTRA ERFARENHETER SOM MÅSTE NÄMNAS I BREVET:\n{extra_hints}"
 
     # Use profile data from database, fall back to defaults
     p = user_profile or {}
@@ -590,13 +608,14 @@ INSTRUKTIONER:
 4. Lyft BARA erfarenheter som faktiskt passar jobbet. Om inga erfarenheter matchar direkt, fokusera istället på personliga egenskaper som passar (t.ex. noggrannhet, pålitlighet, initiativförmåga, servicekänsla). Försök ALDRIG koppla irrelevant erfarenhet till jobbet på ett konstruerat sätt.
 5. VIKTIGT: Om annonsen nämner specifika krav eller önskemål (t.ex. körkort, bil, fysisk förmåga, kvällar/helger, sommarsäsong, "annan sysselsättning"), bekräfta kortfattat att jag uppfyller/passar dem — utan att överdriva
 6. Nämn var jag bor och att jag är flexibel med arbetstider
-7. Avsluta med:
+7. Om "EXTRA ERFARENHETER SOM MÅSTE NÄMNAS I BREVET" finns ovan — nämn dem ALLTID specifikt i brevet, även om de inte är den starkaste matchningen
+8. Avsluta med:
    Med vänlig hälsning,
    {name}
    {phone}
    {email}
 
-Skriv ENDAST brevet, inget annat."""
+Skriv ENDAST det färdiga brevet, inget annat."""
 
     try:
         async with httpx.AsyncClient() as client:
@@ -1958,7 +1977,8 @@ async def apply_with_cv(request: Request, job_id: str):
 
     # Generate cover letter (works with or without CV/profile)
     cv_text_for_letter = cv.get("cv_text") if cv else None
-    cover_letter = await generate_cover_letter(job, cv_text_for_letter, user_profile)
+    extra_hints = body.get("extra_hints")
+    cover_letter = await generate_cover_letter(job, cv_text_for_letter, user_profile, extra_hints)
 
     # Try to automatically create a Gmail draft using this user's connected Gmail
     contact_email = job.get("contact_email")
