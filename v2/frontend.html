@@ -4630,7 +4630,10 @@
             };
 
             const fetchJobs = async () => {
-                const res = await fetch('/api/jobs');
+                const token = localStorage.getItem('auth_token');
+                const res = await fetch('/api/jobs', {
+                    headers: token ? { 'Authorization': `Bearer ${token}` } : {}
+                });
                 const data = await res.json();
                 if (data.success) setJobs(data.jobs || []);
             };
@@ -4851,6 +4854,14 @@
                     if (data.success) {
                         setApplyResult(data);
                         setShowApplyModal(true);
+                        // Log 'applied' interaction so this job is hidden from the feed
+                        if (token) {
+                            fetch(`/api/jobs/${job.id}/interaction`, {
+                                method: 'POST',
+                                headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+                                body: JSON.stringify({ action: 'applied' })
+                            }).catch(() => {});
+                        }
                     } else {
                         alert(data.detail || 'Kunde inte skapa ansökan.');
                     }
