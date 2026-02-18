@@ -4,6 +4,7 @@
       "src": "api/index.py",
       "use": "@vercel/python",
       "config": {
+        "maxDuration": 60,
         "includeFiles": [
           "frontend.html",
           "login.html",
@@ -21,10 +22,5 @@
       "src": "/(.*)",
       "dest": "api/index.py"
     }
-  ],
-  "functions": {
-    "api/index.py": {
-      "maxDuration": 60
-    }
-  }
+  ]
 }
