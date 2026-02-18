@@ -1999,9 +1999,20 @@ async def apply_with_cv(request: Request, job_id: str):
     if contact_email and user_id:
         attachments = []
 
-        # 1. Cover letter as PDF
+        # 1. Cover letter as PDF (professional Swedish business letter design)
+        sender_phone = user_profile.get("phone", "0761166109") if user_profile else "0761166109"
+        sender_email_addr = user_profile.get("email", "linneamoritzCV@gmail.com") if user_profile else "linneamoritzCV@gmail.com"
+        sender_location = user_profile.get("location", "Sollentuna") if user_profile else "Sollentuna"
         try:
-            cover_letter_pdf = generate_cover_letter_pdf(cover_letter, sender_name)
+            cover_letter_pdf = generate_cover_letter_pdf(
+                cover_letter,
+                sender_name=sender_name,
+                sender_phone=sender_phone,
+                sender_email=sender_email_addr,
+                sender_location=sender_location,
+                job_title=job_title,
+                company=job.get("company", ""),
+            )
             attachments.append({
                 "filename": f"Personligt_Brev_{sender_name.replace(' ', '_')}.pdf",
                 "data": cover_letter_pdf
@@ -2105,9 +2116,20 @@ async def save_gmail_draft_with_attachments(request: Request, job_id: str):
 
     attachments = []
 
-    # 1. Cover letter as PDF (from the edited text)
+    # 1. Cover letter as PDF (professional Swedish business letter design)
+    sender_phone = user_profile.get("phone", "0761166109")
+    sender_email_addr = user_profile.get("email", "linneamoritzCV@gmail.com")
+    sender_location = user_profile.get("location", "Sollentuna")
     try:
-        cover_letter_pdf = generate_cover_letter_pdf(cover_letter_text, sender_name)
+        cover_letter_pdf = generate_cover_letter_pdf(
+            cover_letter_text,
+            sender_name=sender_name,
+            sender_phone=sender_phone,
+            sender_email=sender_email_addr,
+            sender_location=sender_location,
+            job_title=job_title,
+            company=job.get("company", ""),
+        )
         attachments.append({
             "filename": f"Personligt_Brev_{sender_name.replace(' ', '_')}.pdf",
             "data": cover_letter_pdf
@@ -5020,29 +5042,100 @@ async def refresh_gmail_token(user_id: str) -> Optional[str]:
         return tokens["access_token"]
 
 
-def generate_cover_letter_pdf(text: str, sender_name: str = "Linnea Moritz") -> bytes:
-    """Generate a simple PDF from cover letter text. Handles Swedish characters."""
-    from fpdf import FPDF
+def generate_cover_letter_pdf(
+    text: str,
+    sender_name: str = "Linnea Moritz",
+    sender_phone: str = "0761166109",
+    sender_email: str = "linneamoritzCV@gmail.com",
+    sender_location: str = "Sollentuna",
+    job_title: str = "",
+    company: str = "",
+) -> bytes:
+    """
+    Generate a professional Swedish business letter PDF.
+    Layout: sender info top-right, date + recipient + subject left, body text.
+    Matches the v1 design (job_portal_backend.py) ported to ReportLab.
+    """
+    from reportlab.lib.pagesizes import A4
+    from reportlab.pdfgen import canvas as rl_canvas
+    from reportlab.lib.units import cm
+    from io import BytesIO
+    from datetime import datetime as dt
 
-    pdf = FPDF()
-    pdf.set_margins(25, 25, 25)
-    pdf.add_page()
-    pdf.set_auto_page_break(auto=True, margin=20)
-    pdf.set_font("Helvetica", size=11)
+    buffer = BytesIO()
+    c = rl_canvas.Canvas(buffer, pagesize=A4)
+    width, height = A4
 
-    for line in text.split("\n"):
-        # Empty line = small spacer
-        if line.strip() == "":
-            pdf.ln(4)
+    left_margin = 2.5 * cm
+    right_margin = 2.5 * cm
+    top_margin = 2.5 * cm
+    y = height - top_margin
+
+    # === AVSÄNDARE — top right ===
+    c.setFont("Helvetica-Bold", 12)
+    c.drawRightString(width - right_margin, y, sender_name)
+    y -= 16
+    c.setFont("Helvetica", 10)
+    c.drawRightString(width - right_margin, y, sender_location)
+    y -= 14
+    c.drawRightString(width - right_margin, y, sender_phone)
+    y -= 14
+    c.drawRightString(width - right_margin, y, sender_email)
+    y -= 30
+
+    # === DATUM — left ===
+    c.setFont("Helvetica", 10)
+    c.drawString(left_margin, y, dt.now().strftime("%Y-%m-%d"))
+    y -= 30
+
+    # === MOTTAGARE — left ===
+    if company:
+        c.setFont("Helvetica-Bold", 11)
+        c.drawString(left_margin, y, company)
+        y -= 40
+
+    # === ÄMNESRAD ===
+    if job_title:
+        c.setFont("Helvetica-Bold", 12)
+        subject_label = f"Ans\u00f6kan: {job_title}"
+        c.drawString(left_margin, y, subject_label)
+        y -= 30
+
+    # === BRÖDTEXT ===
+    c.setFont("Helvetica", 11)
+    max_width = width - left_margin - right_margin
+    line_height = 16
+
+    for paragraph in text.split("\n"):
+        if paragraph.strip():
+            words = paragraph.split()
+            line = ""
+            for word in words:
+                test_line = line + word + " "
+                if c.stringWidth(test_line, "Helvetica", 11) < max_width:
+                    line = test_line
+                else:
+                    c.drawString(left_margin, y, line.strip())
+                    y -= line_height
+                    line = word + " "
+                    if y < 3 * cm:
+                        c.showPage()
+                        y = height - top_margin
+                        c.setFont("Helvetica", 11)
+            if line:
+                c.drawString(left_margin, y, line.strip())
+                y -= line_height
         else:
-            # Replace Swedish characters with latin-1 equivalents (fpdf core fonts)
-            safe_line = (line
-                .replace("\u2013", "-").replace("\u2014", "-")
-                .replace("\u2018", "'").replace("\u2019", "'")
-                .replace("\u201c", '"').replace("\u201d", '"'))
-            pdf.multi_cell(0, 6, safe_line)
+            y -= 10  # paragraph spacing
 
-    return bytes(pdf.output())
+        if y < 3 * cm:
+            c.showPage()
+            y = height - top_margin
+            c.setFont("Helvetica", 11)
+
+    c.save()
+    buffer.seek(0)
+    return buffer.read()
 
 
 async def create_gmail_draft_for_user(
