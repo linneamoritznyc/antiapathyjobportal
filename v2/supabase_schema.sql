@@ -118,7 +118,10 @@ CREATE TABLE IF NOT EXISTS user_education (
     school TEXT NOT NULL,
     location TEXT,
     degree TEXT,
-    dates TEXT,  -- 'Aug 2017 - Maj 2021'
+    field_of_study TEXT,
+    start_date TEXT,
+    end_date TEXT,
+    dates TEXT,  -- 'Aug 2017 - Maj 2021' (combined display string)
     bullets TEXT[] DEFAULT ARRAY[]::TEXT[],
     sort_order INT DEFAULT 0,
     created_at TIMESTAMPTZ DEFAULT NOW()
@@ -135,8 +138,16 @@ CREATE TABLE IF NOT EXISTS user_experiences (
     start_date TEXT,           -- 'Juli 2024' (for AI sorting/matching)
     end_date TEXT,             -- 'Augusti 2025' or 'Pågående'
     description TEXT,          -- Free-text description of the role
+    description_long TEXT,     -- Extended description
+    description_short TEXT,    -- One-line summary
+    description_variants JSONB,  -- {'formal': '...', 'casual': '...'}
     bullets TEXT[] DEFAULT ARRAY[]::TEXT[],
     categories TEXT[] DEFAULT ARRAY[]::TEXT[],  -- ['restaurant', 'retail', 'customerservice', 'tech', etc.]
+    relevance_scores JSONB,      -- {'restaurant': 9, 'tech': 3}
+    key_achievements TEXT[] DEFAULT ARRAY[]::TEXT[],
+    keywords TEXT[] DEFAULT ARRAY[]::TEXT[],
+    is_featured BOOLEAN DEFAULT FALSE,
+    last_updated TIMESTAMPTZ,
     -- AI matching tags
     job_types TEXT[] DEFAULT ARRAY[]::TEXT[],        -- ['industri', 'fysiskt_arbete', 'kundtjänst']
     skill_level TEXT,                                 -- 'entry', 'mid', 'senior'
@@ -186,6 +197,8 @@ CREATE TABLE IF NOT EXISTS user_certifications (
     user_id TEXT NOT NULL,
     certification_name TEXT NOT NULL,
     issuing_organization TEXT,
+    issue_date TEXT,
+    expiry_date TEXT,
     sort_order INT DEFAULT 0,
     created_at TIMESTAMPTZ DEFAULT NOW()
 );
