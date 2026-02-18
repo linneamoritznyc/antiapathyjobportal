@@ -260,21 +260,6 @@
         };
 
         // Application modal
-        const EXPERIENCE_HINTS = [
-            { id: 'siggesta', label: 'Siggesta Gård (städning)', hint: '- Siggesta Gård: städning och praktiskt underhållsarbete' },
-            { id: 'max', label: 'Max Hamburgare', hint: '- Max Hamburgare (2024): restaurang, kök, drive-in, kassaarbete i högt tempo' },
-            { id: 'hob', label: 'House of Beans (barista)', hint: '- House of Beans (2024-2025): barista, direktförsäljning, jobbat ensam i butik' },
-            { id: 'ica', label: 'ICA Maxi (kassa)', hint: '- ICA Maxi (2015/2017/2019): kassaarbete, varumottagning, frukt och grönt' },
-            { id: 'coffeehouse', label: 'Coffeehouse by George', hint: '- Coffeehouse by George (2014-2015): kafé, kassahantering, barista' },
-            { id: 'google', label: 'Google Ads (granskning)', hint: '- Google Ads (2018-2019): innehållsgranskning och annonsanalys, 100+ ärenden/dag' },
-            { id: 'clubhouse', label: 'Clubhouse (moderator)', hint: '- Clubhouse (2021-2022): content moderation, Trust & Safety, onlinegrammatik' },
-            { id: 'minerva', label: 'Minerva (marknadsföring)', hint: '- Minerva Project (2019-2020): global marknadsföring, kundkommunikation' },
-            { id: 'profilgruppen', label: 'Profilgruppen', hint: '- Profilgruppen: industriarbete, produktion och kvalitetskontroll' },
-            { id: 'konstnar', label: 'Konstnär (internationell)', hint: '- Konstnär: internationell försäljning och distribution av konstverk, egenföretagande, projektplanering och logistik' },
-            { id: 'webdev', label: 'Webbutveckling (React/Python)', hint: '- Webbutveckling: fullstack-appar med React, Python, FastAPI, PostgreSQL' },
-            { id: 'korkort', label: 'B-körkort & bil', hint: '- Har B-körkort och tillgång till bil' },
-        ];
-
         const ApplyModal = ({ isOpen, job, result, onClose, onSaveApplication }) => {
             const [letter, setLetter] = useState('');
             const [feedback, setFeedback] = useState('');
@@ -288,6 +273,27 @@
             const [regenerating, setRegenerating] = useState(false);
             const [savingDraft, setSavingDraft] = useState(false);
             const [draftSaved, setDraftSaved] = useState(false);
+            const [experienceHints, setExperienceHints] = useState([]);
+
+            // Load user's actual experiences from Master CV when modal opens
+            useEffect(() => {
+                if (isOpen && localStorage.getItem('auth_token')) {
+                    authFetch('/api/master-cv').then(res => res.json()).then(data => {
+                        const hints = (data.experiences || []).map(exp => {
+                            const dates = [exp.start_date, exp.end_date].filter(Boolean).join('-');
+                            const desc = exp.description ? ': ' + exp.description.substring(0, 80) : '';
+                            return {
+                                id: exp.id || exp.company,
+                                label: exp.company + (exp.title ? ` (${exp.title})` : ''),
+                                hint: `- ${exp.company}${dates ? ` (${dates})` : ''}${exp.title ? ', ' + exp.title : ''}${desc}`
+                            };
+                        });
+                        // Add B-körkort as a special non-experience hint
+                        hints.push({ id: '_korkort', label: 'B-körkort & bil', hint: '- Har B-körkort och tillgång till bil' });
+                        setExperienceHints(hints);
+                    }).catch(() => {});
+                }
+            }, [isOpen]);
 
             useEffect(() => {
                 if (result?.cover_letter) setLetter(result.cover_letter);
@@ -358,7 +364,7 @@
             const regenerateLetter = async () => {
                 setRegenerating(true);
                 try {
-                    let extraHintText = EXPERIENCE_HINTS
+                    let extraHintText = experienceHints
                         .filter(e => selectedHints.includes(e.id))
                         .map(e => e.hint)
                         .join('\n');
@@ -483,9 +489,12 @@
 
                             {/* Experience picker */}
                             <div className="mt-4 p-3 bg-slate-50 rounded-lg border border-slate-200">
-                                <p className="text-xs font-medium text-slate-600 mb-2">Saknas något? Lägg till erfarenheter och generera om:</p>
+                                <p className="text-xs font-medium text-slate-600 mb-2">Välj erfarenheter från ditt Master CV att lyfta i brevet:</p>
+                                {experienceHints.length === 0 && (
+                                    <p className="text-xs text-slate-400 mb-2">Inga erfarenheter hittades. Lägg till i Mina CV → Master CV.</p>
+                                )}
                                 <div className="flex flex-wrap gap-1.5">
-                                    {EXPERIENCE_HINTS.map(exp => (
+                                    {experienceHints.map(exp => (
                                         <button
                                             key={exp.id}
                                             onClick={() => setSelectedHints(prev =>
