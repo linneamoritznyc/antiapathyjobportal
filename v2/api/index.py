@@ -1223,7 +1223,18 @@ async def list_jobs(request: Request, limit: int = 50):
         active_jobs = [j for j in jobs if j["id"] not in rejected_ids and j["id"] not in applied_ids]
         skipped_jobs = [j for j in active_jobs if j["id"] in skipped_ids]
         fresh_jobs = [j for j in active_jobs if j["id"] not in skipped_ids]
-        jobs = fresh_jobs + skipped_jobs  # Fresh first, skipped last
+
+        # Within each group, prioritize jobs with contact_email (direct apply) first
+        def has_email(j):
+            email = j.get("contact_email")
+            return bool(email and "@" in str(email))
+
+        fresh_with_email = [j for j in fresh_jobs if has_email(j)]
+        fresh_without_email = [j for j in fresh_jobs if not has_email(j)]
+        skipped_with_email = [j for j in skipped_jobs if has_email(j)]
+        skipped_without_email = [j for j in skipped_jobs if not has_email(j)]
+
+        jobs = fresh_with_email + fresh_without_email + skipped_with_email + skipped_without_email
 
     return {"success": True, "source": "database", "jobs": jobs}
 
