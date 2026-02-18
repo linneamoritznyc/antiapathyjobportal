@@ -1182,6 +1182,9 @@
             const [photoStatus, setPhotoStatus] = useState(null);
             const [cvStatus, setCvStatus] = useState(null);
             const [cvCount, setCvCount] = useState(0);
+            const [signature, setSignature] = useState('');
+            const [savingSignature, setSavingSignature] = useState(false);
+            const [signatureStatus, setSignatureStatus] = useState(null);
 
             // Load existing profile data
             useEffect(() => {
@@ -1207,8 +1210,36 @@
                         setCvCount(data.cv_count);
                         setCvStatus(`${data.cv_count} CV uppladdat ✓`);
                     }
+                    if (data.email_signature) {
+                        setSignature(data.email_signature);
+                    }
                 } catch (err) {
                     console.error('Error fetching profile:', err);
+                }
+            };
+
+            const saveSignature = async () => {
+                setSavingSignature(true);
+                setSignatureStatus(null);
+                try {
+                    const token = localStorage.getItem('auth_token');
+                    const res = await fetch('/api/profile/signature', {
+                        method: 'PATCH',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'Authorization': `Bearer ${token}`
+                        },
+                        body: JSON.stringify({ signature })
+                    });
+                    if (res.ok) {
+                        setSignatureStatus('✓ Signatur sparad!');
+                    } else {
+                        setSignatureStatus('Kunde inte spara signatur.');
+                    }
+                } catch (err) {
+                    setSignatureStatus('Fel vid sparande.');
+                } finally {
+                    setSavingSignature(false);
                 }
             };
 
@@ -1438,6 +1469,33 @@
                         <p className="text-xs text-slate-400 mt-3">
                             Accepterade format: PDF, DOCX, DOC, TXT, RTF, ODT
                         </p>
+                    </div>
+
+                    {/* Email Signature Section */}
+                    <div className="bg-white rounded-xl p-6 border border-slate-200">
+                        <h3 className="text-lg font-semibold mb-1">✍️ E-postsignatur</h3>
+                        <p className="text-sm text-slate-600 mb-4">
+                            Skrivs automatiskt längst ned i varje Gmail-utkast. Redigera hur du vill.
+                        </p>
+                        <textarea
+                            value={signature}
+                            onChange={(e) => setSignature(e.target.value)}
+                            rows={4}
+                            placeholder={"Med vänliga hälsningar,\nLinnea Moritz\n076-116 61 09\nLinneamoritzCV@gmail.com"}
+                            className="w-full px-4 py-3 border border-slate-200 rounded-lg text-sm font-mono resize-none focus:outline-none focus:ring-2 focus:ring-indigo-300"
+                        />
+                        {signatureStatus && (
+                            <div className={`mt-2 text-sm ${signatureStatus.startsWith('✓') ? 'text-green-600' : 'text-red-600'}`}>
+                                {signatureStatus}
+                            </div>
+                        )}
+                        <button
+                            onClick={saveSignature}
+                            disabled={savingSignature}
+                            className="mt-3 bg-indigo-600 text-white px-6 py-2.5 rounded-lg font-medium hover:bg-indigo-700 disabled:opacity-50 transition"
+                        >
+                            {savingSignature ? 'Sparar...' : 'Spara signatur'}
+                        </button>
                     </div>
                 </div>
             );

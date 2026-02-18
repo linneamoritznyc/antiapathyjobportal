@@ -1994,6 +1994,10 @@ async def apply_with_cv(request: Request, job_id: str):
     job_title = job.get("title", "Tjänst")
     subject = f"Ansökan: {job_title} – {sender_name}"
 
+    # Append custom email signature if the user has one saved
+    email_signature = user_profile.get("email_signature", "") if user_profile else ""
+    email_body = cover_letter + ("\n\n" + email_signature if email_signature else "")
+
     # Create Gmail draft with PDF attachments if user has connected Gmail
     draft_id = None
     if contact_email and user_id:
@@ -2005,7 +2009,7 @@ async def apply_with_cv(request: Request, job_id: str):
         sender_location = user_profile.get("location", "Sollentuna") if user_profile else "Sollentuna"
         try:
             cover_letter_pdf = generate_cover_letter_pdf(
-                cover_letter,
+                email_body,
                 sender_name=sender_name,
                 sender_phone=sender_phone,
                 sender_email=sender_email_addr,
@@ -2029,7 +2033,7 @@ async def apply_with_cv(request: Request, job_id: str):
             })
 
         draft_id = await create_gmail_draft_for_user(
-            user_id, contact_email, subject, cover_letter, attachments
+            user_id, contact_email, subject, email_body, attachments
         )
 
     return {
@@ -2114,6 +2118,10 @@ async def save_gmail_draft_with_attachments(request: Request, job_id: str):
     job_title = job.get("title", "Tjänst")
     subject = f"Ansökan: {job_title} – {sender_name}"
 
+    # Append custom signature if the user has one saved
+    email_signature = user_profile.get("email_signature", "")
+    email_body = cover_letter_text + ("\n\n" + email_signature if email_signature else "")
+
     attachments = []
 
     # 1. Cover letter as PDF (professional Swedish business letter design)
@@ -2122,7 +2130,7 @@ async def save_gmail_draft_with_attachments(request: Request, job_id: str):
     sender_location = user_profile.get("location", "Sollentuna")
     try:
         cover_letter_pdf = generate_cover_letter_pdf(
-            cover_letter_text,
+            email_body,
             sender_name=sender_name,
             sender_phone=sender_phone,
             sender_email=sender_email_addr,
@@ -2146,7 +2154,7 @@ async def save_gmail_draft_with_attachments(request: Request, job_id: str):
         })
 
     draft_id = await create_gmail_draft_for_user(
-        user_id, contact_email, subject, cover_letter_text, attachments
+        user_id, contact_email, subject, email_body, attachments
     )
 
     if not draft_id:
@@ -5930,11 +5938,49 @@ async def get_profile(request: Request):
         "email": user_email or profile.get("email", ""),
         "phone": profile.get("phone", ""),
         "location": profile.get("location", ""),
+        "email_signature": profile.get("email_signature", ""),
         "training_letter_analyzed": len(letters) > 0,
         "training_letter_count": len(letters),
         "cv_uploaded": len(cv_uploads) > 0,
         "cv_count": len(cv_uploads)
     }
+
+
+@app.patch("/api/profile/signature")
+async def update_email_signature(request: Request):
+    """Save the user's custom email signature."""
+    auth_header = request.headers.get("Authorization", "")
+    if not auth_header.startswith("Bearer "):
+        raise HTTPException(status_code=401, detail="Ej inloggad")
+
+    token = auth_header.replace("Bearer ", "")
+
+    async with httpx.AsyncClient() as client:
+        user_response = await client.get(
+            f"{SUPABASE_URL}/auth/v1/user",
+            headers={"apikey": SUPABASE_ANON_KEY, "Authorization": f"Bearer {token}"}
+        )
+        if user_response.status_code != 200:
+            raise HTTPException(status_code=401, detail="Ogiltig token")
+        user_id = user_response.json().get("id")
+
+    body = await request.json()
+    signature = body.get("signature", "")
+
+    result = await db_request(
+        "PATCH",
+        f"user_profiles?user_id=eq.{user_id}",
+        data={"email_signature": signature, "updated_at": datetime.now().isoformat()}
+    )
+    if not result:
+        # No row yet — create one
+        await db_request("POST", "user_profiles", data={
+            "user_id": user_id,
+            "full_name": "",
+            "email_signature": signature
+        })
+
+    return {"success": True}
 
 
 @app.post("/api/upload/training-letter")
