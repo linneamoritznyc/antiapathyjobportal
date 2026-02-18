@@ -2,7 +2,18 @@
   "builds": [
     {
       "src": "api/index.py",
-      "use": "@vercel/python"
+      "use": "@vercel/python",
+      "config": {
+        "includeFiles": [
+          "frontend.html",
+          "login.html",
+          "setup-guide.html",
+          "account.html",
+          "anvandarvillkor.html",
+          "integritetspolicy.html",
+          "cv_template.html"
+        ]
+      }
     }
   ],
   "routes": [
