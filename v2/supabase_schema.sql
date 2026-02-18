@@ -516,7 +516,6 @@ CREATE TABLE IF NOT EXISTS applications (
 
 -- Indexes for performance
 CREATE INDEX IF NOT EXISTS idx_jobs_scraped_at ON jobs(scraped_at DESC);
-CREATE INDEX IF NOT EXISTS idx_jobs_priority ON jobs(priority);
 CREATE INDEX IF NOT EXISTS idx_jobs_contact_email ON jobs(contact_email) WHERE contact_email IS NOT NULL;
 CREATE INDEX IF NOT EXISTS idx_master_cv_exports_user ON master_cv_exports(user_id);
 CREATE INDEX IF NOT EXISTS idx_user_cvs_user ON user_cvs(user_id);
@@ -553,6 +552,44 @@ COMMENT ON TABLE user_certifications IS 'General certifications (körkort, kassa
 COMMENT ON TABLE user_training_letters IS 'User-uploaded training letters for AI style analysis (max 20 per user)';
 COMMENT ON TABLE user_cv_uploads IS 'User-uploaded CVs as PDFs (max 20 per user)';
 COMMENT ON TABLE bransch_cvs IS 'Industry-specific CV variants shown in MinaCVPage';
+
+-- CV version history per CV — added from actual DB state (Feb 18 2026)
+CREATE TABLE IF NOT EXISTS user_cv_versions (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    cv_id UUID NOT NULL,
+    version_number INT NOT NULL,
+    cv_text TEXT NOT NULL,
+    change_description TEXT,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+-- Chat history for AI-built CVs — added from actual DB state (Feb 18 2026)
+CREATE TABLE IF NOT EXISTS user_cv_creation_conversations (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    user_id TEXT NOT NULL,
+    cv_id UUID,
+    messages JSONB NOT NULL DEFAULT '[]'::JSONB,
+    started_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    completed_at TIMESTAMPTZ
+);
+
+-- ============== KNOWN user_id TYPE INCONSISTENCY ==============
+-- Some tables use UUID, others use TEXT for user_id:
+--
+-- UUID: user_profiles, user_education, user_experiences, user_skills,
+--       user_cvs, user_cv_uploads, user_training_letters, applications,
+--       user_cover_letter_preferences, user_job_preferences
+--
+-- TEXT: user_volunteer, user_awards, user_certifications, tech_certifications,
+--       tech_projects, user_cv_branscher, user_experience_tags, bransch_cvs,
+--       master_cv_exports, artist_exhibitions, artist_residencies,
+--       artist_collections, academic_publications,
+--       user_cv_creation_conversations
+--
+-- When inserting data, cast accordingly:
+--   UUID tables: 'da8ed517-...'::UUID
+--   TEXT tables: 'da8ed517-...' (no cast)
+-- Linneas user_id: 1e9d7392-b0d6-4f35-b69d-090c2fe2c671
 
 -- ============== SUPABASE STORAGE BUCKETS ==============
 -- All 3 buckets are PUBLIC with 4 RLS policies each (SELECT/INSERT/UPDATE/DELETE).

@@ -5,24 +5,24 @@
 
 ## ⚠️ VIKTIGASTE REGELN
 
-Det finns **två appar i detta repo**. Vercel deployas ALLTID från `v2/`. Root-nivån är referensmaterial.
+Det finns bara **en aktiv app i detta repo**: `v2/`. Den deployας på Vercel.
 
 ```
 antiapathyjobportal/
 │
 ├── v2/                        ← ✅ LIVE APP — redigera alltid här
-│   ├── frontend.html          ← ALL design/UI
-│   ├── api/index.py           ← ALL backend/API
+│   ├── frontend.html          ← ALL design/UI (React + Tailwind)
+│   ├── api/index.py           ← ALL backend/API (FastAPI)
 │   ├── api/cv_files/          ← 8 bransch-CVer (PDF)
 │   ├── vercel.json            ← Vercel config
 │   ├── requirements.txt       ← Python deps
 │   └── supabase_schema.sql    ← Source-of-truth DB schema
 │
-├── api_server.py              ← v1 lokal server (referensmaterial, ALDRIG deployad)
-├── job_portal_backend.py      ← v1 business logic (referensmaterial)
 ├── .claude/CLAUDE.md          ← LÄSAS AV CLAUDE — projektinstruktioner
 ├── HANDOFF_2026-02-18.md      ← Aktuellt handoff-dokument
-└── CODEBASE_CLEANUP.md        ← DETTA DOKUMENT
+├── ROADMAP.md                 ← Framtidsplaner och prioriteringar
+├── CODEBASE_CLEANUP.md        ← DETTA DOKUMENT
+└── docs/                      ← GDPR-guide och designhistorik
 ```
 
 ---
@@ -52,16 +52,17 @@ GitHub (main branch, root dir: v2/)
 | `v2/requirements.txt` | Python-deps (fastapi, httpx, PyPDF2, python-docx, etc.) | Sällan |
 | `v2/supabase_schema.sql` | DB-schema source-of-truth — uppdatera när schema ändras | ✅ JA |
 
-### Root-nivå (referensmaterial — läs, redigera inte)
+### Root-nivå (referensmaterial)
 | Fil | Syfte |
 |-----|-------|
-| `api_server.py` | v1 lokal server. Innehåller endpoints som inte finns i v2. Referens. |
-| `job_portal_backend.py` | v1 business logic. Har Linneas CV-sammanfattning, kategori-logik, scraping. Referens. |
-| `auth.py`, `config.py`, `rate_limit.py` | Tillhör api_server_updated.py (experimentell). Referens. |
-| `supabase_helper.py` | v1 Supabase-klient. Referens. |
 | `HANDOFF_2026-02-18.md` | Aktuellt handoff — läs detta när ny session startar |
-| `HANDOFF_2025-02-16.md` | Gammalt handoff — migrationsproblem från feb 2025 |
-| `CODEBASE_CLEANUP.md` | Detta dokument |
+| `ROADMAP.md` | Framtidsplaner och feature-prioriteringar |
+| `SECURITY.md` | GDPR och säkerhetsguide |
+| `DATABASE_SCHEMA_REFERENCE.md` | Detaljerad DB-referens med alla tabeller |
+| `MODULARITY_GUIDE.md` | CV-modularisering och branchstruktur |
+| `FEATURE_IDEAS.md` | Löpande idélista |
+| `PROJECT_CONTEXT.md` | Projektöversikt och bakgrund |
+| `docs/GDPR-GUIDE-SVENSKA-APPAR.md` | GDPR-referens för svenska appar |
 
 ---
 
@@ -78,7 +79,7 @@ GitHub (main branch, root dir: v2/)
 | `contentmoderation` | `CV_Linnea_Moritz_Content_Moderation.pdf` | moderator, content, trust & safety |
 | `art` | `CV_Linnea_Moritz_Konst_Kultur.pdf` | konst, kultur, galleri |
 
-**OBS:** Kategorin `art` ska ALDRIG nämna konst/målningar i generererat text (Linnea vill inte söka konstjobb med det personliga brevet).
+**OBS:** Kategorin `art` ska ALDRIG nämna konst/målningar i genererat text.
 
 ---
 
@@ -88,62 +89,61 @@ Följande finns hårdkodat i `v2/api/index.py` och är Linneas data. Det borde l
 
 ### 1. DEFAULT_EXPERIENCE (rad ~488)
 Per-kategori korta CV-sammanfattningar som används när Supabase-data saknas i cover letter-generering.
-
-**SQL för att lagra detta ordentligt:** Se `v2/supabase/migrations/add_cv_category_hints.sql` (att skapas).
+**Plan:** Flytta till `user_cv_category_hints`-tabellen i Supabase. SQL skriven 18 feb 2026.
 
 ### 2. Profil-fallbacks (rad ~555-560)
 ```python
-phone = p.get("phone", "0761166109")         # Linneas telefon
+phone = p.get("phone", "0761166109")
 email = p.get("email", "linneamoritzCV@gmail.com")
 location = p.get("location", "Sollentuna")
 ```
-Dessa är fallbacks om user_profiles-tabellen är tom. Bör vara ifyllda i Supabase.
+Fallbacks om user_profiles-tabellen är tom. Bör vara ifyllda i Supabase.
 
 ### 3. always_mention / never_mention (rad ~2647-2648)
 ```python
 "always_mention": ["flexibel med tider", "korkort", "flytande engelska"],
 "never_mention": ["konst", "malning", "utstallningar", "Shopify", ...]
 ```
-Dessa är migration-defaults. Lagras i `user_cover_letter_prefs` i Supabase efter migration.
+Lagras i `user_cover_letter_preferences` i Supabase.
 
 ---
 
-## SQL-filer i v2/ (förklaring)
+## DB-regler
 
-| Fil | Status | Innehåll |
-|-----|--------|---------|
-| `v2/supabase_schema.sql` | ✅ AKTIV (source-of-truth) | Hela DB-schemat |
-| `v2/supabase_schema_wed_feb_18.sql` | Snapshot 18 feb 2026 | Faktiskt DB-tillstånd exporterat från Supabase |
-| `v2/setup_and_migrate.sql` | Körts | Initial setup + migration |
-| `v2/migrate_complete.sql` | Körts | Komplett migrationsskript |
-| `v2/migrate_complete_data.sql` | Körts | Migrationsskript med data |
-| `v2/master_cv_data.sql` | Referens | Linneas CV-data i SQL-format |
-| `v2/MIGRATE_COMPLETE_DATA.sql` | Körts | Komplett data-migration |
-| `v2/supabase/migrations/*.sql` | Körts | Alla partiella migrations |
-
-**DB-regel:** Ge SQL direkt i chatten. Uppdatera `v2/supabase_schema.sql`. Skapa ALDRIG nya SQL-filer i repot.
+- **Läsa DB:** Be användaren köra SELECT i Supabase SQL Editor och klistra in resultaten. Bygg INTE API-endpoints för detta.
+- **Skriva migreringar:** Ge SQL direkt i chatten. Uppdatera sedan `v2/supabase_schema.sql`.
+- **Skapa ALDRIG nya SQL-filer i repot.**
+- **Direktanslutning till DB:** Blockerad av nätverk. Försök inte.
 
 ---
 
-## Ändringslogg (18 februari 2026)
+## Ändringslogg
 
-### Städning gjord
-- ✅ Raderat från root: `frontend.html`, `api/index.py`, `vercel.json`, `requirements.txt` — exakta duplicat av v2/-versioner
-- ✅ Raderat: `account.html`, `login.html`, `setup-guide.html`, `anvandarvillkor.html`, `integritetspolicy.html`, `cv_template.html` — duplicat (finns i v2/)
-- ✅ Raderat: `CV_Linnea_Moritz_*.pdf` × 8 från root — duplicat (finns i v2/api/cv_files/)
-- ✅ Behållit: `api_server.py`, `job_portal_backend.py`, docs — referensmaterial, ej duplicat
+### 18 februari 2026 — Stor städning (denna session)
+- ✅ Raderat v1-kod från root: `api_server.py`, `auth.py`, `config.py`, `rate_limit.py`, `job_portal_backend.py`, `supabase_helper.py`, `example_direct_integration.py`, `inspect_supabase.py`, `add_cvs_to_migration.py`, `supabase_schema.sql`
+- ✅ Raderat gamla docs: `CLAUDE_CODE_INSTRUCTIONS.md`, `CLAUDE_CODE_MANDATORY_INSTRUCTIONS.md`, `HANDOFF_2025-02-16.md`
+- ✅ Raderat hela `anti apathy job portal DOCUMENTATION AND PROJECT MANAGEMENT/` — v1-docs från dec 2024
+- ✅ Raderat gamla CVer: `Olika CV/` (duplicat — finns i `v2/api/cv_files/`)
+- ✅ Raderat SQLite-databas: `data/jobs.db`
+- ✅ Raderat alla migrations-SQL: `v2/migrate_*.sql`, `v2/setup_and_migrate.sql`, `v2/master_cv_data.sql`, `v2/MIGRATE_COMPLETE_DATA.sql`, `v2/supabase_schema_wed_feb_18.sql`
+- ✅ Raderat `v2/supabase/migrations/` (22 filer — alla körda mot live-DB)
+- ✅ Raderat `v2/supabase/*.json` — DB-dataexporter
+- ✅ Raderat `v2/*.md` — duplicat-docs (ACTUAL_DB_STATE, APP_SCHEMA, SETUP_DATABASE, SUPABASE_SCHEMA, SUPABASE_STORAGE_SETUP)
+- ✅ Raderat `v2/api/cv_assembly.py` — dead code, inte refererad av index.py
+- ✅ Uppdaterat `v2/supabase_schema.sql` — lade till `user_cv_versions`, `user_cv_creation_conversations`, user_id-typ-notering
+- ✅ Uppdaterat `ROADMAP.md` — städat bort råa anteckningar, tagit bort ej-önskade features
 
-### Förbättringar
-- ✅ Lagt till `includeFiles` i `v2/vercel.json` — Vercel bundlar nu explicit alla HTML-filer
-- ✅ Skapat `HANDOFF_2026-02-18.md` — aktuellt handoff med nuläge
-- ✅ Uppdaterat `CODEBASE_CLEANUP.md` (detta dokument)
+### Tidigare (18 februari 2026)
+- ✅ Raderat från root: `frontend.html`, `api/index.py`, `vercel.json`, `requirements.txt`
+- ✅ Lagt till `includeFiles` i `v2/vercel.json`
+- ✅ Skapat `HANDOFF_2026-02-18.md`
 
 ---
 
 ## Vanliga misstag (för Claude)
 
-1. **Redigera root-filer** — de är DÖDA. Allt i v2/.
+1. **Redigera root-filer** — det finns inga aktiva root-kodfiler kvar. Allt i `v2/`.
 2. **Bygga API-endpoints för att läsa DB** — be användaren köra SQL i Supabase dashboard.
-3. **Skapa SQL-filer i repot** — ge SQL i chatten, uppdatera supabase_schema.sql.
+3. **Skapa SQL-filer i repot** — ge SQL i chatten, uppdatera `supabase_schema.sql`.
 4. **Anta att design-ändringar syns direkt** — behöver merge till main + hard refresh.
-5. **Radera context-docs** — HANDOFF, PROJECT_CONTEXT, MODULARITY_GUIDE är INTE dead code.
+5. **Ta bort context-docs** — HANDOFF, ROADMAP, PROJECT_CONTEXT, MODULARITY_GUIDE är INTE dead code.

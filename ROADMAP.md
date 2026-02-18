@@ -68,7 +68,27 @@
 
 ## 🟡 SNART — Nästa stora features
 
-### 4. CV-redigering direkt i appen *(Prioritet: Hög)*
+### 4. Jobblagring i Supabase *(Prioritet: Hög)*
+
+**Vad:** Alla jobb som skrapas från Platsbanken sparas permanent i Supabase per användare — inte bara i minnet.
+
+**Varför:** Idag försvinner jobben när sidan laddas om. Användaren kan inte ta vid där hen slutade, och samma jobb kan dyka upp igen i kön. Det är frustrerande och ineffektivt.
+
+**Hur det ska fungera:**
+- Varje skrapat jobb sparas i `jobs`-tabellen i Supabase kopplat till `user_id`
+- Jobb som redan setts markeras med `status = 'seen'` och visas inte igen
+- Jobb som fått ansökan markeras `status = 'applied'`
+- Nästa gång användaren öppnar appen: kön fortsätter från där den slutade
+- "Ladda fler jobb"-knappen hämtar nya jobb från Platsbanken OCH sparar dem
+
+**Tekniskt:**
+- `v2/api/index.py` — scrape-endpoint skriver till Supabase istället för bara returnera
+- `jobs`-tabellen finns redan i Supabase (se `supabase_schema.sql`)
+- Frontend hämtar jobb via API, inte från minnet
+
+---
+
+### 5. CV-redigering direkt i appen *(Prioritet: Hög)*
 
 **Vad:** Användaren ska kunna redigera sina CVer inifrån appen — utan att prata med en utvecklare och utan att öppna kod.
 
@@ -77,13 +97,13 @@
 
 **Exakta features:**
 
-#### 4a. Profilfoto i CV
+#### 5a. Profilfoto i CV
 - Ladda upp foto via appen (en gång)
 - Sparas i Supabase Storage
 - Visas **uppe i högra hörnet** på ALLA genererade CV-PDFer automatiskt
 - Kan bytas ut när som helst → uppdaterar alla PDFer
 
-#### 4b. Master CV-koncept
+#### 5b. Master CV-koncept
 - En "Master CV"-vy i appen med alla gemensamma fält:
   - Namn, adress, telefon, e-post
   - LinkedIn-länk, portfolio-länk
@@ -96,7 +116,7 @@
 > 80% av ändringar är gemensamma (adress, telefon, foto) → ska kunna göras en gång.
 > 20% är unika per CV (specifika formuleringar för den branschen) → ska kunna avvika.
 
-#### 4c. Inline-redigering per CV
+#### 5c. Inline-redigering per CV
 - I "Mina CV"-fliken: klicka på ett fält för att redigera det
 - Ändra datum, formulering, platsnamn direkt i UI
 - Per-CV override som INTE triggar cascade-frågan
@@ -107,11 +127,9 @@
 - Supabase: `user_cvs`-tabellen utökas med `overrides`-kolumn (JSON)
 - PDF-regenerering: anrop till befintlig PDF-generation-logik per CV
 
-**AI-driven file management and information optimization, while still following formatting rules (design of the actual CV)**
-
 ---
 
-### 5. Export av Master CV som PDF och text
+### 6. Export av Master CV som PDF och text
 
 **Vad:** Från Master CV-vyn kan användaren ladda ner sitt CV i två format.
 
@@ -128,7 +146,7 @@
 
 ---
 
-### 6. AI-förbättring av erfarenhetsbeskrivningar
+### 7. AI-förbättring av erfarenhetsbeskrivningar
 
 **Vad:** Knapp på varje arbetslivserfarenhet: *"Förbättra med AI"*
 
@@ -146,40 +164,37 @@
 
 ---
 
+### 8. AI-chatt för att uppdatera Master CV
+
+**Vad:** En enkel chattyta i "Mina CV"-fliken där användaren kan prata med AI för att uppdatera sitt CV naturligt.
+
+**Varför:** Det ska vara lika enkelt att uppdatera sitt CV som att skicka ett meddelande. Ingen formulär, inget klickande runt i fält.
+
+**Exempel på vad man kan skriva:**
+- *"Jag fick ett certifikat i serveringskunskap idag, kan du lägga till det?"*
+- *"Jag jobbar inte längre på Ica Maxi, markera det som avslutat"*
+- *"Ändra min adress till Norsdborg istället för Sollentuna"*
+- *"Lägg till att jag är van vid kassaarbete i min Butik-CV"*
+
+**Hur det ska fungera:**
+1. Användaren skriver ett meddelande i chatten
+2. Claude tolkar vad som ska ändras och föreslår en konkret uppdatering
+3. Användaren ser förslaget: *"Jag förstår att du vill lägga till X. Ska jag uppdatera Master CV? Vill du också uppdatera alla bransch-CVer?"*
+4. JA → sparat i Supabase
+5. NEJ / Redigera → användaren justerar manuellt
+
+**Designprincip:** Supervised AI — användaren godkänner alltid innan något sparas.
+
+**Tekniskt:**
+- Frontend: enkel chattkomponent i "Mina CV"-fliken
+- Backend: `POST /api/master-cv/chat` — skickar meddelande + aktuellt CV-innehåll till Claude
+- Claude returnerar strukturerat förslag `{ field, old_value, new_value, affects_all_cvs }`
+
+---
+
 ## 🔵 FRAMTID — Visioner & Långsiktiga mål
 
-### 7. Karriärsrådgivning i appen
-
-**Vad:** En "Karriärsråd"-flik där Linnea kan ställa frågor om sin karriär baserat på sitt eget CV.
-
-**Varför:**
-> *"Karriärsråd om vilka jobb som hade passat en sådan här profil."*
-
-**Idéer:**
-- "Vilka yrken matchar min bakgrund?"
-- "Vilka arbetsgivare brukar gilla profiler som min?"
-- "Vad saknar mitt CV för att kunna söka X-typ av jobb?"
-
-**Tekniskt:** Claude-konversation med CV som kontext.
-
----
-
-### 8. Talent & Självinsikt-interface
-
-**Vad:** En kort, personlig vy som hjälper Linnea förstå sina egna styrkor och hitta likasinnade.
-
-**Bakgrund:**
-> *"Clearly define my talents and build a short interface mostly for myself. I think it would help me understand what I am good at and what I am not good at. Cause then I could understand my brain better, and maybe find similar people, or find communities or events that target people like me. Like synthesizers and people who are good at systems and interactive nodes, and creative multi-dimensional puzzles and non-linear problem solving."*
-
-**Idéer:**
-- Kort quiz om tankestilar och kognitiva styrkor
-- Genererade taggar: "Systemtänkare", "Mönsterigenkänning", "Icke-linjär problemlösning", "Kreativ multidimensionell analys"
-- Länk till communities, event, organisationer som matchar profilen
-- Kan visas på profilsidan
-
----
-
-### 9. Jobbuppföljning & Interview-tracker
+### 7. Jobbuppföljning & Interview-tracker *(neutral — kan byggas senare)*
 
 **Vad:** Håll koll på var i processen varje ansökan är.
 
@@ -187,11 +202,10 @@
 - Datum för ansökan, automatiskt loggat
 - Status: Ansökt → Kallad till intervju → Tackad nej / Erbjudande
 - Påminnelse att följa upp efter 2 veckor om inget svar
-- Dashboard: Svarsfrekvens per bransch, per stad, per jobbtyp
 
 ---
 
-### 10. Multi-user deployment
+### 8. Multi-user deployment
 
 **Vad:** Öppna appen för fler användare — inte bara Linnea.
 
@@ -199,19 +213,6 @@
 - Användare laddar upp sina egna CVer och foto
 - Betalplan (Stripe)
 - Separata Supabase-rader per användare (redan delvis förberett)
-
----
-
-### 11. Fullständig AI-agent (long-term vision)
-
-**Vad:** Appen kör automatiskt varje dag utan manuell input.
-
-**Flöde:**
-1. Scrapar nya jobb på Platsbanken varje morgon
-2. Filtrerar baserat på preferenser
-3. Genererar brev för matchande jobb
-4. Skapar Gmail-utkast redo att skickas
-5. Skickar daglig rapport: *"Idag hittade jag 3 nya relevanta jobb och förberedde 2 ansökningar."*
 
 ---
 
