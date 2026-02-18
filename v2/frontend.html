@@ -1413,10 +1413,10 @@
                         </div>
                         <p className="text-sm text-slate-600">{item.degree}</p>
                         <p className="text-xs text-slate-500 mb-2">
-                            {item.start_date} - {item.end_date || 'Pågående'}
+                            {item.dates || [item.start_date, item.end_date].filter(Boolean).join(' - ')}
                         </p>
-                        {item.description && (
-                            <p className="text-sm text-slate-700 line-clamp-2">{item.description}</p>
+                        {item.location && (
+                            <p className="text-xs text-slate-400">{item.location}</p>
                         )}
                     </div>
                 </div>
@@ -1432,7 +1432,7 @@
                             <span className="text-2xl">💻</span>
                             <h4 className="font-semibold">{item.project_name}</h4>
                         </div>
-                        <p className="text-sm text-slate-600">{item.tech_stack}</p>
+                        <p className="text-sm text-slate-600">{Array.isArray(item.tech_stack) ? item.tech_stack.join(', ') : item.tech_stack}</p>
                         {item.live_url && (
                             <a href={item.live_url} target="_blank" rel="noopener noreferrer" className="text-xs text-blue-600 hover:underline">
                                 {item.live_url}
@@ -1770,8 +1770,8 @@
                                 <GenericCard
                                     item={item}
                                     icon="🏅"
-                                    title={item.certification_name || item.name}
-                                    subtitle={item.organization}
+                                    title={item.certification_name}
+                                    subtitle={item.issuing_organization || item.issuer}
                                 />
                             )}
                         />
@@ -1785,8 +1785,8 @@
                                 <GenericCard
                                     item={item}
                                     icon="🏆"
-                                    title={item.award_name}
-                                    subtitle={item.organization}
+                                    title={item.award_text}
+                                    subtitle={null}
                                 />
                             )}
                         />
@@ -1800,8 +1800,8 @@
                                 <GenericCard
                                     item={item}
                                     icon="🤝"
-                                    title={item.organization_name}
-                                    subtitle={item.role}
+                                    title={item.organization}
+                                    subtitle={item.dates}
                                 />
                             )}
                         />
@@ -1815,8 +1815,8 @@
                                 <GenericCard
                                     item={item}
                                     icon="🗣️"
-                                    title={item.skill_name}
-                                    subtitle={item.proficiency_level}
+                                    title={item.skill_text}
+                                    subtitle={null}
                                 />
                             )}
                         />
