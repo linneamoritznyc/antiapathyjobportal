@@ -31,6 +31,7 @@ CREATE TABLE IF NOT EXISTS user_profiles (
     languages TEXT[] DEFAULT ARRAY['Svenska (Modersmål)', 'Engelska (flytande)']::TEXT[],
     certificates TEXT[] DEFAULT ARRAY[]::TEXT[],  -- ['B-körkort', 'ICA kassahantering', etc.]
     about_me TEXT,  -- Professional bio/summary
+    birth_date DATE,  -- For accurate age calculation in cover letters (added 2026-02-18)
     email_signature TEXT DEFAULT '',  -- Custom email signature for Gmail drafts
     onboarding_completed BOOLEAN DEFAULT FALSE,
     privacy_policy_accepted BOOLEAN DEFAULT FALSE,
@@ -743,6 +744,7 @@ BEGIN
     );  -- cascade-safe: cv_id has no FK, delete manually
 
     -- UUID-typed user_id columns (cast needed)
+    DELETE FROM user_anecdotes            WHERE user_id = p_user_id::UUID;
     DELETE FROM user_cv_uploads           WHERE user_id = p_user_id::UUID;
     DELETE FROM user_training_letters     WHERE user_id = p_user_id::UUID;
 
@@ -757,10 +759,52 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql SECURITY DEFINER;
 
--- ============== TABLES NOT YET CREATED IN LIVE DB ==============
--- The following table is defined in this schema but does NOT exist in the live DB.
--- Run the CREATE TABLE statement to create it if needed.
+-- Personal anecdotes & hobbies for cover letter personalization
+-- AI picks relevant anecdotes based on job description keyword matching.
+-- Example anecdote: "Jag var konfirmationsledare i Värmdö Församling 2012-2014"
+-- Example hobby: "Gymma", "Matlagning"
+-- Keywords help AI match: ["kyrka", "församling", "ideellt"] → matches church jobs
+-- Added 2026-02-18.
+CREATE TABLE IF NOT EXISTS user_anecdotes (
+    id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
+    user_id UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
+    title TEXT NOT NULL,              -- Short label, e.g. "Svenska Kyrkan" or "Gymma"
+    type TEXT NOT NULL CHECK (type IN ('anecdote', 'hobby')),
+    content TEXT NOT NULL,            -- Full text: story or hobby description
+    keywords TEXT[] DEFAULT '{}',     -- Matching keywords for job relevance
+    created_at TIMESTAMPTZ DEFAULT now()
+);
+
+ALTER TABLE user_anecdotes ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "Users can manage own anecdotes"
+    ON user_anecdotes FOR ALL
+    USING (auth.uid() = user_id)
+    WITH CHECK (auth.uid() = user_id);
+
+-- Max 30 anecdotes per user
+CREATE OR REPLACE FUNCTION check_anecdote_limit()
+RETURNS TRIGGER AS $$
+BEGIN
+    IF (SELECT COUNT(*) FROM user_anecdotes WHERE user_id = NEW.user_id) >= 30 THEN
+        RAISE EXCEPTION 'Max 30 anekdoter per användare';
+    END IF;
+    RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+CREATE TRIGGER enforce_anecdote_limit
+    BEFORE INSERT ON user_anecdotes
+    FOR EACH ROW EXECUTE FUNCTION check_anecdote_limit();
+
+CREATE INDEX IF NOT EXISTS idx_user_anecdotes_user ON user_anecdotes(user_id);
+
+COMMENT ON TABLE user_anecdotes IS 'Personal anecdotes and hobbies for AI cover letter personalization (max 30 per user)';
+
+-- ============== LIVE STATUS (Feb 18 2026) ==============
+-- user_anecdotes: LIVE (created Feb 18 2026)
+-- user_profiles.birth_date: LIVE (added Feb 18 2026)
 --
+-- ============== TABLES NOT YET CREATED IN LIVE DB ==============
 -- user_ai_feedback — AI feedback for personalized cover letters
 --   (Not in DB as of Feb 2026. Row counts query returned no entry for this table.)
 --   To create: run the CREATE TABLE IF NOT EXISTS user_ai_feedback block above.

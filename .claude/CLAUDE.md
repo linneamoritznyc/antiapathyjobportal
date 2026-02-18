@@ -110,6 +110,26 @@ frontend_path = pathlib.Path(__file__).parent.parent / "frontend.html"
 
 ---
 
+## Anecdotes & hobbies for cover letters
+
+Users can add personal anecdotes (stories) and hobbies that AI weaves into cover letters when relevant.
+
+- **Table**: `user_anecdotes` (max 30 per user)
+- **Types**: `anecdote` (longer personal story) or `hobby` (short hobby description)
+- **Keywords**: matched against job descriptions so AI picks relevant ones
+- **Backend**: `GET/POST/DELETE /api/user/anecdotes`
+- **UI**: In LetterPreferencesPage (Personligt Brev tab in Profile)
+- **Cover letter integration**: `generate_cover_letter()` fetches anecdotes + style prefs when user_id is available
+
+## Editable style preferences
+
+Users can manually add/remove phrases from their "like" and "avoid" lists.
+- **Backend**: `PATCH /api/user/letter-style/phrases` (action: add/remove, list: phrases/avoid)
+- **UI**: Chips with X to remove + input to add new ones
+- **Cover letter integration**: `avoid_phrases` and `always_mention` from `user_cover_letter_preferences` are fed into the prompt
+
+---
+
 ## Gmail draft spec — EXACTLY 4 assets
 
 When "Spara i Gmail med bilagor" is clicked:

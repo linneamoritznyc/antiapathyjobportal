@@ -1,14 +1,25 @@
 {
-  "functions": {
-    "api/index.py": {
-      "maxDuration": 60,
-      "includeFiles": "{frontend.html,login.html,setup-guide.html,account.html,anvandarvillkor.html,integritetspolicy.html,cv_template.html,api/cv_files/**}"
-    }
-  },
-  "rewrites": [
+  "builds": [
     {
-      "source": "/(.*)",
-      "destination": "api/index.py"
+      "src": "api/index.py",
+      "use": "@vercel/python",
+      "config": {
+        "includeFiles": [
+          "frontend.html",
+          "login.html",
+          "setup-guide.html",
+          "account.html",
+          "anvandarvillkor.html",
+          "integritetspolicy.html",
+          "cv_template.html"
+        ]
+      }
+    }
+  ],
+  "routes": [
+    {
+      "src": "/(.*)",
+      "dest": "api/index.py"
     }
   ]
 }
