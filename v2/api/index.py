@@ -1915,12 +1915,23 @@ async def apply_with_cv(request: Request, job_id: str):
         except Exception as e:
             logger.warning(f"Auth check failed: {e}")
 
-    # Get job from database
+    # Parse request body (may contain job data as fallback)
+    try:
+        body = await request.json()
+    except Exception:
+        body = {}
+
+    # Get job from database; fall back to job data sent from frontend
     jobs = await db_request("GET", "jobs", params={"id": f"eq.{job_id}"})
     if not jobs:
-        raise HTTPException(status_code=404, detail="Jobbet hittades inte")
-
-    job = jobs[0]
+        job_from_body = body.get("job")
+        if job_from_body:
+            job = job_from_body
+            logger.info(f"Job {job_id} not in DB, using data from request body")
+        else:
+            raise HTTPException(status_code=404, detail="Jobbet hittades inte")
+    else:
+        job = jobs[0]
 
     # Match job to best CV vibe
     best_vibe = match_job_to_cv_vibe(job.get("title", ""), job.get("description", ""))
@@ -5662,11 +5673,12 @@ async def upload_profile_photo(request: Request):
     )
 
     # If PATCH returned empty (no row existed), create one
+    # full_name defaults to "" to satisfy NOT NULL constraint
     if not update_response or len(update_response) == 0:
         await db_request(
             "POST",
             "user_profiles",
-            data={"user_id": user_id, "photo_url": photo_url}
+            data={"user_id": user_id, "photo_url": photo_url, "full_name": ""}
         )
 
     return {

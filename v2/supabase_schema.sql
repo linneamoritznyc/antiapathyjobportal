@@ -554,29 +554,29 @@ COMMENT ON TABLE user_cv_uploads IS 'User-uploaded CVs as PDFs (max 20 per user)
 COMMENT ON TABLE bransch_cvs IS 'Industry-specific CV variants shown in MinaCVPage';
 
 -- ============== SUPABASE STORAGE BUCKETS ==============
--- These are created automatically on app startup via the API.
--- If they don't exist, run this in Supabase SQL Editor:
+-- All 3 buckets are PUBLIC with 4 RLS policies each (SELECT/INSERT/UPDATE/DELETE).
+-- Confirmed existing in Supabase dashboard 2026-02-18.
 --
--- INSERT INTO storage.buckets (id, name, public) VALUES ('profile-photos', 'profile-photos', true) ON CONFLICT (id) DO NOTHING;
--- INSERT INTO storage.buckets (id, name, public) VALUES ('training-letters', 'training-letters', true) ON CONFLICT (id) DO NOTHING;
--- INSERT INTO storage.buckets (id, name, public) VALUES ('cv-files', 'cv-files', true) ON CONFLICT (id) DO NOTHING;
+-- 1. profile-photos
+--    Visibility: Public
+--    Allowed MIME types: image/jpeg, image/png, image/jpg, image/webp
+--    Max file size: 10 MB
+--    Path pattern: {user_id}/profile.{ext}
+--    Public URL: {SUPABASE_URL}/storage/v1/object/public/profile-photos/{path}
+--    Policies (4): Allow public read, Allow authenticated upload, Allow owner update, Allow owner delete
 --
--- Also add permissive storage policies so service_role can upload:
+-- 2. training-letters
+--    Visibility: Public
+--    Allowed MIME types: application/pdf, application/vnd.openxmlformats-officedocument.wordprocessingml.document, application/msword, text/plain
+--    Max file size: 50 MB
+--    Path pattern: {user_id}/letter_{timestamp}.{ext}
+--    Public URL: {SUPABASE_URL}/storage/v1/object/public/training-letters/{path}
+--    Policies (4): Allow public read, Allow authenticated upload, Allow owner update, Allow owner delete
 --
--- CREATE POLICY "Allow public read" ON storage.objects FOR SELECT USING (bucket_id IN ('profile-photos', 'training-letters', 'cv-files'));
--- CREATE POLICY "Allow service upload" ON storage.objects FOR INSERT WITH CHECK (true);
--- CREATE POLICY "Allow service update" ON storage.objects FOR UPDATE USING (true);
--- CREATE POLICY "Allow service delete" ON storage.objects FOR DELETE USING (true);
---
--- Bucket details:
--- 1. profile-photos    — User profile photos (one per user)
---    Path: {user_id}/profile.{ext}
---    URL:  {SUPABASE_URL}/storage/v1/object/public/profile-photos/{path}
---
--- 2. training-letters  — Personal letters uploaded to train AI style (max 20/user)
---    Path: {user_id}/letter_{timestamp}.{ext}
---    URL:  {SUPABASE_URL}/storage/v1/object/public/training-letters/{path}
---
--- 3. cv-files          — Uploaded CV PDFs (max 20/user)
---    Path: {user_id}/cv_{timestamp}.{ext}
---    URL:  {SUPABASE_URL}/storage/v1/object/public/cv-files/{path}
+-- 3. cv-files
+--    Visibility: Public
+--    Allowed MIME types: application/pdf, application/vnd.openxmlformats-officedocument.wordprocessingml.document, application/msword, text/plain, application/rtf, application/vnd.oasis.opendocument.text
+--    Max file size: 50 MB
+--    Path pattern: {user_id}/{vibe_id}_cv.{ext}
+--    Public URL: {SUPABASE_URL}/storage/v1/object/public/cv-files/{path}
+--    Policies (4): Allow public read, Allow authenticated upload, Allow owner update, Allow owner delete

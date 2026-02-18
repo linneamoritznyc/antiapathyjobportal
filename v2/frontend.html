@@ -4840,7 +4840,11 @@
                     const token = localStorage.getItem('auth_token');
                     const res = await fetch(`/api/jobs/${job.id}/apply-with-cv`, {
                         method: 'POST',
-                        headers: token ? { 'Authorization': `Bearer ${token}` } : {}
+                        headers: {
+                            'Content-Type': 'application/json',
+                            ...(token ? { 'Authorization': `Bearer ${token}` } : {})
+                        },
+                        body: JSON.stringify({ job })
                     });
                     const data = await res.json();
 
