@@ -35,11 +35,15 @@ Everything else in the repo root is legacy/dead. Don't touch it.
 
 ## Deployment pipeline
 
+- **Vercel Pro** plan (maxDuration up to 60s for serverless functions)
+- **No local development** — no terminal, no GitHub UI, no CLI. Everything is cloud-only (Vercel + Supabase + Claude Code on the web). Never suggest local commands, `git checkout`, or GitHub UI workflows.
+- Merging and deploying happens via GitHub PR merge on the web or via Claude Code pushes.
+
 ```
-GitHub (branch: main, root dir: v2/) → Vercel → serves v2/api/index.py
-                                                  reads v2/frontend.html
-                                                        ↓
-                                                    Supabase (cloud DB)
+GitHub (branch: main, root dir: v2/) → Vercel Pro → serves v2/api/index.py
+                                                      reads v2/frontend.html
+                                                            ↓
+                                                        Supabase (cloud DB)
 ```
 
 How `v2/api/index.py` finds the frontend:
@@ -148,5 +152,5 @@ Core flow: job scraping → CV matching → cover letter generation → Gmail dr
 1. **Editing root `frontend.html` or root `api/index.py`** — these are dead. Always edit in `v2/`.
 2. **Building API endpoints to read the DB** — just ask user to run SQL in Supabase dashboard.
 3. **Creating SQL migration files in the repo** — give SQL in chat, update `v2/supabase_schema.sql`.
-4. **Suggesting local development** — this is a cloud app. No local dev environment exists.
+4. **Suggesting local development or GitHub UI** — this is a cloud-only app. No local dev, no terminal, no GitHub UI. Never tell user to run local commands or use GitHub UI.
 5. **Over-engineering** — keep it simple. Get basics working first.
