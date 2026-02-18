@@ -450,6 +450,26 @@ CREATE TABLE IF NOT EXISTS user_training_letters (
     uploaded_at TIMESTAMPTZ DEFAULT NOW()
 );
 
+-- Job interaction signals — Meta-style event log for smart feed ranking
+-- action: 'viewed' | 'skipped' | 'applied' | 'saved' | 'rejected'
+-- Skipped jobs move to end of feed; rejected + applied are hidden by default.
+-- context JSONB holds optional metadata (time_spent_seconds, etc.)
+-- Added 2026-02-18.
+CREATE TABLE IF NOT EXISTS user_job_interactions (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    user_id TEXT NOT NULL,
+    job_id TEXT NOT NULL,
+    action TEXT NOT NULL CHECK (action IN ('viewed', 'skipped', 'applied', 'saved', 'rejected')),
+    context JSONB DEFAULT '{}'::jsonb,
+    created_at TIMESTAMPTZ DEFAULT NOW()
+);
+-- Fast lookups per user (for feed filtering)
+CREATE INDEX IF NOT EXISTS idx_user_job_interactions_user ON user_job_interactions(user_id, created_at DESC);
+-- Fast lookups per job (for analytics)
+CREATE INDEX IF NOT EXISTS idx_user_job_interactions_job ON user_job_interactions(job_id);
+-- One record per (user, job, action) — prevents duplicate signals
+CREATE UNIQUE INDEX IF NOT EXISTS idx_user_job_interactions_unique ON user_job_interactions(user_id, job_id, action);
+
 -- User Google Cloud credentials (each user brings their own)
 -- This is more secure - users control their own API access
 CREATE TABLE IF NOT EXISTS user_google_credentials (

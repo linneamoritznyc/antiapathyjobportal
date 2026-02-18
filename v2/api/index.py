@@ -1014,17 +1014,55 @@ async def scrape_jobs(request: JobSearchRequest = None):
 
 
 @app.get("/api/jobs")
-async def list_jobs(limit: int = 50):
-    """List all jobs"""
+async def list_jobs(request: Request, limit: int = 50):
+    """List all jobs, filtered by user's interaction history if logged in"""
+    # Get user_id from auth token (optional)
+    auth_header = request.headers.get("Authorization", "")
+    user_id = None
+    if auth_header.startswith("Bearer "):
+        token = auth_header.replace("Bearer ", "")
+        try:
+            async with httpx.AsyncClient() as client:
+                user_response = await client.get(
+                    f"{SUPABASE_URL}/auth/v1/user",
+                    headers={"apikey": SUPABASE_ANON_KEY, "Authorization": f"Bearer {token}"}
+                )
+                if user_response.status_code == 200:
+                    user_id = user_response.json().get("id")
+        except Exception:
+            pass
+
     # Try database first
     jobs = await get_jobs_from_db(limit)
 
-    if jobs:
-        return {"success": True, "source": "database", "jobs": jobs}
+    if not jobs:
+        # Fallback: scrape live AND save to DB so apply-with-cv can find them
+        jobs = await scrape_platsbanken("jobb", "Stockholm", max_jobs=limit)
+        if jobs:
+            await save_jobs_to_db(jobs)
 
-    # Fallback: scrape live
-    jobs = await scrape_platsbanken("jobb", "Stockholm", max_jobs=limit)
-    return {"success": True, "source": "live", "jobs": jobs}
+    if not jobs:
+        return {"success": True, "source": "empty", "jobs": []}
+
+    # If logged in, load user's interaction history and filter/score jobs
+    if user_id and jobs:
+        interactions = await db_request("GET", "user_job_interactions", params={
+            "user_id": f"eq.{user_id}",
+            "select": "job_id,action"
+        }) or []
+
+        rejected_ids = {i["job_id"] for i in interactions if i["action"] == "rejected"}
+        applied_ids = {i["job_id"] for i in interactions if i["action"] == "applied"}
+        skipped_ids = {i["job_id"] for i in interactions if i["action"] == "skipped"}
+
+        # Hard-filter rejected and applied jobs out of the feed
+        # Skipped jobs are moved to the end (deprioritized)
+        active_jobs = [j for j in jobs if j["id"] not in rejected_ids and j["id"] not in applied_ids]
+        skipped_jobs = [j for j in active_jobs if j["id"] in skipped_ids]
+        fresh_jobs = [j for j in active_jobs if j["id"] not in skipped_ids]
+        jobs = fresh_jobs + skipped_jobs  # Fresh first, skipped last
+
+    return {"success": True, "source": "database", "jobs": jobs}
 
 
 @app.get("/api/jobs/{job_id}")
@@ -1034,6 +1072,50 @@ async def get_job(job_id: str):
     if jobs and len(jobs) > 0:
         return {"success": True, "job": jobs[0]}
     raise HTTPException(status_code=404, detail="Job not found")
+
+
+@app.post("/api/jobs/{job_id}/interaction")
+async def log_job_interaction(job_id: str, request: Request):
+    """
+    Log a user's interaction with a job (viewed, skipped, applied, rejected).
+    This powers the smart feed — rejected/applied jobs are hidden, skipped pushed to end.
+    Modeled after Meta/TikTok engagement signal collection: every action is an event.
+    """
+    auth_header = request.headers.get("Authorization", "")
+    user_id = None
+    if auth_header.startswith("Bearer "):
+        token = auth_header.replace("Bearer ", "")
+        try:
+            async with httpx.AsyncClient() as client:
+                user_response = await client.get(
+                    f"{SUPABASE_URL}/auth/v1/user",
+                    headers={"apikey": SUPABASE_ANON_KEY, "Authorization": f"Bearer {token}"}
+                )
+                if user_response.status_code == 200:
+                    user_id = user_response.json().get("id")
+        except Exception:
+            pass
+
+    if not user_id:
+        raise HTTPException(status_code=401, detail="Ej inloggad")
+
+    body = await request.json()
+    action = body.get("action", "").lower()
+    valid_actions = {"viewed", "skipped", "applied", "saved", "rejected"}
+    if action not in valid_actions:
+        raise HTTPException(status_code=400, detail=f"Ogiltig action. Välj bland: {', '.join(valid_actions)}")
+
+    context = body.get("context", {})  # Optional metadata (time_spent, etc.)
+
+    # Upsert: one record per (user, job, action) — prevents duplicate signals
+    await db_request("POST", "user_job_interactions", data={
+        "user_id": user_id,
+        "job_id": job_id,
+        "action": action,
+        "context": context
+    })
+
+    return {"success": True, "job_id": job_id, "action": action}
 
 
 @app.post("/api/jobs/{job_id}/letter")
