@@ -627,11 +627,11 @@ Skriv ENDAST det färdiga brevet, inget annat."""
                     "content-type": "application/json"
                 },
                 json={
-                    "model": "claude-sonnet-4-20250514",
+                    "model": "claude-haiku-4-5-20251001",
                     "max_tokens": 600,
                     "messages": [{"role": "user", "content": prompt}]
                 },
-                timeout=30
+                timeout=25
             )
 
             if response.status_code == 200:
@@ -1962,18 +1962,17 @@ async def apply_with_cv(request: Request, job_id: str):
     best_vibe = match_job_to_cv_vibe(job.get("title", ""), job.get("description", ""))
     logger.info(f"Job '{job.get('title')}' matched to CV vibe: {best_vibe}")
 
-    # Try to get matching CV and user profile if logged in
+    # Fetch CV and user profile in parallel to save time
     cv = None
     user_profile = None
     if user_id:
-        cvs = await db_request("GET", "user_cvs", params={
-            "user_id": f"eq.{user_id}",
-            "vibe_id": f"eq.{best_vibe}"
-        })
-        cv = cvs[0] if cvs else None
-        # Fetch user profile for cover letter personalization
-        profiles = await db_request("GET", "user_profiles", params={"user_id": f"eq.{user_id}"})
-        user_profile = profiles[0] if profiles else None
+        import asyncio as _asyncio
+        cvs_result, profiles_result = await _asyncio.gather(
+            db_request("GET", "user_cvs", params={"user_id": f"eq.{user_id}", "vibe_id": f"eq.{best_vibe}"}),
+            db_request("GET", "user_profiles", params={"user_id": f"eq.{user_id}"})
+        )
+        cv = cvs_result[0] if cvs_result else None
+        user_profile = profiles_result[0] if profiles_result else None
 
     # Generate cover letter (works with or without CV/profile)
     cv_text_for_letter = cv.get("cv_text") if cv else None
