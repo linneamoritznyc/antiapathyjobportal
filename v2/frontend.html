@@ -269,6 +269,8 @@
             { id: 'google', label: 'Google Ads (granskning)', hint: '- Google Ads (2018-2019): innehållsgranskning och annonsanalys, 100+ ärenden/dag' },
             { id: 'clubhouse', label: 'Clubhouse (moderator)', hint: '- Clubhouse (2021-2022): content moderation, Trust & Safety, onlinegrammatik' },
             { id: 'minerva', label: 'Minerva (marknadsföring)', hint: '- Minerva Project (2019-2020): global marknadsföring, kundkommunikation' },
+            { id: 'profilgruppen', label: 'Profilgruppen', hint: '- Profilgruppen: industriarbete, produktion och kvalitetskontroll' },
+            { id: 'konstnar', label: 'Konstnär (internationell)', hint: '- Konstnär: internationell försäljning och distribution av konstverk, egenföretagande, projektplanering och logistik' },
             { id: 'webdev', label: 'Webbutveckling (React/Python)', hint: '- Webbutveckling: fullstack-appar med React, Python, FastAPI, PostgreSQL' },
             { id: 'korkort', label: 'B-körkort & bil', hint: '- Har B-körkort och tillgång till bil' },
         ];
@@ -282,6 +284,7 @@
             const [copied, setCopied] = useState(false);
             const [feedbackSaved, setFeedbackSaved] = useState(false);
             const [selectedHints, setSelectedHints] = useState([]);
+            const [customHint, setCustomHint] = useState('');
             const [regenerating, setRegenerating] = useState(false);
             const [savingDraft, setSavingDraft] = useState(false);
             const [draftSaved, setDraftSaved] = useState(false);
@@ -355,10 +358,13 @@
             const regenerateLetter = async () => {
                 setRegenerating(true);
                 try {
-                    const extraHintText = EXPERIENCE_HINTS
+                    let extraHintText = EXPERIENCE_HINTS
                         .filter(e => selectedHints.includes(e.id))
                         .map(e => e.hint)
                         .join('\n');
+                    if (customHint.trim()) {
+                        extraHintText += (extraHintText ? '\n' : '') + '- ' + customHint.trim();
+                    }
                     const res = await authFetch(`/api/jobs/${job.id}/apply-with-cv`, {
                         method: 'POST',
                         body: JSON.stringify({ job, extra_hints: extraHintText })
@@ -495,12 +501,19 @@
                                         </button>
                                     ))}
                                 </div>
-                                {selectedHints.length > 0 && !regenerating && (
+                                <input
+                                    type="text"
+                                    value={customHint}
+                                    onChange={(e) => setCustomHint(e.target.value)}
+                                    placeholder="Skriv egen erfarenhet här, t.ex. 'Jobbade på Volvo som svetsare 2020-2022'"
+                                    className="mt-2 w-full p-2 text-xs border border-slate-300 rounded-lg focus:border-indigo-400 focus:outline-none"
+                                />
+                                {(selectedHints.length > 0 || customHint.trim()) && !regenerating && (
                                     <button
                                         onClick={regenerateLetter}
                                         className="mt-3 w-full bg-indigo-600 text-white py-2 rounded-lg text-sm font-medium hover:bg-indigo-700"
                                     >
-                                        ✨ Generera om med valda erfarenheter ({selectedHints.length} valda)
+                                        ✨ Generera om med {selectedHints.length > 0 ? `valda erfarenheter (${selectedHints.length} valda)` : 'egen erfarenhet'}
                                     </button>
                                 )}
                                 {regenerating && (
