@@ -192,6 +192,40 @@
 
 ---
 
+## 🔴 NU — Kodoptimering (teknisk skuld)
+
+### 9. Codebase Optimization — Minska filstorlek med ~22%
+
+**Vad:** Båda huvudfilerna (`v2/api/index.py` = 6,443 rader, `v2/frontend.html` = 5,760 rader) har vuxit förbi smärtgränsen. Duplicerad kod överallt.
+
+**Varför:** `frontend.html` är 325 KB — större än verktygens max-läsgräns. Samma auth-mönster upprepas 30+ gånger i backend. Duplicerade GDPR-endpoints. Död onboarding-kod i frontend.
+
+**Backend-optimeringar (`v2/api/index.py`):**
+- Extract `get_user_id_from_request()` helper (30+ endpoints → 1 funktion, ~200 rader)
+- Supabase headers-konstant (~150 rader)
+- Slå ihop duplicerade GDPR export/delete-endpoints (~270 rader)
+- Extract `call_claude_api()` wrapper (~80 rader)
+- Konsolidera filuppladdningslogik (~200 rader)
+- Content-type-mappning som konstant (~60 rader)
+- CV-kategoridefinitioner — en enda källa (~80 rader)
+- Flytta/refaktorera hårdkodad CV-migrationsdata (~810 rader)
+
+**Frontend-optimeringar (`v2/frontend.html`):**
+- Extract `authFetch()` helper (~180 rader)
+- Ta bort död `_ONBOARDING_OLD_UNUSED`-kod (~350 rader)
+- Button style-konstanter (~80 rader)
+- Konsolidera filuppladdnings-handlers (~90 rader)
+- `<ModalHeader>` komponent (~50 rader)
+- Option/checkbox-mönster (~60 rader)
+
+**Mål:** `index.py` 6,443 → ~4,600 rader (28%), `frontend.html` 5,760 → ~4,950 rader (14%)
+
+**Tekniskt:** Ingen ny funktionalitet. Ingen beteendeförändring. Bara renare kod.
+
+**Plan:** Detaljerad spec i `OPTIMIZATION_PLAN.md`
+
+---
+
 ## 🔵 FRAMTID — Visioner & Långsiktiga mål
 
 ### 7. Jobbuppföljning & Interview-tracker *(neutral — kan byggas senare)*

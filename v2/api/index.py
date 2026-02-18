@@ -257,6 +257,85 @@ CV_BRANSCHER = [
 ]
 
 
+# ============== AUTH & SHARED HELPERS ==============
+
+async def get_user_id_from_request(request: Request, required: bool = False) -> Optional[str]:
+    """Extract user_id from Authorization Bearer token.
+    If required=True, raises 401 if not authenticated."""
+    auth_header = request.headers.get("Authorization", "")
+    if not auth_header.startswith("Bearer "):
+        if required:
+            raise HTTPException(status_code=401, detail="Ej inloggad")
+        return None
+    token = auth_header.replace("Bearer ", "")
+    try:
+        async with httpx.AsyncClient() as client:
+            resp = await client.get(
+                f"{SUPABASE_URL}/auth/v1/user",
+                headers={"apikey": SUPABASE_ANON_KEY, "Authorization": f"Bearer {token}"}
+            )
+            if resp.status_code == 200:
+                return resp.json().get("id")
+    except Exception:
+        pass
+    if required:
+        raise HTTPException(status_code=401, detail="Ej inloggad")
+    return None
+
+
+def get_supabase_headers(prefer: str = "return=representation") -> dict:
+    """Get standard Supabase headers for REST API calls."""
+    return {
+        "apikey": SUPABASE_KEY,
+        "Authorization": f"Bearer {SUPABASE_KEY}",
+        "Content-Type": "application/json",
+        "Prefer": prefer
+    }
+
+
+async def call_claude_api(prompt: str, model: str = "claude-haiku-4-5-20251001", max_tokens: int = 600, timeout: int = 25) -> Optional[str]:
+    """Call Claude API and return the response text, or None on failure."""
+    if not ANTHROPIC_API_KEY:
+        return None
+    try:
+        async with httpx.AsyncClient() as client:
+            response = await client.post(
+                "https://api.anthropic.com/v1/messages",
+                headers={
+                    "x-api-key": ANTHROPIC_API_KEY,
+                    "anthropic-version": "2023-06-01",
+                    "content-type": "application/json"
+                },
+                json={
+                    "model": model,
+                    "max_tokens": max_tokens,
+                    "messages": [{"role": "user", "content": prompt}]
+                },
+                timeout=timeout
+            )
+            if response.status_code == 200:
+                return response.json()["content"][0]["text"].strip()
+            else:
+                logger.error(f"Claude API error: {response.status_code} - {response.text[:200]}")
+    except Exception as e:
+        logger.error(f"Error calling Claude API: {e}")
+    return None
+
+
+CONTENT_TYPE_MAP = {
+    ".pdf": "application/pdf",
+    ".docx": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    ".doc": "application/msword",
+    ".txt": "text/plain",
+    ".rtf": "application/rtf",
+    ".odt": "application/vnd.oasis.opendocument.text",
+    ".jpg": "image/jpeg",
+    ".jpeg": "image/jpeg",
+    ".png": "image/png",
+    ".webp": "image/webp",
+}
+
+
 # ============== HELPERS ==============
 
 def extract_email(text: str) -> Optional[str]:
@@ -1041,21 +1120,7 @@ async def scrape_jobs(request: JobSearchRequest = None):
 @app.get("/api/jobs")
 async def list_jobs(request: Request, limit: int = 50):
     """List all jobs, filtered by user's interaction history if logged in"""
-    # Get user_id from auth token (optional)
-    auth_header = request.headers.get("Authorization", "")
-    user_id = None
-    if auth_header.startswith("Bearer "):
-        token = auth_header.replace("Bearer ", "")
-        try:
-            async with httpx.AsyncClient() as client:
-                user_response = await client.get(
-                    f"{SUPABASE_URL}/auth/v1/user",
-                    headers={"apikey": SUPABASE_ANON_KEY, "Authorization": f"Bearer {token}"}
-                )
-                if user_response.status_code == 200:
-                    user_id = user_response.json().get("id")
-        except Exception:
-            pass
+    user_id = await get_user_id_from_request(request)
 
     # Try database first
     jobs = await get_jobs_from_db(limit)
@@ -1106,23 +1171,7 @@ async def log_job_interaction(job_id: str, request: Request):
     This powers the smart feed — rejected/applied jobs are hidden, skipped pushed to end.
     Modeled after Meta/TikTok engagement signal collection: every action is an event.
     """
-    auth_header = request.headers.get("Authorization", "")
-    user_id = None
-    if auth_header.startswith("Bearer "):
-        token = auth_header.replace("Bearer ", "")
-        try:
-            async with httpx.AsyncClient() as client:
-                user_response = await client.get(
-                    f"{SUPABASE_URL}/auth/v1/user",
-                    headers={"apikey": SUPABASE_ANON_KEY, "Authorization": f"Bearer {token}"}
-                )
-                if user_response.status_code == 200:
-                    user_id = user_response.json().get("id")
-        except Exception:
-            pass
-
-    if not user_id:
-        raise HTTPException(status_code=401, detail="Ej inloggad")
+    user_id = await get_user_id_from_request(request, required=True)
 
     body = await request.json()
     action = body.get("action", "").lower()
@@ -1170,19 +1219,7 @@ async def create_letter(job_id: str, request: GenerateLetterRequest = None):
 @app.post("/api/applications")
 async def save_application(request: SaveApplicationRequest, req: Request):
     """Save an application"""
-    # Get user_id from auth token
-    auth_header = req.headers.get("Authorization", "")
-    user_id = "default_user"
-
-    if auth_header.startswith("Bearer "):
-        token = auth_header.replace("Bearer ", "")
-        async with httpx.AsyncClient() as client:
-            user_response = await client.get(
-                f"{SUPABASE_URL}/auth/v1/user",
-                headers={"apikey": SUPABASE_ANON_KEY, "Authorization": f"Bearer {token}"}
-            )
-            if user_response.status_code == 200:
-                user_id = user_response.json().get("id", "default_user")
+    user_id = await get_user_id_from_request(req) or "default_user"
 
     data = {
         "job_id": request.job_id,
@@ -1263,19 +1300,7 @@ async def delete_application(application_id: str):
 @app.post("/api/jobs/{job_id}/save")
 async def save_job(job_id: str, request: Request):
     """Save/bookmark a job for later"""
-    # Get user_id from auth token if available
-    auth_header = request.headers.get("Authorization", "")
-    user_id = "default_user"
-
-    if auth_header.startswith("Bearer "):
-        token = auth_header.replace("Bearer ", "")
-        async with httpx.AsyncClient() as client:
-            user_response = await client.get(
-                f"{SUPABASE_URL}/auth/v1/user",
-                headers={"apikey": SUPABASE_ANON_KEY, "Authorization": f"Bearer {token}"}
-            )
-            if user_response.status_code == 200:
-                user_id = user_response.json().get("id", "default_user")
+    user_id = await get_user_id_from_request(request) or "default_user"
 
     # Check if application already exists
     existing = await db_request("GET", "applications", params={
@@ -1317,18 +1342,7 @@ async def save_job(job_id: str, request: Request):
 @app.delete("/api/jobs/{job_id}/save")
 async def unsave_job(job_id: str, request: Request):
     """Remove a saved job"""
-    auth_header = request.headers.get("Authorization", "")
-    user_id = "default_user"
-
-    if auth_header.startswith("Bearer "):
-        token = auth_header.replace("Bearer ", "")
-        async with httpx.AsyncClient() as client:
-            user_response = await client.get(
-                f"{SUPABASE_URL}/auth/v1/user",
-                headers={"apikey": SUPABASE_ANON_KEY, "Authorization": f"Bearer {token}"}
-            )
-            if user_response.status_code == 200:
-                user_id = user_response.json().get("id", "default_user")
+    user_id = await get_user_id_from_request(request) or "default_user"
 
     # Delete saved application
     url = f"{SUPABASE_URL}/rest/v1/applications?job_id=eq.{job_id}&user_id=eq.{user_id}&status=eq.saved"
@@ -1388,22 +1402,7 @@ async def save_master_cv(request: Request, master_cv: MasterCV):
     Save complete Master CV with all structured data.
     This is the source of truth - all CV vibes are generated from this.
     """
-    # Get user_id from auth token
-    auth_header = request.headers.get("Authorization", "")
-    user_id = None
-
-    if auth_header.startswith("Bearer "):
-        token = auth_header.replace("Bearer ", "")
-        async with httpx.AsyncClient() as client:
-            user_response = await client.get(
-                f"{SUPABASE_URL}/auth/v1/user",
-                headers={"apikey": SUPABASE_ANON_KEY, "Authorization": f"Bearer {token}"}
-            )
-            if user_response.status_code == 200:
-                user_id = user_response.json().get("id")
-
-    if not user_id:
-        raise HTTPException(status_code=401, detail="Ej inloggad")
+    user_id = await get_user_id_from_request(request, required=True)
 
     # Save profile
     profile_data = {
@@ -1493,20 +1492,7 @@ async def save_master_cv(request: Request, master_cv: MasterCV):
 @app.get("/api/cv/master")
 async def get_master_cv(request: Request):
     """Get user's complete Master CV as structured data"""
-    # Get user_id from auth token
-    auth_header = request.headers.get("Authorization", "")
-    user_id = None
-
-    if auth_header.startswith("Bearer "):
-        token = auth_header.replace("Bearer ", "")
-        async with httpx.AsyncClient() as client:
-            user_response = await client.get(
-                f"{SUPABASE_URL}/auth/v1/user",
-                headers={"apikey": SUPABASE_ANON_KEY, "Authorization": f"Bearer {token}"}
-            )
-            if user_response.status_code == 200:
-                user_id = user_response.json().get("id")
-
+    user_id = await get_user_id_from_request(request)
     if not user_id:
         return {"success": False, "master_cv": None, "message": "Ej inloggad"}
 
@@ -1665,22 +1651,7 @@ async def suggest_new_vibe(job_keywords: List[str], user_id: str = "default_user
 @app.post("/api/cv/generate-branscher")
 async def generate_cv_branscher(request: Request):
     """Generate all CV bransch versions from master CV"""
-    # Get user_id from auth token
-    auth_header = request.headers.get("Authorization", "")
-    user_id = None
-
-    if auth_header.startswith("Bearer "):
-        token = auth_header.replace("Bearer ", "")
-        async with httpx.AsyncClient() as client:
-            user_response = await client.get(
-                f"{SUPABASE_URL}/auth/v1/user",
-                headers={"apikey": SUPABASE_ANON_KEY, "Authorization": f"Bearer {token}"}
-            )
-            if user_response.status_code == 200:
-                user_id = user_response.json().get("id")
-
-    if not user_id:
-        raise HTTPException(status_code=401, detail="Ej inloggad")
+    user_id = await get_user_id_from_request(request, required=True)
 
     # Get user's profile and experiences
     profiles = await db_request("GET", "user_profiles", params={"user_id": f"eq.{user_id}"})
@@ -1714,20 +1685,7 @@ async def generate_cv_branscher(request: Request):
 @app.get("/api/cv/all")
 async def get_user_cvs(request: Request):
     """Get all user's generated CV versions"""
-    # Get user_id from auth token
-    auth_header = request.headers.get("Authorization", "")
-    user_id = None
-
-    if auth_header.startswith("Bearer "):
-        token = auth_header.replace("Bearer ", "")
-        async with httpx.AsyncClient() as client:
-            user_response = await client.get(
-                f"{SUPABASE_URL}/auth/v1/user",
-                headers={"apikey": SUPABASE_ANON_KEY, "Authorization": f"Bearer {token}"}
-            )
-            if user_response.status_code == 200:
-                user_id = user_response.json().get("id")
-
+    user_id = await get_user_id_from_request(request)
     if not user_id:
         return {"success": True, "cvs": [], "message": "Ej inloggad"}
 
@@ -1772,19 +1730,7 @@ async def update_cv(vibe_id: str, cv_text: str, user_id: str = "default_user"):
 @app.get("/api/master-cv")
 async def get_full_master_cv(request: Request):
     """Get complete Master CV data including all sections (experiences, education, projects, certifications, awards, volunteer, skills)"""
-    auth_header = request.headers.get("Authorization", "")
-    user_id = None
-
-    if auth_header.startswith("Bearer "):
-        token = auth_header.replace("Bearer ", "")
-        async with httpx.AsyncClient() as client:
-            user_response = await client.get(
-                f"{SUPABASE_URL}/auth/v1/user",
-                headers={"apikey": SUPABASE_ANON_KEY, "Authorization": f"Bearer {token}"}
-            )
-            if user_response.status_code == 200:
-                user_id = user_response.json().get("id")
-
+    user_id = await get_user_id_from_request(request)
     if not user_id:
         return {"success": False, "message": "Ej inloggad"}
 
@@ -1835,19 +1781,7 @@ async def get_full_master_cv(request: Request):
 @app.get("/api/bransch-cvs")
 async def get_bransch_cvs(request: Request):
     """Get all Bransch-CVs (industry-specific CV templates)"""
-    auth_header = request.headers.get("Authorization", "")
-    user_id = None
-
-    if auth_header.startswith("Bearer "):
-        token = auth_header.replace("Bearer ", "")
-        async with httpx.AsyncClient() as client:
-            user_response = await client.get(
-                f"{SUPABASE_URL}/auth/v1/user",
-                headers={"apikey": SUPABASE_ANON_KEY, "Authorization": f"Bearer {token}"}
-            )
-            if user_response.status_code == 200:
-                user_id = user_response.json().get("id")
-
+    user_id = await get_user_id_from_request(request)
     if not user_id:
         return {"success": False, "bransch_cvs": []}
 
@@ -1862,21 +1796,7 @@ async def get_bransch_cvs(request: Request):
 @app.get("/api/master-cv/download-pdf")
 async def download_master_cv_pdf(request: Request):
     """Generate and download Master CV as PDF"""
-    auth_header = request.headers.get("Authorization", "")
-    user_id = None
-
-    if auth_header.startswith("Bearer "):
-        token = auth_header.replace("Bearer ", "")
-        async with httpx.AsyncClient() as client:
-            user_response = await client.get(
-                f"{SUPABASE_URL}/auth/v1/user",
-                headers={"apikey": SUPABASE_ANON_KEY, "Authorization": f"Bearer {token}"}
-            )
-            if user_response.status_code == 200:
-                user_id = user_response.json().get("id")
-
-    if not user_id:
-        raise HTTPException(status_code=401, detail="Ej inloggad")
+    user_id = await get_user_id_from_request(request, required=True)
 
     # For now, return a simple text response indicating this feature is coming soon
     # In production, this would generate a formatted PDF using a library like ReportLab or WeasyPrint
@@ -1886,21 +1806,7 @@ async def download_master_cv_pdf(request: Request):
 @app.get("/api/bransch-cvs/{cv_id}/download-pdf")
 async def download_bransch_cv_pdf(cv_id: str, request: Request):
     """Generate and download a specific Bransch-CV as PDF"""
-    auth_header = request.headers.get("Authorization", "")
-    user_id = None
-
-    if auth_header.startswith("Bearer "):
-        token = auth_header.replace("Bearer ", "")
-        async with httpx.AsyncClient() as client:
-            user_response = await client.get(
-                f"{SUPABASE_URL}/auth/v1/user",
-                headers={"apikey": SUPABASE_ANON_KEY, "Authorization": f"Bearer {token}"}
-            )
-            if user_response.status_code == 200:
-                user_id = user_response.json().get("id")
-
-    if not user_id:
-        raise HTTPException(status_code=401, detail="Ej inloggad")
+    user_id = await get_user_id_from_request(request, required=True)
 
     # Fetch the specific Bransch-CV
     cv_result = await db_request("GET", "bransch_cvs", params={
@@ -1924,21 +1830,7 @@ async def apply_with_cv(request: Request, job_id: str):
     This is the main "one-click apply" endpoint.
     """
     # Get user_id from auth token (optional - works without login too)
-    auth_header = request.headers.get("Authorization", "")
-    user_id = None
-
-    if auth_header.startswith("Bearer "):
-        token = auth_header.replace("Bearer ", "")
-        try:
-            async with httpx.AsyncClient() as client:
-                user_response = await client.get(
-                    f"{SUPABASE_URL}/auth/v1/user",
-                    headers={"apikey": SUPABASE_ANON_KEY, "Authorization": f"Bearer {token}"}
-                )
-                if user_response.status_code == 200:
-                    user_id = user_response.json().get("id")
-        except Exception as e:
-            logger.warning(f"Auth check failed: {e}")
+    user_id = await get_user_id_from_request(request)
 
     # Parse request body (may contain job data as fallback)
     try:
@@ -2075,23 +1967,7 @@ async def save_gmail_draft_with_attachments(request: Request, job_id: str):
     Called from the ApplyModal when the user clicks 'Spara i Gmail med bilagor'.
     Requires Gmail OAuth to be connected.
     """
-    auth_header = request.headers.get("Authorization", "")
-    user_id = None
-    if auth_header.startswith("Bearer "):
-        token = auth_header.replace("Bearer ", "")
-        try:
-            async with httpx.AsyncClient() as client:
-                user_response = await client.get(
-                    f"{SUPABASE_URL}/auth/v1/user",
-                    headers={"apikey": SUPABASE_ANON_KEY, "Authorization": f"Bearer {token}"}
-                )
-                if user_response.status_code == 200:
-                    user_id = user_response.json().get("id")
-        except Exception as e:
-            logger.warning(f"Auth check failed: {e}")
-
-    if not user_id:
-        raise HTTPException(status_code=401, detail="Inloggning krävs")
+    user_id = await get_user_id_from_request(request, required=True)
 
     try:
         body = await request.json()
@@ -3795,26 +3671,7 @@ async def save_profile_from_quiz(request: Request, profile: QuizProfileData):
 @app.get("/api/user/preferences")
 async def get_user_preferences(request: Request):
     """Get user job preferences and settings."""
-    auth_header = request.headers.get("Authorization", "")
-    if not auth_header.startswith("Bearer "):
-        raise HTTPException(status_code=401, detail="Ej inloggad")
-
-    token = auth_header.replace("Bearer ", "")
-
-    # Get user ID from token
-    async with httpx.AsyncClient() as client:
-        user_response = await client.get(
-            f"{SUPABASE_URL}/auth/v1/user",
-            headers={
-                "apikey": SUPABASE_ANON_KEY,
-                "Authorization": f"Bearer {token}"
-            }
-        )
-        if user_response.status_code != 200:
-            raise HTTPException(status_code=401, detail="Ogiltig session")
-
-        user = user_response.json()
-        user_id = user.get("id")
+    user_id = await get_user_id_from_request(request, required=True)
 
     # Get preferences from database
     async with httpx.AsyncClient() as client:
@@ -3837,26 +3694,7 @@ async def get_user_preferences(request: Request):
 @app.post("/api/user/preferences")
 async def save_user_preferences(request: Request, prefs: UserPreferences):
     """Save user job preferences and Gmail credentials."""
-    auth_header = request.headers.get("Authorization", "")
-    if not auth_header.startswith("Bearer "):
-        raise HTTPException(status_code=401, detail="Ej inloggad")
-
-    token = auth_header.replace("Bearer ", "")
-
-    # Get user ID from token
-    async with httpx.AsyncClient() as client:
-        user_response = await client.get(
-            f"{SUPABASE_URL}/auth/v1/user",
-            headers={
-                "apikey": SUPABASE_ANON_KEY,
-                "Authorization": f"Bearer {token}"
-            }
-        )
-        if user_response.status_code != 200:
-            raise HTTPException(status_code=401, detail="Ogiltig session")
-
-        user = user_response.json()
-        user_id = user.get("id")
+    user_id = await get_user_id_from_request(request, required=True)
 
     # Upsert preferences - store all quiz answers as JSONB
     prefs_data = {
@@ -4054,20 +3892,7 @@ class ExperienceData(BaseModel):
 @app.post("/api/user/experience")
 async def create_experience(request: Request, exp: ExperienceData):
     """Create a new work experience."""
-    auth_header = request.headers.get("Authorization", "")
-    if not auth_header.startswith("Bearer "):
-        raise HTTPException(status_code=401, detail="Ej inloggad")
-
-    token = auth_header.replace("Bearer ", "")
-
-    async with httpx.AsyncClient() as client:
-        user_response = await client.get(
-            f"{SUPABASE_URL}/auth/v1/user",
-            headers={"apikey": SUPABASE_ANON_KEY, "Authorization": f"Bearer {token}"}
-        )
-        if user_response.status_code != 200:
-            raise HTTPException(status_code=401, detail="Ogiltig session")
-        user_id = user_response.json().get("id")
+    user_id = await get_user_id_from_request(request, required=True)
 
     exp_data = {
         "user_id": user_id,
@@ -4100,20 +3925,7 @@ async def create_experience(request: Request, exp: ExperienceData):
 @app.put("/api/user/experience/{exp_id}")
 async def update_experience(request: Request, exp_id: str, exp: ExperienceData):
     """Update an existing work experience."""
-    auth_header = request.headers.get("Authorization", "")
-    if not auth_header.startswith("Bearer "):
-        raise HTTPException(status_code=401, detail="Ej inloggad")
-
-    token = auth_header.replace("Bearer ", "")
-
-    async with httpx.AsyncClient() as client:
-        user_response = await client.get(
-            f"{SUPABASE_URL}/auth/v1/user",
-            headers={"apikey": SUPABASE_ANON_KEY, "Authorization": f"Bearer {token}"}
-        )
-        if user_response.status_code != 200:
-            raise HTTPException(status_code=401, detail="Ogiltig session")
-        user_id = user_response.json().get("id")
+    user_id = await get_user_id_from_request(request, required=True)
 
     exp_data = {
         "company": exp.company,
@@ -4144,20 +3956,7 @@ async def update_experience(request: Request, exp_id: str, exp: ExperienceData):
 @app.delete("/api/user/experience/{exp_id}")
 async def delete_experience(request: Request, exp_id: str):
     """Delete a work experience."""
-    auth_header = request.headers.get("Authorization", "")
-    if not auth_header.startswith("Bearer "):
-        raise HTTPException(status_code=401, detail="Ej inloggad")
-
-    token = auth_header.replace("Bearer ", "")
-
-    async with httpx.AsyncClient() as client:
-        user_response = await client.get(
-            f"{SUPABASE_URL}/auth/v1/user",
-            headers={"apikey": SUPABASE_ANON_KEY, "Authorization": f"Bearer {token}"}
-        )
-        if user_response.status_code != 200:
-            raise HTTPException(status_code=401, detail="Ogiltig session")
-        user_id = user_response.json().get("id")
+    user_id = await get_user_id_from_request(request, required=True)
 
     async with httpx.AsyncClient() as client:
         response = await client.delete(
@@ -4187,20 +3986,7 @@ class EducationData(BaseModel):
 @app.post("/api/user/education")
 async def create_education(request: Request, edu: EducationData):
     """Create a new education entry."""
-    auth_header = request.headers.get("Authorization", "")
-    if not auth_header.startswith("Bearer "):
-        raise HTTPException(status_code=401, detail="Ej inloggad")
-
-    token = auth_header.replace("Bearer ", "")
-
-    async with httpx.AsyncClient() as client:
-        user_response = await client.get(
-            f"{SUPABASE_URL}/auth/v1/user",
-            headers={"apikey": SUPABASE_ANON_KEY, "Authorization": f"Bearer {token}"}
-        )
-        if user_response.status_code != 200:
-            raise HTTPException(status_code=401, detail="Ogiltig session")
-        user_id = user_response.json().get("id")
+    user_id = await get_user_id_from_request(request, required=True)
 
     edu_data = {
         "user_id": user_id,
@@ -4232,20 +4018,7 @@ async def create_education(request: Request, edu: EducationData):
 @app.put("/api/user/education/{edu_id}")
 async def update_education(request: Request, edu_id: str, edu: EducationData):
     """Update an existing education entry."""
-    auth_header = request.headers.get("Authorization", "")
-    if not auth_header.startswith("Bearer "):
-        raise HTTPException(status_code=401, detail="Ej inloggad")
-
-    token = auth_header.replace("Bearer ", "")
-
-    async with httpx.AsyncClient() as client:
-        user_response = await client.get(
-            f"{SUPABASE_URL}/auth/v1/user",
-            headers={"apikey": SUPABASE_ANON_KEY, "Authorization": f"Bearer {token}"}
-        )
-        if user_response.status_code != 200:
-            raise HTTPException(status_code=401, detail="Ogiltig session")
-        user_id = user_response.json().get("id")
+    user_id = await get_user_id_from_request(request, required=True)
 
     edu_data = {
         "school": edu.school,
@@ -4283,20 +4056,7 @@ class SkillData(BaseModel):
 @app.post("/api/user/skill")
 async def create_skill(request: Request, skill: SkillData):
     """Create a new skill entry."""
-    auth_header = request.headers.get("Authorization", "")
-    if not auth_header.startswith("Bearer "):
-        raise HTTPException(status_code=401, detail="Ej inloggad")
-
-    token = auth_header.replace("Bearer ", "")
-
-    async with httpx.AsyncClient() as client:
-        user_response = await client.get(
-            f"{SUPABASE_URL}/auth/v1/user",
-            headers={"apikey": SUPABASE_ANON_KEY, "Authorization": f"Bearer {token}"}
-        )
-        if user_response.status_code != 200:
-            raise HTTPException(status_code=401, detail="Ogiltig session")
-        user_id = user_response.json().get("id")
+    user_id = await get_user_id_from_request(request, required=True)
 
     skill_data = {
         "user_id": user_id,
@@ -4325,20 +4085,7 @@ async def create_skill(request: Request, skill: SkillData):
 @app.put("/api/user/skill/{skill_id}")
 async def update_skill(request: Request, skill_id: str, skill: SkillData):
     """Update an existing skill entry."""
-    auth_header = request.headers.get("Authorization", "")
-    if not auth_header.startswith("Bearer "):
-        raise HTTPException(status_code=401, detail="Ej inloggad")
-
-    token = auth_header.replace("Bearer ", "")
-
-    async with httpx.AsyncClient() as client:
-        user_response = await client.get(
-            f"{SUPABASE_URL}/auth/v1/user",
-            headers={"apikey": SUPABASE_ANON_KEY, "Authorization": f"Bearer {token}"}
-        )
-        if user_response.status_code != 200:
-            raise HTTPException(status_code=401, detail="Ogiltig session")
-        user_id = user_response.json().get("id")
+    user_id = await get_user_id_from_request(request, required=True)
 
     skill_data = {
         "category": skill.category,
@@ -4365,20 +4112,7 @@ async def update_skill(request: Request, skill_id: str, skill: SkillData):
 @app.delete("/api/user/skill/{skill_id}")
 async def delete_skill(request: Request, skill_id: str):
     """Delete a skill entry."""
-    auth_header = request.headers.get("Authorization", "")
-    if not auth_header.startswith("Bearer "):
-        raise HTTPException(status_code=401, detail="Ej inloggad")
-
-    token = auth_header.replace("Bearer ", "")
-
-    async with httpx.AsyncClient() as client:
-        user_response = await client.get(
-            f"{SUPABASE_URL}/auth/v1/user",
-            headers={"apikey": SUPABASE_ANON_KEY, "Authorization": f"Bearer {token}"}
-        )
-        if user_response.status_code != 200:
-            raise HTTPException(status_code=401, detail="Ogiltig session")
-        user_id = user_response.json().get("id")
+    user_id = await get_user_id_from_request(request, required=True)
 
     async with httpx.AsyncClient() as client:
         response = await client.delete(
@@ -4411,26 +4145,7 @@ async def upload_and_analyze_cv(request: Request):
     Upload CV (PDF or text) and get AI-powered job recommendations.
     Returns clickable job category suggestions based on work history.
     """
-    auth_header = request.headers.get("Authorization", "")
-    if not auth_header.startswith("Bearer "):
-        raise HTTPException(status_code=401, detail="Ej inloggad")
-
-    token = auth_header.replace("Bearer ", "")
-
-    # Get user ID from token
-    async with httpx.AsyncClient() as client:
-        user_response = await client.get(
-            f"{SUPABASE_URL}/auth/v1/user",
-            headers={
-                "apikey": SUPABASE_ANON_KEY,
-                "Authorization": f"Bearer {token}"
-            }
-        )
-        if user_response.status_code != 200:
-            raise HTTPException(status_code=401, detail="Ogiltig session")
-
-        user = user_response.json()
-        user_id = user.get("id")
+    user_id = await get_user_id_from_request(request, required=True)
 
     # Get the uploaded file content
     content_type = request.headers.get("content-type", "")
@@ -4664,9 +4379,7 @@ async def import_from_linkedin(request: Request, data: LinkedInImport):
     Import profile data from LinkedIn URL.
     Note: This is a placeholder - actual LinkedIn scraping requires OAuth or paid API.
     """
-    auth_header = request.headers.get("Authorization", "")
-    if not auth_header.startswith("Bearer "):
-        raise HTTPException(status_code=401, detail="Ej inloggad")
+    await get_user_id_from_request(request, required=True)
 
     # Validate LinkedIn URL
     if "linkedin.com/in/" not in data.linkedin_url:
@@ -4689,30 +4402,7 @@ async def delete_account(request: Request):
     Delete user account and ALL associated data.
     This is permanent and cannot be undone (GDPR right to be forgotten).
     """
-    auth_header = request.headers.get("Authorization", "")
-    if not auth_header.startswith("Bearer "):
-        raise HTTPException(status_code=401, detail="Ej inloggad")
-
-    token = auth_header.replace("Bearer ", "")
-
-    # Get user info first
-    async with httpx.AsyncClient() as client:
-        user_response = await client.get(
-            f"{SUPABASE_URL}/auth/v1/user",
-            headers={
-                "apikey": SUPABASE_ANON_KEY,
-                "Authorization": f"Bearer {token}"
-            }
-        )
-
-        if user_response.status_code != 200:
-            raise HTTPException(status_code=401, detail="Ogiltig session")
-
-        user = user_response.json()
-        user_id = user.get("id")
-
-    if not user_id:
-        raise HTTPException(status_code=400, detail="Kunde inte hitta användare")
+    user_id = await get_user_id_from_request(request, required=True)
 
     # Delete all user data from all tables (order matters due to foreign keys)
     tables_to_clear = [
@@ -4781,37 +4471,12 @@ async def export_user_data(request: Request):
     Export all user data as JSON (GDPR Art. 20 - Right to data portability).
     Returns all personal data in a machine-readable format.
     """
-    auth_header = request.headers.get("Authorization", "")
-    if not auth_header.startswith("Bearer "):
-        raise HTTPException(status_code=401, detail="Ej inloggad")
-
-    token = auth_header.replace("Bearer ", "")
-
-    # Get user info
-    async with httpx.AsyncClient() as client:
-        user_response = await client.get(
-            f"{SUPABASE_URL}/auth/v1/user",
-            headers={
-                "apikey": SUPABASE_ANON_KEY,
-                "Authorization": f"Bearer {token}"
-            }
-        )
-
-        if user_response.status_code != 200:
-            raise HTTPException(status_code=401, detail="Ogiltig session")
-
-        user = user_response.json()
-        user_id = user.get("id")
-
-    if not user_id:
-        raise HTTPException(status_code=400, detail="Kunde inte hitta användare")
+    user_id = await get_user_id_from_request(request, required=True)
 
     # Collect all user data from all tables
     export_data = {
         "export_date": datetime.now().isoformat(),
         "user_id": user_id,
-        "email": user.get("email"),
-        "created_at": user.get("created_at"),
         "data": {}
     }
 
@@ -5282,20 +4947,7 @@ class AIFeedback(BaseModel):
 @app.post("/api/user/ai-feedback")
 async def save_ai_feedback(request: Request, feedback: AIFeedback):
     """Save user feedback for AI cover letter generation."""
-    auth_header = request.headers.get("Authorization", "")
-    if not auth_header.startswith("Bearer "):
-        raise HTTPException(status_code=401, detail="Ej inloggad")
-
-    token = auth_header.replace("Bearer ", "")
-
-    async with httpx.AsyncClient() as client:
-        user_response = await client.get(
-            f"{SUPABASE_URL}/auth/v1/user",
-            headers={"apikey": SUPABASE_ANON_KEY, "Authorization": f"Bearer {token}"}
-        )
-        if user_response.status_code != 200:
-            raise HTTPException(status_code=401, detail="Ogiltig session")
-        user_id = user_response.json().get("id")
+    user_id = await get_user_id_from_request(request, required=True)
 
     feedback_data = {
         "user_id": user_id,
@@ -5328,20 +4980,7 @@ async def save_ai_feedback(request: Request, feedback: AIFeedback):
 @app.get("/api/user/ai-feedback")
 async def get_ai_feedback(request: Request):
     """Get all AI feedback for user."""
-    auth_header = request.headers.get("Authorization", "")
-    if not auth_header.startswith("Bearer "):
-        raise HTTPException(status_code=401, detail="Ej inloggad")
-
-    token = auth_header.replace("Bearer ", "")
-
-    async with httpx.AsyncClient() as client:
-        user_response = await client.get(
-            f"{SUPABASE_URL}/auth/v1/user",
-            headers={"apikey": SUPABASE_ANON_KEY, "Authorization": f"Bearer {token}"}
-        )
-        if user_response.status_code != 200:
-            raise HTTPException(status_code=401, detail="Ogiltig session")
-        user_id = user_response.json().get("id")
+    user_id = await get_user_id_from_request(request, required=True)
 
     async with httpx.AsyncClient() as client:
         response = await client.get(
@@ -5358,125 +4997,18 @@ async def get_ai_feedback(request: Request):
         return {"success": True, "feedback": response.json()}
 
 
-# ============== GDPR ==============
+# ============== GDPR (aliases for /api/auth/ endpoints above) ==============
 
 @app.get("/api/user/export-data")
 async def export_user_data_gdpr(request: Request):
-    """Export all user data as JSON (GDPR Article 20)."""
-    auth_header = request.headers.get("Authorization", "")
-    if not auth_header.startswith("Bearer "):
-        raise HTTPException(status_code=401, detail="Ej inloggad")
-
-    token = auth_header.replace("Bearer ", "")
-
-    async with httpx.AsyncClient() as client:
-        user_response = await client.get(
-            f"{SUPABASE_URL}/auth/v1/user",
-            headers={"apikey": SUPABASE_ANON_KEY, "Authorization": f"Bearer {token}"}
-        )
-        if user_response.status_code != 200:
-            raise HTTPException(status_code=401, detail="Ogiltig session")
-        user = user_response.json()
-        user_id = user.get("id")
-
-    headers = {
-        "apikey": SUPABASE_KEY,
-        "Authorization": f"Bearer {SUPABASE_KEY}"
-    }
-
-    export_data = {
-        "user": {"id": user_id, "email": user.get("email")},
-        "exported_at": datetime.now().isoformat()
-    }
-
-    async with httpx.AsyncClient() as client:
-        # Profile
-        res = await client.get(f"{SUPABASE_URL}/rest/v1/user_profiles?user_id=eq.{user_id}", headers=headers)
-        export_data["profile"] = res.json() if res.status_code < 400 else []
-
-        # Experiences
-        res = await client.get(f"{SUPABASE_URL}/rest/v1/user_experiences?user_id=eq.{user_id}", headers=headers)
-        export_data["experiences"] = res.json() if res.status_code < 400 else []
-
-        # Education
-        res = await client.get(f"{SUPABASE_URL}/rest/v1/user_education?user_id=eq.{user_id}", headers=headers)
-        export_data["education"] = res.json() if res.status_code < 400 else []
-
-        # Skills
-        res = await client.get(f"{SUPABASE_URL}/rest/v1/user_skills?user_id=eq.{user_id}", headers=headers)
-        export_data["skills"] = res.json() if res.status_code < 400 else []
-
-        # CVs
-        res = await client.get(f"{SUPABASE_URL}/rest/v1/user_cvs?user_id=eq.{user_id}", headers=headers)
-        export_data["cvs"] = res.json() if res.status_code < 400 else []
-
-        # Job preferences
-        res = await client.get(f"{SUPABASE_URL}/rest/v1/user_job_preferences?user_id=eq.{user_id}", headers=headers)
-        export_data["job_preferences"] = res.json() if res.status_code < 400 else []
-
-        # Applications
-        res = await client.get(f"{SUPABASE_URL}/rest/v1/applications?user_id=eq.{user_id}", headers=headers)
-        export_data["applications"] = res.json() if res.status_code < 400 else []
-
-        # AI Feedback
-        res = await client.get(f"{SUPABASE_URL}/rest/v1/user_ai_feedback?user_id=eq.{user_id}", headers=headers)
-        export_data["ai_feedback"] = res.json() if res.status_code < 400 else []
-
-    return {"success": True, "data": export_data}
+    """GDPR Article 20 — delegates to /api/auth/export-data."""
+    return await export_user_data(request)
 
 
 @app.delete("/api/user/delete-account")
 async def delete_user_account(request: Request):
-    """Delete all user data and account (GDPR Article 17)."""
-    auth_header = request.headers.get("Authorization", "")
-    if not auth_header.startswith("Bearer "):
-        raise HTTPException(status_code=401, detail="Ej inloggad")
-
-    token = auth_header.replace("Bearer ", "")
-
-    async with httpx.AsyncClient() as client:
-        user_response = await client.get(
-            f"{SUPABASE_URL}/auth/v1/user",
-            headers={"apikey": SUPABASE_ANON_KEY, "Authorization": f"Bearer {token}"}
-        )
-        if user_response.status_code != 200:
-            raise HTTPException(status_code=401, detail="Ogiltig session")
-        user_id = user_response.json().get("id")
-
-    headers = {
-        "apikey": SUPABASE_KEY,
-        "Authorization": f"Bearer {SUPABASE_KEY}"
-    }
-
-    deleted = []
-
-    async with httpx.AsyncClient() as client:
-        # Delete all user data from tables
-        tables = [
-            "user_ai_feedback",
-            "applications",
-            "user_cvs",
-            "user_skills",
-            "user_education",
-            "user_experiences",
-            "user_job_preferences",
-            "user_gmail_credentials",
-            "user_profiles"
-        ]
-
-        for table in tables:
-            res = await client.delete(
-                f"{SUPABASE_URL}/rest/v1/{table}?user_id=eq.{user_id}",
-                headers=headers
-            )
-            if res.status_code < 400:
-                deleted.append(table)
-
-    return {
-        "success": True,
-        "message": "Ditt konto och all data har raderats.",
-        "deleted_from": deleted
-    }
+    """GDPR Article 17 — delegates to /api/auth/delete-account."""
+    return await delete_account(request)
 
 
 @app.get("/account", response_class=HTMLResponse)
@@ -5693,21 +5225,7 @@ def extract_text_from_file(file_content: bytes, filename: str) -> str:
 @app.post("/api/upload/cv/{vibe_id}")
 async def upload_cv(vibe_id: str, request: Request):
     """Upload CV in various formats (PDF, DOCX, DOC, TXT, RTF, ODT)"""
-    auth_header = request.headers.get("Authorization", "")
-    if not auth_header.startswith("Bearer "):
-        raise HTTPException(status_code=401, detail="Missing authorization")
-
-    token = auth_header.replace("Bearer ", "")
-
-    # Verify user via Supabase auth
-    async with httpx.AsyncClient() as client:
-        user_response = await client.get(
-            f"{SUPABASE_URL}/auth/v1/user",
-            headers={"apikey": SUPABASE_ANON_KEY, "Authorization": f"Bearer {token}"}
-        )
-        if user_response.status_code != 200:
-            raise HTTPException(status_code=401, detail="Invalid token")
-        user_id = user_response.json().get("id")
+    user_id = await get_user_id_from_request(request, required=True)
 
     # Get file from request
     form = await request.form()
@@ -5813,21 +5331,7 @@ async def upload_cv(vibe_id: str, request: Request):
 @app.post("/api/upload/profile-photo")
 async def upload_profile_photo(request: Request):
     """Upload profile photo"""
-    auth_header = request.headers.get("Authorization", "")
-    if not auth_header.startswith("Bearer "):
-        raise HTTPException(status_code=401, detail="Missing authorization")
-
-    token = auth_header.replace("Bearer ", "")
-
-    # Verify user via Supabase auth
-    async with httpx.AsyncClient() as client:
-        user_response = await client.get(
-            f"{SUPABASE_URL}/auth/v1/user",
-            headers={"apikey": SUPABASE_ANON_KEY, "Authorization": f"Bearer {token}"}
-        )
-        if user_response.status_code != 200:
-            raise HTTPException(status_code=401, detail="Invalid token")
-        user_id = user_response.json().get("id")
+    user_id = await get_user_id_from_request(request, required=True)
 
     # Get file from request
     form = await request.form()
@@ -5948,20 +5452,7 @@ async def get_profile(request: Request):
 @app.patch("/api/profile/signature")
 async def update_email_signature(request: Request):
     """Save the user's custom email signature."""
-    auth_header = request.headers.get("Authorization", "")
-    if not auth_header.startswith("Bearer "):
-        raise HTTPException(status_code=401, detail="Ej inloggad")
-
-    token = auth_header.replace("Bearer ", "")
-
-    async with httpx.AsyncClient() as client:
-        user_response = await client.get(
-            f"{SUPABASE_URL}/auth/v1/user",
-            headers={"apikey": SUPABASE_ANON_KEY, "Authorization": f"Bearer {token}"}
-        )
-        if user_response.status_code != 200:
-            raise HTTPException(status_code=401, detail="Ogiltig token")
-        user_id = user_response.json().get("id")
+    user_id = await get_user_id_from_request(request, required=True)
 
     body = await request.json()
     signature = body.get("signature", "")
@@ -5985,21 +5476,7 @@ async def update_email_signature(request: Request):
 @app.post("/api/upload/training-letter")
 async def upload_training_letter(request: Request):
     """Upload training letter PDF and analyze tone/style"""
-    auth_header = request.headers.get("Authorization", "")
-    if not auth_header.startswith("Bearer "):
-        raise HTTPException(status_code=401, detail="Missing authorization")
-
-    token = auth_header.replace("Bearer ", "")
-
-    # Verify user via Supabase auth
-    async with httpx.AsyncClient() as client:
-        user_response = await client.get(
-            f"{SUPABASE_URL}/auth/v1/user",
-            headers={"apikey": SUPABASE_ANON_KEY, "Authorization": f"Bearer {token}"}
-        )
-        if user_response.status_code != 200:
-            raise HTTPException(status_code=401, detail="Invalid token")
-        user_id = user_response.json().get("id")
+    user_id = await get_user_id_from_request(request, required=True)
 
     # Get file from request
     form = await request.form()
@@ -6103,19 +5580,7 @@ async def upload_training_letter(request: Request):
 @app.get("/api/user/letter-style")
 async def get_letter_style(request: Request):
     """Get the user's analyzed cover letter style summary"""
-    auth_header = request.headers.get("Authorization", "")
-    user_id = None
-
-    if auth_header.startswith("Bearer "):
-        token = auth_header.replace("Bearer ", "")
-        async with httpx.AsyncClient() as client:
-            user_response = await client.get(
-                f"{SUPABASE_URL}/auth/v1/user",
-                headers={"apikey": SUPABASE_ANON_KEY, "Authorization": f"Bearer {token}"}
-            )
-            if user_response.status_code == 200:
-                user_id = user_response.json().get("id")
-
+    user_id = await get_user_id_from_request(request)
     if not user_id:
         return {"style_summary": None}
 
@@ -6140,21 +5605,7 @@ async def get_letter_style(request: Request):
 @app.get("/api/user/training-letters")
 async def get_user_training_letters(request: Request):
     """Get all training letters uploaded by the user"""
-    auth_header = request.headers.get("Authorization", "")
-    user_id = None
-
-    if auth_header.startswith("Bearer "):
-        token = auth_header.replace("Bearer ", "")
-        async with httpx.AsyncClient() as client:
-            user_response = await client.get(
-                f"{SUPABASE_URL}/auth/v1/user",
-                headers={"apikey": SUPABASE_ANON_KEY, "Authorization": f"Bearer {token}"}
-            )
-            if user_response.status_code == 200:
-                user_id = user_response.json().get("id")
-
-    if not user_id:
-        raise HTTPException(status_code=401, detail="Ej inloggad")
+    user_id = await get_user_id_from_request(request, required=True)
 
     letters = await db_request("GET", "user_training_letters",
         params={"user_id": f"eq.{user_id}", "order": "uploaded_at.desc"})
@@ -6165,21 +5616,7 @@ async def get_user_training_letters(request: Request):
 @app.delete("/api/user/training-letters/{letter_id}")
 async def delete_user_training_letter(letter_id: str, request: Request):
     """Delete a training letter"""
-    auth_header = request.headers.get("Authorization", "")
-    user_id = None
-
-    if auth_header.startswith("Bearer "):
-        token = auth_header.replace("Bearer ", "")
-        async with httpx.AsyncClient() as client:
-            user_response = await client.get(
-                f"{SUPABASE_URL}/auth/v1/user",
-                headers={"apikey": SUPABASE_ANON_KEY, "Authorization": f"Bearer {token}"}
-            )
-            if user_response.status_code == 200:
-                user_id = user_response.json().get("id")
-
-    if not user_id:
-        raise HTTPException(status_code=401, detail="Ej inloggad")
+    user_id = await get_user_id_from_request(request, required=True)
 
     # Verify the letter belongs to this user before deleting
     letter = await db_request("GET", "user_training_letters",
@@ -6208,21 +5645,7 @@ async def delete_user_training_letter(letter_id: str, request: Request):
 @app.post("/api/user/upload-training-letter")
 async def upload_user_training_letter(request: Request):
     """Upload a training letter file, save to storage + DB, and analyze writing style"""
-    auth_header = request.headers.get("Authorization", "")
-    user_id = None
-
-    if auth_header.startswith("Bearer "):
-        token = auth_header.replace("Bearer ", "")
-        async with httpx.AsyncClient() as client:
-            user_response = await client.get(
-                f"{SUPABASE_URL}/auth/v1/user",
-                headers={"apikey": SUPABASE_ANON_KEY, "Authorization": f"Bearer {token}"}
-            )
-            if user_response.status_code == 200:
-                user_id = user_response.json().get("id")
-
-    if not user_id:
-        raise HTTPException(status_code=401, detail="Ej inloggad")
+    user_id = await get_user_id_from_request(request, required=True)
 
     # Check max 20 letters per user
     existing_letters = await db_request("GET", "user_training_letters",
@@ -6290,21 +5713,7 @@ async def upload_user_training_letter(request: Request):
 @app.post("/api/user/analyze-letter-text")
 async def analyze_pasted_letter_text(request: Request):
     """Analyze pasted cover letter text to extract writing style"""
-    auth_header = request.headers.get("Authorization", "")
-    user_id = None
-
-    if auth_header.startswith("Bearer "):
-        token = auth_header.replace("Bearer ", "")
-        async with httpx.AsyncClient() as client:
-            user_response = await client.get(
-                f"{SUPABASE_URL}/auth/v1/user",
-                headers={"apikey": SUPABASE_ANON_KEY, "Authorization": f"Bearer {token}"}
-            )
-            if user_response.status_code == 200:
-                user_id = user_response.json().get("id")
-
-    if not user_id:
-        raise HTTPException(status_code=401, detail="Ej inloggad")
+    user_id = await get_user_id_from_request(request, required=True)
 
     body = await request.json()
     text = body.get("text", "").strip()
