@@ -3112,198 +3112,181 @@
                                         </button>
                                     </div>
                                 ) : currentJob ? (
-                                    <div className="max-w-5xl mx-auto">
-                                        {/* Progress indicator */}
-                                        <div className="flex items-center justify-between mb-3 px-1">
-                                            <span className="text-sm text-slate-500">Jobb {jobIndex + 1} av {filteredJobs.length}</span>
-                                            <div className="flex-1 mx-4 bg-slate-200 rounded-full h-1.5">
-                                                <div
-                                                    className="bg-pink-500 h-1.5 rounded-full transition-all"
-                                                    style={{ width: `${((jobIndex + 1) / filteredJobs.length) * 100}%` }}
-                                                />
-                                            </div>
-                                            <button
-                                                onClick={() => onSaveJob(currentJob.id, !(savedJobs || []).includes(currentJob.id))}
-                                                className={`text-sm font-medium transition ${(savedJobs || []).includes(currentJob.id) ? 'text-pink-600' : 'text-slate-400 hover:text-pink-500'}`}
-                                            >
-                                                {(savedJobs || []).includes(currentJob.id) ? '★ Sparad' : '☆ Spara'}
-                                            </button>
-                                        </div>
-
-                                        {/* Job card */}
-                                        <div className="bg-white rounded-2xl shadow-sm border border-slate-100 p-7">
-                                            {/* Header row: priority + deadline */}
-                                            <div className="flex justify-between items-center mb-4">
-                                                <span className={`text-xs px-2.5 py-1 rounded-full font-medium ${
-                                                    currentJob.priority === 'urgent' ? 'bg-red-100 text-red-700' :
-                                                    currentJob.priority === 'soon' ? 'bg-amber-100 text-amber-700' :
-                                                    'bg-green-100 text-green-700'
-                                                }`}>
-                                                    {currentJob.priority === 'urgent' ? '🔴 Akut' : currentJob.priority === 'soon' ? '🟡 Snart' : '🟢 Ny'}
-                                                </span>
-                                                <div className="flex items-center gap-3 text-sm text-slate-400">
-                                                    {currentJob.number_of_positions > 1 && (
-                                                        <span className="text-indigo-600 font-medium">{currentJob.number_of_positions} platser</span>
-                                                    )}
-                                                    {currentJob.deadline && (
-                                                        <span>Ansök senast {new Date(currentJob.deadline).toLocaleDateString('sv-SE')}</span>
-                                                    )}
-                                                </div>
-                                            </div>
-
-                                            {/* Title + company + location */}
-                                            <h3 className="text-2xl font-bold text-slate-800 mb-1 leading-tight">{currentJob.title}</h3>
-                                            <p className="text-pink-600 font-semibold text-lg mb-1">{currentJob.company}</p>
-                                            <p className="text-slate-500 text-sm mb-4">
-                                                📍 {currentJob.location || currentJob.municipality || currentJob.county || 'Okänd ort'}
-                                                {currentJob.occupation && <span className="ml-3 text-slate-400">· {currentJob.occupation}</span>}
-                                            </p>
-
-                                            {/* Tags row */}
-                                            <div className="flex flex-wrap gap-2 mb-5">
-                                                {currentJob.working_hours && (
-                                                    <span className="text-xs bg-indigo-50 text-indigo-700 px-3 py-1.5 rounded-full font-medium">
-                                                        🕐 {currentJob.working_hours}
-                                                    </span>
-                                                )}
-                                                {currentJob.employment_type && (
-                                                    <span className="text-xs bg-slate-100 text-slate-600 px-3 py-1.5 rounded-full">
-                                                        {currentJob.employment_type}
-                                                    </span>
-                                                )}
-                                                {currentJob.duration && (
-                                                    <span className="text-xs bg-slate-100 text-slate-600 px-3 py-1.5 rounded-full">
-                                                        {currentJob.duration}
-                                                    </span>
-                                                )}
-                                                {currentJob.salary_description && (
-                                                    <span className="text-xs bg-green-50 text-green-700 px-3 py-1.5 rounded-full font-medium">
-                                                        💰 {currentJob.salary_description}
-                                                    </span>
-                                                )}
-                                                {currentJob.application_method && currentJob.application_method !== 'email' && (
-                                                    <span className="text-xs bg-blue-50 text-blue-700 px-3 py-1.5 rounded-full">
-                                                        Ansökan: {currentJob.application_method}
-                                                    </span>
-                                                )}
-                                            </div>
-
-                                            {/* Description - formatted */}
-                                            {currentJob.description && (
-                                                <div className="bg-slate-50 rounded-xl p-5 mb-5">
-                                                    <div className="text-sm text-slate-700 leading-relaxed space-y-2" dangerouslySetInnerHTML={{
-                                                        __html: (() => {
-                                                            let text = currentJob.description.substring(0, 4000);
-                                                            // Escape HTML
-                                                            text = text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
-                                                            // Split into lines
-                                                            let lines = text.split(/\n/);
-                                                            let html = '';
-                                                            let inList = false;
-                                                            for (const line of lines) {
-                                                                const trimmed = line.trim();
-                                                                if (!trimmed) {
-                                                                    if (inList) { html += '</ul>'; inList = false; }
-                                                                    continue;
-                                                                }
-                                                                // Detect bullet points
-                                                                if (/^[•\-–—\*]\s/.test(trimmed)) {
-                                                                    if (!inList) { html += '<ul class="list-disc pl-5 space-y-1">'; inList = true; }
-                                                                    html += '<li>' + trimmed.replace(/^[•\-–—\*]\s*/, '') + '</li>';
-                                                                }
-                                                                // Detect section headers (ALL CAPS or short bold-like lines)
-                                                                else if (/^[A-ZÅÄÖÜ\s\-:]{5,}$/.test(trimmed) && trimmed.length < 60) {
-                                                                    if (inList) { html += '</ul>'; inList = false; }
-                                                                    html += '<h4 class="font-semibold text-slate-800 mt-3 mb-1">' + trimmed + '</h4>';
-                                                                }
-                                                                else {
-                                                                    if (inList) { html += '</ul>'; inList = false; }
-                                                                    html += '<p>' + trimmed + '</p>';
-                                                                }
-                                                            }
-                                                            if (inList) html += '</ul>';
-                                                            return html;
-                                                        })()
-                                                    }} />
-                                                    {currentJob.description.length > 4000 && (
-                                                        <p className="text-slate-400 mt-2 text-xs">…<a href={currentJob.url} target="_blank" className="text-indigo-500 hover:underline ml-1">Läs mer på Platsbanken</a></p>
-                                                    )}
-                                                </div>
-                                            )}
-
-                                            {/* Contact info */}
-                                            {(currentJob.contact_email || currentJob.contact_name || currentJob.contact_phone || currentJob.apply_url) && (
-                                                <div className="bg-pink-50 border border-pink-100 rounded-xl p-4 mb-5">
-                                                    <p className="text-xs font-semibold text-pink-700 uppercase tracking-wide mb-2">Kontakt & ansökan</p>
-                                                    <div className="space-y-1.5">
-                                                        {currentJob.contact_name && (
-                                                            <p className="text-sm text-slate-700 font-medium">👤 {currentJob.contact_name}</p>
-                                                        )}
-                                                        {currentJob.contact_email && (
-                                                            <p className="text-sm text-slate-600">
-                                                                ✉️ <a href={`mailto:${currentJob.contact_email}`} className="text-pink-600 font-medium hover:underline">{currentJob.contact_email}</a>
-                                                            </p>
-                                                        )}
-                                                        {currentJob.contact_phone && (
-                                                            <p className="text-sm text-slate-600">📞 <span className="font-medium">{currentJob.contact_phone}</span></p>
-                                                        )}
-                                                        {currentJob.apply_url && (
-                                                            <p className="text-sm">
-                                                                <a href={currentJob.apply_url} target="_blank" className="text-indigo-600 hover:underline font-medium">🔗 Ansök via webbformulär</a>
-                                                            </p>
-                                                        )}
-                                                    </div>
-                                                </div>
-                                            )}
-
-                                            {/* Primary action buttons */}
-                                            <div className="flex gap-2">
-                                                <button
-                                                    onClick={() => handleReject(currentJob)}
-                                                    className="py-3.5 px-3 border-2 border-red-200 text-red-400 rounded-xl font-medium hover:bg-red-50 hover:border-red-300 transition"
-                                                    title="Inte intressant — dölj detta jobb"
-                                                >
-                                                    🚫
-                                                </button>
-                                                <button
-                                                    onClick={() => handleSkip(currentJob)}
-                                                    className="flex-1 py-3.5 px-4 border-2 border-slate-200 rounded-xl text-slate-500 font-medium hover:bg-slate-50 hover:border-slate-300 transition"
-                                                >
-                                                    Hoppa över →
-                                                </button>
-                                                <button
-                                                    onClick={() => onApply(currentJob)}
-                                                    disabled={applyingJob === currentJob.id}
-                                                    className="flex-1 py-3.5 px-4 bg-pink-600 text-white rounded-xl font-semibold hover:bg-pink-700 disabled:opacity-50 transition shadow-sm"
-                                                >
-                                                    {applyingJob === currentJob.id ? '⏳ Skapar brev...' : '✍️ Skapa ansökan'}
-                                                </button>
-                                            </div>
-
-                                            {/* Secondary link */}
-                                            <div className="text-center mt-3">
-                                                <a href={currentJob.url} target="_blank" className="text-sm text-slate-400 hover:text-indigo-600 transition">
-                                                    Se originalannons på Platsbanken ↗
-                                                </a>
-                                            </div>
-                                        </div>
-
-                                        {/* Prev / Next navigation */}
-                                        <div className="flex justify-between mt-4 px-1">
+                                    <div>
+                                        {/* Progress bar + nav */}
+                                        <div className="flex items-center justify-between mb-3">
                                             <button
                                                 onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
                                                 disabled={jobIndex === 0}
-                                                className="text-sm text-slate-400 hover:text-slate-700 disabled:opacity-30 transition font-medium"
+                                                className="text-sm text-slate-400 hover:text-slate-700 disabled:opacity-30 transition font-medium px-3 py-1.5 rounded-lg hover:bg-slate-100"
                                             >
                                                 ← Föregående
                                             </button>
+                                            <div className="flex-1 mx-4 flex items-center gap-3">
+                                                <div className="flex-1 bg-slate-200 rounded-full h-1.5">
+                                                    <div className="bg-pink-500 h-1.5 rounded-full transition-all" style={{ width: `${((jobIndex + 1) / filteredJobs.length) * 100}%` }} />
+                                                </div>
+                                                <span className="text-xs text-slate-400 whitespace-nowrap">{jobIndex + 1} / {filteredJobs.length}</span>
+                                            </div>
                                             <button
                                                 onClick={() => setCurrentPage(p => Math.min(filteredJobs.length, p + 1))}
                                                 disabled={jobIndex >= filteredJobs.length - 1}
-                                                className="text-sm text-slate-400 hover:text-slate-700 disabled:opacity-30 transition font-medium"
+                                                className="text-sm text-slate-400 hover:text-slate-700 disabled:opacity-30 transition font-medium px-3 py-1.5 rounded-lg hover:bg-slate-100"
                                             >
                                                 Nästa →
                                             </button>
+                                        </div>
+
+                                        {/* Two-column card */}
+                                        <div className="bg-white rounded-2xl shadow-sm border border-slate-100 overflow-hidden">
+                                            <div className="flex" style={{minHeight: '70vh'}}>
+
+                                                {/* LEFT: description */}
+                                                <div className="flex-1 p-7 border-r border-slate-100 overflow-y-auto" style={{maxHeight: '80vh'}}>
+                                                    <p className="text-xs font-semibold text-slate-400 uppercase tracking-widest mb-3">Jobbannons</p>
+                                                    {currentJob.description ? (
+                                                        <div className="prose prose-sm max-w-none text-slate-700" style={{lineHeight: '1.7'}}>
+                                                            <div dangerouslySetInnerHTML={{
+                                                                __html: (() => {
+                                                                    let text = currentJob.description.substring(0, 6000);
+                                                                    text = text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+                                                                    let lines = text.split(/\n/);
+                                                                    let html = '';
+                                                                    let inList = false;
+                                                                    for (const line of lines) {
+                                                                        const trimmed = line.trim();
+                                                                        if (!trimmed) {
+                                                                            if (inList) { html += '</ul>'; inList = false; }
+                                                                            html += '<div style="height:0.5rem"></div>';
+                                                                            continue;
+                                                                        }
+                                                                        if (/^[•\-–—\*]\s/.test(trimmed)) {
+                                                                            if (!inList) { html += '<ul style="margin:0.5rem 0 0.5rem 1.2rem;padding:0">'; inList = true; }
+                                                                            html += '<li style="margin-bottom:0.25rem">' + trimmed.replace(/^[•\-–—\*]\s*/, '') + '</li>';
+                                                                        } else if (/^[A-ZÅÄÖ\s]{4,50}:?\s*$/.test(trimmed)) {
+                                                                            if (inList) { html += '</ul>'; inList = false; }
+                                                                            html += '<p style="font-weight:600;color:#374151;margin:1rem 0 0.25rem;font-size:0.8rem;text-transform:uppercase;letter-spacing:0.05em">' + trimmed + '</p>';
+                                                                        } else {
+                                                                            if (inList) { html += '</ul>'; inList = false; }
+                                                                            html += '<p style="margin-bottom:0.4rem">' + trimmed + '</p>';
+                                                                        }
+                                                                    }
+                                                                    if (inList) html += '</ul>';
+                                                                    return html;
+                                                                })()
+                                                            }} />
+                                                            {currentJob.description.length > 6000 && (
+                                                                <p style={{color:'#94a3b8',fontSize:'0.75rem',marginTop:'0.75rem'}}>
+                                                                    … <a href={currentJob.url} target="_blank" style={{color:'#6366f1'}}>Läs mer på Platsbanken ↗</a>
+                                                                </p>
+                                                            )}
+                                                        </div>
+                                                    ) : (
+                                                        <p className="text-slate-400 text-sm">Ingen beskrivning tillgänglig.</p>
+                                                    )}
+                                                </div>
+
+                                                {/* RIGHT: info + actions */}
+                                                <div className="w-80 flex-shrink-0 p-6 flex flex-col gap-4 bg-slate-50/50">
+
+                                                    {/* Priority + save */}
+                                                    <div className="flex items-center justify-between">
+                                                        <span className={`text-xs px-2.5 py-1 rounded-full font-medium ${
+                                                            currentJob.priority === 'urgent' ? 'bg-red-100 text-red-700' :
+                                                            currentJob.priority === 'soon' ? 'bg-amber-100 text-amber-700' :
+                                                            'bg-green-100 text-green-700'
+                                                        }`}>
+                                                            {currentJob.priority === 'urgent' ? '🔴 Akut' : currentJob.priority === 'soon' ? '🟡 Snart' : '🟢 Ny'}
+                                                        </span>
+                                                        <button
+                                                            onClick={() => onSaveJob(currentJob.id, !(savedJobs || []).includes(currentJob.id))}
+                                                            className={`text-sm font-medium transition ${(savedJobs || []).includes(currentJob.id) ? 'text-pink-600' : 'text-slate-400 hover:text-pink-500'}`}
+                                                        >
+                                                            {(savedJobs || []).includes(currentJob.id) ? '★ Sparad' : '☆ Spara'}
+                                                        </button>
+                                                    </div>
+
+                                                    {/* Title + company */}
+                                                    <div>
+                                                        <h3 className="text-xl font-bold text-slate-800 leading-tight mb-1">{currentJob.title}</h3>
+                                                        <p className="text-pink-600 font-semibold">{currentJob.company}</p>
+                                                        <p className="text-slate-500 text-sm mt-1">
+                                                            📍 {currentJob.location || currentJob.municipality || currentJob.county || 'Okänd ort'}
+                                                        </p>
+                                                        {currentJob.deadline && (
+                                                            <p className="text-slate-400 text-xs mt-1">Ansök senast {new Date(currentJob.deadline).toLocaleDateString('sv-SE')}</p>
+                                                        )}
+                                                    </div>
+
+                                                    {/* Tags */}
+                                                    <div className="flex flex-wrap gap-1.5">
+                                                        {currentJob.working_hours && (
+                                                            <span className="text-xs bg-indigo-50 text-indigo-700 px-2.5 py-1 rounded-full font-medium">🕐 {currentJob.working_hours}</span>
+                                                        )}
+                                                        {currentJob.employment_type && (
+                                                            <span className="text-xs bg-white border border-slate-200 text-slate-600 px-2.5 py-1 rounded-full">{currentJob.employment_type}</span>
+                                                        )}
+                                                        {currentJob.duration && (
+                                                            <span className="text-xs bg-white border border-slate-200 text-slate-600 px-2.5 py-1 rounded-full">{currentJob.duration}</span>
+                                                        )}
+                                                        {currentJob.salary_description && (
+                                                            <span className="text-xs bg-green-50 text-green-700 px-2.5 py-1 rounded-full font-medium">💰 {currentJob.salary_description}</span>
+                                                        )}
+                                                        {currentJob.number_of_positions > 1 && (
+                                                            <span className="text-xs bg-indigo-50 text-indigo-600 px-2.5 py-1 rounded-full">{currentJob.number_of_positions} platser</span>
+                                                        )}
+                                                    </div>
+
+                                                    {/* Contact */}
+                                                    {(currentJob.contact_email || currentJob.contact_name || currentJob.contact_phone || currentJob.apply_url) && (
+                                                        <div className="bg-pink-50 border border-pink-100 rounded-xl p-3">
+                                                            <p className="text-xs font-semibold text-pink-700 uppercase tracking-wide mb-2">Kontakt</p>
+                                                            <div className="space-y-1">
+                                                                {currentJob.contact_name && <p className="text-sm text-slate-700 font-medium">👤 {currentJob.contact_name}</p>}
+                                                                {currentJob.contact_email && (
+                                                                    <p className="text-sm text-slate-600 break-all">✉️ <a href={`mailto:${currentJob.contact_email}`} className="text-pink-600 hover:underline">{currentJob.contact_email}</a></p>
+                                                                )}
+                                                                {currentJob.contact_phone && <p className="text-sm text-slate-600">📞 {currentJob.contact_phone}</p>}
+                                                                {currentJob.apply_url && (
+                                                                    <a href={currentJob.apply_url} target="_blank" className="text-sm text-indigo-600 hover:underline block">🔗 Ansök via webbformulär</a>
+                                                                )}
+                                                            </div>
+                                                        </div>
+                                                    )}
+
+                                                    {/* Spacer */}
+                                                    <div className="flex-1" />
+
+                                                    {/* Action buttons */}
+                                                    <div className="flex flex-col gap-2">
+                                                        <button
+                                                            onClick={() => onApply(currentJob)}
+                                                            disabled={applyingJob === currentJob.id}
+                                                            className="w-full py-3.5 bg-pink-600 text-white rounded-xl font-semibold hover:bg-pink-700 disabled:opacity-50 transition shadow-sm"
+                                                        >
+                                                            {applyingJob === currentJob.id ? '⏳ Skapar brev...' : '✍️ Skapa ansökan'}
+                                                        </button>
+                                                        <div className="flex gap-2">
+                                                            <button
+                                                                onClick={() => handleSkip(currentJob)}
+                                                                className="flex-1 py-2.5 border-2 border-slate-200 rounded-xl text-slate-500 text-sm font-medium hover:bg-slate-100 transition"
+                                                            >
+                                                                Hoppa över
+                                                            </button>
+                                                            <button
+                                                                onClick={() => handleReject(currentJob)}
+                                                                className="py-2.5 px-3 border-2 border-red-200 text-red-400 rounded-xl hover:bg-red-50 transition"
+                                                                title="Dölj detta jobb"
+                                                            >
+                                                                🚫
+                                                            </button>
+                                                        </div>
+                                                        <a href={currentJob.url} target="_blank" className="text-center text-xs text-slate-400 hover:text-indigo-600 transition mt-1">
+                                                            Se originalannons ↗
+                                                        </a>
+                                                    </div>
+                                                </div>
+                                            </div>
                                         </div>
                                     </div>
                                 ) : (
