@@ -404,7 +404,7 @@
 
             return (
                 <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50">
-                    <div className="bg-white rounded-2xl max-w-3xl w-full max-h-[92vh] flex flex-col overflow-hidden">
+                    <div className="bg-white rounded-2xl max-w-5xl w-full max-h-[92vh] flex flex-col overflow-hidden">
                         <div className="gradient text-white p-5 flex-shrink-0">
                             <h3 className="text-xl font-bold">{job.title}</h3>
                             <p className="opacity-90">{job.company}</p>
@@ -3112,7 +3112,7 @@
                                         </button>
                                     </div>
                                 ) : currentJob ? (
-                                    <div className="max-w-3xl mx-auto">
+                                    <div className="max-w-5xl mx-auto">
                                         {/* Progress indicator */}
                                         <div className="flex items-center justify-between mb-3 px-1">
                                             <span className="text-sm text-slate-500">Jobb {jobIndex + 1} av {filteredJobs.length}</span>
@@ -3188,15 +3188,46 @@
                                                 )}
                                             </div>
 
-                                            {/* Description - taller, more text */}
+                                            {/* Description - formatted */}
                                             {currentJob.description && (
-                                                <div className="bg-slate-50 rounded-xl p-5 mb-5 max-h-96 overflow-y-auto">
-                                                    <p className="text-sm text-slate-700 leading-relaxed whitespace-pre-line">
-                                                        {currentJob.description.substring(0, 3000).replace(/([^\n])\s*•/g, '$1\n\n•')}
-                                                        {currentJob.description.length > 3000 ? (
-                                                            <span className="text-slate-400"> …<a href={currentJob.url} target="_blank" className="text-indigo-500 hover:underline ml-1">Läs mer på Platsbanken</a></span>
-                                                        ) : ''}
-                                                    </p>
+                                                <div className="bg-slate-50 rounded-xl p-5 mb-5">
+                                                    <div className="text-sm text-slate-700 leading-relaxed space-y-2" dangerouslySetInnerHTML={{
+                                                        __html: (() => {
+                                                            let text = currentJob.description.substring(0, 4000);
+                                                            // Escape HTML
+                                                            text = text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+                                                            // Split into lines
+                                                            let lines = text.split(/\n/);
+                                                            let html = '';
+                                                            let inList = false;
+                                                            for (const line of lines) {
+                                                                const trimmed = line.trim();
+                                                                if (!trimmed) {
+                                                                    if (inList) { html += '</ul>'; inList = false; }
+                                                                    continue;
+                                                                }
+                                                                // Detect bullet points
+                                                                if (/^[•\-–—\*]\s/.test(trimmed)) {
+                                                                    if (!inList) { html += '<ul class="list-disc pl-5 space-y-1">'; inList = true; }
+                                                                    html += '<li>' + trimmed.replace(/^[•\-–—\*]\s*/, '') + '</li>';
+                                                                }
+                                                                // Detect section headers (ALL CAPS or short bold-like lines)
+                                                                else if (/^[A-ZÅÄÖÜ\s\-:]{5,}$/.test(trimmed) && trimmed.length < 60) {
+                                                                    if (inList) { html += '</ul>'; inList = false; }
+                                                                    html += '<h4 class="font-semibold text-slate-800 mt-3 mb-1">' + trimmed + '</h4>';
+                                                                }
+                                                                else {
+                                                                    if (inList) { html += '</ul>'; inList = false; }
+                                                                    html += '<p>' + trimmed + '</p>';
+                                                                }
+                                                            }
+                                                            if (inList) html += '</ul>';
+                                                            return html;
+                                                        })()
+                                                    }} />
+                                                    {currentJob.description.length > 4000 && (
+                                                        <p className="text-slate-400 mt-2 text-xs">…<a href={currentJob.url} target="_blank" className="text-indigo-500 hover:underline ml-1">Läs mer på Platsbanken</a></p>
+                                                    )}
                                                 </div>
                                             )}
 
