@@ -615,7 +615,7 @@ def detect_job_category(title: str, description: str) -> str:
     return "default"
 
 
-async def generate_cover_letter(job: Dict, user_cv_text: Optional[str] = None, user_profile: Optional[Dict] = None, extra_hints: Optional[str] = None) -> str:
+async def generate_cover_letter(job: Dict, user_cv_text: Optional[str] = None, user_profile: Optional[Dict] = None, extra_hints: Optional[str] = None, user_id: Optional[str] = None) -> str:
     """Generate personalized cover letter using Claude"""
 
     if not ANTHROPIC_API_KEY:
@@ -665,6 +665,62 @@ async def generate_cover_letter(job: Dict, user_cv_text: Optional[str] = None, u
     if linkedin:
         user_info += f"\n- LinkedIn: {linkedin}"
 
+    # Fetch style preferences and anecdotes if user is logged in
+    style_section = ""
+    anecdotes_section = ""
+    if user_id:
+        try:
+            import asyncio as _asyncio
+            prefs_result, anecdotes_result = await _asyncio.gather(
+                db_request("GET", "user_cover_letter_preferences", params={"user_id": f"eq.{user_id}"}),
+                db_request("GET", "user_anecdotes", params={"user_id": f"eq.{user_id}"})
+            )
+
+            # Build style instructions from preferences
+            if prefs_result and len(prefs_result) > 0:
+                sp = prefs_result[0]
+                style_parts = []
+                if sp.get("tone"):
+                    style_parts.append(f"- Min ton: {sp['tone']}")
+                if sp.get("writing_style"):
+                    style_parts.append(f"- Min brevstruktur: {sp['writing_style']}")
+                if sp.get("opening_style"):
+                    style_parts.append(f"- Hur jag brukar börja: {sp['opening_style']}")
+                if sp.get("length_preference"):
+                    style_parts.append(f"- Längd: {sp['length_preference']}")
+
+                phrases = sp.get("always_mention", []) or []
+                if isinstance(phrases, list) and phrases:
+                    style_parts.append(f"- Fraser jag gillar att använda: {', '.join(phrases)}")
+
+                avoid = sp.get("avoid_phrases", []) or []
+                if isinstance(avoid, list) and avoid:
+                    style_parts.append(f"- Fraser jag INTE vill ha (undvik dessa!): {', '.join(avoid)}")
+
+                never = sp.get("never_mention", []) or []
+                if isinstance(never, list) and never:
+                    style_parts.append(f"- Ämnen att ALDRIG nämna: {', '.join(never)}")
+
+                if style_parts:
+                    style_section = "\n\nMIN SKRIVSTIL (skriv brevet i min stil):\n" + "\n".join(style_parts)
+
+            # Build anecdotes section — include all, let AI pick relevant ones
+            if anecdotes_result and len(anecdotes_result) > 0:
+                anecdote_parts = []
+                for a in anecdotes_result:
+                    kw = a.get("keywords", []) or []
+                    kw_text = f" (relevant för: {', '.join(kw)})" if kw else ""
+                    if a.get("type") == "hobby":
+                        anecdote_parts.append(f"- Hobby: {a['title']} — {a['content']}{kw_text}")
+                    else:
+                        anecdote_parts.append(f"- Anekdot: {a['title']} — {a['content']}{kw_text}")
+
+                if anecdote_parts:
+                    anecdotes_section = "\n\nMINA PERSONLIGA ANEKDOTER & HOBBYS (använd BARA om de passar jobbet):\n" + "\n".join(anecdote_parts)
+
+        except Exception as e:
+            logger.error(f"Error fetching style/anecdotes: {e}")
+
     prompt = f"""Skriv ett personligt brev på svenska för denna jobbansökan.
 
 JOBBET:
@@ -678,7 +734,7 @@ MIN BAKGRUND (använd som inspiration — plocka bara det som faktiskt är relev
 {experience}
 
 OM MIG:
-{user_info}
+{user_info}{style_section}{anecdotes_section}
 
 INSTRUKTIONER:
 1. Börja med: {contact_greeting}
@@ -688,7 +744,9 @@ INSTRUKTIONER:
 5. VIKTIGT: Om annonsen nämner specifika krav eller önskemål (t.ex. körkort, bil, fysisk förmåga, kvällar/helger, sommarsäsong, "annan sysselsättning"), bekräfta kortfattat att jag uppfyller/passar dem — utan att överdriva
 6. Nämn var jag bor och att jag är flexibel med arbetstider
 7. Om "EXTRA ERFARENHETER SOM MÅSTE NÄMNAS I BREVET" finns ovan — nämn dem ALLTID specifikt i brevet, även om de inte är den starkaste matchningen
-8. Avsluta med:
+8. Om "MIN SKRIVSTIL" finns ovan — följ den stilen. Undvik ALLA fraser listade under "Fraser jag INTE vill ha". Använd gärna fraser från "Fraser jag gillar".
+9. Om "MINA PERSONLIGA ANEKDOTER & HOBBYS" finns ovan — väv in EN relevant anekdot eller hobby om den passar jobbet. Tvinga inte in irrelevanta anekdoter.
+10. Avsluta med:
    Med vänlig hälsning,
    {name}
    {phone}
@@ -1193,8 +1251,10 @@ async def log_job_interaction(job_id: str, request: Request):
 
 
 @app.post("/api/jobs/{job_id}/letter")
-async def create_letter(job_id: str, request: GenerateLetterRequest = None):
+async def create_letter(job_id: str, request: GenerateLetterRequest = None, req: Request = None):
     """Generate cover letter for a job"""
+    user_id = await get_user_id_from_request(req) if req else None
+
     # Get job from database
     jobs = await db_request("GET", "jobs", params={"id": f"eq.{job_id}"})
     if not jobs:
@@ -1203,7 +1263,7 @@ async def create_letter(job_id: str, request: GenerateLetterRequest = None):
     job = jobs[0]
     cv_text = request.user_cv_text if request else None
 
-    letter = await generate_cover_letter(job, cv_text)
+    letter = await generate_cover_letter(job, cv_text, user_id=user_id)
 
     return {
         "success": True,
@@ -1869,7 +1929,7 @@ async def apply_with_cv(request: Request, job_id: str):
     # Generate cover letter (works with or without CV/profile)
     cv_text_for_letter = cv.get("cv_text") if cv else None
     extra_hints = body.get("extra_hints")
-    cover_letter = await generate_cover_letter(job, cv_text_for_letter, user_profile, extra_hints)
+    cover_letter = await generate_cover_letter(job, cv_text_for_letter, user_profile, extra_hints, user_id=user_id)
 
     # Try to automatically create a Gmail draft using this user's connected Gmail
     contact_email = job.get("contact_email")
@@ -5920,6 +5980,100 @@ Svara ENDAST med JSON, inget annat."""
         logger.error(f"Tone analysis error: {e}")
 
     return {"tone": "neutral", "favorite_phrases": []}
+
+
+# ============== ANECDOTES & HOBBIES ==============
+
+@app.get("/api/user/anecdotes")
+async def get_user_anecdotes(request: Request):
+    """Get all anecdotes and hobbies for the user"""
+    user_id = await get_user_id_from_request(request, required=True)
+    anecdotes = await db_request("GET", "user_anecdotes",
+        params={"user_id": f"eq.{user_id}", "order": "created_at.desc"})
+    return {"success": True, "anecdotes": anecdotes or []}
+
+
+@app.post("/api/user/anecdotes")
+async def create_user_anecdote(request: Request):
+    """Create a new anecdote or hobby"""
+    user_id = await get_user_id_from_request(request, required=True)
+    body = await request.json()
+
+    title = body.get("title", "").strip()
+    anecdote_type = body.get("type", "anecdote")
+    content = body.get("content", "").strip()
+    keywords = body.get("keywords", [])
+
+    if not title or not content:
+        raise HTTPException(status_code=400, detail="Titel och innehåll krävs")
+    if anecdote_type not in ("anecdote", "hobby"):
+        raise HTTPException(status_code=400, detail="Typ måste vara 'anecdote' eller 'hobby'")
+
+    result = await db_request("POST", "user_anecdotes", data={
+        "user_id": user_id,
+        "title": title,
+        "type": anecdote_type,
+        "content": content,
+        "keywords": keywords
+    }, params={"select": "*"})
+
+    return {"success": True, "anecdote": result[0] if result else None}
+
+
+@app.delete("/api/user/anecdotes/{anecdote_id}")
+async def delete_user_anecdote(anecdote_id: str, request: Request):
+    """Delete an anecdote or hobby"""
+    user_id = await get_user_id_from_request(request, required=True)
+    await db_request("DELETE", "user_anecdotes",
+        params={"id": f"eq.{anecdote_id}", "user_id": f"eq.{user_id}"})
+    return {"success": True}
+
+
+# ============== STYLE PHRASE EDITING ==============
+
+@app.patch("/api/user/letter-style/phrases")
+async def update_letter_style_phrases(request: Request):
+    """Add or remove phrases from the avoid or always_mention lists"""
+    user_id = await get_user_id_from_request(request, required=True)
+    body = await request.json()
+
+    action = body.get("action")  # "add" or "remove"
+    list_name = body.get("list")  # "avoid" or "phrases"
+    phrase = body.get("phrase", "").strip()
+
+    if action not in ("add", "remove") or list_name not in ("avoid", "phrases"):
+        raise HTTPException(status_code=400, detail="Ogiltig action eller list")
+    if not phrase:
+        raise HTTPException(status_code=400, detail="Fras krävs")
+
+    # Map frontend names to DB column names
+    db_column = "avoid_phrases" if list_name == "avoid" else "always_mention"
+
+    # Get current preferences
+    prefs = await db_request("GET", "user_cover_letter_preferences",
+        params={"user_id": f"eq.{user_id}"})
+
+    if not prefs or len(prefs) == 0:
+        # Create preferences if they don't exist
+        current_list = []
+        if action == "add":
+            current_list = [phrase]
+        await db_request("POST", "user_cover_letter_preferences",
+            data={"user_id": user_id, db_column: current_list})
+    else:
+        current_list = prefs[0].get(db_column, []) or []
+        if not isinstance(current_list, list):
+            current_list = []
+
+        if action == "add" and phrase not in current_list:
+            current_list.append(phrase)
+        elif action == "remove":
+            current_list = [p for p in current_list if p != phrase]
+
+        await db_request("PATCH", "user_cover_letter_preferences",
+            params={"user_id": f"eq.{user_id}"}, data={db_column: current_list})
+
+    return {"success": True, db_column: current_list}
 
 
 @app.exception_handler(Exception)

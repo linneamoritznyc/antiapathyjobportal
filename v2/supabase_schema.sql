@@ -743,6 +743,7 @@ BEGIN
     );  -- cascade-safe: cv_id has no FK, delete manually
 
     -- UUID-typed user_id columns (cast needed)
+    DELETE FROM user_anecdotes            WHERE user_id = p_user_id::UUID;
     DELETE FROM user_cv_uploads           WHERE user_id = p_user_id::UUID;
     DELETE FROM user_training_letters     WHERE user_id = p_user_id::UUID;
 
@@ -756,6 +757,47 @@ BEGIN
     DELETE FROM user_profiles             WHERE user_id = p_user_id;
 END;
 $$ LANGUAGE plpgsql SECURITY DEFINER;
+
+-- Personal anecdotes & hobbies for cover letter personalization
+-- AI picks relevant anecdotes based on job description keyword matching.
+-- Example anecdote: "Jag var konfirmationsledare i Värmdö Församling 2012-2014"
+-- Example hobby: "Gymma", "Matlagning"
+-- Keywords help AI match: ["kyrka", "församling", "ideellt"] → matches church jobs
+-- Added 2026-02-18.
+CREATE TABLE IF NOT EXISTS user_anecdotes (
+    id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
+    user_id UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
+    title TEXT NOT NULL,              -- Short label, e.g. "Svenska Kyrkan" or "Gymma"
+    type TEXT NOT NULL CHECK (type IN ('anecdote', 'hobby')),
+    content TEXT NOT NULL,            -- Full text: story or hobby description
+    keywords TEXT[] DEFAULT '{}',     -- Matching keywords for job relevance
+    created_at TIMESTAMPTZ DEFAULT now()
+);
+
+ALTER TABLE user_anecdotes ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "Users can manage own anecdotes"
+    ON user_anecdotes FOR ALL
+    USING (auth.uid() = user_id)
+    WITH CHECK (auth.uid() = user_id);
+
+-- Max 30 anecdotes per user
+CREATE OR REPLACE FUNCTION check_anecdote_limit()
+RETURNS TRIGGER AS $$
+BEGIN
+    IF (SELECT COUNT(*) FROM user_anecdotes WHERE user_id = NEW.user_id) >= 30 THEN
+        RAISE EXCEPTION 'Max 30 anekdoter per användare';
+    END IF;
+    RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+CREATE TRIGGER enforce_anecdote_limit
+    BEFORE INSERT ON user_anecdotes
+    FOR EACH ROW EXECUTE FUNCTION check_anecdote_limit();
+
+CREATE INDEX IF NOT EXISTS idx_user_anecdotes_user ON user_anecdotes(user_id);
+
+COMMENT ON TABLE user_anecdotes IS 'Personal anecdotes and hobbies for AI cover letter personalization (max 30 per user)';
 
 -- ============== TABLES NOT YET CREATED IN LIVE DB ==============
 -- The following table is defined in this schema but does NOT exist in the live DB.

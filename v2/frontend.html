@@ -2543,10 +2543,16 @@
             const [dragOver, setDragOver] = useState(false);
             const [uploadedLetters, setUploadedLetters] = useState([]);
             const [deletingId, setDeletingId] = useState(null);
+            const [newAvoidPhrase, setNewAvoidPhrase] = useState('');
+            const [newLikePhrase, setNewLikePhrase] = useState('');
+            const [anecdotes, setAnecdotes] = useState([]);
+            const [showAnecdoteForm, setShowAnecdoteForm] = useState(false);
+            const [newAnecdote, setNewAnecdote] = useState({ title: '', type: 'anecdote', content: '', keywords: '' });
 
             useEffect(() => {
                 fetchLetterStyle();
                 fetchUploadedLetters();
+                fetchAnecdotes();
             }, []);
 
             const fetchUploadedLetters = async () => {
@@ -2584,6 +2590,61 @@
                     }
                 } catch(e) {}
                 setLoadingStyle(false);
+            };
+
+            // ---- Phrase editing ----
+            const updatePhrase = async (list, action, phrase) => {
+                if (!phrase.trim()) return;
+                try {
+                    const res = await authFetch('/api/user/letter-style/phrases', {
+                        method: 'PATCH',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ list, action, phrase: phrase.trim() })
+                    });
+                    if (res.ok) {
+                        await fetchLetterStyle();
+                    }
+                } catch(e) {}
+            };
+
+            // ---- Anecdotes ----
+            const fetchAnecdotes = async () => {
+                if (!localStorage.getItem('auth_token')) return;
+                try {
+                    const res = await authFetch('/api/user/anecdotes');
+                    if (res.ok) {
+                        const data = await res.json();
+                        setAnecdotes(data.anecdotes || []);
+                    }
+                } catch(e) {}
+            };
+
+            const saveAnecdote = async () => {
+                if (!newAnecdote.title.trim() || !newAnecdote.content.trim()) return;
+                try {
+                    const keywords = newAnecdote.keywords
+                        ? newAnecdote.keywords.split(',').map(k => k.trim()).filter(Boolean)
+                        : [];
+                    const res = await authFetch('/api/user/anecdotes', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ ...newAnecdote, keywords })
+                    });
+                    if (res.ok) {
+                        setNewAnecdote({ title: '', type: 'anecdote', content: '', keywords: '' });
+                        setShowAnecdoteForm(false);
+                        await fetchAnecdotes();
+                    }
+                } catch(e) {}
+            };
+
+            const deleteAnecdote = async (id) => {
+                try {
+                    const res = await authFetch(`/api/user/anecdotes/${id}`, { method: 'DELETE' });
+                    if (res.ok) {
+                        setAnecdotes(prev => prev.filter(a => a.id !== id));
+                    }
+                } catch(e) {}
             };
 
             const uploadFile = async (file) => {
@@ -2805,26 +2866,62 @@
                                         <div className="text-sm text-slate-700">{letterStyle.structure}</div>
                                     </div>
                                 )}
-                                {letterStyle.phrases && letterStyle.phrases.length > 0 && (
-                                    <div className="bg-slate-50 rounded-lg p-4 border border-slate-100">
-                                        <div className="text-xs font-semibold text-slate-400 uppercase tracking-wide mb-2">💬 Typiska fraser du använder</div>
-                                        <div className="flex flex-wrap gap-2">
-                                            {letterStyle.phrases.map((p, i) => (
-                                                <span key={i} className="px-2 py-1 bg-indigo-100 text-indigo-700 text-xs rounded-full">"{p}"</span>
-                                            ))}
-                                        </div>
+                                <div className="bg-slate-50 rounded-lg p-4 border border-slate-100">
+                                    <div className="text-xs font-semibold text-slate-400 uppercase tracking-wide mb-2">💬 Fraser jag gillar</div>
+                                    <div className="flex flex-wrap gap-2 mb-3">
+                                        {(letterStyle.phrases || []).map((p, i) => (
+                                            <span key={i} className="px-2 py-1 bg-indigo-100 text-indigo-700 text-xs rounded-full flex items-center gap-1">
+                                                "{p}"
+                                                <button onClick={() => updatePhrase('phrases', 'remove', p)} className="text-indigo-400 hover:text-indigo-700 ml-1">&times;</button>
+                                            </span>
+                                        ))}
+                                        {(!letterStyle.phrases || letterStyle.phrases.length === 0) && (
+                                            <span className="text-xs text-slate-400">Inga fraser tillagda</span>
+                                        )}
                                     </div>
-                                )}
-                                {letterStyle.avoid && letterStyle.avoid.length > 0 && (
-                                    <div className="bg-slate-50 rounded-lg p-4 border border-slate-100">
-                                        <div className="text-xs font-semibold text-slate-400 uppercase tracking-wide mb-2">🚫 Undviker</div>
-                                        <div className="flex flex-wrap gap-2">
-                                            {letterStyle.avoid.map((p, i) => (
-                                                <span key={i} className="px-2 py-1 bg-red-100 text-red-700 text-xs rounded-full">"{p}"</span>
-                                            ))}
-                                        </div>
+                                    <div className="flex gap-2">
+                                        <input
+                                            type="text"
+                                            value={newLikePhrase}
+                                            onChange={e => setNewLikePhrase(e.target.value)}
+                                            onKeyDown={e => { if (e.key === 'Enter') { updatePhrase('phrases', 'add', newLikePhrase); setNewLikePhrase(''); }}}
+                                            placeholder="Lägg till fras..."
+                                            className="flex-1 text-xs px-3 py-1.5 border border-slate-200 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
+                                        />
+                                        <button
+                                            onClick={() => { updatePhrase('phrases', 'add', newLikePhrase); setNewLikePhrase(''); }}
+                                            className="px-3 py-1.5 bg-indigo-600 text-white text-xs rounded-lg hover:bg-indigo-700"
+                                        >+</button>
                                     </div>
-                                )}
+                                </div>
+                                <div className="bg-slate-50 rounded-lg p-4 border border-slate-100">
+                                    <div className="text-xs font-semibold text-slate-400 uppercase tracking-wide mb-2">🚫 Fraser jag INTE vill ha</div>
+                                    <div className="flex flex-wrap gap-2 mb-3">
+                                        {(letterStyle.avoid || []).map((p, i) => (
+                                            <span key={i} className="px-2 py-1 bg-red-100 text-red-700 text-xs rounded-full flex items-center gap-1">
+                                                "{p}"
+                                                <button onClick={() => updatePhrase('avoid', 'remove', p)} className="text-red-400 hover:text-red-700 ml-1">&times;</button>
+                                            </span>
+                                        ))}
+                                        {(!letterStyle.avoid || letterStyle.avoid.length === 0) && (
+                                            <span className="text-xs text-slate-400">Inga fraser tillagda</span>
+                                        )}
+                                    </div>
+                                    <div className="flex gap-2">
+                                        <input
+                                            type="text"
+                                            value={newAvoidPhrase}
+                                            onChange={e => setNewAvoidPhrase(e.target.value)}
+                                            onKeyDown={e => { if (e.key === 'Enter') { updatePhrase('avoid', 'add', newAvoidPhrase); setNewAvoidPhrase(''); }}}
+                                            placeholder='T.ex. "Jag är övertygad om"'
+                                            className="flex-1 text-xs px-3 py-1.5 border border-slate-200 rounded-lg focus:ring-2 focus:ring-red-500 focus:border-red-500"
+                                        />
+                                        <button
+                                            onClick={() => { updatePhrase('avoid', 'add', newAvoidPhrase); setNewAvoidPhrase(''); }}
+                                            className="px-3 py-1.5 bg-red-600 text-white text-xs rounded-lg hover:bg-red-700"
+                                        >+</button>
+                                    </div>
+                                </div>
                                 {letterStyle.length_preference && (
                                     <div className="bg-slate-50 rounded-lg p-4 border border-slate-100">
                                         <div className="text-xs font-semibold text-slate-400 uppercase tracking-wide mb-1">📏 Längd & tempo</div>
@@ -2849,6 +2946,121 @@
                                 <div className="text-4xl mb-3">📭</div>
                                 <div className="font-medium mb-1">Inget brev analyserat ännu</div>
                                 <div className="text-sm">Ladda upp eller klistra in ett brev ovan för att träna din AI</div>
+                            </div>
+                        )}
+                    </div>
+
+                    {/* Anecdotes & Hobbies */}
+                    <div className="bg-white rounded-xl p-6 border border-slate-200">
+                        <div className="flex items-center justify-between mb-1">
+                            <h3 className="text-lg font-semibold">✨ Mina anekdoter & hobbys</h3>
+                            <button
+                                onClick={() => setShowAnecdoteForm(!showAnecdoteForm)}
+                                className="px-3 py-1.5 bg-indigo-600 text-white text-xs rounded-lg hover:bg-indigo-700"
+                            >
+                                {showAnecdoteForm ? 'Avbryt' : '+ Lägg till'}
+                            </button>
+                        </div>
+                        <p className="text-sm text-slate-500 mb-4">
+                            Personliga historier och hobbys som AI kan väva in i dina personliga brev när de är relevanta.
+                        </p>
+
+                        {showAnecdoteForm && (
+                            <div className="bg-slate-50 rounded-lg p-4 border border-slate-200 mb-4 space-y-3">
+                                <div className="flex gap-3">
+                                    <div className="flex-1">
+                                        <label className="text-xs font-medium text-slate-600 block mb-1">Titel</label>
+                                        <input
+                                            type="text"
+                                            value={newAnecdote.title}
+                                            onChange={e => setNewAnecdote(prev => ({...prev, title: e.target.value}))}
+                                            placeholder='T.ex. "Svenska Kyrkan" eller "Gymma"'
+                                            className="w-full text-sm px-3 py-2 border border-slate-200 rounded-lg focus:ring-2 focus:ring-indigo-500"
+                                        />
+                                    </div>
+                                    <div>
+                                        <label className="text-xs font-medium text-slate-600 block mb-1">Typ</label>
+                                        <select
+                                            value={newAnecdote.type}
+                                            onChange={e => setNewAnecdote(prev => ({...prev, type: e.target.value}))}
+                                            className="text-sm px-3 py-2 border border-slate-200 rounded-lg focus:ring-2 focus:ring-indigo-500"
+                                        >
+                                            <option value="anecdote">Anekdot</option>
+                                            <option value="hobby">Hobby</option>
+                                        </select>
+                                    </div>
+                                </div>
+                                <div>
+                                    <label className="text-xs font-medium text-slate-600 block mb-1">
+                                        {newAnecdote.type === 'hobby' ? 'Beskriv din hobby' : 'Berätta din historia'}
+                                    </label>
+                                    <textarea
+                                        value={newAnecdote.content}
+                                        onChange={e => setNewAnecdote(prev => ({...prev, content: e.target.value}))}
+                                        placeholder={newAnecdote.type === 'hobby'
+                                            ? 'T.ex. "Jag gymmar regelbundet och värdesätter disciplin och uthållighet"'
+                                            : 'T.ex. "Jag var konfirmationsledare i Värmdö Församling 2012-2014, både under terminerna och på sommarläger..."'}
+                                        rows={3}
+                                        className="w-full text-sm px-3 py-2 border border-slate-200 rounded-lg focus:ring-2 focus:ring-indigo-500"
+                                    />
+                                </div>
+                                <div>
+                                    <label className="text-xs font-medium text-slate-600 block mb-1">
+                                        Nyckelord (kommaseparerade) — AI matchar dessa mot jobbannonser
+                                    </label>
+                                    <input
+                                        type="text"
+                                        value={newAnecdote.keywords}
+                                        onChange={e => setNewAnecdote(prev => ({...prev, keywords: e.target.value}))}
+                                        placeholder='T.ex. "kyrka, församling, ideellt, ungdom"'
+                                        className="w-full text-sm px-3 py-2 border border-slate-200 rounded-lg focus:ring-2 focus:ring-indigo-500"
+                                    />
+                                </div>
+                                <button
+                                    onClick={saveAnecdote}
+                                    disabled={!newAnecdote.title.trim() || !newAnecdote.content.trim()}
+                                    className="px-4 py-2 bg-indigo-600 text-white text-sm rounded-lg hover:bg-indigo-700 disabled:opacity-40 disabled:cursor-not-allowed"
+                                >
+                                    Spara
+                                </button>
+                            </div>
+                        )}
+
+                        {anecdotes.length > 0 ? (
+                            <div className="space-y-3">
+                                {anecdotes.map(a => (
+                                    <div key={a.id} className="bg-slate-50 rounded-lg p-4 border border-slate-100">
+                                        <div className="flex items-start justify-between">
+                                            <div className="flex-1 min-w-0">
+                                                <div className="flex items-center gap-2 mb-1">
+                                                    <span className="text-sm">{a.type === 'hobby' ? '🏋️' : '📖'}</span>
+                                                    <span className="text-sm font-semibold text-slate-700">{a.title}</span>
+                                                    <span className="px-1.5 py-0.5 text-[10px] rounded-full bg-slate-200 text-slate-500 uppercase">
+                                                        {a.type === 'hobby' ? 'Hobby' : 'Anekdot'}
+                                                    </span>
+                                                </div>
+                                                <p className="text-sm text-slate-600 mb-2">{a.content}</p>
+                                                {a.keywords && a.keywords.length > 0 && (
+                                                    <div className="flex flex-wrap gap-1">
+                                                        {a.keywords.map((kw, ki) => (
+                                                            <span key={ki} className="px-1.5 py-0.5 bg-indigo-50 text-indigo-600 text-[10px] rounded-full">{kw}</span>
+                                                        ))}
+                                                    </div>
+                                                )}
+                                            </div>
+                                            <button
+                                                onClick={() => deleteAnecdote(a.id)}
+                                                className="text-red-400 hover:text-red-600 text-sm ml-3 flex-shrink-0"
+                                            >✕</button>
+                                        </div>
+                                    </div>
+                                ))}
+                            </div>
+                        ) : !showAnecdoteForm && (
+                            <div className="text-center py-8 text-slate-400">
+                                <div className="text-3xl mb-2">📝</div>
+                                <div className="text-sm">Inga anekdoter eller hobbys tillagda ännu</div>
+                                <div className="text-xs mt-1">Lägg till personliga historier som gör dina brev unika!</div>
                             </div>
                         )}
                     </div>
