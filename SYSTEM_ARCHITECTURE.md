@@ -1,8 +1,7 @@
 # System Architecture & Data Modeling
 *Anti-Apathy Job Portal — Teknisk specifikation*
 *Senast uppdaterad: 18 februari 2026*
-
-> **Status:** Sektioner märkta med ⏳ väntar på schema introspection SQL-resultat för att fyllas i med faktiska värden.
+*Källor: `v2/api/index.py`, `v2/vercel.json`, `v2/supabase_schema.sql`, `user_cover_letter_preferences` (live DB)*
 
 ---
 
@@ -15,7 +14,6 @@ graph LR
     A[Browser / React] -- HTTPS + JWT --> B[Vercel Serverless\nFastAPI / Python]
     B -- REST via httpx\nService Role Key --> C[Supabase PostgREST]
     C -- SQL --> D[(PostgreSQL\nSupabase Cloud)]
-    D -- RLS Policy Check --> C
     B -- HTTPS --> E[Anthropic Claude API\nCover letter generation]
     B -- OAuth2 Bearer --> F[Gmail API\nDraft creation]
     A -- Supabase Auth SDK --> G[Supabase Auth]
@@ -28,55 +26,171 @@ graph LR
 
 **Typ:** Relationell databas
 **Motor:** PostgreSQL (hanterad av Supabase Cloud)
-**Åtkomst:** Via Supabase's PostgREST-gränssnitt (auto-genererade REST-endpoints) och Supabase Storage
+**Åtkomst:** Via Supabase's PostgREST-gränssnitt och Supabase Storage (3 buckets)
 
 ---
 
 ## 2. Centrala entiteter i schemat
 
-⏳ *Fylls i från query #1 och #2 i schema introspection-resultaten.*
+**29 tabeller** grupperade i fem domäner. Radantal från live DB (2026-02-18):
+
+| Domän | Tabell | Rader |
+|-------|--------|-------|
+| **Jobb** | `jobs` | 263 |
+| **Användarprofil** | `user_skills` | 88 |
+| | `user_experiences` | 27 |
+| | `user_awards` | 18 |
+| | `user_volunteer` | 12 |
+| | `user_certifications` | 10 |
+| | `user_education` | 4 |
+| | `user_profiles` | 1 |
+| | `user_cover_letter_preferences` | 1 |
+| | `user_job_preferences` | 1 |
+| **CV & Branscher** | `user_cv_branscher` | 8 |
+| | `user_cvs` | 0 |
+| | `bransch_cvs` | 0 |
+| | `user_cv_uploads` | 0 |
+| | `user_training_letters` | 0 |
+| | `user_cv_versions` | 0 |
+| | `user_cv_creation_conversations` | 0 |
+| | `master_cv_exports` | 0 |
+| **Jobbinteraktion** | `user_job_interactions` | 2 |
+| | `applications` | 1 |
+| **Gmail** | `user_google_credentials` | 1 |
+| **Industri-specifikt** | `cv_industry_templates` | 4 |
+| | `tech_certifications` | 14 |
+| | `tech_projects` | 11 |
+| | `artist_exhibitions` | 0 |
+| | `artist_residencies` | 0 |
+| | `artist_collections` | 0 |
+| | `academic_publications` | 0 |
+| | `user_experience_tags` | 0 |
+| | `user_ai_feedback` | 0 |
 
 ---
 
 ## 3. ER-diagram (Entity Relationships)
 
-⏳ *Fylls i från query #3 (Foreign Keys) i schema introspection-resultaten.*
+Relationer verifierade från `v2/supabase_schema.sql`:
+
+```mermaid
+erDiagram
+    AUTH_USERS ||--o{ USER_TRAINING_LETTERS : "ON DELETE CASCADE"
+    JOBS ||--o{ APPLICATIONS : "FK (no cascade)"
+    USER_CVS ||--o{ APPLICATIONS : "FK (no cascade)"
+    USER_EXPERIENCES ||--o{ USER_EXPERIENCE_TAGS : "ON DELETE CASCADE"
+```
+
+**Övriga tabeller** har `user_id TEXT` utan formell FK till `auth.users` — relationen enforças i applikationslagret.
 
 ---
 
 ## 4. Primärnycklar
 
-⏳ *Fylls i från query #2 (Primärnycklar) i schema introspection-resultaten.*
+| Tabell | PK-kolumn | Typ | Default |
+|--------|-----------|-----|---------|
+| Alla utom nedan | `id` | `UUID` | `gen_random_uuid()` |
+| `jobs` | `id` | `TEXT` | Platsbanken's egna jobb-ID |
+| `user_cover_letter_preferences` | `user_id` | `TEXT` | — (user_id är PK) |
+| `user_job_preferences` | `user_id` | `TEXT` | — (user_id är PK) |
+| `cv_industry_templates` | `id` | `TEXT` | `'traditional'`, `'artist'`, `'tech'`, `'academic'` |
 
-**Känt undantag från kod:** Tabellen `jobs` använder `TEXT` som primärnyckel:
-```sql
-id TEXT PRIMARY KEY  -- Platsbanken's egna jobb-ID
-```
-Anledning: Platsbanken's API returnerar egna IDn — att återanvända dem som PK undviker duplicat-jobb.
+**Varför `TEXT` för `jobs.id`?** Platsbanken's API returnerar egna IDn — att återanvända dem som PK undviker duplicat-jobb vid upprepad scraping.
 
 ---
 
 ## 5. Foreign Keys och relationshantering
 
-⏳ *Fylls i från query #3 (Foreign Keys) i schema introspection-resultaten, inkl. CASCADE-regler.*
+Alla FK verifierade från `v2/supabase_schema.sql`:
+
+| Från | Till | ON DELETE |
+|------|------|-----------|
+| `user_experience_tags.experience_id` | `user_experiences(id)` | `CASCADE` |
+| `user_training_letters.user_id` | `auth.users(id)` | `CASCADE` |
+| `applications.job_id` | `jobs(id)` | ingen |
+| `applications.cv_id` | `user_cvs(id)` | ingen |
+
+**Känd teknisk skuld — `user_id`-typinkonsistens:**
+
+Beroende på när en tabell skapades är `user_id`-kolumnen antingen `UUID` eller `TEXT`. Dokumenterat i schemat:
+
+```
+UUID-typ:  user_cv_uploads, user_training_letters
+TEXT-typ:  alla övriga tabeller (user_profiles, user_experiences,
+           user_volunteer, user_awards, user_certifications,
+           user_cv_branscher, user_experience_tags, bransch_cvs,
+           master_cv_exports, artist_*, tech_*, academic_*,
+           user_cv_creation_conversations, applications,
+           user_cover_letter_preferences, user_job_preferences)
+```
+
+Workaround vid insert: `'da8ed517-...'::UUID` för UUID-tabeller, `'da8ed517-...'` för TEXT-tabeller.
 
 ---
 
 ## 6. Enumerated Types (Enums)
 
-⏳ *Fylls i från query #9 (Check-constraints) i schema introspection-resultaten.*
+Systemet använder **inte** PostgreSQL `ENUM`-typen. Istället används `TEXT` med `CHECK`-constraint eller dokumenterade värden:
+
+**`CHECK`-constraint (enforced i databasen):**
+```sql
+-- user_job_interactions
+action TEXT NOT NULL CHECK (action IN ('viewed', 'skipped', 'applied', 'saved', 'rejected'))
+```
+
+**Dokumenterade värden (enforced i applikationslagret):**
+```sql
+-- applications.status
+-- 'draft' | 'sent' | 'skipped' | 'saved' | 'interview' | 'rejected' | 'offer'
+status TEXT DEFAULT 'draft'
+
+-- user_ai_feedback.feedback_type
+-- 'cover_letter' | 'new_bransch_request' | 'exclude_jobs' | 'general'
+feedback_type TEXT DEFAULT 'cover_letter'
+
+-- user_cover_letter_preferences.tone
+-- 'professional_friendly' | 'formal' | 'casual' | 'warm'
+tone TEXT DEFAULT 'professional_friendly'
+```
 
 ---
 
 ## 7. Tidsstämplar
 
-⏳ *Fylls i från query #1 (kolumntyper) — vilka tabeller har created_at / updated_at och av vilken typ.*
+| Kolumnnamn | Tabeller | Typ |
+|-----------|----------|-----|
+| `created_at` | Nästan alla tabeller | `TIMESTAMPTZ DEFAULT NOW()` |
+| `updated_at` | `user_profiles`, `user_cover_letter_preferences`, `user_job_preferences`, `user_cvs`, `bransch_cvs`, `user_google_credentials`, `applications` | `TIMESTAMPTZ DEFAULT NOW()` |
+| `scraped_at` | `jobs` (istället för created_at) | `TIMESTAMPTZ DEFAULT NOW()` |
+| `uploaded_at` | `user_training_letters` (istället för created_at) | `TIMESTAMPTZ DEFAULT NOW()` |
+| `started_at` / `completed_at` | `user_cv_creation_conversations` | `TIMESTAMPTZ NOT NULL DEFAULT NOW()` / `TIMESTAMPTZ` |
+| `last_updated` | `user_experiences` (extra kolumn) | `TIMESTAMPTZ` |
+
+`updated_at` uppdateras manuellt av applikationslagret vid PATCH — ingen trigger hanterar det automatiskt.
 
 ---
 
 ## 8. Index för läsprestanda
 
-⏳ *Fylls i från query #4 (Index) i schema introspection-resultaten.*
+Alla index är PostgreSQL-standard **B-tree**. Verifierat från `v2/supabase_schema.sql`:
+
+| Index | Tabell | Kolumn(er) | Typ |
+|-------|--------|-----------|-----|
+| `idx_jobs_scraped_at` | `jobs` | `scraped_at DESC` | B-tree |
+| `idx_jobs_contact_email` | `jobs` | `contact_email WHERE NOT NULL` | Partial B-tree |
+| `idx_master_cv_exports_user` | `master_cv_exports` | `user_id` | B-tree |
+| `idx_user_cvs_user` | `user_cvs` | `user_id` | B-tree |
+| `idx_user_cvs_vibe` | `user_cvs` | `(user_id, vibe_id)` | B-tree |
+| `idx_applications_user` | `applications` | `user_id` | B-tree |
+| `idx_applications_status` | `applications` | `status` | B-tree |
+| `idx_user_cv_branscher_user` | `user_cv_branscher` | `user_id` | B-tree |
+| `idx_user_ai_feedback_user` | `user_ai_feedback` | `user_id` | B-tree |
+| `idx_user_experience_tags_user` | `user_experience_tags` | `user_id` | B-tree |
+| `idx_user_experience_tags_bransch` | `user_experience_tags` | `bransch_id` | B-tree |
+| `idx_user_certifications_user` | `user_certifications` | `user_id` | B-tree |
+| `idx_user_job_interactions_user` | `user_job_interactions` | `(user_id, created_at DESC)` | B-tree |
+| `idx_user_job_interactions_job` | `user_job_interactions` | `job_id` | B-tree |
+| `idx_user_job_interactions_unique` | `user_job_interactions` | `(user_id, job_id, action)` | **UNIQUE** |
 
 ---
 
@@ -101,7 +215,7 @@ SUPABASE_ANON_KEY = os.getenv("SUPABASE_ANON_KEY")
 
 ## 10. Supabase Client SDK vs direkt REST API
 
-Backenden använder **inte** Supabase Python SDK. Istället görs direkta HTTP-anrop via `httpx` (async HTTP-klient) till Supabase's PostgREST-endpoint. Verifierat från `v2/api/index.py`:
+Backenden använder **inte** Supabase Python SDK. Istället görs direkta HTTP-anrop via `httpx` till Supabase's PostgREST. Verifierat från `v2/api/index.py`:
 
 ```python
 async def db_request(method: str, table: str, data: dict = None, params: dict = None):
@@ -116,17 +230,15 @@ async def db_request(method: str, table: str, data: dict = None, params: dict = 
         response = await client.request(method, url, headers=headers, ...)
 ```
 
-**Varför direkt REST och inte SDK?**
-- Supabase Python SDK är designad för synkrona operationer — FastAPI är async-native
-- `httpx` ger fullständig kontroll över timeouts, retries och headers
+**Varför direkt REST?** Supabase Python SDK är synkron — FastAPI är async-native. `httpx` ger fullständig kontroll utan abstraktionslager.
 
-**Frontend** (`v2/frontend.html`) använder **Supabase JavaScript SDK** för auth-flöden men kommunicerar med appens egna FastAPI-endpoints för all affärslogik.
+**Frontend** (`v2/frontend.html`) använder **Supabase JavaScript SDK** enbart för auth (login, token refresh, session) — all affärslogik går via FastAPI-endpoints.
 
 ---
 
 ## 11. Write-operation flöde
 
-Exempel: Användaren klickar "Generera personligt brev" på ett jobb. Verifierat från `v2/api/index.py`.
+Exempel: Användaren klickar "Generera personligt brev". Verifierat från `v2/api/index.py`:
 
 ```mermaid
 sequenceDiagram
@@ -136,19 +248,17 @@ sequenceDiagram
     participant PG as PostgreSQL
     participant Claude as Anthropic API
 
-    Browser->>Vercel: POST /api/jobs/{job_id}/apply\n{ Authorization: Bearer JWT }
-    Vercel->>Supabase: GET /rest/v1/user_profiles?user_id=eq.X\n(SERVICE_ROLE_KEY)
+    Browser->>Vercel: POST /api/jobs/{job_id}/apply
+    Vercel->>Supabase: GET /rest/v1/user_profiles?user_id=eq.X
     Supabase->>PG: SELECT * FROM user_profiles WHERE user_id = X
-    PG-->>Supabase: { full_name, phone, location, ... }
-    Supabase-->>Vercel: [{ profile data }]
+    PG-->>Vercel: { full_name, phone, location, ... }
     Vercel->>Supabase: GET /rest/v1/user_cover_letter_preferences
-    Supabase-->>Vercel: [{ tone, always_mention, never_mention, ... }]
-    Vercel->>Claude: POST /v1/messages\n{ CV + job description + preferences }
+    Supabase-->>Vercel: { tone, always_mention, never_mention, ... }
+    Vercel->>Claude: POST /v1/messages — CV + jobbbeskrivning + preferenser
     Claude-->>Vercel: { cover_letter_text }
-    Vercel->>Supabase: POST /rest/v1/applications\n{ user_id, job_id, cover_letter, status: 'draft' }
+    Vercel->>Supabase: POST /rest/v1/applications
     Supabase->>PG: INSERT INTO applications ...
-    PG-->>Supabase: { id, created_at, ... }
-    Supabase-->>Vercel: [{ application row }]
+    PG-->>Vercel: { id, created_at, ... }
     Vercel-->>Browser: { success: true, cover_letter, application_id }
 ```
 
@@ -160,17 +270,18 @@ Verifierat från `v2/vercel.json` och `v2/api/index.py`:
 
 | Komponent | Plattform | Typ | Språk |
 |-----------|-----------|-----|-------|
-| API-backend | Vercel | **Serverless Functions** (Python) | FastAPI |
+| API-backend | Vercel | Serverless Functions (Python) | FastAPI |
 | Auth | Supabase | Supabase Auth (hanterad) | — |
+| Databaslogik | PostgreSQL | 2 st PL/pgSQL-funktioner | SQL |
 | Frontend | Vercel | Static file serving | HTML/React/Tailwind |
 
-**Supabase Edge Functions används inte.** All komplex logik (AI-anrop, Gmail-integration) körs i Vercel-backenden.
+Supabase Edge Functions används inte.
 
 ---
 
 ## 13. Database Connections & Connection Pooling
 
-Varje anrop från backenden skapar en ny `httpx.AsyncClient()`-session (verifierat från kod). Sessionen stängs automatiskt efter anropet — ingen persistent databasanslutning.
+Varje anrop skapar en ny `httpx.AsyncClient()` som stängs automatiskt (verifierat från kod). Ingen persistent databasanslutning — Vercel Serverless Functions är stateless per design.
 
 ```
 Vercel Function (ephemeral)
@@ -179,57 +290,77 @@ Vercel Function (ephemeral)
             → PostgreSQL
 ```
 
-Vercel Serverless Functions är stateless per design — ingen "connection leak"-risk.
-
 ---
 
 ## 14. Real-time prenumerationer
 
-**Supabase Realtime används inte** — verifierat från kod (ingen WebSocket-prenumeration i `v2/frontend.html` eller `v2/api/index.py`).
-
-Frontend uppdateras via klassisk request/response.
+**Supabase Realtime används inte** — verifierat från kod. Ingen WebSocket-prenumeration finns i `v2/frontend.html` eller `v2/api/index.py`. Frontend uppdateras via klassisk request/response.
 
 ---
 
 ## 15. Stored Procedures & RPC
 
-⏳ *Fylls i från query #7 (Funktioner) i schema introspection-resultaten.*
+Verifierat från `v2/supabase_schema.sql` — 2 funktioner definierade:
+
+```sql
+-- Exporterar all CV-data som JSONB
+-- Aggregerar: user_profiles, user_education, user_experiences,
+-- user_volunteer, user_awards, user_skills, user_certifications,
+-- tech_certifications, tech_projects
+CREATE OR REPLACE FUNCTION export_master_cv(p_user_id TEXT)
+RETURNS JSONB LANGUAGE plpgsql;
+
+-- Anropar export_master_cv() och sparar snapshot i master_cv_exports
+CREATE OR REPLACE FUNCTION save_master_cv_snapshot(p_user_id TEXT, p_notes TEXT DEFAULT NULL)
+RETURNS UUID LANGUAGE plpgsql;
+```
+
+Anropas från backend via PostgREST RPC-endpoint: `POST /rest/v1/rpc/export_master_cv`.
 
 ---
 
 ## 16. Database Triggers
 
-⏳ *Fylls i från query #8 (Triggers) i schema introspection-resultaten.*
+**Inga triggers är definierade** i `v2/supabase_schema.sql`.
+
+Kommentarer i schemat anger "max 20 per user, enforced by trigger" för `user_training_letters` och `user_cv_uploads` — men triggern är inte skriven. Gränsen enforças inte i dagsläget.
 
 ---
 
 ## 17. API-lagret — Arkitektur
 
-Verifierat från `v2/api/index.py`. Systemet har två parallella API-lager:
+Verifierat från `v2/api/index.py`:
 
 ### Supabase PostgREST (automatiskt)
-Supabase genererar automatiskt RESTful endpoints för varje tabell — används av backenden via `db_request()`.
+Auto-genererade CRUD-endpoints för varje tabell — används av backenden via `db_request()`.
 
 ### FastAPI på Vercel (affärslogik)
 
 ```
-POST   /api/scrape-jobs            → Scrapa Platsbanken + spara till Supabase
-POST   /api/jobs/{id}/apply        → Hämta CV + anropa Claude + skapa Gmail-draft
-GET    /api/gmail/status           → Kontrollera OAuth-status
-GET    /api/gmail/auth             → Starta OAuth2-flöde (redirect till Google)
-GET    /api/gmail/callback         → Hantera OAuth2 callback + spara tokens
-POST   /api/master-cv/export       → Exportera Master CV
-POST   /api/user/delete-data       → GDPR: radera all användardata
-GET    /api/profile                → Hämta profil + erfarenheter + utbildning
+POST   /api/scrape-jobs              Scrapa Platsbanken + spara till Supabase
+POST   /api/jobs/{id}/apply          Hämta CV + anropa Claude + skapa Gmail-draft
+GET    /api/gmail/status             Kontrollera OAuth-status
+GET    /api/gmail/auth               Starta OAuth2-flöde (redirect till Google)
+GET    /api/gmail/callback           Hantera OAuth2 callback + spara tokens
+POST   /api/master-cv/export         Anropa export_master_cv() RPC
+POST   /api/user/delete-data         GDPR: radera all användardata
+GET    /api/profile                  Hämta profil + erfarenheter + utbildning
 ```
 
 ---
 
 ## 18. Row Level Security (RLS)
 
-⏳ *Fylls i från query #5 (RLS status) och query #6 (RLS policies) i schema introspection-resultaten.*
+**RLS är inte aktiverat** — verifierat från `v2/supabase_schema.sql` där alla RLS-kommandon är kommenterade:
 
-**Känt från kod:** Backenden använder `SERVICE_ROLE_KEY` som kringgår RLS för alla server-side operationer.
+```sql
+-- Row Level Security (enable when you add auth)
+-- ALTER TABLE user_profiles ENABLE ROW LEVEL SECURITY;
+-- ALTER TABLE user_cvs ENABLE ROW LEVEL SECURITY;
+-- ALTER TABLE applications ENABLE ROW LEVEL SECURITY;
+```
+
+Dataisolering sker idag via `SERVICE_ROLE_KEY` på serversidan — all databasaccess går genom Vercel-backenden, aldrig direkt från browsern med ett nyckel som har begränsad scope.
 
 ---
 
@@ -239,15 +370,32 @@ GET    /api/profile                → Hämta profil + erfarenheter + utbildning
 |--------|--------|
 | Verktyg | Manuell SQL i Supabase SQL Editor |
 | Schema source of truth | `v2/supabase_schema.sql` i GitHub |
+| Konvention | Datumkommentar vid varje ändring, t.ex. `-- Added 2026-02-17` |
 | Rollback | Manuellt |
 
 ---
 
 ## 20. Backup-strategi
 
-⏳ *Kontrollera Supabase Dashboard → Database → Backups för faktisk backup-frekvens och retention på ditt specifika plan.*
+| Aspekt | Detaljer |
+|--------|----------|
+| Schema | `v2/supabase_schema.sql` versionshanterat i GitHub |
+| Appdata | Supabase automatisk backup (frekvens/retention beror på plan — kolla Dashboard → Database → Backups) |
+| Persondata | Exporteras inte till GitHub av GDPR-skäl |
 
-**Känt:** Schema (`v2/supabase_schema.sql`) är versionshanterat i GitHub. Persondata exporteras inte till GitHub av GDPR-skäl.
+---
+
+## Supabase Storage Buckets
+
+Verifierat från `v2/supabase_schema.sql` (bekräftad i dashboard 2026-02-18):
+
+| Bucket | Visibility | Filtyper | Max storlek | Path-mönster |
+|--------|-----------|----------|-------------|--------------|
+| `profile-photos` | Public | jpeg, png, jpg, webp | 10 MB | `{user_id}/profile.{ext}` |
+| `training-letters` | Public | pdf, docx, doc, txt | 50 MB | `{user_id}/letter_{timestamp}.{ext}` |
+| `cv-files` | Public | pdf, docx, doc, txt, rtf, odt | 50 MB | `{user_id}/{vibe_id}_cv.{ext}` |
+
+Alla 3 buckets har 4 RLS-policies: public read, authenticated upload, owner update, owner delete.
 
 ---
 
@@ -258,13 +406,10 @@ Verifierat från kod och konfigurationsfiler:
 | Beslut | Val | Motivering |
 |--------|-----|------------|
 | Database | PostgreSQL via Supabase | Managed hosting, auth inbyggt, PostgREST |
-| ORM | Ingen — direkt REST via httpx | FastAPI är async-native, SDK är synkron |
-| Auth | Supabase Auth (JWT) | Google OAuth inbyggt |
+| ORM | Ingen — direkt REST via httpx | FastAPI är async-native, Supabase Python SDK är synkron |
+| Auth | Supabase Auth (JWT) | Google OAuth inbyggt, ingen egen auth-kod |
 | Backend | Vercel Serverless Python | Enkelt deploy, ingen server att underhålla |
 | AI | Anthropic Claude API | Cover letter-generering på svenska |
 | Email | Gmail API OAuth2 | Drafts i användarens egna Gmail |
-| Frontend | Single-file React | Inga build-steg |
-
----
-
-*⏳-sektioner fylls i när schema introspection SQL körts och resultaten klistrats in.*
+| File storage | Supabase Storage | 3 publika buckets, integrerat med auth |
+| Frontend | Single-file React | Inga build-steg, direkt redigerbar HTML |
