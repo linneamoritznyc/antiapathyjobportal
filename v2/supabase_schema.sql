@@ -800,10 +800,11 @@ CREATE INDEX IF NOT EXISTS idx_user_anecdotes_user ON user_anecdotes(user_id);
 
 COMMENT ON TABLE user_anecdotes IS 'Personal anecdotes and hobbies for AI cover letter personalization (max 30 per user)';
 
--- ============== TABLES NOT YET CREATED IN LIVE DB ==============
--- The following table is defined in this schema but does NOT exist in the live DB.
--- Run the CREATE TABLE statement to create it if needed.
+-- ============== LIVE STATUS (Feb 18 2026) ==============
+-- user_anecdotes: LIVE (created Feb 18 2026)
+-- user_profiles.birth_date: LIVE (added Feb 18 2026)
 --
+-- ============== TABLES NOT YET CREATED IN LIVE DB ==============
 -- user_ai_feedback — AI feedback for personalized cover letters
 --   (Not in DB as of Feb 2026. Row counts query returned no entry for this table.)
 --   To create: run the CREATE TABLE IF NOT EXISTS user_ai_feedback block above.
