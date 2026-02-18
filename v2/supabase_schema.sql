@@ -31,6 +31,7 @@ CREATE TABLE IF NOT EXISTS user_profiles (
     languages TEXT[] DEFAULT ARRAY['Svenska (Modersmål)', 'Engelska (flytande)']::TEXT[],
     certificates TEXT[] DEFAULT ARRAY[]::TEXT[],  -- ['B-körkort', 'ICA kassahantering', etc.]
     about_me TEXT,  -- Professional bio/summary
+    birth_date DATE,  -- For accurate age calculation in cover letters (added 2026-02-18)
     email_signature TEXT DEFAULT '',  -- Custom email signature for Gmail drafts
     onboarding_completed BOOLEAN DEFAULT FALSE,
     privacy_policy_accepted BOOLEAN DEFAULT FALSE,

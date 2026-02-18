@@ -1233,6 +1233,19 @@
             const [signature, setSignature] = useState('');
             const [savingSignature, setSavingSignature] = useState(false);
             const [signatureStatus, setSignatureStatus] = useState(null);
+            const [birthDate, setBirthDate] = useState('');
+            const [savingBirthDate, setSavingBirthDate] = useState(false);
+            const [birthDateStatus, setBirthDateStatus] = useState(null);
+
+            const calculateAge = (bd) => {
+                if (!bd) return null;
+                const today = new Date();
+                const birth = new Date(bd);
+                let age = today.getFullYear() - birth.getFullYear();
+                const m = today.getMonth() - birth.getMonth();
+                if (m < 0 || (m === 0 && today.getDate() < birth.getDate())) age--;
+                return age;
+            };
 
             // Load existing profile data
             useEffect(() => {
@@ -1258,8 +1271,32 @@
                     if (data.email_signature) {
                         setSignature(data.email_signature);
                     }
+                    if (data.birth_date) {
+                        setBirthDate(data.birth_date);
+                    }
                 } catch (err) {
                     console.error('Error fetching profile:', err);
+                }
+            };
+
+            const saveBirthDate = async () => {
+                if (!birthDate) return;
+                setSavingBirthDate(true);
+                setBirthDateStatus(null);
+                try {
+                    const res = await authFetch('/api/profile/birth-date', {
+                        method: 'PATCH',
+                        body: JSON.stringify({ birth_date: birthDate })
+                    });
+                    if (res.ok) {
+                        setBirthDateStatus('✓ Sparat!');
+                    } else {
+                        setBirthDateStatus('Kunde inte spara.');
+                    }
+                } catch(e) {
+                    setBirthDateStatus('Fel vid sparande.');
+                } finally {
+                    setSavingBirthDate(false);
                 }
             };
 
@@ -1436,6 +1473,39 @@
                         <p className="text-xs text-slate-400 mt-3">
                             Accepterade format: JPG, PNG
                         </p>
+                    </div>
+
+                    {/* Birth Date Section */}
+                    <div className="bg-white rounded-xl p-6 border border-slate-200">
+                        <h3 className="text-lg font-semibold mb-1">🎂 Födelsedatum</h3>
+                        <p className="text-sm text-slate-500 mb-4">
+                            Används för att beräkna din ålder i personliga brev. Uppdateras automatiskt — du behöver aldrig ändra det!
+                        </p>
+                        <div className="flex items-center gap-4">
+                            <input
+                                type="date"
+                                value={birthDate}
+                                onChange={e => setBirthDate(e.target.value)}
+                                className="px-4 py-2.5 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300"
+                            />
+                            <button
+                                onClick={saveBirthDate}
+                                disabled={savingBirthDate || !birthDate}
+                                className="bg-indigo-600 text-white px-5 py-2.5 rounded-lg font-medium hover:bg-indigo-700 disabled:opacity-50 transition text-sm"
+                            >
+                                {savingBirthDate ? 'Sparar...' : 'Spara'}
+                            </button>
+                            {birthDate && (
+                                <span className="text-sm text-slate-600">
+                                    Du är <strong>{calculateAge(birthDate)} år</strong>
+                                </span>
+                            )}
+                        </div>
+                        {birthDateStatus && (
+                            <div className={`mt-2 text-sm ${birthDateStatus.startsWith('✓') ? 'text-green-600' : 'text-red-600'}`}>
+                                {birthDateStatus}
+                            </div>
+                        )}
                     </div>
 
                     {/* Gmail Connection Section */}

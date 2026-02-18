@@ -653,8 +653,22 @@ async def generate_cover_letter(job: Dict, user_cv_text: Optional[str] = None, u
         job_extras.append(f"- Lön: {sal}")
     extras_text = "\n".join(job_extras) if job_extras else ""
 
+    # Calculate real age from birth_date
+    real_age = None
+    birth_date_str = p.get("birth_date")
+    if birth_date_str:
+        try:
+            from datetime import date
+            birth = date.fromisoformat(str(birth_date_str)[:10])
+            today = date.today()
+            real_age = today.year - birth.year - ((today.month, today.day) < (birth.month, birth.day))
+        except Exception:
+            pass
+
     # Build user info section
     user_info = f"- {name}"
+    if real_age:
+        user_info += f", {real_age} år"
     user_info += f", bor i {location}"
     if has_license:
         user_info += f"\n- Har B-körkort, egen bil, flexibel med arbetstider"
@@ -746,7 +760,8 @@ INSTRUKTIONER:
 7. Om "EXTRA ERFARENHETER SOM MÅSTE NÄMNAS I BREVET" finns ovan — nämn dem ALLTID specifikt i brevet, även om de inte är den starkaste matchningen
 8. Om "MIN SKRIVSTIL" finns ovan — följ den stilen. Undvik ALLA fraser listade under "Fraser jag INTE vill ha". Använd gärna fraser från "Fraser jag gillar".
 9. Om "MINA PERSONLIGA ANEKDOTER & HOBBYS" finns ovan — väv in EN relevant anekdot eller hobby om den passar jobbet. Tvinga inte in irrelevanta anekdoter.
-10. Avsluta med:
+10. VIKTIGT om ålder: Om du nämner ålder, använd EXAKT den ålder som står under "OM MIG" ovan. Ignorera eventuell ålder som nämns i bakgrund/erfarenheter — den kan vara gammal.
+11. Avsluta med:
    Med vänlig hälsning,
    {name}
    {phone}
@@ -5502,6 +5517,7 @@ async def get_profile(request: Request):
         "phone": profile.get("phone", ""),
         "location": profile.get("location", ""),
         "email_signature": profile.get("email_signature", ""),
+        "birth_date": profile.get("birth_date"),
         "training_letter_analyzed": len(letters) > 0,
         "training_letter_count": len(letters),
         "cv_uploaded": len(cv_uploads) > 0,
@@ -5528,6 +5544,32 @@ async def update_email_signature(request: Request):
             "user_id": user_id,
             "full_name": "",
             "email_signature": signature
+        })
+
+    return {"success": True}
+
+
+@app.patch("/api/profile/birth-date")
+async def update_birth_date(request: Request):
+    """Save the user's birth date for accurate age calculation."""
+    user_id = await get_user_id_from_request(request, required=True)
+
+    body = await request.json()
+    birth_date = body.get("birth_date")
+
+    if not birth_date:
+        raise HTTPException(status_code=400, detail="Födelsedatum krävs")
+
+    result = await db_request(
+        "PATCH",
+        f"user_profiles?user_id=eq.{user_id}",
+        data={"birth_date": birth_date, "updated_at": datetime.now().isoformat()}
+    )
+    if not result:
+        await db_request("POST", "user_profiles", data={
+            "user_id": user_id,
+            "full_name": "",
+            "birth_date": birth_date
         })
 
     return {"success": True}
@@ -5933,10 +5975,10 @@ Brev:
 Returnera ett JSON-objekt med dessa exakta nycklar:
 - "tone": En mening om tonen, t.ex. "Varm och personlig, men professionell"
 - "structure": En mening om hur brevet är uppbyggt, t.ex. "Börjar med varför företaget, sedan erfarenhet, avslutar med konkret nästa steg"
-- "phrases": Lista med 3-6 fraser eller uttryck som personen faktiskt använder
+- "phrases": Lista med 3-6 fraser eller uttryck som personen faktiskt använder. EXKLUDERA fraser som innehåller specifik ålder (t.ex. "jag är en 27-årig") — åldern kan vara inaktuell.
 - "avoid": Lista med ord eller fraser som personen INTE använder (t.ex. klichéer som de aktivt undviker)
 - "length_preference": En mening om brevets längd och takt, t.ex. "Kortfattat, max 3 stycken, ingen onödig utfyllnad"
-- "opening_style": En mening om hur personen brukar inleda, t.ex. "Börjar alltid med vad som drog dem till just det företaget"
+- "opening_style": En mening om hur personen brukar inleda, t.ex. "Börjar alltid med vad som drog dem till just det företaget". EXKLUDERA specifik ålder från öppningen.
 
 Svara ENDAST med JSON."""
 
@@ -5986,7 +6028,7 @@ async def analyze_writing_tone_multi(letter_texts: list) -> dict:
 Returnera ett JSON-objekt med dessa exakta nycklar:
 - "tone": Beskriv tonen. Om breven har olika ton, beskriv BÅDA, t.ex. "Brev 1: Formellt och sakligt. Brev 2: Personligt och varmt"
 - "structure": Beskriv strukturen. Om breven är uppbyggda olika, beskriv BÅDA skillnaderna, t.ex. "Brev 1: Klassiskt format med inledning-kropp-avslut. Brev 2: Punktlista med konkreta resultat"
-- "phrases": Lista med ALLA unika fraser eller uttryck som personen faktiskt använder, samlade från ALLA brev. Ju fler brev, desto längre lista. Minst 3 per brev.
+- "phrases": Lista med ALLA unika fraser eller uttryck som personen faktiskt använder, samlade från ALLA brev. Ju fler brev, desto längre lista. Minst 3 per brev. EXKLUDERA fraser med specifik ålder (t.ex. "jag är en 27-årig") — åldern kan vara inaktuell.
 - "avoid": Lista med ALLA ord eller fraser som personen konsekvent INTE använder (klichéer de undviker). Samla från alla brev. Ju fler brev, desto längre lista.
 - "length_preference": Beskriv längd och tempo. Om breven skiljer sig, nämn det.
 - "opening_style": Beskriv hur personen inleder. Om olika öppningar, beskriv båda.
