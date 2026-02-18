@@ -577,7 +577,7 @@ JOBBET:
 {extras_text}
 - Beskrivning: {job.get('description', '')[:2500]}
 
-MIN ERFARENHET:
+MIN BAKGRUND (använd som inspiration — plocka bara det som faktiskt är relevant):
 {experience}
 
 OM MIG:
@@ -586,10 +586,11 @@ OM MIG:
 INSTRUKTIONER:
 1. Börja med: {contact_greeting}
 2. Skriv 150-200 ord på naturlig, varm svenska
-3. Lyft fram 2-3 specifika erfarenheter som matchar jobbet
-4. VIKTIGT: Om annonsen nämner specifika krav (t.ex. körkort, bil, språk, kvällar, helger, fysiska krav), bekräfta att jag uppfyller dem
-5. Nämn var jag bor och att jag är flexibel med arbetstider
-6. Avsluta med:
+3. Matcha tonen mot jobbet: fysisk/praktisk tjänst → enkelt och jordnära; kontorsjobb → lite mer formellt
+4. Lyft BARA erfarenheter som faktiskt passar jobbet. Om inga erfarenheter matchar direkt, fokusera istället på personliga egenskaper som passar (t.ex. noggrannhet, pålitlighet, initiativförmåga, servicekänsla). Försök ALDRIG koppla irrelevant erfarenhet till jobbet på ett konstruerat sätt.
+5. VIKTIGT: Om annonsen nämner specifika krav eller önskemål (t.ex. körkort, bil, fysisk förmåga, kvällar/helger, sommarsäsong, "annan sysselsättning"), bekräfta kortfattat att jag uppfyller/passar dem — utan att överdriva
+6. Nämn var jag bor och att jag är flexibel med arbetstider
+7. Avsluta med:
    Med vänlig hälsning,
    {name}
    {phone}
@@ -800,18 +801,23 @@ def match_job_to_cv_vibe(job_title: str, job_description: str) -> str:
     """Match a job to the best CV vibe. Returns vibe_id that maps to a CV PDF."""
     text = f"{job_title} {job_description}".lower()
 
+    # Use whole-word matching via regex to avoid "it" matching inside "arbetstider" etc.
+    def word_match(keyword: str, haystack: str) -> bool:
+        return bool(re.search(r'\b' + re.escape(keyword) + r'\b', haystack))
+
     vibe_keywords = {
-        "restaurant":         ["servitör", "servitris", "restaurang", "kock", "café", "barista", "kök", "mat", "dryck", "bar"],
-        "retail":             ["butik", "kassa", "försäljare", "säljare", "retail", "handel", "klädbutik", "ica", "coop", "lidl", "hemköp"],
-        "customerservice":    ["kundtjänst", "kundservice", "customer service", "support", "helpdesk", "telefon", "chatt", "reception"],
-        "tech":               ["it", "tech", "utvecklare", "developer", "webbutvecklare", "frontend", "backend", "data", "programmering", "mjukvara"],
-        "healthcare":         ["vård", "omsorg", "sjuksköterska", "undersköterska", "äldreboende", "hemtjänst", "medicin", "rehab"],
-        "industri":           ["trädgård", "industri", "lager", "städ", "renhållning", "utomhus", "bygg", "produktion", "truck", "magasin"],
-        "contentmoderation":  ["moderator", "content moderation", "trust and safety", "granskning", "recensioner", "online safety"],
-        "art":                ["konst", "kultur", "galleri", "utställning", "kreativ", "design", "illustration", "media"],
+        "restaurant":        ["servitör", "servitris", "restaurang", "kock", "café", "barista", "kök", "matlagning", "dryck", "bar", "bageri", "konditori"],
+        "retail":            ["butik", "kassa", "kassaarbete", "försäljare", "säljare", "retail", "handel", "klädbutik", "ica", "coop", "lidl", "hemköp", "lagerarbete i butik"],
+        "customerservice":   ["kundtjänst", "kundservice", "kundmottagning", "support", "helpdesk", "telefonsupport", "chatt", "reception", "receptionist"],
+        "tech":              ["mjukvara", "programmering", "webbutvecklare", "frontend", "backend", "systemutvecklare", "it-tekniker", "it-support", "devops", "agile", "scrum"],
+        "healthcare":        ["vård", "omsorg", "sjuksköterska", "undersköterska", "äldreboende", "hemtjänst", "medicin", "rehab", "personlig assistent", "lss", "psykiatri"],
+        "industri":          ["trädgård", "industri", "lager", "städ", "städning", "renhållning", "utomhus", "bygg", "produktion", "truck", "magasin", "underhåll", "rastplats",
+                              "skötsel", "fastighet", "mark", "park", "reparation", "maskin", "montör", "svetsare", "godshantering", "bud", "chaufför", "sommarjobb utomhus"],
+        "contentmoderation": ["moderator", "content moderation", "trust and safety", "granskning", "recensioner", "online safety"],
+        "art":               ["konst", "kultur", "galleri", "utställning", "kreativ", "illustration", "foto", "film", "musik", "teater"],
     }
 
-    scores = {vibe: sum(1 for kw in kws if kw in text) for vibe, kws in vibe_keywords.items()}
+    scores = {vibe: sum(1 for kw in kws if word_match(kw, text)) for vibe, kws in vibe_keywords.items()}
     best_vibe = max(scores, key=scores.get) if max(scores.values()) > 0 else "customerservice"
     return best_vibe
 
