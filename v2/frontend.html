@@ -102,10 +102,11 @@
         };
 
         // Navigation tabs
-        const NavTabs = ({ activeTab, setActiveTab }) => (
+        const NavTabs = ({ activeTab, setActiveTab, emailJobCount, externalJobCount }) => (
             <div className="flex gap-6">
                 {[
-                    { id: 'jobs', label: 'Jobb', icon: '🔍' },
+                    { id: 'jobs', label: 'Jobb', icon: '📧', count: emailJobCount },
+                    { id: 'external', label: 'Extern', icon: '🌐', count: externalJobCount },
                     { id: 'cvs', label: 'Mina CV', icon: '📄' },
                     { id: 'applications', label: 'Ansökningar', icon: '📬' },
                     { id: 'metrics', label: 'Statistik', icon: '📊' },
@@ -119,7 +120,7 @@
                         onClick={() => setActiveTab(tab.id)}
                         className={`pb-2 text-white/80 hover:text-white transition ${activeTab === tab.id ? 'tab-active text-white font-medium' : ''}`}
                     >
-                        {tab.icon} {tab.label}
+                        {tab.icon} {tab.label}{tab.count > 0 ? ` (${tab.count})` : ''}
                     </button>
                 ))}
             </div>
@@ -3103,7 +3104,334 @@
             );
         };
 
-        // Jobs page
+        // External jobs page — jobs without contact email (apply via external website)
+        const ExternalJobsPage = ({ jobs, onScrape, scraping, savedJobs, onSaveJob, onOpenQuiz }) => {
+            const [keywords, setKeywords] = useState('');
+            const [currentPage, setCurrentPage] = useState(1);
+            const [hiddenJobIds, setHiddenJobIds] = useState(new Set());
+            const [showHidden, setShowHidden] = useState(false);
+            const [generatingLetter, setGeneratingLetter] = useState(null);
+            const [generatedLetter, setGeneratedLetter] = useState({});  // { jobId: letterText }
+            const [copied, setCopied] = useState(false);
+
+            const logInteraction = async (jobId, action, context = {}) => {
+                if (!localStorage.getItem('auth_token')) return;
+                try {
+                    await authFetch(`/api/jobs/${jobId}/interaction`, {
+                        method: 'POST',
+                        body: JSON.stringify({ action, context })
+                    });
+                } catch (e) {}
+            };
+
+            const handleSkip = (job) => {
+                logInteraction(job.id, 'skipped');
+                setCurrentPage(p => Math.min(filteredJobs.length, p + 1));
+            };
+
+            const handleReject = (job) => {
+                logInteraction(job.id, 'rejected');
+                setHiddenJobIds(prev => new Set([...prev, job.id]));
+            };
+
+            const handleGenerateLetter = async (job) => {
+                setGeneratingLetter(job.id);
+                try {
+                    const res = await authFetch(`/api/jobs/${job.id}/apply-with-cv`, {
+                        method: 'POST',
+                        body: JSON.stringify({ job })
+                    });
+                    const data = await res.json();
+                    if (data.success && data.cover_letter) {
+                        setGeneratedLetter(prev => ({ ...prev, [job.id]: data.cover_letter }));
+                    } else {
+                        alert(data.detail || 'Kunde inte generera brev just nu.');
+                    }
+                } catch (err) {
+                    console.error('Failed to generate letter:', err);
+                    alert('Kunde inte ansluta till servern.');
+                }
+                setGeneratingLetter(null);
+            };
+
+            const handleCopy = (text) => {
+                navigator.clipboard.writeText(text);
+                setCopied(true);
+                setTimeout(() => setCopied(false), 2000);
+            };
+
+            const filteredJobs = jobs
+                .filter(job => !showHidden ? !hiddenJobIds.has(job.id) : true)
+                .sort((a, b) => new Date(a.deadline || '2099-12-31') - new Date(b.deadline || '2099-12-31'));
+
+            const jobIndex = currentPage - 1;
+            const currentJob = filteredJobs[jobIndex];
+            const currentLetter = currentJob ? generatedLetter[currentJob.id] : null;
+
+            return (
+                <div>
+                    {/* Search bar */}
+                    <div className="flex items-center gap-3 mb-4">
+                        <input
+                            type="text"
+                            value={keywords}
+                            onChange={(e) => setKeywords(e.target.value)}
+                            placeholder="Sök jobb på Platsbanken..."
+                            className="flex-1 border border-slate-200 bg-white rounded-xl px-4 py-2.5 text-sm shadow-sm focus:outline-none focus:ring-2 focus:ring-indigo-300"
+                            onKeyDown={(e) => e.key === 'Enter' && onScrape(keywords)}
+                        />
+                        <button
+                            onClick={() => onScrape(keywords)}
+                            disabled={scraping}
+                            className="bg-indigo-600 text-white px-5 py-2.5 rounded-xl text-sm font-medium hover:bg-indigo-700 disabled:opacity-50 shadow-sm whitespace-nowrap"
+                        >
+                            {scraping ? '⏳ Söker...' : '🔍 Sök'}
+                        </button>
+                        {hiddenJobIds.size > 0 && (
+                            <button
+                                onClick={() => setShowHidden(h => !h)}
+                                className="text-sm text-slate-400 hover:text-slate-600 transition whitespace-nowrap"
+                            >
+                                {showHidden ? '🙈 Dölj' : `👁 ${hiddenJobIds.size} dolda`}
+                            </button>
+                        )}
+                    </div>
+
+                    {/* Info banner */}
+                    <div className="bg-amber-50 border border-amber-200 rounded-xl p-3 mb-4 flex items-center gap-2">
+                        <span className="text-amber-600 text-sm">🌐 Dessa jobb kräver extern ansökan — inget mail skickas. Generera ett personligt brev, kopiera det, och ansök via arbetsgivarens webbplats.</span>
+                    </div>
+
+                    {jobs.length === 0 ? (
+                        <div className="bg-white rounded-xl p-10 text-center shadow-sm">
+                            <p className="text-slate-500 mb-4">Inga externa jobb hittade.</p>
+                            <button onClick={() => onScrape('')} disabled={scraping} className="bg-indigo-600 text-white px-6 py-3 rounded-xl font-medium hover:bg-indigo-700 disabled:opacity-50 transition">
+                                {scraping ? 'Söker...' : 'Sök jobb'}
+                            </button>
+                        </div>
+                    ) : filteredJobs.length === 0 ? (
+                        <div className="bg-white rounded-xl p-10 text-center shadow-sm">
+                            <p className="text-slate-500">Inga externa jobb kvar.</p>
+                        </div>
+                    ) : currentJob ? (
+                        <div>
+                            {/* Progress bar */}
+                            <div className="flex items-center justify-between mb-3">
+                                <button
+                                    onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
+                                    disabled={jobIndex === 0}
+                                    className="text-sm text-slate-400 hover:text-slate-700 disabled:opacity-30 transition font-medium px-3 py-1.5 rounded-lg hover:bg-slate-100"
+                                >
+                                    ← Föregående
+                                </button>
+                                <div className="flex-1 mx-4 flex items-center gap-3">
+                                    <div className="flex-1 bg-slate-200 rounded-full h-1.5">
+                                        <div className="bg-amber-500 h-1.5 rounded-full transition-all" style={{ width: `${((jobIndex + 1) / filteredJobs.length) * 100}%` }} />
+                                    </div>
+                                    <span className="text-xs text-slate-400 whitespace-nowrap">{jobIndex + 1} / {filteredJobs.length}</span>
+                                </div>
+                                <button
+                                    onClick={() => setCurrentPage(p => Math.min(filteredJobs.length, p + 1))}
+                                    disabled={jobIndex >= filteredJobs.length - 1}
+                                    className="text-sm text-slate-400 hover:text-slate-700 disabled:opacity-30 transition font-medium px-3 py-1.5 rounded-lg hover:bg-slate-100"
+                                >
+                                    Nästa →
+                                </button>
+                            </div>
+
+                            {/* Two-column card */}
+                            <div className="bg-white rounded-2xl shadow-sm border border-slate-100" style={{minHeight: '75vh'}}>
+                                <div className="flex h-full" style={{minHeight: '75vh'}}>
+
+                                    {/* LEFT: description or generated letter */}
+                                    <div className="flex-1 p-8 border-r border-slate-100 overflow-y-auto" style={{maxHeight: '82vh'}}>
+                                        {currentLetter ? (
+                                            <>
+                                                <div className="flex items-center justify-between mb-3">
+                                                    <p className="text-xs font-semibold text-green-600 uppercase tracking-widest">Genererat personligt brev</p>
+                                                    <button
+                                                        onClick={() => handleCopy(currentLetter)}
+                                                        className="text-xs bg-green-600 text-white px-3 py-1.5 rounded-lg hover:bg-green-700 transition font-medium"
+                                                    >
+                                                        {copied ? '✓ Kopierat!' : '📋 Kopiera brev'}
+                                                    </button>
+                                                </div>
+                                                <div className="prose prose-sm max-w-none text-slate-700 whitespace-pre-wrap bg-green-50 border border-green-200 rounded-xl p-5" style={{lineHeight: '1.7'}}>
+                                                    {currentLetter}
+                                                </div>
+                                                <button
+                                                    onClick={() => setGeneratedLetter(prev => { const copy = {...prev}; delete copy[currentJob.id]; return copy; })}
+                                                    className="mt-3 text-xs text-slate-400 hover:text-slate-600"
+                                                >
+                                                    ← Visa jobbannons igen
+                                                </button>
+                                            </>
+                                        ) : (
+                                            <>
+                                                <p className="text-xs font-semibold text-slate-400 uppercase tracking-widest mb-3">Jobbannons</p>
+                                                {currentJob.description ? (
+                                                    <div className="prose prose-sm max-w-none text-slate-700" style={{lineHeight: '1.7'}}>
+                                                        <div dangerouslySetInnerHTML={{
+                                                            __html: (() => {
+                                                                let text = currentJob.description.substring(0, 6000);
+                                                                text = text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+                                                                let lines = text.split(/\n/);
+                                                                let html = '';
+                                                                let inList = false;
+                                                                for (const line of lines) {
+                                                                    const trimmed = line.trim();
+                                                                    if (!trimmed) {
+                                                                        if (inList) { html += '</ul>'; inList = false; }
+                                                                        html += '<div style="height:0.5rem"></div>';
+                                                                        continue;
+                                                                    }
+                                                                    if (/^[•\-–—\*]\s/.test(trimmed)) {
+                                                                        if (!inList) { html += '<ul style="margin:0.5rem 0 0.5rem 1.2rem;padding:0">'; inList = true; }
+                                                                        html += '<li style="margin-bottom:0.25rem">' + trimmed.replace(/^[•\-–—\*]\s*/, '') + '</li>';
+                                                                    } else if (/^[A-ZÅÄÖ\s]{4,50}:?\s*$/.test(trimmed)) {
+                                                                        if (inList) { html += '</ul>'; inList = false; }
+                                                                        html += '<p style="font-weight:600;color:#374151;margin:1rem 0 0.25rem;font-size:0.8rem;text-transform:uppercase;letter-spacing:0.05em">' + trimmed + '</p>';
+                                                                    } else {
+                                                                        if (inList) { html += '</ul>'; inList = false; }
+                                                                        html += '<p style="margin-bottom:0.4rem">' + trimmed + '</p>';
+                                                                    }
+                                                                }
+                                                                if (inList) html += '</ul>';
+                                                                return html;
+                                                            })()
+                                                        }} />
+                                                    </div>
+                                                ) : (
+                                                    <p className="text-slate-400 text-sm">Ingen beskrivning tillgänglig.</p>
+                                                )}
+                                            </>
+                                        )}
+                                    </div>
+
+                                    {/* RIGHT: info + actions */}
+                                    <div className="w-80 flex-shrink-0 p-6 flex flex-col gap-4 bg-slate-50/50">
+
+                                        {/* Priority + save */}
+                                        <div className="flex items-center justify-between">
+                                            <span className={`text-xs px-2.5 py-1 rounded-full font-medium ${
+                                                currentJob.priority === 'urgent' ? 'bg-red-100 text-red-700' :
+                                                currentJob.priority === 'soon' ? 'bg-amber-100 text-amber-700' :
+                                                'bg-green-100 text-green-700'
+                                            }`}>
+                                                {currentJob.priority === 'urgent' ? '🔴 Akut' : currentJob.priority === 'soon' ? '🟡 Snart' : '🟢 Ny'}
+                                            </span>
+                                            <button
+                                                onClick={() => onSaveJob(currentJob.id, !(savedJobs || []).includes(currentJob.id))}
+                                                className={`text-sm font-medium transition ${(savedJobs || []).includes(currentJob.id) ? 'text-pink-600' : 'text-slate-400 hover:text-pink-500'}`}
+                                            >
+                                                {(savedJobs || []).includes(currentJob.id) ? '★ Sparad' : '☆ Spara'}
+                                            </button>
+                                        </div>
+
+                                        {/* Title + company */}
+                                        <div>
+                                            <h3 className="text-xl font-bold text-slate-800 leading-tight mb-1">{currentJob.title}</h3>
+                                            <p className="text-amber-600 font-semibold">{currentJob.company}</p>
+                                            <p className="text-slate-500 text-sm mt-1">
+                                                📍 {currentJob.location || currentJob.municipality || currentJob.county || 'Okänd ort'}
+                                            </p>
+                                            {currentJob.deadline && (
+                                                <p className="text-slate-400 text-xs mt-1">Ansök senast {new Date(currentJob.deadline).toLocaleDateString('sv-SE')}</p>
+                                            )}
+                                        </div>
+
+                                        {/* Tags */}
+                                        <div className="flex flex-wrap gap-1.5">
+                                            {currentJob.working_hours && (
+                                                <span className="text-xs bg-indigo-50 text-indigo-700 px-2.5 py-1 rounded-full font-medium">🕐 {currentJob.working_hours}</span>
+                                            )}
+                                            {currentJob.employment_type && (
+                                                <span className="text-xs bg-white border border-slate-200 text-slate-600 px-2.5 py-1 rounded-full">{currentJob.employment_type}</span>
+                                            )}
+                                            {currentJob.duration && (
+                                                <span className="text-xs bg-white border border-slate-200 text-slate-600 px-2.5 py-1 rounded-full">{currentJob.duration}</span>
+                                            )}
+                                        </div>
+
+                                        {/* External apply info */}
+                                        <div className="bg-amber-50 border border-amber-200 rounded-xl p-3">
+                                            <p className="text-xs font-semibold text-amber-700 uppercase tracking-wide mb-1">🌐 Extern ansökan</p>
+                                            <p className="text-xs text-amber-600">Ansök via arbetsgivarens webbplats.</p>
+                                            {currentJob.apply_url && (
+                                                <a href={currentJob.apply_url} target="_blank" className="text-xs text-indigo-600 hover:underline block mt-1">Direkt till ansökningsformuläret ↗</a>
+                                            )}
+                                        </div>
+
+                                        {/* Spacer */}
+                                        <div className="flex-1" />
+
+                                        {/* Action buttons */}
+                                        <div className="flex flex-col gap-2">
+                                            {currentLetter ? (
+                                                <>
+                                                    <button
+                                                        onClick={() => handleCopy(currentLetter)}
+                                                        className="w-full py-3.5 bg-green-600 text-white rounded-xl font-semibold hover:bg-green-700 transition shadow-sm"
+                                                    >
+                                                        {copied ? '✓ Kopierat!' : '📋 Kopiera personligt brev'}
+                                                    </button>
+                                                    <a
+                                                        href={currentJob.apply_url || currentJob.url}
+                                                        target="_blank"
+                                                        className="w-full py-3 bg-amber-500 text-white rounded-xl font-semibold hover:bg-amber-600 transition shadow-sm text-center block"
+                                                    >
+                                                        🌐 Öppna ansökan ↗
+                                                    </a>
+                                                </>
+                                            ) : (
+                                                <button
+                                                    onClick={() => handleGenerateLetter(currentJob)}
+                                                    disabled={generatingLetter === currentJob.id}
+                                                    className="w-full py-3.5 bg-amber-500 text-white rounded-xl font-semibold hover:bg-amber-600 disabled:opacity-50 transition shadow-sm"
+                                                >
+                                                    {generatingLetter === currentJob.id ? '⏳ Skapar brev...' : '✍️ Skapa personligt brev'}
+                                                </button>
+                                            )}
+                                            <div className="flex gap-2">
+                                                <button
+                                                    onClick={() => handleSkip(currentJob)}
+                                                    className="flex-1 py-2.5 border-2 border-slate-200 rounded-xl text-slate-500 text-sm font-medium hover:bg-slate-100 transition"
+                                                >
+                                                    Hoppa över
+                                                </button>
+                                                <button
+                                                    onClick={() => handleReject(currentJob)}
+                                                    className="py-2.5 px-3 border-2 border-red-200 text-red-400 rounded-xl hover:bg-red-50 transition"
+                                                    title="Dölj detta jobb"
+                                                >
+                                                    🚫
+                                                </button>
+                                            </div>
+                                            <a href={currentJob.url} target="_blank" className="text-center text-xs text-slate-400 hover:text-indigo-600 transition mt-1">
+                                                Se originalannons ↗
+                                            </a>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    ) : (
+                        <div className="bg-white rounded-xl p-10 text-center shadow-sm max-w-3xl mx-auto">
+                            <p className="text-lg font-semibold text-slate-700 mb-2">Klart! 🎉</p>
+                            <p className="text-slate-500">Du har gått igenom alla {filteredJobs.length} externa jobb.</p>
+                            <button
+                                onClick={() => setCurrentPage(1)}
+                                className="mt-4 px-5 py-2.5 bg-amber-500 text-white rounded-xl font-medium hover:bg-amber-600 transition"
+                            >
+                                Börja om
+                            </button>
+                        </div>
+                    )}
+                </div>
+            );
+        };
+
+        // Jobs page (email-apply jobs only)
         const JobsPage = ({ jobs, onScrape, onApply, scraping, applyingJob, savedJobs, onSaveJob, onOpenQuiz }) => {
             const [keywords, setKeywords] = useState('');
             const [filterText, setFilterText] = useState('');
@@ -3280,11 +3608,6 @@
                     return true;
                 })
                 .sort((a, b) => {
-                    // Always put jobs with contact email first (direct apply)
-                    const aHasEmail = !!(a.contact_email && a.contact_email.includes('@'));
-                    const bHasEmail = !!(b.contact_email && b.contact_email.includes('@'));
-                    if (aHasEmail !== bHasEmail) return aHasEmail ? -1 : 1;
-
                     if (sortBy === 'deadline') {
                         return new Date(a.deadline || '2099-12-31') - new Date(b.deadline || '2099-12-31');
                     }
@@ -5562,7 +5885,12 @@
                                     <UserMenu user={user} onLogout={handleLogout} />
                                 </div>
                             </div>
-                            <NavTabs activeTab={activeTab} setActiveTab={setActiveTab} />
+                            <NavTabs
+                                activeTab={activeTab}
+                                setActiveTab={setActiveTab}
+                                emailJobCount={jobs.filter(j => j.contact_email && j.contact_email.includes('@')).length}
+                                externalJobCount={jobs.filter(j => !j.contact_email || !j.contact_email.includes('@')).length}
+                            />
                         </div>
                     </header>
 
@@ -5570,11 +5898,22 @@
 
                         {activeTab === 'jobs' && (
                             <JobsPage
-                                jobs={jobs}
+                                jobs={jobs.filter(j => j.contact_email && j.contact_email.includes('@'))}
                                 onScrape={handleScrape}
                                 onApply={handleApply}
                                 scraping={scraping}
                                 applyingJob={applyingJob}
+                                savedJobs={savedJobs}
+                                onSaveJob={handleSaveJob}
+                                onOpenQuiz={() => setShowOnboarding(true)}
+                            />
+                        )}
+
+                        {activeTab === 'external' && (
+                            <ExternalJobsPage
+                                jobs={jobs.filter(j => !j.contact_email || !j.contact_email.includes('@'))}
+                                onScrape={handleScrape}
+                                scraping={scraping}
                                 savedJobs={savedJobs}
                                 onSaveJob={handleSaveJob}
                                 onOpenQuiz={() => setShowOnboarding(true)}
