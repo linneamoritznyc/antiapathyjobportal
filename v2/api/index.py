@@ -7,7 +7,7 @@ from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, HTMLResponse
 from pydantic import BaseModel
-from typing import Optional, List, Dict
+from typing import Any, Optional, List, Dict
 import os
 import logging
 import httpx
@@ -3853,11 +3853,13 @@ class QuizProfileData(BaseModel):
 
 
 class UserPreferences(BaseModel):
+    model_config = {"extra": "ignore"}  # Silently drop unknown fields from frontend
     # Quiz fields (maps to Platsbanken data)
     search_terms: Optional[list] = None
     custom_search: Optional[str] = None
-    location: Optional[list] = None
-    working_hours: Optional[str] = None
+    location: Optional[list] = None  # Taxonomy municipality concept IDs
+    negative_keywords: Optional[list] = None  # Excluded job keywords
+    working_hours: Optional[Any] = None  # str or list from quiz vs PreferencesPage
     employment_form: Optional[list] = None
     duration: Optional[str] = None
     salary: Optional[str] = None
@@ -3971,25 +3973,34 @@ async def save_user_preferences(request: Request, prefs: UserPreferences):
     """Save user job preferences and Gmail credentials."""
     user_id = await get_user_id_from_request(request, required=True)
 
-    # Upsert preferences - store all quiz answers as JSONB
+    # Build quiz_answers JSONB — single source of truth for all preferences
+    quiz_answers = {
+        "search_terms": prefs.search_terms,
+        "custom_search": getattr(prefs, 'custom_search', None),
+        "location": prefs.location,  # Taxonomy municipality concept IDs
+        "negative_keywords": prefs.negative_keywords,
+        "working_hours": prefs.working_hours,
+        "employment_form": prefs.employment_form,
+        "duration": prefs.duration,
+        "salary": prefs.salary,
+        "dealbreakers": prefs.dealbreakers
+    }
+
+    # Build search keywords from custom_search and search_terms
+    search_kw = []
+    if prefs.custom_search:
+        search_kw = [k.strip() for k in prefs.custom_search.split(',') if k.strip()]
+    elif prefs.search_terms:
+        search_kw = prefs.search_terms
+
+    # Upsert — maps to actual DB columns in user_job_preferences
     prefs_data = {
         "user_id": user_id,
-        "job_titles": prefs.custom_search if hasattr(prefs, 'custom_search') and prefs.custom_search else (
-            ','.join(prefs.search_terms or prefs.role_type or []) if (prefs.search_terms or prefs.role_type) else (prefs.job_titles or '')
-        ),
-        "locations": ','.join(prefs.location or []) if prefs.location else (prefs.locations or ''),
-        "job_types": prefs.search_terms or prefs.role_type or prefs.job_types or [],
-        "experience_level": prefs.experience_level or '',
-        "quiz_answers": {
-            "search_terms": prefs.search_terms,
-            "custom_search": getattr(prefs, 'custom_search', None),
-            "location": prefs.location,
-            "working_hours": prefs.working_hours,
-            "employment_form": prefs.employment_form,
-            "duration": prefs.duration,
-            "salary": prefs.salary,
-            "dealbreakers": prefs.dealbreakers
-        },
+        "preferred_locations": prefs.location or [],  # TEXT[] of taxonomy municipality IDs
+        "search_keywords": search_kw,  # TEXT[] of positive search terms
+        "excluded_keywords": prefs.negative_keywords or [],  # TEXT[] of negative keywords
+        "job_types": prefs.job_types or prefs.search_terms or [],
+        "quiz_answers": quiz_answers,  # JSONB — all raw quiz/preference data
         "updated_at": "now()"
     }
 

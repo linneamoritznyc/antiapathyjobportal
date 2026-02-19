@@ -81,6 +81,8 @@ CREATE TABLE IF NOT EXISTS user_cover_letter_preferences (
 );
 
 -- Job search preferences per user
+-- quiz_answers JSONB stores all preferences (location/kommun IDs, keywords, dealbreakers, etc.)
+-- This is the primary source of truth; other columns are legacy/denormalized.
 CREATE TABLE IF NOT EXISTS user_job_preferences (
     user_id TEXT PRIMARY KEY,
     preferred_locations TEXT[] DEFAULT ARRAY['Stockholm']::TEXT[],
@@ -91,6 +93,7 @@ CREATE TABLE IF NOT EXISTS user_job_preferences (
     min_hours_per_week INT,
     max_commute_minutes INT,
     remote_only BOOLEAN DEFAULT FALSE,
+    quiz_answers JSONB DEFAULT '{}'::jsonb,  -- All quiz + preferences data (location, dealbreakers, etc.)
     created_at TIMESTAMPTZ DEFAULT NOW(),
     updated_at TIMESTAMPTZ DEFAULT NOW()
 );

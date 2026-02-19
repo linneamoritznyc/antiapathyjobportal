@@ -2163,10 +2163,11 @@
         ];
 
         const PreferencesPage = () => {
-            const [prefs, setPrefs] = useState(() => {
+            const loadPrefs = () => {
                 try { return JSON.parse(localStorage.getItem('job_preferences') || '{}'); }
                 catch(e) { return {}; }
-            });
+            };
+            const [prefs, setPrefs] = useState(loadPrefs);
 
             // Positive keywords
             const [posKeywords, setPosKeywords] = useState(prefs.custom_search ? prefs.custom_search.split(',').map(k => k.trim()).filter(Boolean) : []);
@@ -2193,6 +2194,21 @@
             const [selectedDealbreakers, setSelectedDealbreakers] = useState(prefs.dealbreakers || []);
 
             const [saved, setSaved] = useState(false);
+
+            // Re-sync state when Supabase data arrives
+            useEffect(() => {
+                const onPrefsUpdated = () => {
+                    const fresh = loadPrefs();
+                    setPrefs(fresh);
+                    if (fresh.location && fresh.location.length > 0) setSelectedKommuner(fresh.location);
+                    if (fresh.negative_keywords) setNegKeywords(fresh.negative_keywords);
+                    if (fresh.working_hours) setSelectedHours(Array.isArray(fresh.working_hours) ? fresh.working_hours : [fresh.working_hours]);
+                    if (fresh.dealbreakers) setSelectedDealbreakers(fresh.dealbreakers);
+                    if (fresh.custom_search) setPosKeywords(fresh.custom_search.split(',').map(k => k.trim()).filter(Boolean));
+                };
+                window.addEventListener('prefsUpdated', onPrefsUpdated);
+                return () => window.removeEventListener('prefsUpdated', onPrefsUpdated);
+            }, []);
 
             const toggleNegKeyword = (kw) => {
                 const kwLow = kw.toLowerCase();
@@ -2255,6 +2271,12 @@
                 setSaved(true);
                 window.dispatchEvent(new Event('prefsUpdated'));
                 setTimeout(() => setSaved(false), 2000);
+
+                // Sync to Supabase so preferences persist across devices/browsers
+                authFetch('/api/user/preferences', {
+                    method: 'POST',
+                    body: JSON.stringify(updated)
+                }).catch(err => console.warn('Failed to sync preferences to server:', err));
             };
 
             // Filter visible chips
@@ -4712,6 +4734,23 @@
                         console.error('Failed to load taxonomy:', err);
                         setLanDataReady(true);
                     });
+
+                // Load preferences from Supabase (source of truth — overrides localStorage)
+                authFetch('/api/user/preferences')
+                    .then(r => r.json())
+                    .then(data => {
+                        if (data.success && data.preferences && data.preferences.quiz_answers) {
+                            const serverPrefs = data.preferences.quiz_answers;
+                            const localPrefs = JSON.parse(localStorage.getItem('job_preferences') || '{}');
+                            // Server wins — merge server on top of local
+                            const merged = { ...localPrefs, ...serverPrefs };
+                            localStorage.setItem('job_preferences', JSON.stringify(merged));
+                            console.log('[Prefs] Synced from Supabase:', Object.keys(serverPrefs));
+                            // Notify components to re-read preferences
+                            window.dispatchEvent(new Event('prefsUpdated'));
+                        }
+                    })
+                    .catch(err => console.warn('Could not load prefs from server:', err));
             }, []);
 
             const checkOnboarding = async () => {
