@@ -2243,6 +2243,160 @@ def _create_gmail_link(job: Dict, letter: str, subject: str = "") -> str:
     )
 
 
+@app.post("/api/jobs/{job_id}/cover-letter-pdf")
+async def download_cover_letter_pdf(request: Request, job_id: str):
+    """Generate and return a formatted cover letter PDF for download."""
+    from fastapi.responses import Response as RawResponse
+
+    user_id = await get_user_id_from_request(request)
+
+    try:
+        body = await request.json()
+    except Exception:
+        body = {}
+
+    cover_letter_text = body.get("cover_letter", "")
+    if not cover_letter_text:
+        raise HTTPException(status_code=400, detail="Inget brev att ladda ner")
+
+    # Get job info for subject line
+    jobs = await db_request("GET", "jobs", params={"id": f"eq.{job_id}"})
+    job = jobs[0] if jobs else body.get("job", {})
+    job_title = job.get("title", body.get("job_title", "Tjänst"))
+    company = job.get("company", body.get("company", ""))
+
+    # Get user profile for sender info
+    sender_name = "Jobbsökare"
+    sender_phone = ""
+    sender_email_addr = ""
+    sender_location = ""
+    if user_id:
+        profiles = await db_request("GET", "user_profiles", params={"user_id": f"eq.{user_id}"})
+        if profiles:
+            p = profiles[0]
+            sender_name = p.get("full_name", sender_name)
+            sender_phone = p.get("phone", "")
+            sender_email_addr = p.get("email", "")
+            sender_location = p.get("location", "")
+
+    pdf_bytes = generate_cover_letter_pdf(
+        cover_letter_text,
+        sender_name=sender_name,
+        sender_phone=sender_phone,
+        sender_email=sender_email_addr,
+        sender_location=sender_location,
+        job_title=job_title,
+        company=company,
+    )
+
+    filename = f"Personligt_Brev_{sender_name.replace(' ', '_')}.pdf"
+    return RawResponse(
+        content=pdf_bytes,
+        media_type="application/pdf",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'}
+    )
+
+
+@app.post("/api/jobs/{job_id}/answer-question")
+async def answer_application_question(request: Request, job_id: str):
+    """
+    Answer a free-form application question using AI + user profile + job context.
+    Used for external applications that have text fields like 'Varför vill du jobba här?'
+    """
+    user_id = await get_user_id_from_request(request)
+
+    try:
+        body = await request.json()
+    except Exception:
+        body = {}
+
+    question = body.get("question", "").strip()
+    if not question:
+        raise HTTPException(status_code=400, detail="Ingen fråga angiven")
+
+    # Get job info
+    jobs = await db_request("GET", "jobs", params={"id": f"eq.{job_id}"})
+    job = jobs[0] if jobs else body.get("job", {})
+
+    # Get user profile + CV for context
+    user_profile = None
+    cv_text = None
+    style_prefs = None
+    if user_id:
+        import asyncio as _asyncio
+        profiles_r, cvs_r, prefs_r = await _asyncio.gather(
+            db_request("GET", "user_profiles", params={"user_id": f"eq.{user_id}"}),
+            db_request("GET", "user_cvs", params={"user_id": f"eq.{user_id}", "limit": "1"}),
+            db_request("GET", "user_cover_letter_preferences", params={"user_id": f"eq.{user_id}"})
+        )
+        user_profile = profiles_r[0] if profiles_r else None
+        cv_text = cvs_r[0].get("cv_text") if cvs_r else None
+        style_prefs = prefs_r[0] if prefs_r else None
+
+    p = user_profile or {}
+    name = p.get("full_name", "Jobbsökare")
+    location = p.get("location", "")
+
+    # Build style instructions
+    style_hint = ""
+    if style_prefs:
+        if style_prefs.get("tone"):
+            style_hint += f"\nAnvändarens ton: {style_prefs['tone']}"
+        avoid = style_prefs.get("avoid_phrases") or []
+        if avoid:
+            style_hint += f"\nUndvik dessa fraser: {', '.join(avoid)}"
+
+    prompt = f"""Svara på en ansökningsfråga på svenska. Svaret ska vara personligt, ärligt och relevant.
+
+FRÅGAN SOM ARBETSGIVAREN STÄLLER:
+"{question}"
+
+JOBBET:
+- Titel: {job.get('title', 'Okänd')}
+- Företag: {job.get('company', 'Okänt')}
+- Plats: {job.get('location', '')}
+- Beskrivning: {job.get('description', '')[:2000]}
+
+OM SÖKANDEN:
+- Namn: {name}
+- Bor: {location}
+{f'- CV-sammanfattning: {cv_text[:1000]}' if cv_text else ''}
+{style_hint}
+
+INSTRUKTIONER:
+1. Svara direkt på frågan — inga onödiga inledningar
+2. 50-150 ord, kärnfullt och personligt
+3. Referera till specifika delar av jobbeskrivningen som visar varför sökanden passar
+4. Naturlig, varm svenska — inte krystad eller generisk
+5. ALDRIG nämn konst, målning, utställningar eller Shopify
+6. Svaret ska kunna klistras in direkt i ett webbformulär"""
+
+    if not ANTHROPIC_API_KEY:
+        return {"success": True, "answer": f"Jag är intresserad av tjänsten som {job.get('title', 'denna roll')} och tror att min bakgrund passar bra."}
+
+    try:
+        async with httpx.AsyncClient(timeout=30) as client:
+            res = await client.post(
+                "https://api.anthropic.com/v1/messages",
+                headers={
+                    "x-api-key": ANTHROPIC_API_KEY,
+                    "anthropic-version": "2023-06-01",
+                    "content-type": "application/json"
+                },
+                json={
+                    "model": "claude-sonnet-4-5-20250929",
+                    "max_tokens": 500,
+                    "messages": [{"role": "user", "content": prompt}]
+                }
+            )
+            data = res.json()
+            answer = data.get("content", [{}])[0].get("text", "").strip()
+            return {"success": True, "answer": answer}
+    except Exception as e:
+        logger.error(f"Answer question error: {e}")
+        raise HTTPException(status_code=500, detail="Kunde inte generera svar")
+
+
 @app.post("/api/jobs/{job_id}/save-draft")
 async def save_gmail_draft_with_attachments(request: Request, job_id: str):
     """
