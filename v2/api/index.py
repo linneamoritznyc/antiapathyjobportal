@@ -1365,8 +1365,16 @@ async def scrape_jobs(request: JobSearchRequest = None):
             seen.add(job["id"])
             unique_jobs.append(job)
 
-    # Sort by deadline (soonest first) before returning
+    # Sort: email jobs first (direct apply), then external-application jobs at the end
+    # Within each group, sort by deadline (soonest first)
+    def has_email(j):
+        email = j.get("contact_email")
+        return bool(email and "@" in str(email))
+
     unique_jobs.sort(key=lambda j: j.get("deadline") or "2099-12-31")
+    with_email = [j for j in unique_jobs if has_email(j)]
+    without_email = [j for j in unique_jobs if not has_email(j)]
+    unique_jobs = with_email + without_email
 
     # Save to database if configured
     saved_count = await save_jobs_to_db(unique_jobs)
