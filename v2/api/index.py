@@ -411,15 +411,30 @@ async def fetch_taxonomy_data():
     if _taxonomy_cache["data"] and (now - _taxonomy_cache["fetched_at"]) < TAXONOMY_CACHE_TTL:
         return _taxonomy_cache["data"]
 
-    # SCB county code (first 2 digits of municipality code) → region label
+    # SCB county code (first 2 digits of municipality code) → possible region label variants
+    # We store multiple variants to handle whatever the API returns
     SCB_COUNTY_PREFIX = {
-        "01": "Stockholms län", "03": "Uppsala län", "04": "Södermanlands län",
-        "05": "Östergötlands län", "06": "Jönköpings län", "07": "Kronobergs län",
-        "08": "Kalmar län", "09": "Gotlands län", "10": "Blekinge län",
-        "12": "Skåne län", "13": "Hallands län", "14": "Västra Götalands län",
-        "17": "Värmlands län", "18": "Örebro län", "19": "Västmanlands län",
-        "20": "Dalarnas län", "21": "Gävleborgs län", "22": "Västernorrlands län",
-        "23": "Jämtlands län", "24": "Västerbottens län", "25": "Norrbottens län",
+        "01": ["stockholms län", "stockholms", "stockholm"],
+        "03": ["uppsala län", "uppsalas", "uppsala"],
+        "04": ["södermanlands län", "södermanlands", "södermanland"],
+        "05": ["östergötlands län", "östergötlands", "östergötland"],
+        "06": ["jönköpings län", "jönköpings", "jönköping"],
+        "07": ["kronobergs län", "kronobergs", "kronoberg"],
+        "08": ["kalmar län", "kalmars", "kalmar"],
+        "09": ["gotlands län", "gotlands", "gotland"],
+        "10": ["blekinge län", "blekinges", "blekinge"],
+        "12": ["skåne län", "skånes", "skåne"],
+        "13": ["hallands län", "hallands", "halland"],
+        "14": ["västra götalands län", "västra götalands", "västra götaland"],
+        "17": ["värmlands län", "värmlands", "värmland"],
+        "18": ["örebro län", "örebros", "örebro"],
+        "19": ["västmanlands län", "västmanlands", "västmanland"],
+        "20": ["dalarnas län", "dalarnas", "dalarna", "dalarnes"],
+        "21": ["gävleborgs län", "gävleborgs", "gävleborg"],
+        "22": ["västernorrlands län", "västernorrlands", "västernorrland"],
+        "23": ["jämtlands län", "jämtlands", "jämtland"],
+        "24": ["västerbottens län", "västerbottens", "västerbotten"],
+        "25": ["norrbottens län", "norrbottens", "norrbotten"],
     }
 
     try:
@@ -440,20 +455,31 @@ async def fetch_taxonomy_data():
             regions_raw = regions_res.json()
             munis_raw = munis_res.json()
 
-            # Build region lookup
+            # Build region lookup — normalized label → region id
             # API format: {"taxonomy/id": "...", "taxonomy/preferred-label": "Stockholms län", ...}
             regions = {}
-            region_label_to_id = {}
+            region_norm_to_id = {}  # lowercase label → region id
             for r in regions_raw:
                 rid = r.get("taxonomy/id", "")
                 rlabel = r.get("taxonomy/preferred-label", "")
                 if rid and rlabel:
                     regions[rid] = {"id": rid, "label": rlabel, "kommuner": []}
-                    region_label_to_id[rlabel] = rid
+                    region_norm_to_id[rlabel.lower().strip()] = rid
+
+            # Build SCB county prefix → region id mapping using fuzzy label matching
+            prefix_to_region = {}
+            for prefix, variants in SCB_COUNTY_PREFIX.items():
+                for variant in variants:
+                    if variant in region_norm_to_id:
+                        prefix_to_region[prefix] = region_norm_to_id[variant]
+                        break
+
+            unmatched_prefixes = set(SCB_COUNTY_PREFIX.keys()) - set(prefix_to_region.keys())
+            if unmatched_prefixes:
+                logger.warning(f"SCB prefixes with no matching region: {unmatched_prefixes}")
+                logger.warning(f"Available region labels: {list(region_norm_to_id.keys())}")
 
             # Assign municipalities to regions using SCB code prefix
-            # API format: {"taxonomy/id": "...", "taxonomy/preferred-label": "Stockholm",
-            #              "taxonomy/lau-2-code-2015": "0180", ...}
             orphan_count = 0
             for m in munis_raw:
                 mid = m.get("taxonomy/id", "")
@@ -464,8 +490,7 @@ async def fetch_taxonomy_data():
                     continue
 
                 county_prefix = lau_code[:2] if len(lau_code) >= 2 else ""
-                county_label = SCB_COUNTY_PREFIX.get(county_prefix, "")
-                region_id = region_label_to_id.get(county_label, "")
+                region_id = prefix_to_region.get(county_prefix, "")
 
                 if region_id and region_id in regions:
                     regions[region_id]["kommuner"].append({"id": mid, "label": mlabel})
@@ -481,7 +506,7 @@ async def fetch_taxonomy_data():
             _taxonomy_cache["data"] = result
             _taxonomy_cache["fetched_at"] = now
             total_kommuner = sum(len(r["kommuner"]) for r in result)
-            logger.info(f"Taxonomy loaded: {len(result)} regions, {total_kommuner} municipalities")
+            logger.info(f"Taxonomy loaded: {len(result)} regions, {total_kommuner} municipalities, {orphan_count} orphans")
 
             return result
 
