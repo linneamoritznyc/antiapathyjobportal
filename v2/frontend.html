@@ -3105,11 +3105,12 @@
         };
 
         // External jobs page — jobs without contact email (apply via external website)
-        const ExternalJobsPage = ({ jobs, onScrape, scraping, savedJobs, onSaveJob, onOpenQuiz }) => {
+        const ExternalJobsPage = ({ jobs, onScrape, scraping, savedJobs, onSaveJob, onOpenQuiz, setActiveTab }) => {
             const [keywords, setKeywords] = useState('');
             const [currentPage, setCurrentPage] = useState(1);
             const [hiddenJobIds, setHiddenJobIds] = useState(new Set());
             const [showHidden, setShowHidden] = useState(false);
+            const [prefsKey, setPrefsKey] = useState(0);
             const [generatingLetter, setGeneratingLetter] = useState(null);
             const [generatedLetter, setGeneratedLetter] = useState({});  // { jobId: letterText }
             const [editedLetter, setEditedLetter] = useState({});  // { jobId: editedText }
@@ -3136,6 +3137,19 @@
                 contentmoderation: { name: 'Content Moderation', emoji: '🛡️' },
                 art: { name: 'Konst & Kultur', emoji: '🎨' },
             };
+
+            // Re-read preferences when saved from Preferenser tab
+            useEffect(() => {
+                const handler = () => { setPrefsKey(k => k + 1); setCurrentPage(1); };
+                window.addEventListener('prefsUpdated', handler);
+                return () => window.removeEventListener('prefsUpdated', handler);
+            }, []);
+
+            // Load quiz preferences for filtering (same as JobsPage)
+            const quizPrefs = useMemo(() => {
+                try { return JSON.parse(localStorage.getItem('job_preferences') || '{}'); }
+                catch(e) { return {}; }
+            }, [jobs, prefsKey]);
 
             const logInteraction = async (jobId, action, context = {}) => {
                 if (!localStorage.getItem('auth_token')) return;
@@ -3253,7 +3267,88 @@
             };
 
             const filteredJobs = jobs
-                .filter(job => !showHidden ? !hiddenJobIds.has(job.id) : true)
+                .filter(job => {
+                    if (!showHidden && hiddenJobIds.has(job.id)) return false;
+
+                    // Working hours filter
+                    const wh = quizPrefs.working_hours;
+                    if (wh && wh !== 'both') {
+                        const jobWH = (job.working_hours || '').toLowerCase();
+                        if (wh === 'heltid' && jobWH && !jobWH.includes('heltid')) return false;
+                        if (wh === 'deltid' && jobWH && !jobWH.includes('deltid')) return false;
+                        if (wh === 'extra' && jobWH && !jobWH.includes('deltid') && !jobWH.includes('timm')) return false;
+                    }
+
+                    // Employment form filter
+                    const ef = quizPrefs.employment_form;
+                    if (ef && ef.length > 0 && !ef.includes('anything')) {
+                        const jobET = (job.employment_type || '').toLowerCase();
+                        if (jobET) {
+                            const matchMap = { 'tillsvidare': 'tillsvidare', 'tidsbegransad': 'tidsbegräns', 'behov': 'behov', 'sommar': 'sommar' };
+                            const matches = ef.some(f => jobET.includes(matchMap[f] || f));
+                            if (!matches) return false;
+                        }
+                    }
+
+                    // Duration filter
+                    const dur = quizPrefs.duration;
+                    if (dur && dur !== 'anything') {
+                        const jobDur = (job.duration || '').toLowerCase();
+                        if (jobDur) {
+                            if (dur === 'tillsvidare' && !jobDur.includes('tillsvidare')) return false;
+                            if (dur === 'over6' && !jobDur.includes('6 mån') && !jobDur.includes('längre')) return false;
+                            if (dur === '3to6' && !jobDur.includes('3') && !jobDur.includes('6')) return false;
+                            if (dur === 'under3' && !jobDur.includes('3 mån') && !jobDur.includes('kort')) return false;
+                        }
+                    }
+
+                    // Salary filter
+                    const sal = quizPrefs.salary;
+                    if (sal && sal !== 'anything') {
+                        const jobSal = (job.salary_type || job.salary_description || '').toLowerCase();
+                        if (jobSal) {
+                            if (sal === 'fast' && !jobSal.includes('fast')) return false;
+                            if (sal === 'provision' && !jobSal.includes('provision') && !jobSal.includes('ackord')) return false;
+                        }
+                    }
+
+                    // Dealbreakers
+                    const db = quizPrefs.dealbreakers;
+                    if (db && db.length > 0 && !db.includes('ingen')) {
+                        const desc = (job.description || '').toLowerCase();
+                        const title = (job.title || '').toLowerCase();
+                        const dbMap = { 'natt': 'natt', 'helg': 'helg', 'telefon': 'telefon', 'tunga_lyft': 'tunga lyft', 'utomhus': 'utomhus' };
+                        const hasBreaker = db.some(d => { const kw = dbMap[d] || d; return desc.includes(kw) || title.includes(kw); });
+                        if (hasBreaker) return false;
+                    }
+
+                    // Negative keywords
+                    const negKw = quizPrefs.negative_keywords || [];
+                    if (negKw.length > 0) {
+                        const titleLow = (job.title || '').toLowerCase();
+                        const descLow = (job.description || '').toLowerCase();
+                        if (negKw.some(kw => titleLow.includes(kw.toLowerCase()) || descLow.includes(kw.toLowerCase()))) return false;
+                    }
+
+                    // Geography filter
+                    const locPrefs = quizPrefs.location || [];
+                    if (locPrefs.length > 0 && !locPrefs.includes('anywhere')) {
+                        const kommunLabels = locPrefs
+                            .filter(k => k !== 'remote' && k !== 'anywhere')
+                            .map(id => { for (const lan of LAN_DATA) { const f = lan.kommuner.find(k => k.id === id); if (f) return f.label.toLowerCase(); } return id.toLowerCase(); });
+                        if (kommunLabels.length > 0) {
+                            const jobLoc = (job.location || '').toLowerCase();
+                            const jobMuni = (job.municipality || '').toLowerCase();
+                            if (jobLoc || jobMuni) {
+                                const matchesLoc = kommunLabels.some(k => jobLoc.includes(k) || jobMuni.includes(k));
+                                const isRemote = locPrefs.includes('remote') && (jobLoc.includes('remote') || jobLoc.includes('distans') || jobLoc.includes('hemma'));
+                                if (!matchesLoc && !isRemote) return false;
+                            }
+                        }
+                    }
+
+                    return true;
+                })
                 .sort((a, b) => new Date(a.deadline || '2099-12-31') - new Date(b.deadline || '2099-12-31'));
 
             const jobIndex = currentPage - 1;
@@ -3329,17 +3424,53 @@
                         )}
                     </div>
 
-                    {jobs.length === 0 ? (
+                    {/* Geography filter indicator */}
+                    {(() => {
+                        const locPrefs = quizPrefs.location || [];
+                        const activeKommuner = locPrefs.filter(k => k !== 'remote' && k !== 'anywhere');
+                        if (activeKommuner.length === 0 || locPrefs.includes('anywhere')) return null;
+                        const labels = activeKommuner.map(id => {
+                            for (const lan of LAN_DATA) { const f = lan.kommuner.find(k => k.id === id); if (f) return f.label; }
+                            return id;
+                        });
+                        return (
+                            <div className="flex items-center gap-2 mb-3 flex-wrap">
+                                <span className="text-xs text-slate-400">📍 Visar jobb i:</span>
+                                {labels.map(l => (
+                                    <span key={l} className="bg-amber-100 text-amber-700 text-xs px-2 py-0.5 rounded-full font-medium">{l}</span>
+                                ))}
+                                {locPrefs.includes('remote') && (
+                                    <span className="bg-green-100 text-green-700 text-xs px-2 py-0.5 rounded-full font-medium">Remote</span>
+                                )}
+                                {setActiveTab && (
+                                    <button onClick={() => setActiveTab('preferences')} className="text-xs text-amber-500 hover:text-amber-700 underline">Ändra</button>
+                                )}
+                            </div>
+                        );
+                    })()}
+
+                    {scraping ? (
+                        <div className="bg-white rounded-2xl shadow-sm border border-slate-100 p-8" style={{minHeight: '60vh'}}>
+                            <div className="flex items-center justify-center h-full" style={{minHeight: '50vh'}}>
+                                <div className="text-center">
+                                    <div className="inline-block animate-spin rounded-full h-10 w-10 border-4 border-amber-200 border-t-amber-500 mb-4" />
+                                    <p className="text-slate-500 font-medium">Söker jobb på Platsbanken...</p>
+                                    <p className="text-slate-400 text-sm mt-1">Hämtar och filtrerar annonser</p>
+                                </div>
+                            </div>
+                        </div>
+                    ) : jobs.length === 0 ? (
                         <div className="bg-white rounded-xl p-10 text-center shadow-sm">
                             <p className="text-slate-500 mb-2">Inga externa jobb hittade.</p>
                             <p className="text-slate-400 text-sm mb-4">Dessa är jobb som kräver ansökan via arbetsgivarens webbplats.</p>
                             <button onClick={() => onScrape('')} disabled={scraping} className="bg-amber-500 text-white px-6 py-3 rounded-xl font-medium hover:bg-amber-600 disabled:opacity-50 transition">
-                                {scraping ? 'Söker...' : 'Sök jobb'}
+                                Sök jobb
                             </button>
                         </div>
                     ) : filteredJobs.length === 0 ? (
                         <div className="bg-white rounded-xl p-10 text-center shadow-sm">
-                            <p className="text-slate-500">Inga externa jobb kvar.</p>
+                            <p className="text-slate-500">Inga externa jobb matchar dina preferenser.</p>
+                            <p className="text-slate-400 text-sm mt-1">{jobs.length} jobb hittades men filtrerades bort.</p>
                         </div>
                     ) : currentJob ? (
                         <div>
@@ -3938,7 +4069,17 @@
 
                         return (
                             <>
-                                {jobs.length === 0 ? (
+                                {scraping ? (
+                                    <div className="bg-white rounded-2xl shadow-sm border border-slate-100 p-8" style={{minHeight: '60vh'}}>
+                                        <div className="flex items-center justify-center h-full" style={{minHeight: '50vh'}}>
+                                            <div className="text-center">
+                                                <div className="inline-block animate-spin rounded-full h-10 w-10 border-4 border-pink-200 border-t-pink-500 mb-4" />
+                                                <p className="text-slate-500 font-medium">Söker jobb på Platsbanken...</p>
+                                                <p className="text-slate-400 text-sm mt-1">Hämtar och filtrerar annonser</p>
+                                            </div>
+                                        </div>
+                                    </div>
+                                ) : jobs.length === 0 ? (
                                     <div className="bg-white rounded-xl p-10 text-center shadow-sm">
                                         <p className="text-slate-500 mb-4">Inga jobb ännu.</p>
                                         {!localStorage.getItem('job_preferences') ? (
@@ -3951,10 +4092,9 @@
                                         ) : (
                                             <button
                                                 onClick={() => onScrape('')}
-                                                disabled={scraping}
-                                                className="bg-indigo-600 text-white px-6 py-3 rounded-xl font-medium hover:bg-indigo-700 disabled:opacity-50 transition"
+                                                className="bg-indigo-600 text-white px-6 py-3 rounded-xl font-medium hover:bg-indigo-700 transition"
                                             >
-                                                {scraping ? 'Söker...' : 'Sök jobb baserat på dina preferenser'}
+                                                Sök jobb baserat på dina preferenser
                                             </button>
                                         )}
                                     </div>
@@ -6170,6 +6310,7 @@
                                 savedJobs={savedJobs}
                                 onSaveJob={handleSaveJob}
                                 onOpenQuiz={() => setShowOnboarding(true)}
+                                setActiveTab={setActiveTab}
                             />
                         )}
 
