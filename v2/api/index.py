@@ -401,7 +401,7 @@ def calculate_priority(deadline: Optional[str]) -> str:
 # ============== TAXONOMY (REGIONS & MUNICIPALITIES) ==============
 
 _taxonomy_cache = {"data": None, "fetched_at": 0}
-TAXONOMY_CACHE_TTL = 86400  # 24 hours
+TAXONOMY_CACHE_TTL = 3600  # 1 hour (short TTL while debugging)
 
 
 async def fetch_taxonomy_data():
@@ -431,9 +431,9 @@ async def fetch_taxonomy_data():
 
             # Log sample structure on first fetch for debugging
             if regions_raw:
-                logger.info(f"Taxonomy region keys: {list(regions_raw[0].keys()) if isinstance(regions_raw[0], dict) else 'not dict'}")
+                logger.info(f"Taxonomy region sample: {regions_raw[0]}")
             if munis_raw:
-                logger.info(f"Taxonomy municipality keys: {list(munis_raw[0].keys()) if isinstance(munis_raw[0], dict) else 'not dict'}")
+                logger.info(f"Taxonomy municipality sample: {munis_raw[0]}")
 
             # Handle multiple possible field name formats from the API
             def get_field(item, *keys):
@@ -451,11 +451,51 @@ async def fetch_taxonomy_data():
             def get_label(item):
                 return get_field(item, "preferredLabel", "preferred_label", "taxonomy/preferred-label", "label")
 
-            def get_parent_id(item):
-                # parent could be a nested object or a plain string
-                if "parent" in item and isinstance(item["parent"], dict):
-                    return item["parent"].get("id", "")
-                return get_field(item, "parentId", "parent_id", "taxonomy/parent-id", "parent")
+            def get_parent_id(item, region_ids_set):
+                """Find parent region ID by trying every known field pattern,
+                then brute-force scanning all values as a fallback."""
+                # 1. Try "broader" (SKOS standard - JobTech taxonomy uses this)
+                if "broader" in item:
+                    broader = item["broader"]
+                    if isinstance(broader, list):
+                        for b in broader:
+                            bid = b.get("id", "") if isinstance(b, dict) else str(b)
+                            if bid in region_ids_set:
+                                return bid
+                    elif isinstance(broader, dict):
+                        bid = broader.get("id", "")
+                        if bid in region_ids_set:
+                            return bid
+                    elif isinstance(broader, str) and broader in region_ids_set:
+                        return broader
+                # 2. Try common parent field names
+                for key in ["parent", "parentId", "parent_id", "taxonomy/parent-id",
+                            "broader_id", "related_region_id", "regionId", "region_id"]:
+                    if key in item:
+                        val = item[key]
+                        if isinstance(val, dict):
+                            vid = val.get("id", "")
+                            if vid in region_ids_set:
+                                return vid
+                        elif isinstance(val, str) and val in region_ids_set:
+                            return val
+                # 3. Brute-force: scan ALL field values for a match to any region ID
+                for key, val in item.items():
+                    if isinstance(val, str) and val in region_ids_set:
+                        return val
+                    if isinstance(val, dict):
+                        for v in val.values():
+                            if isinstance(v, str) and v in region_ids_set:
+                                return v
+                    if isinstance(val, list):
+                        for elem in val:
+                            if isinstance(elem, str) and elem in region_ids_set:
+                                return elem
+                            if isinstance(elem, dict):
+                                for v in elem.values():
+                                    if isinstance(v, str) and v in region_ids_set:
+                                        return v
+                return ""
 
             # Build region lookup
             regions = {}
@@ -469,10 +509,12 @@ async def fetch_taxonomy_data():
                     }
 
             # Assign municipalities to their parent regions
+            region_ids_set = set(regions.keys())
             orphan_count = 0
+            orphan_sample = None
             for m in munis_raw:
                 mid = get_id(m)
-                parent = get_parent_id(m)
+                parent = get_parent_id(m, region_ids_set)
                 if mid and parent and parent in regions:
                     regions[parent]["kommuner"].append({
                         "id": mid,
@@ -480,9 +522,12 @@ async def fetch_taxonomy_data():
                     })
                 elif mid:
                     orphan_count += 1
+                    if orphan_sample is None:
+                        orphan_sample = m
 
             if orphan_count:
-                logger.warning(f"Taxonomy: {orphan_count} municipalities without matching parent region")
+                logger.warning(f"Taxonomy: {orphan_count} orphaned municipalities. Sample: {orphan_sample}")
+                logger.warning(f"Known region IDs (first 3): {list(regions.keys())[:3]}")
 
             # Sort regions and kommuner alphabetically
             result = sorted(regions.values(), key=lambda r: r["label"])
