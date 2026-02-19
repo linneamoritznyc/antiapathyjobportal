@@ -848,34 +848,12 @@
                 {
                     id: 'location',
                     question: 'Var vill du jobba?',
-                    subtitle: 'Välj alla kommuner som funkar — du kan ändra sen under Preferenser',
+                    subtitle: 'Välj kommuner under Preferenser efter quizzet — här väljer du bara bredd',
                     type: 'multi',
+                    allowEmpty: true,
                     options: [
                         { value: 'anywhere', label: 'Hela Sverige' },
                         { value: 'remote', label: 'Distans/Remote' },
-                        { value: 'stockholm', label: 'Stockholm' },
-                        { value: 'solna', label: 'Solna' },
-                        { value: 'sundbyberg', label: 'Sundbyberg' },
-                        { value: 'sollentuna', label: 'Sollentuna' },
-                        { value: 'nacka', label: 'Nacka' },
-                        { value: 'huddinge', label: 'Huddinge' },
-                        { value: 'taby', label: 'Täby' },
-                        { value: 'jarfalla', label: 'Järfälla' },
-                        { value: 'goteborg', label: 'Göteborg' },
-                        { value: 'molndal', label: 'Mölndal' },
-                        { value: 'boras', label: 'Borås' },
-                        { value: 'malmo', label: 'Malmö' },
-                        { value: 'helsingborg', label: 'Helsingborg' },
-                        { value: 'lund', label: 'Lund' },
-                        { value: 'uppsala', label: 'Uppsala' },
-                        { value: 'linkoping', label: 'Linköping' },
-                        { value: 'norrkoping', label: 'Norrköping' },
-                        { value: 'orebro', label: 'Örebro' },
-                        { value: 'vasteras', label: 'Västerås' },
-                        { value: 'jonkoping', label: 'Jönköping' },
-                        { value: 'eskilstuna', label: 'Eskilstuna' },
-                        { value: 'halmstad', label: 'Halmstad' },
-                        { value: 'gavle', label: 'Gävle' },
                     ]
                 },
                 {
@@ -2149,86 +2127,9 @@
             ]
         };
 
-        const LAN_DATA = [
-            { id: 'stockholm_lan', label: 'Stockholms län', kommuner: [
-                { id: 'stockholm', label: 'Stockholm' },
-                { id: 'solna', label: 'Solna' },
-                { id: 'sundbyberg', label: 'Sundbyberg' },
-                { id: 'sollentuna', label: 'Sollentuna' },
-                { id: 'taby', label: 'Täby' },
-                { id: 'nacka', label: 'Nacka' },
-                { id: 'lidingo', label: 'Lidingö' },
-                { id: 'jarfalla', label: 'Järfälla' },
-                { id: 'huddinge', label: 'Huddinge' },
-                { id: 'botkyrka', label: 'Botkyrka' },
-                { id: 'haninge', label: 'Haninge' },
-                { id: 'tyreso', label: 'Tyresö' },
-                { id: 'upplands_vasby', label: 'Upplands Väsby' },
-                { id: 'vaxholm', label: 'Vaxholm' },
-            ]},
-            { id: 'vastragotaland_lan', label: 'Västra Götalands län', kommuner: [
-                { id: 'goteborg', label: 'Göteborg' },
-                { id: 'molndal', label: 'Mölndal' },
-                { id: 'partille', label: 'Partille' },
-                { id: 'boras', label: 'Borås' },
-                { id: 'trollhattan', label: 'Trollhättan' },
-                { id: 'skovde', label: 'Skövde' },
-                { id: 'vanersborg', label: 'Vänersborg' },
-                { id: 'lidkoping', label: 'Lidköping' },
-                { id: 'alingsas', label: 'Alingsås' },
-            ]},
-            { id: 'skane_lan', label: 'Skåne län', kommuner: [
-                { id: 'malmo', label: 'Malmö' },
-                { id: 'helsingborg', label: 'Helsingborg' },
-                { id: 'lund', label: 'Lund' },
-                { id: 'kristianstad', label: 'Kristianstad' },
-                { id: 'landskrona', label: 'Landskrona' },
-                { id: 'trelleborg', label: 'Trelleborg' },
-                { id: 'ystad', label: 'Ystad' },
-            ]},
-            { id: 'uppsala_lan', label: 'Uppsala län', kommuner: [
-                { id: 'uppsala', label: 'Uppsala' },
-                { id: 'enkoping', label: 'Enköping' },
-                { id: 'knivsta', label: 'Knivsta' },
-            ]},
-            { id: 'jonkoping_lan', label: 'Jönköpings län', kommuner: [
-                { id: 'jonkoping', label: 'Jönköping' },
-                { id: 'varnamo', label: 'Värnamo' },
-                { id: 'nassjo', label: 'Nässjö' },
-                { id: 'eksjo', label: 'Eksjö' },
-            ]},
-            { id: 'ostergotland_lan', label: 'Östergötlands län', kommuner: [
-                { id: 'linkoping', label: 'Linköping' },
-                { id: 'norrkoping', label: 'Norrköping' },
-                { id: 'motala', label: 'Motala' },
-            ]},
-            { id: 'sodermanland_lan', label: 'Södermanlands län', kommuner: [
-                { id: 'eskilstuna', label: 'Eskilstuna' },
-                { id: 'nykoping', label: 'Nyköping' },
-                { id: 'katrineholm', label: 'Katrineholm' },
-            ]},
-            { id: 'vastmanland_lan', label: 'Västmanlands län', kommuner: [
-                { id: 'vasteras', label: 'Västerås' },
-                { id: 'sala', label: 'Sala' },
-            ]},
-            { id: 'orebro_lan', label: 'Örebro län', kommuner: [
-                { id: 'orebro', label: 'Örebro' },
-                { id: 'kumla', label: 'Kumla' },
-            ]},
-            { id: 'halland_lan', label: 'Hallands län', kommuner: [
-                { id: 'halmstad', label: 'Halmstad' },
-                { id: 'kungsbacka', label: 'Kungsbacka' },
-                { id: 'varberg', label: 'Varberg' },
-            ]},
-            { id: 'gavleborg_lan', label: 'Gävleborgs län', kommuner: [
-                { id: 'gavle', label: 'Gävle' },
-                { id: 'sandviken', label: 'Sandviken' },
-            ]},
-            { id: 'dalarna_lan', label: 'Dalarnas län', kommuner: [
-                { id: 'falun', label: 'Falun' },
-                { id: 'borlange', label: 'Borlänge' },
-            ]},
-        ];
+        // LAN_DATA is populated dynamically from the JobTech Taxonomy API
+        // via GET /api/taxonomy/regions. Starts empty, filled on app load.
+        let LAN_DATA = [];
 
         const WORKING_HOURS_OPTIONS = [
             { id: 'heltid', label: 'Heltid' },
@@ -2514,6 +2415,9 @@
 
                         {/* Level 1: Välj län */}
                         <p className="text-xs text-slate-400 mb-2">Välj län för att se kommuner:</p>
+                        {LAN_DATA.length === 0 && (
+                            <p className="text-sm text-slate-400 mb-3">Laddar regioner...</p>
+                        )}
                         <div className="flex flex-wrap gap-2 mb-3">
                             {LAN_DATA.map(lan => {
                                 const kommunerSelected = lan.kommuner.filter(k => selectedKommuner.includes(k.id)).length;
@@ -4784,6 +4688,7 @@
             const [selectedCVText, setSelectedCVText] = useState('');
             const [masterCV, setMasterCV] = useState(null);
             const [savingMasterCV, setSavingMasterCV] = useState(false);
+            const [lanDataReady, setLanDataReady] = useState(false);
 
             // Fetch initial data
             useEffect(() => {
@@ -4793,6 +4698,20 @@
                 fetchApplications();
                 fetchStats();
                 checkOnboarding();
+                // Load taxonomy data (regions + municipalities) from backend
+                fetch('/api/taxonomy/regions')
+                    .then(r => r.json())
+                    .then(data => {
+                        if (data.success && data.regions && data.regions.length > 0) {
+                            LAN_DATA = data.regions;
+                            console.log('[Taxonomy] Loaded ' + LAN_DATA.length + ' regions');
+                        }
+                        setLanDataReady(true);
+                    })
+                    .catch(err => {
+                        console.error('Failed to load taxonomy:', err);
+                        setLanDataReady(true);
+                    });
             }, []);
 
             const checkOnboarding = async () => {
@@ -4970,7 +4889,6 @@
 
                 // Use quiz preferences as defaults if no manual keywords
                 let kw = keywords.trim() ? keywords.split(',').map(k => k.trim()) : null;
-                let location = 'Stockholm';
 
                 if (!kw) {
                     const roleMap = {
@@ -4984,29 +4902,22 @@
                     } else if (prefs.search_terms && prefs.search_terms.length > 0) {
                         kw = prefs.search_terms.map(r => roleMap[r] || r);
                     }
-                    if (prefs.location && prefs.location.length > 0) {
-                        const loc = prefs.location.find(l => l !== 'anywhere' && l !== 'remote');
-                        if (loc) location = loc.charAt(0).toUpperCase() + loc.slice(1);
-                    }
                 }
 
-                // Build municipality labels from preferences for server-side geography filtering
-                let municipalityLabels = null;
+                // Build municipality concept IDs from preferences for server-side geography filtering
+                let municipalityIds = null;
                 const selKommuner = prefs.location || [];
                 if (selKommuner.length > 0 && !selKommuner.includes('anywhere')) {
-                    const labels = selKommuner
-                        .filter(k => k !== 'remote' && k !== 'anywhere')
-                        .map(id => kommunIdToLabel(id))
-                        .filter(Boolean);
-                    if (labels.length > 0) {
-                        municipalityLabels = labels;
+                    const ids = selKommuner.filter(k => k !== 'remote' && k !== 'anywhere');
+                    if (ids.length > 0) {
+                        municipalityIds = ids;
                     }
                 }
 
                 const res = await fetch('/api/scrape', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ keywords: kw, location: location, municipalities: municipalityLabels })
+                    body: JSON.stringify({ keywords: kw, municipality_ids: municipalityIds })
                 });
                 const data = await res.json();
                 if (data.success) {
