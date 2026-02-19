@@ -12,6 +12,7 @@ import os
 import logging
 import httpx
 import re
+import time
 from datetime import datetime, timedelta
 import base64
 from email.mime.text import MIMEText
@@ -99,7 +100,7 @@ async def startup_event():
 
 class JobSearchRequest(BaseModel):
     keywords: Optional[List[str]] = None
-    location: Optional[str] = "Stockholm"
+    municipality_ids: Optional[List[str]] = None  # Taxonomy concept IDs from JobTech API
 
 
 class GenerateLetterRequest(BaseModel):
@@ -397,33 +398,190 @@ def calculate_priority(deadline: Optional[str]) -> str:
         return "normal"
 
 
-# ============== PLATSBANKEN SCRAPER ==============
+# ============== TAXONOMY (REGIONS & MUNICIPALITIES) ==============
 
-async def scrape_platsbanken(keyword: str, location: str = "Stockholm", max_jobs: int = 15) -> List[Dict]:
-    """
-    Scrape jobs from Platsbanken API.
-    Only returns jobs where you can apply via email (not portal).
-    """
-    jobs = []
+_taxonomy_cache = {"data": None, "fetched_at": 0}
+TAXONOMY_CACHE_TTL = 86400  # 24 hours
+
+
+async def fetch_taxonomy_data():
+    """Fetch all Swedish regions (län) and municipalities (kommuner) from the JobTech Taxonomy API.
+    Caches results for 24 hours."""
+    now = time.time()
+    if _taxonomy_cache["data"] and (now - _taxonomy_cache["fetched_at"]) < TAXONOMY_CACHE_TTL:
+        return _taxonomy_cache["data"]
 
     try:
         async with httpx.AsyncClient() as client:
-            # Search for jobs
+            regions_res = await client.get(
+                "https://taxonomy.api.jobtechdev.se/v1/taxonomy/specific/concepts/region",
+                timeout=10
+            )
+            munis_res = await client.get(
+                "https://taxonomy.api.jobtechdev.se/v1/taxonomy/specific/concepts/municipality",
+                timeout=10
+            )
+
+            if regions_res.status_code != 200 or munis_res.status_code != 200:
+                logger.error(f"Taxonomy API error: regions={regions_res.status_code}, munis={munis_res.status_code}")
+                return _taxonomy_cache.get("data") or []
+
+            regions_raw = regions_res.json()
+            munis_raw = munis_res.json()
+
+            # Log sample structure on first fetch for debugging
+            if regions_raw:
+                logger.info(f"Taxonomy region keys: {list(regions_raw[0].keys()) if isinstance(regions_raw[0], dict) else 'not dict'}")
+            if munis_raw:
+                logger.info(f"Taxonomy municipality keys: {list(munis_raw[0].keys()) if isinstance(munis_raw[0], dict) else 'not dict'}")
+
+            # Handle multiple possible field name formats from the API
+            def get_field(item, *keys):
+                for k in keys:
+                    if k in item:
+                        val = item[k]
+                        if isinstance(val, dict):
+                            return val.get("id", val)
+                        return val
+                return ""
+
+            def get_id(item):
+                return get_field(item, "id", "taxonomy/id", "concept_taxonomy_id")
+
+            def get_label(item):
+                return get_field(item, "preferredLabel", "preferred_label", "taxonomy/preferred-label", "label")
+
+            def get_parent_id(item):
+                # parent could be a nested object or a plain string
+                if "parent" in item and isinstance(item["parent"], dict):
+                    return item["parent"].get("id", "")
+                return get_field(item, "parentId", "parent_id", "taxonomy/parent-id", "parent")
+
+            # Build region lookup
+            regions = {}
+            for r in regions_raw:
+                rid = get_id(r)
+                if rid:
+                    regions[rid] = {
+                        "id": rid,
+                        "label": get_label(r),
+                        "kommuner": []
+                    }
+
+            # Assign municipalities to their parent regions
+            orphan_count = 0
+            for m in munis_raw:
+                mid = get_id(m)
+                parent = get_parent_id(m)
+                if mid and parent and parent in regions:
+                    regions[parent]["kommuner"].append({
+                        "id": mid,
+                        "label": get_label(m)
+                    })
+                elif mid:
+                    orphan_count += 1
+
+            if orphan_count:
+                logger.warning(f"Taxonomy: {orphan_count} municipalities without matching parent region")
+
+            # Sort regions and kommuner alphabetically
+            result = sorted(regions.values(), key=lambda r: r["label"])
+            for r in result:
+                r["kommuner"].sort(key=lambda k: k["label"])
+
+            _taxonomy_cache["data"] = result
+            _taxonomy_cache["fetched_at"] = now
+            total_kommuner = sum(len(r["kommuner"]) for r in result)
+            logger.info(f"Taxonomy loaded: {len(result)} regions, {total_kommuner} municipalities")
+
+            return result
+
+    except Exception as e:
+        logger.error(f"Failed to fetch taxonomy: {e}")
+        return _taxonomy_cache.get("data") or []
+
+
+def _job_in_municipalities(job: Dict, municipality_labels_lower: List[str]) -> bool:
+    """Post-filter safety net: check if job location matches any municipality label."""
+    if not municipality_labels_lower:
+        return True
+    job_muni = (job.get("municipality") or "").lower()
+    job_loc = (job.get("location") or "").lower()
+    # If job has no location data, let it through
+    if not job_muni and not job_loc:
+        return True
+    for label in municipality_labels_lower:
+        if label in job_muni or label in job_loc:
+            return True
+    return False
+
+
+# ============== PLATSBANKEN SCRAPER ==============
+
+
+async def scrape_platsbanken(keyword: str, max_jobs: int = 15, municipality_ids: List[str] = None) -> List[Dict]:
+    """
+    Scrape jobs from Platsbanken API.
+    When municipality_ids is set, adds geographic filters to the search request
+    and post-filters by municipality name as a safety net.
+    """
+    jobs = []
+    max_records = 50
+
+    # Look up municipality labels from taxonomy for post-filtering
+    municipality_labels_lower = []
+    if municipality_ids:
+        taxonomy = await fetch_taxonomy_data()
+        label_lookup = {}
+        for region in taxonomy:
+            for k in region.get("kommuner", []):
+                label_lookup[k["id"]] = k["label"]
+        municipality_labels_lower = [
+            label_lookup[mid].lower() for mid in municipality_ids if mid in label_lookup
+        ]
+        if municipality_labels_lower:
+            logger.info(f"Geography filter active: {municipality_labels_lower}")
+
+    try:
+        async with httpx.AsyncClient() as client:
+            # Build search filters
+            filters = [{"type": "freetext", "value": keyword}]
+
+            # Add geographic filters (municipality concept IDs from taxonomy)
+            if municipality_ids:
+                for mid in municipality_ids:
+                    filters.append({"type": "municipality", "value": mid})
+
             response = await client.post(
                 "https://platsbanken-api.arbetsformedlingen.se/jobs/v1/search",
                 headers={"Content-Type": "application/json"},
                 json={
-                    "filters": [
-                        {"type": "freetext", "value": keyword},
-                    ],
+                    "filters": filters,
                     "fromDate": None,
                     "order": "date",
-                    "maxRecords": 50,  # Get more to filter down
+                    "maxRecords": max_records,
                     "startIndex": 0,
                     "source": "pb"
                 },
                 timeout=20
             )
+
+            # If geo filters caused an error, retry without them
+            if response.status_code != 200 and municipality_ids:
+                logger.warning(f"Platsbanken rejected geo filters (status {response.status_code}), retrying without")
+                response = await client.post(
+                    "https://platsbanken-api.arbetsformedlingen.se/jobs/v1/search",
+                    headers={"Content-Type": "application/json"},
+                    json={
+                        "filters": [{"type": "freetext", "value": keyword}],
+                        "fromDate": None,
+                        "order": "date",
+                        "maxRecords": 100,  # Fetch more since we'll post-filter
+                        "startIndex": 0,
+                        "source": "pb"
+                    },
+                    timeout=20
+                )
 
             if response.status_code != 200:
                 logger.error(f"Platsbanken API error: {response.status_code}")
@@ -441,7 +599,7 @@ async def scrape_platsbanken(keyword: str, location: str = "Stockholm", max_jobs
                 job_id = str(ad.get("id", ""))
                 title = ad.get("title", "Okänd tjänst")
                 company = ad.get("workplaceName", "Okänt företag")
-                job_location = ad.get("workplace", location)
+                job_location = ad.get("workplace", "")
                 description = ad.get("description", "") or ""
                 deadline = ad.get("lastApplicationDate")
 
@@ -557,6 +715,12 @@ async def scrape_platsbanken(keyword: str, location: str = "Stockholm", max_jobs
         logger.error(f"Timeout scraping Platsbanken for '{keyword}'")
     except Exception as e:
         logger.error(f"Error scraping Platsbanken: {e}")
+
+    # Post-filter by municipality name as safety net
+    if municipality_labels_lower and jobs:
+        before = len(jobs)
+        jobs = [j for j in jobs if _job_in_municipalities(j, municipality_labels_lower)]
+        logger.info(f"Geography post-filter: {before} → {len(jobs)} jobs")
 
     return jobs
 
@@ -1145,27 +1309,38 @@ async def health():
     }
 
 
+@app.get("/api/taxonomy/regions")
+async def get_taxonomy_regions():
+    """Return all Swedish regions (län) and municipalities (kommuner) from the JobTech Taxonomy API."""
+    data = await fetch_taxonomy_data()
+    return {"success": True, "regions": data}
+
+
 @app.post("/api/scrape")
 async def scrape_jobs(request: JobSearchRequest = None):
     """Scrape jobs from Platsbanken.
-    Searches user's positive keywords PLUS a broad catch-all search,
-    so unexpected dream jobs also appear (filtered by negatives in frontend).
+    Searches user's positive keywords PLUS a broad catch-all search.
+    When municipality_ids are provided, geographic filters are applied at the API level.
     """
     keywords = request.keywords if request and request.keywords else ["servitör", "kundtjänst", "butik"]
-    location = request.location if request else "Stockholm"
+    municipality_ids = request.municipality_ids if request and request.municipality_ids else None
+
+    if municipality_ids:
+        logger.info(f"Scraping with {len(municipality_ids)} municipality filters")
 
     all_jobs = []
 
-    # 1. Scrape user's positive keywords (what they specifically want)
-    for keyword in keywords[:5]:  # Max 5 keywords
-        jobs = await scrape_platsbanken(keyword, location, max_jobs=10)
+    # 1. Scrape user's positive keywords
+    per_keyword_limit = 15
+    for keyword in keywords[:5]:
+        jobs = await scrape_platsbanken(keyword, max_jobs=per_keyword_limit, municipality_ids=municipality_ids)
         all_jobs.extend(jobs)
 
     # 2. Broad catch-all scrape so unexpected cool jobs also appear
-    #    (negative keywords filter them in frontend — we cast a wide net here)
+    broad_limit = 20
     broad_terms = ["jobb", "anställning"]
     for term in broad_terms:
-        broad_jobs = await scrape_platsbanken(term, location, max_jobs=15)
+        broad_jobs = await scrape_platsbanken(term, max_jobs=broad_limit, municipality_ids=municipality_ids)
         all_jobs.extend(broad_jobs)
 
     # Remove duplicates by job ID

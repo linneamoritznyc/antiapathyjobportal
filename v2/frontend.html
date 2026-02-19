@@ -848,34 +848,12 @@
                 {
                     id: 'location',
                     question: 'Var vill du jobba?',
-                    subtitle: 'Välj alla kommuner som funkar — du kan ändra sen under Preferenser',
+                    subtitle: 'Välj kommuner under Preferenser efter quizzet — här väljer du bara bredd',
                     type: 'multi',
+                    allowEmpty: true,
                     options: [
                         { value: 'anywhere', label: 'Hela Sverige' },
                         { value: 'remote', label: 'Distans/Remote' },
-                        { value: 'stockholm', label: 'Stockholm' },
-                        { value: 'solna', label: 'Solna' },
-                        { value: 'sundbyberg', label: 'Sundbyberg' },
-                        { value: 'sollentuna', label: 'Sollentuna' },
-                        { value: 'nacka', label: 'Nacka' },
-                        { value: 'huddinge', label: 'Huddinge' },
-                        { value: 'taby', label: 'Täby' },
-                        { value: 'jarfalla', label: 'Järfälla' },
-                        { value: 'goteborg', label: 'Göteborg' },
-                        { value: 'molndal', label: 'Mölndal' },
-                        { value: 'boras', label: 'Borås' },
-                        { value: 'malmo', label: 'Malmö' },
-                        { value: 'helsingborg', label: 'Helsingborg' },
-                        { value: 'lund', label: 'Lund' },
-                        { value: 'uppsala', label: 'Uppsala' },
-                        { value: 'linkoping', label: 'Linköping' },
-                        { value: 'norrkoping', label: 'Norrköping' },
-                        { value: 'orebro', label: 'Örebro' },
-                        { value: 'vasteras', label: 'Västerås' },
-                        { value: 'jonkoping', label: 'Jönköping' },
-                        { value: 'eskilstuna', label: 'Eskilstuna' },
-                        { value: 'halmstad', label: 'Halmstad' },
-                        { value: 'gavle', label: 'Gävle' },
                     ]
                 },
                 {
@@ -2149,86 +2127,9 @@
             ]
         };
 
-        const LAN_DATA = [
-            { id: 'stockholm_lan', label: 'Stockholms län', kommuner: [
-                { id: 'stockholm', label: 'Stockholm' },
-                { id: 'solna', label: 'Solna' },
-                { id: 'sundbyberg', label: 'Sundbyberg' },
-                { id: 'sollentuna', label: 'Sollentuna' },
-                { id: 'taby', label: 'Täby' },
-                { id: 'nacka', label: 'Nacka' },
-                { id: 'lidingo', label: 'Lidingö' },
-                { id: 'jarfalla', label: 'Järfälla' },
-                { id: 'huddinge', label: 'Huddinge' },
-                { id: 'botkyrka', label: 'Botkyrka' },
-                { id: 'haninge', label: 'Haninge' },
-                { id: 'tyreso', label: 'Tyresö' },
-                { id: 'upplands_vasby', label: 'Upplands Väsby' },
-                { id: 'vaxholm', label: 'Vaxholm' },
-            ]},
-            { id: 'vastragotaland_lan', label: 'Västra Götalands län', kommuner: [
-                { id: 'goteborg', label: 'Göteborg' },
-                { id: 'molndal', label: 'Mölndal' },
-                { id: 'partille', label: 'Partille' },
-                { id: 'boras', label: 'Borås' },
-                { id: 'trollhattan', label: 'Trollhättan' },
-                { id: 'skovde', label: 'Skövde' },
-                { id: 'vanersborg', label: 'Vänersborg' },
-                { id: 'lidkoping', label: 'Lidköping' },
-                { id: 'alingsas', label: 'Alingsås' },
-            ]},
-            { id: 'skane_lan', label: 'Skåne län', kommuner: [
-                { id: 'malmo', label: 'Malmö' },
-                { id: 'helsingborg', label: 'Helsingborg' },
-                { id: 'lund', label: 'Lund' },
-                { id: 'kristianstad', label: 'Kristianstad' },
-                { id: 'landskrona', label: 'Landskrona' },
-                { id: 'trelleborg', label: 'Trelleborg' },
-                { id: 'ystad', label: 'Ystad' },
-            ]},
-            { id: 'uppsala_lan', label: 'Uppsala län', kommuner: [
-                { id: 'uppsala', label: 'Uppsala' },
-                { id: 'enkoping', label: 'Enköping' },
-                { id: 'knivsta', label: 'Knivsta' },
-            ]},
-            { id: 'jonkoping_lan', label: 'Jönköpings län', kommuner: [
-                { id: 'jonkoping', label: 'Jönköping' },
-                { id: 'varnamo', label: 'Värnamo' },
-                { id: 'nassjo', label: 'Nässjö' },
-                { id: 'eksjo', label: 'Eksjö' },
-            ]},
-            { id: 'ostergotland_lan', label: 'Östergötlands län', kommuner: [
-                { id: 'linkoping', label: 'Linköping' },
-                { id: 'norrkoping', label: 'Norrköping' },
-                { id: 'motala', label: 'Motala' },
-            ]},
-            { id: 'sodermanland_lan', label: 'Södermanlands län', kommuner: [
-                { id: 'eskilstuna', label: 'Eskilstuna' },
-                { id: 'nykoping', label: 'Nyköping' },
-                { id: 'katrineholm', label: 'Katrineholm' },
-            ]},
-            { id: 'vastmanland_lan', label: 'Västmanlands län', kommuner: [
-                { id: 'vasteras', label: 'Västerås' },
-                { id: 'sala', label: 'Sala' },
-            ]},
-            { id: 'orebro_lan', label: 'Örebro län', kommuner: [
-                { id: 'orebro', label: 'Örebro' },
-                { id: 'kumla', label: 'Kumla' },
-            ]},
-            { id: 'halland_lan', label: 'Hallands län', kommuner: [
-                { id: 'halmstad', label: 'Halmstad' },
-                { id: 'kungsbacka', label: 'Kungsbacka' },
-                { id: 'varberg', label: 'Varberg' },
-            ]},
-            { id: 'gavleborg_lan', label: 'Gävleborgs län', kommuner: [
-                { id: 'gavle', label: 'Gävle' },
-                { id: 'sandviken', label: 'Sandviken' },
-            ]},
-            { id: 'dalarna_lan', label: 'Dalarnas län', kommuner: [
-                { id: 'falun', label: 'Falun' },
-                { id: 'borlange', label: 'Borlänge' },
-            ]},
-        ];
+        // LAN_DATA is populated dynamically from the JobTech Taxonomy API
+        // via GET /api/taxonomy/regions. Starts empty, filled on app load.
+        let LAN_DATA = [];
 
         const WORKING_HOURS_OPTIONS = [
             { id: 'heltid', label: 'Heltid' },
@@ -2514,6 +2415,9 @@
 
                         {/* Level 1: Välj län */}
                         <p className="text-xs text-slate-400 mb-2">Välj län för att se kommuner:</p>
+                        {LAN_DATA.length === 0 && (
+                            <p className="text-sm text-slate-400 mb-3">Laddar regioner...</p>
+                        )}
                         <div className="flex flex-wrap gap-2 mb-3">
                             {LAN_DATA.map(lan => {
                                 const kommunerSelected = lan.kommuner.filter(k => selectedKommuner.includes(k.id)).length;
@@ -3320,11 +3224,46 @@
                         if (hasNegative) return false;
                     }
 
+                    // Geography filter: only show jobs in selected kommuner
+                    const locPrefs = quizPrefs.location || [];
+                    if (locPrefs.length > 0 && !locPrefs.includes('anywhere')) {
+                        const kommunLabels = locPrefs
+                            .filter(k => k !== 'remote' && k !== 'anywhere')
+                            .map(id => {
+                                for (const lan of LAN_DATA) {
+                                    const found = lan.kommuner.find(k => k.id === id);
+                                    if (found) return found.label.toLowerCase();
+                                }
+                                return id.toLowerCase();
+                            });
+
+                        if (kommunLabels.length > 0) {
+                            const jobLoc = (job.location || '').toLowerCase();
+                            const jobMuni = (job.municipality || '').toLowerCase();
+                            const hasLocation = jobLoc || jobMuni;
+
+                            if (hasLocation) {
+                                const matchesLoc = kommunLabels.some(k =>
+                                    jobLoc.includes(k) || jobMuni.includes(k)
+                                );
+                                // Also allow remote jobs if user selected remote
+                                const isRemote = locPrefs.includes('remote') &&
+                                    (jobLoc.includes('remote') || jobLoc.includes('distans') || jobLoc.includes('hemma'));
+                                if (!matchesLoc && !isRemote) return false;
+                            }
+                            // Jobs with no location data pass through — we can't filter what we don't know
+                        }
+                    }
+
                     return true;
                 })
                 .sort((a, b) => {
+                    // Always put jobs with contact email first (direct apply)
+                    const aHasEmail = !!(a.contact_email && a.contact_email.includes('@'));
+                    const bHasEmail = !!(b.contact_email && b.contact_email.includes('@'));
+                    if (aHasEmail !== bHasEmail) return aHasEmail ? -1 : 1;
+
                     if (sortBy === 'deadline') {
-                        // Pure deadline sort — soonest deadline first
                         return new Date(a.deadline || '2099-12-31') - new Date(b.deadline || '2099-12-31');
                     }
                     if (sortBy === 'company') {
@@ -3364,6 +3303,35 @@
                             </button>
                         )}
                     </div>
+
+                    {/* Active geography filter indicator */}
+                    {(() => {
+                        const locPrefs = quizPrefs.location || [];
+                        const activeKommuner = locPrefs.filter(k => k !== 'remote' && k !== 'anywhere');
+                        if (activeKommuner.length === 0 || locPrefs.includes('anywhere')) return null;
+                        const labels = activeKommuner.map(id => {
+                            for (const lan of LAN_DATA) {
+                                const found = lan.kommuner.find(k => k.id === id);
+                                if (found) return found.label;
+                            }
+                            return id;
+                        });
+                        return (
+                            <div className="flex items-center gap-2 mb-3 flex-wrap">
+                                <span className="text-xs text-slate-400">📍 Visar jobb i:</span>
+                                {labels.map(l => (
+                                    <span key={l} className="bg-indigo-100 text-indigo-700 text-xs px-2 py-0.5 rounded-full font-medium">{l}</span>
+                                ))}
+                                {locPrefs.includes('remote') && (
+                                    <span className="bg-green-100 text-green-700 text-xs px-2 py-0.5 rounded-full font-medium">Remote</span>
+                                )}
+                                <button
+                                    onClick={() => setActiveTab('prefs')}
+                                    className="text-xs text-indigo-500 hover:text-indigo-700 underline"
+                                >Ändra</button>
+                            </div>
+                        );
+                    })()}
 
                     {/* ONE JOB AT A TIME */}
                     {(() => {
@@ -3529,7 +3497,7 @@
                                                     </div>
 
                                                     {/* Contact */}
-                                                    {(currentJob.contact_email || currentJob.contact_name || currentJob.contact_phone || currentJob.apply_url) && (
+                                                    {(currentJob.contact_email || currentJob.contact_name || currentJob.contact_phone || currentJob.apply_url) ? (
                                                         <div className="bg-pink-50 border border-pink-100 rounded-xl p-3">
                                                             <p className="text-xs font-semibold text-pink-700 uppercase tracking-wide mb-2">Kontakt</p>
                                                             <div className="space-y-1">
@@ -3543,6 +3511,14 @@
                                                                 )}
                                                             </div>
                                                         </div>
+                                                    ) : (
+                                                        <div className="bg-amber-50 border border-amber-200 rounded-xl p-3">
+                                                            <p className="text-xs font-semibold text-amber-700 uppercase tracking-wide mb-1">🌐 Extern ansökan</p>
+                                                            <p className="text-xs text-amber-600">Ingen e-post hittades. Du kan skapa ett brev och ansöka via deras hemsida.</p>
+                                                            {currentJob.url && (
+                                                                <a href={currentJob.url} target="_blank" className="text-xs text-indigo-600 hover:underline block mt-1">Se originalannons</a>
+                                                            )}
+                                                        </div>
                                                     )}
 
                                                     {/* Spacer */}
@@ -3553,9 +3529,17 @@
                                                         <button
                                                             onClick={() => onApply(currentJob)}
                                                             disabled={applyingJob === currentJob.id}
-                                                            className="w-full py-3.5 bg-pink-600 text-white rounded-xl font-semibold hover:bg-pink-700 disabled:opacity-50 transition shadow-sm"
+                                                            className={`w-full py-3.5 text-white rounded-xl font-semibold disabled:opacity-50 transition shadow-sm ${
+                                                                currentJob.contact_email
+                                                                    ? 'bg-pink-600 hover:bg-pink-700'
+                                                                    : 'bg-indigo-500 hover:bg-indigo-600'
+                                                            }`}
                                                         >
-                                                            {applyingJob === currentJob.id ? '⏳ Skapar brev...' : '✍️ Skapa ansökan'}
+                                                            {applyingJob === currentJob.id
+                                                                ? '⏳ Skapar brev...'
+                                                                : currentJob.contact_email
+                                                                    ? '✍️ Skapa ansökan'
+                                                                    : '✍️ Skapa brev'}
                                                         </button>
                                                         <div className="flex gap-2">
                                                             <button
@@ -4704,6 +4688,7 @@
             const [selectedCVText, setSelectedCVText] = useState('');
             const [masterCV, setMasterCV] = useState(null);
             const [savingMasterCV, setSavingMasterCV] = useState(false);
+            const [lanDataReady, setLanDataReady] = useState(false);
 
             // Fetch initial data
             useEffect(() => {
@@ -4713,6 +4698,20 @@
                 fetchApplications();
                 fetchStats();
                 checkOnboarding();
+                // Load taxonomy data (regions + municipalities) from backend
+                fetch('/api/taxonomy/regions')
+                    .then(r => r.json())
+                    .then(data => {
+                        if (data.success && data.regions && data.regions.length > 0) {
+                            LAN_DATA = data.regions;
+                            console.log('[Taxonomy] Loaded ' + LAN_DATA.length + ' regions');
+                        }
+                        setLanDataReady(true);
+                    })
+                    .catch(err => {
+                        console.error('Failed to load taxonomy:', err);
+                        setLanDataReady(true);
+                    });
             }, []);
 
             const checkOnboarding = async () => {
@@ -4874,37 +4873,51 @@
                 }
             };
 
+            // Helper: convert kommun ID to display label using LAN_DATA
+            const kommunIdToLabel = (id) => {
+                for (const lan of LAN_DATA) {
+                    const found = lan.kommuner.find(k => k.id === id);
+                    if (found) return found.label;
+                }
+                return null;
+            };
+
             const handleScrape = async (keywords) => {
                 setScraping(true);
 
+                const prefs = JSON.parse(localStorage.getItem('job_preferences') || '{}');
+
                 // Use quiz preferences as defaults if no manual keywords
                 let kw = keywords.trim() ? keywords.split(',').map(k => k.trim()) : null;
-                let location = 'Stockholm';
 
                 if (!kw) {
-                    const prefs = JSON.parse(localStorage.getItem('job_preferences') || '{}');
                     const roleMap = {
                         'servitor': 'servitör', 'kundtjanst': 'kundtjänst', 'butik': 'butik',
                         'lager': 'lager', 'kontor': 'kontor', 'tech': 'IT', 'vard': 'vård',
                         'hotell': 'hotell', 'barn': 'barnvakt', 'skola': 'lärare',
                         'tradgard': 'trädgård', 'stad': 'städ'
                     };
-                    // Use custom freetext search first, then preset chips
                     if (prefs.custom_search && prefs.custom_search.trim()) {
                         kw = prefs.custom_search.split(',').map(k => k.trim()).filter(Boolean);
                     } else if (prefs.search_terms && prefs.search_terms.length > 0) {
                         kw = prefs.search_terms.map(r => roleMap[r] || r);
                     }
-                    if (prefs.location && prefs.location.length > 0) {
-                        const loc = prefs.location.find(l => l !== 'anywhere' && l !== 'remote');
-                        if (loc) location = loc.charAt(0).toUpperCase() + loc.slice(1);
+                }
+
+                // Build municipality concept IDs from preferences for server-side geography filtering
+                let municipalityIds = null;
+                const selKommuner = prefs.location || [];
+                if (selKommuner.length > 0 && !selKommuner.includes('anywhere')) {
+                    const ids = selKommuner.filter(k => k !== 'remote' && k !== 'anywhere');
+                    if (ids.length > 0) {
+                        municipalityIds = ids;
                     }
                 }
 
                 const res = await fetch('/api/scrape', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ keywords: kw, location: location })
+                    body: JSON.stringify({ keywords: kw, municipality_ids: municipalityIds })
                 });
                 const data = await res.json();
                 if (data.success) {
@@ -4936,11 +4949,13 @@
                             }).catch(() => {});
                         }
                     } else {
-                        alert(data.detail || 'Kunde inte skapa ansökan.');
+                        // Show a helpful error with more context
+                        const msg = data.detail || 'Kunde inte generera brev just nu.';
+                        alert(`${msg}\n\nTips: Försök igen om en stund, eller kolla att du är inloggad.`);
                     }
                 } catch (err) {
                     console.error('Apply error:', err);
-                    alert('Något gick fel. Försök igen.');
+                    alert('Kunde inte ansluta till servern. Kontrollera din internetanslutning och försök igen.');
                 }
                 setApplyingJob(null);
             };
