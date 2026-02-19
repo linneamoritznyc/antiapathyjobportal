@@ -100,6 +100,7 @@ async def startup_event():
 class JobSearchRequest(BaseModel):
     keywords: Optional[List[str]] = None
     location: Optional[str] = "Stockholm"
+    municipalities: Optional[List[str]] = None  # Display names like ["Stockholm", "Sollentuna"]
 
 
 class GenerateLetterRequest(BaseModel):
@@ -399,12 +400,42 @@ def calculate_priority(deadline: Optional[str]) -> str:
 
 # ============== PLATSBANKEN SCRAPER ==============
 
-async def scrape_platsbanken(keyword: str, location: str = "Stockholm", max_jobs: int = 15) -> List[Dict]:
+def job_matches_municipalities(job: Dict, municipalities: List[str]) -> bool:
+    """Check if a job's location matches any of the user's selected municipalities."""
+    if not municipalities:
+        return True
+
+    job_loc = (job.get("location") or "").lower()
+    job_muni = (job.get("municipality") or "").lower()
+
+    # If job has no location data at all, let it through (we can't filter it)
+    if not job_loc and not job_muni:
+        return True
+
+    muni_lower = [m.lower() for m in municipalities]
+
+    for m in muni_lower:
+        # "stockholm" in "stockholm" or "sollentuna" in "sollentuna kommun"
+        if m in job_loc or m in job_muni:
+            return True
+        # Job says "stockholm" and user selected "stockholms län" area
+        if job_loc and job_loc in m:
+            return True
+        if job_muni and job_muni in m:
+            return True
+
+    return False
+
+
+async def scrape_platsbanken(keyword: str, location: str = "Stockholm", max_jobs: int = 15, municipalities: List[str] = None) -> List[Dict]:
     """
     Scrape jobs from Platsbanken API.
     Only returns jobs where you can apply via email (not portal).
+    When municipalities is set, fetches more results and post-filters by geography.
     """
     jobs = []
+    # Fetch more when we'll be filtering by geography, since many will be outside the area
+    max_records = 100 if municipalities else 50
 
     try:
         async with httpx.AsyncClient() as client:
@@ -418,7 +449,7 @@ async def scrape_platsbanken(keyword: str, location: str = "Stockholm", max_jobs
                     ],
                     "fromDate": None,
                     "order": "date",
-                    "maxRecords": 50,  # Get more to filter down
+                    "maxRecords": max_records,
                     "startIndex": 0,
                     "source": "pb"
                 },
@@ -557,6 +588,12 @@ async def scrape_platsbanken(keyword: str, location: str = "Stockholm", max_jobs
         logger.error(f"Timeout scraping Platsbanken for '{keyword}'")
     except Exception as e:
         logger.error(f"Error scraping Platsbanken: {e}")
+
+    # Post-filter by geography if municipalities are specified
+    if municipalities and jobs:
+        before = len(jobs)
+        jobs = [j for j in jobs if job_matches_municipalities(j, municipalities)]
+        logger.info(f"Geography filter: {before} → {len(jobs)} jobs (municipalities: {municipalities})")
 
     return jobs
 
@@ -1150,22 +1187,31 @@ async def scrape_jobs(request: JobSearchRequest = None):
     """Scrape jobs from Platsbanken.
     Searches user's positive keywords PLUS a broad catch-all search,
     so unexpected dream jobs also appear (filtered by negatives in frontend).
+    When municipalities are provided, results are filtered by geography server-side.
     """
     keywords = request.keywords if request and request.keywords else ["servitör", "kundtjänst", "butik"]
     location = request.location if request else "Stockholm"
+    municipalities = request.municipalities if request and request.municipalities else None
+
+    # Log what we're searching for
+    if municipalities:
+        logger.info(f"Scraping with geography filter: {municipalities}")
 
     all_jobs = []
 
     # 1. Scrape user's positive keywords (what they specifically want)
+    # When filtering by geography, increase max_jobs since many will be filtered out
+    per_keyword_limit = 20 if municipalities else 10
     for keyword in keywords[:5]:  # Max 5 keywords
-        jobs = await scrape_platsbanken(keyword, location, max_jobs=10)
+        jobs = await scrape_platsbanken(keyword, location, max_jobs=per_keyword_limit, municipalities=municipalities)
         all_jobs.extend(jobs)
 
     # 2. Broad catch-all scrape so unexpected cool jobs also appear
     #    (negative keywords filter them in frontend — we cast a wide net here)
+    broad_limit = 25 if municipalities else 15
     broad_terms = ["jobb", "anställning"]
     for term in broad_terms:
-        broad_jobs = await scrape_platsbanken(term, location, max_jobs=15)
+        broad_jobs = await scrape_platsbanken(term, location, max_jobs=broad_limit, municipalities=municipalities)
         all_jobs.extend(broad_jobs)
 
     # Remove duplicates by job ID
