@@ -811,3 +811,11 @@ COMMENT ON TABLE user_anecdotes IS 'Personal anecdotes and hobbies for AI cover 
 -- user_ai_feedback — AI feedback for personalized cover letters
 --   (Not in DB as of Feb 2026. Row counts query returned no entry for this table.)
 --   To create: run the CREATE TABLE IF NOT EXISTS user_ai_feedback block above.
+--
+-- ============== PENDING MIGRATIONS (Feb 19 2026) ==============
+-- user_job_preferences.quiz_answers — JSONB column for all preference data
+--   (Not yet in live DB. quiz_answers is the single source of truth for
+--    kommun IDs, search keywords, dealbreakers, working hours, etc.)
+--   To create:
+--     ALTER TABLE user_job_preferences
+--     ADD COLUMN IF NOT EXISTS quiz_answers JSONB DEFAULT '{}'::jsonb;
