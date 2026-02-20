@@ -2129,9 +2129,27 @@
             ]
         };
 
-        // Static list of Swedish län + kommuner with JobTech Taxonomy IDs.
-        // Source: https://taxonomy.api.jobtechdev.se/v1/taxonomy/specific/concepts/municipality
-        // Kommuner grouped by first 2 digits of LAU-2 code = Swedish county code.
+        // ============== GEOGRAPHY: Swedish län & kommuner ==============
+        // 21 län, 290 kommuner. Hardcoded — no API call needed.
+        //
+        // DATA SOURCE:
+        //   https://taxonomy.api.jobtechdev.se/v1/taxonomy/specific/concepts/municipality
+        //   (returns ONLY Swedish municipalities with JobTech taxonomy IDs)
+        //
+        // HOW IT'S STRUCTURED:
+        //   Each kommun has a "taxonomy/lau-2-code-2015" (SCB code). First 2 digits = county:
+        //   01=Stockholm, 03=Uppsala, 04=Södermanland, 05=Östergötland, 06=Jönköping,
+        //   07=Kronoberg, 08=Kalmar, 09=Gotland, 10=Blekinge, 12=Skåne, 13=Halland,
+        //   14=Västra Götaland, 17=Värmland, 18=Örebro, 19=Västmanland, 20=Dalarna,
+        //   21=Gävleborg, 22=Västernorrland, 23=Jämtland, 24=Västerbotten, 25=Norrbotten
+        //
+        // WHY HARDCODED:
+        //   Swedish counties/municipalities change extremely rarely.
+        //   No API dependency, no loading spinner, no race conditions.
+        //   The taxonomy IDs (e.g. "AvNB_uwa_6n6" for Stockholm) are what
+        //   Platsbanken API needs for geographic job filtering.
+        //
+        // TO UPDATE: Re-fetch the municipality endpoint above and regroup by LAU-2 prefix.
         const LAN_DATA = [
             {id:"01",label:"Stockholms län",kommuner:[
                 {id:"AvNB_uwa_6n6",label:"Stockholm"},{id:"CCVZ_JA7_d3y",label:"Botkyrka"},{id:"E4CV_a5E_ucX",label:"Danderyd"},
