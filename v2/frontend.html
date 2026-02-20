@@ -111,6 +111,7 @@
                     { id: 'applications', label: 'Ansökningar', icon: '📬' },
                     { id: 'metrics', label: 'Statistik', icon: '📊' },
                     { id: 'preferences', label: 'Preferenser', icon: '⚙️' },
+                    { id: 'platser', label: 'Platser', icon: '📍' },
                     { id: 'letter', label: 'Personligt brev', icon: '✍️' },
                     { id: 'quiz', label: 'Quiz', icon: '✨' },
                     { id: 'profil', label: 'Profil', icon: '👤' }
@@ -2616,6 +2617,217 @@
                             }`}
                         >
                             {saved ? '✓ Sparat!' : '💾 Spara preferenser'}
+                        </button>
+                    </div>
+                </div>
+            );
+        };
+
+        // ============== PLATSER PAGE ==============
+
+        const PlatserPage = () => {
+            const loadPrefs = () => {
+                try { return JSON.parse(localStorage.getItem('job_preferences') || '{}'); }
+                catch { return {}; }
+            };
+
+            const [prefs, setPrefs] = useState(loadPrefs);
+            const [selectedKommuner, setSelectedKommuner] = useState(prefs.location || []);
+            const [expandedLan, setExpandedLan] = useState(null);
+            const [saved, setSaved] = useState(false);
+            const [search, setSearch] = useState('');
+
+            useEffect(() => {
+                const handler = () => {
+                    const fresh = loadPrefs();
+                    setPrefs(fresh);
+                    if (fresh.location) setSelectedKommuner(fresh.location);
+                };
+                window.addEventListener('prefsUpdated', handler);
+                return () => window.removeEventListener('prefsUpdated', handler);
+            }, []);
+
+            const toggleKommun = (id) => {
+                setSelectedKommuner(prev => {
+                    if (id === 'anywhere') return prev.includes('anywhere') ? [] : ['anywhere'];
+                    const without = prev.filter(k => k !== 'anywhere');
+                    return without.includes(id) ? without.filter(k => k !== id) : [...without, id];
+                });
+            };
+
+            const selectAllInLan = (lan) => {
+                const ids = lan.kommuner.map(k => k.id);
+                const allIn = ids.every(id => selectedKommuner.includes(id));
+                setSelectedKommuner(prev => {
+                    const without = prev.filter(k => k !== 'anywhere' && !ids.includes(k));
+                    return allIn ? without : [...without, ...ids];
+                });
+            };
+
+            const saveLocation = () => {
+                const updated = { ...prefs, location: selectedKommuner };
+                localStorage.setItem('job_preferences', JSON.stringify(updated));
+                setPrefs(updated);
+                setSaved(true);
+                window.dispatchEvent(new Event('prefsUpdated'));
+                setTimeout(() => setSaved(false), 2000);
+                authFetch('/api/user/preferences', {
+                    method: 'POST', body: JSON.stringify(updated)
+                }).catch(err => console.warn('Failed to sync location:', err));
+            };
+
+            const kommunCount = selectedKommuner.filter(k => k !== 'remote' && k !== 'anywhere').length;
+
+            // Search across all län and kommuner
+            const filteredLan = search.trim()
+                ? LAN_DATA.map(lan => {
+                    const q = search.toLowerCase();
+                    const matchLan = lan.label.toLowerCase().includes(q);
+                    const matchKommuner = lan.kommuner.filter(k => k.label.toLowerCase().includes(q));
+                    if (matchLan) return lan;
+                    if (matchKommuner.length) return { ...lan, kommuner: matchKommuner };
+                    return null;
+                }).filter(Boolean)
+                : LAN_DATA;
+
+            return (
+                <div className="max-w-3xl mx-auto space-y-6">
+                    <div className="flex items-center gap-3 mb-2">
+                        <h2 className="text-2xl font-bold">Platser</h2>
+                        <span className="text-sm text-slate-400">Var vill du jobba?</span>
+                    </div>
+
+                    {/* Quick toggles */}
+                    <div className="bg-white rounded-xl p-5 border border-slate-200 flex flex-wrap gap-3">
+                        <button
+                            onClick={() => toggleKommun('anywhere')}
+                            className={`px-4 py-2 rounded-xl text-sm border-2 transition font-medium ${
+                                selectedKommuner.includes('anywhere')
+                                    ? 'bg-indigo-600 border-indigo-600 text-white'
+                                    : 'bg-white border-slate-200 text-slate-700 hover:border-indigo-300'
+                            }`}
+                        >
+                            {selectedKommuner.includes('anywhere') ? '✓ ' : ''}Hela Sverige
+                        </button>
+                        <button
+                            onClick={() => toggleKommun('remote')}
+                            className={`px-4 py-2 rounded-xl text-sm border-2 transition font-medium ${
+                                selectedKommuner.includes('remote')
+                                    ? 'bg-green-600 border-green-600 text-white'
+                                    : 'bg-white border-slate-200 text-slate-700 hover:border-green-300'
+                            }`}
+                        >
+                            {selectedKommuner.includes('remote') ? '✓ ' : ''}Distans / Remote
+                        </button>
+                    </div>
+
+                    {/* Search + län/kommun picker */}
+                    {!selectedKommuner.includes('anywhere') && (
+                        <div className="bg-white rounded-xl p-5 border border-slate-200 space-y-4">
+                            <input
+                                type="text"
+                                placeholder="Sök län eller kommun..."
+                                value={search}
+                                onChange={e => setSearch(e.target.value)}
+                                className="w-full px-4 py-2.5 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                            />
+
+                            {/* Län chips */}
+                            <div className="flex flex-wrap gap-2">
+                                {filteredLan.map(lan => {
+                                    const count = lan.kommuner.filter(k => selectedKommuner.includes(k.id)).length;
+                                    const isOpen = expandedLan === lan.id;
+                                    return (
+                                        <button
+                                            key={lan.id}
+                                            onClick={() => setExpandedLan(isOpen ? null : lan.id)}
+                                            className={`px-3 py-1.5 rounded-full text-sm border transition flex items-center gap-1 ${
+                                                isOpen
+                                                    ? 'bg-indigo-600 border-indigo-600 text-white font-medium'
+                                                    : count > 0
+                                                        ? 'bg-indigo-100 border-indigo-400 text-indigo-800 font-medium'
+                                                        : 'bg-slate-50 border-slate-200 text-slate-600 hover:border-indigo-300'
+                                            }`}
+                                        >
+                                            {lan.label}
+                                            {count > 0 && !isOpen && (
+                                                <span className="bg-indigo-500 text-white text-xs rounded-full px-1.5 py-0.5 ml-1">{count}</span>
+                                            )}
+                                        </button>
+                                    );
+                                })}
+                            </div>
+
+                            {/* Expanded kommun picker */}
+                            {expandedLan && (() => {
+                                const lan = filteredLan.find(l => l.id === expandedLan) || LAN_DATA.find(l => l.id === expandedLan);
+                                if (!lan) return null;
+                                const allSelected = lan.kommuner.every(k => selectedKommuner.includes(k.id));
+                                return (
+                                    <div className="bg-indigo-50 border border-indigo-200 rounded-xl p-4">
+                                        <div className="flex items-center justify-between mb-3">
+                                            <span className="text-sm font-semibold text-indigo-700">{lan.label}</span>
+                                            <button onClick={() => selectAllInLan(lan)} className="text-xs text-indigo-500 hover:text-indigo-700 underline">
+                                                {allSelected ? 'Avmarkera alla' : 'Välj alla'}
+                                            </button>
+                                        </div>
+                                        <div className="flex flex-wrap gap-2">
+                                            {lan.kommuner.map(k => (
+                                                <button
+                                                    key={k.id}
+                                                    onClick={() => toggleKommun(k.id)}
+                                                    className={`px-3 py-1.5 rounded-full text-sm border transition ${
+                                                        selectedKommuner.includes(k.id)
+                                                            ? 'bg-indigo-500 border-indigo-500 text-white font-medium'
+                                                            : 'bg-white border-indigo-200 text-slate-700 hover:border-indigo-400'
+                                                    }`}
+                                                >
+                                                    {selectedKommuner.includes(k.id) ? '✓ ' : ''}{k.label}
+                                                </button>
+                                            ))}
+                                        </div>
+                                    </div>
+                                );
+                            })()}
+                        </div>
+                    )}
+
+                    {/* Selected summary */}
+                    {(kommunCount > 0 || selectedKommuner.includes('remote')) && (
+                        <div className="bg-white rounded-xl p-5 border border-slate-200">
+                            <h3 className="text-sm font-semibold text-slate-500 uppercase tracking-wide mb-3">
+                                Valda platser{kommunCount > 0 ? ` (${kommunCount})` : ''}
+                            </h3>
+                            <div className="flex flex-wrap gap-2">
+                                {selectedKommuner.filter(k => k !== 'remote' && k !== 'anywhere').map(kId => {
+                                    let label = kId;
+                                    for (const lan of LAN_DATA) { const f = lan.kommuner.find(k => k.id === kId); if (f) { label = f.label; break; } }
+                                    return (
+                                        <span key={kId} className="flex items-center gap-1 px-3 py-1.5 bg-indigo-100 text-indigo-800 rounded-full text-sm font-medium">
+                                            {label}
+                                            <button onClick={() => toggleKommun(kId)} className="text-indigo-400 hover:text-red-500 ml-0.5 font-bold">×</button>
+                                        </span>
+                                    );
+                                })}
+                                {selectedKommuner.includes('remote') && (
+                                    <span className="flex items-center gap-1 px-3 py-1.5 bg-green-100 text-green-800 rounded-full text-sm font-medium">
+                                        Distans / Remote
+                                        <button onClick={() => toggleKommun('remote')} className="text-green-400 hover:text-red-500 ml-0.5 font-bold">×</button>
+                                    </span>
+                                )}
+                            </div>
+                        </div>
+                    )}
+
+                    {/* Save */}
+                    <div className="flex justify-end pb-8">
+                        <button
+                            onClick={saveLocation}
+                            className={`px-8 py-3 rounded-xl font-medium transition ${
+                                saved ? 'bg-green-600 text-white' : 'bg-indigo-600 text-white hover:bg-indigo-700'
+                            }`}
+                        >
+                            {saved ? '✓ Sparat!' : 'Spara platser'}
                         </button>
                     </div>
                 </div>
@@ -6417,6 +6629,9 @@
                             <PreferencesPage />
                         )}
 
+                        {activeTab === 'platser' && (
+                            <PlatserPage />
+                        )}
 
                         {activeTab === 'letter' && (
                             <LetterPreferencesPage />
