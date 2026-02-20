@@ -398,121 +398,42 @@ def calculate_priority(deadline: Optional[str]) -> str:
         return "normal"
 
 
-# ============== TAXONOMY (REGIONS & MUNICIPALITIES) ==============
+# ============== MUNICIPALITY LABEL LOOKUP (for scraper post-filtering) ==============
 
-_taxonomy_cache = {"data": None, "fetched_at": 0}
-TAXONOMY_CACHE_TTL = 86400  # 24 hours
+_muni_label_cache: Dict[str, str] = {}
+_muni_cache_fetched_at: float = 0
 
-
-async def fetch_taxonomy_data():
-    """Fetch all Swedish regions (län) and municipalities (kommuner) from the JobTech Taxonomy API.
-    Maps municipalities to regions using SCB codes (first 2 digits of taxonomy/lau-2-code-2015)."""
+async def fetch_municipality_labels() -> Dict[str, str]:
+    """Fetch municipality ID → label mapping from JobTech Taxonomy API.
+    Used by the scraper to post-filter jobs by municipality name.
+    Source: https://taxonomy.api.jobtechdev.se/v1/taxonomy/specific/concepts/municipality
+    (returns only Swedish municipalities — 290 kommuner)"""
+    global _muni_label_cache, _muni_cache_fetched_at
     now = time.time()
-    if _taxonomy_cache["data"] and (now - _taxonomy_cache["fetched_at"]) < TAXONOMY_CACHE_TTL:
-        return _taxonomy_cache["data"]
-
-    # SCB county code (first 2 digits of municipality code) → possible region label variants
-    # We store multiple variants to handle whatever the API returns
-    SCB_COUNTY_PREFIX = {
-        "01": ["stockholms län", "stockholms", "stockholm"],
-        "03": ["uppsala län", "uppsalas", "uppsala"],
-        "04": ["södermanlands län", "södermanlands", "södermanland"],
-        "05": ["östergötlands län", "östergötlands", "östergötland"],
-        "06": ["jönköpings län", "jönköpings", "jönköping"],
-        "07": ["kronobergs län", "kronobergs", "kronoberg"],
-        "08": ["kalmar län", "kalmars", "kalmar"],
-        "09": ["gotlands län", "gotlands", "gotland"],
-        "10": ["blekinge län", "blekinges", "blekinge"],
-        "12": ["skåne län", "skånes", "skåne"],
-        "13": ["hallands län", "hallands", "halland"],
-        "14": ["västra götalands län", "västra götalands", "västra götaland"],
-        "17": ["värmlands län", "värmlands", "värmland"],
-        "18": ["örebro län", "örebros", "örebro"],
-        "19": ["västmanlands län", "västmanlands", "västmanland"],
-        "20": ["dalarnas län", "dalarnas", "dalarna", "dalarnes"],
-        "21": ["gävleborgs län", "gävleborgs", "gävleborg"],
-        "22": ["västernorrlands län", "västernorrlands", "västernorrland"],
-        "23": ["jämtlands län", "jämtlands", "jämtland"],
-        "24": ["västerbottens län", "västerbottens", "västerbotten"],
-        "25": ["norrbottens län", "norrbottens", "norrbotten"],
-    }
+    if _muni_label_cache and (now - _muni_cache_fetched_at) < 86400:
+        return _muni_label_cache
 
     try:
         async with httpx.AsyncClient() as client:
-            regions_res = await client.get(
-                "https://taxonomy.api.jobtechdev.se/v1/taxonomy/specific/concepts/region",
-                timeout=10
-            )
-            munis_res = await client.get(
+            res = await client.get(
                 "https://taxonomy.api.jobtechdev.se/v1/taxonomy/specific/concepts/municipality",
                 timeout=10
             )
-
-            if regions_res.status_code != 200 or munis_res.status_code != 200:
-                logger.error(f"Taxonomy API error: regions={regions_res.status_code}, munis={munis_res.status_code}")
-                return _taxonomy_cache.get("data") or []
-
-            regions_raw = regions_res.json()
-            munis_raw = munis_res.json()
-
-            # Build region lookup — normalized label → region id
-            # API format: {"taxonomy/id": "...", "taxonomy/preferred-label": "Stockholms län", ...}
-            regions = {}
-            region_norm_to_id = {}  # lowercase label → region id
-            for r in regions_raw:
-                rid = r.get("taxonomy/id", "")
-                rlabel = r.get("taxonomy/preferred-label", "")
-                if rid and rlabel:
-                    regions[rid] = {"id": rid, "label": rlabel, "kommuner": []}
-                    region_norm_to_id[rlabel.lower().strip()] = rid
-
-            # Build SCB county prefix → region id mapping using fuzzy label matching
-            prefix_to_region = {}
-            for prefix, variants in SCB_COUNTY_PREFIX.items():
-                for variant in variants:
-                    if variant in region_norm_to_id:
-                        prefix_to_region[prefix] = region_norm_to_id[variant]
-                        break
-
-            unmatched_prefixes = set(SCB_COUNTY_PREFIX.keys()) - set(prefix_to_region.keys())
-            if unmatched_prefixes:
-                logger.warning(f"SCB prefixes with no matching region: {unmatched_prefixes}")
-                logger.warning(f"Available region labels: {list(region_norm_to_id.keys())}")
-
-            # Assign municipalities to regions using SCB code prefix
-            orphan_count = 0
-            for m in munis_raw:
-                mid = m.get("taxonomy/id", "")
-                mlabel = m.get("taxonomy/preferred-label", "")
-                lau_code = m.get("taxonomy/lau-2-code-2015", "")
-
-                if not mid or not mlabel:
-                    continue
-
-                county_prefix = lau_code[:2] if len(lau_code) >= 2 else ""
-                region_id = prefix_to_region.get(county_prefix, "")
-
-                if region_id and region_id in regions:
-                    regions[region_id]["kommuner"].append({"id": mid, "label": mlabel})
-                else:
-                    orphan_count += 1
-                    logger.warning(f"Orphan municipality: {mlabel} (LAU={lau_code}, prefix={county_prefix})")
-
-            # Sort regions and kommuner alphabetically
-            result = sorted(regions.values(), key=lambda r: r["label"])
-            for r in result:
-                r["kommuner"].sort(key=lambda k: k["label"])
-
-            _taxonomy_cache["data"] = result
-            _taxonomy_cache["fetched_at"] = now
-            total_kommuner = sum(len(r["kommuner"]) for r in result)
-            logger.info(f"Taxonomy loaded: {len(result)} regions, {total_kommuner} municipalities, {orphan_count} orphans")
-
-            return result
-
+            if res.status_code != 200:
+                logger.error(f"Municipality taxonomy API error: {res.status_code}")
+                return _muni_label_cache
+            data = res.json()
+            _muni_label_cache = {
+                m["taxonomy/id"]: m["taxonomy/preferred-label"]
+                for m in data
+                if m.get("taxonomy/id") and m.get("taxonomy/preferred-label")
+            }
+            _muni_cache_fetched_at = now
+            logger.info(f"Municipality labels loaded: {len(_muni_label_cache)} municipalities")
+            return _muni_label_cache
     except Exception as e:
-        logger.error(f"Failed to fetch taxonomy: {e}")
-        return _taxonomy_cache.get("data") or []
+        logger.error(f"Failed to fetch municipality labels: {e}")
+        return _muni_label_cache
 
 
 def _job_in_municipalities(job: Dict, municipality_labels_lower: List[str]) -> bool:
@@ -542,14 +463,10 @@ async def scrape_platsbanken(keyword: str, max_jobs: int = 15, municipality_ids:
     jobs = []
     max_records = 50
 
-    # Look up municipality labels from taxonomy for post-filtering
+    # Look up municipality labels for post-filtering
     municipality_labels_lower = []
     if municipality_ids:
-        taxonomy = await fetch_taxonomy_data()
-        label_lookup = {}
-        for region in taxonomy:
-            for k in region.get("kommuner", []):
-                label_lookup[k["id"]] = k["label"]
+        label_lookup = await fetch_municipality_labels()
         municipality_labels_lower = [
             label_lookup[mid].lower() for mid in municipality_ids if mid in label_lookup
         ]
@@ -1321,13 +1238,6 @@ async def health():
         "supabase": bool(SUPABASE_URL and SUPABASE_KEY),
         "claude": bool(ANTHROPIC_API_KEY)
     }
-
-
-@app.get("/api/taxonomy/regions")
-async def get_taxonomy_regions():
-    """Return all Swedish regions (län) and municipalities (kommuner) from the JobTech Taxonomy API."""
-    data = await fetch_taxonomy_data()
-    return {"success": True, "regions": data}
 
 
 @app.post("/api/scrape")
@@ -5476,6 +5386,38 @@ async def root():
     """Serve frontend"""
     html = get_frontend_html()
     return HTMLResponse(content=html, headers={"Cache-Control": "no-cache, no-store, must-revalidate"})
+
+
+# ============== DEBUG: Frontend delivery check ==============
+
+@app.get("/api/debug/frontend-check")
+async def debug_frontend_check():
+    """Diagnose which frontend.html is being served and whether it contains recent code."""
+    import hashlib
+    info = {}
+    try:
+        frontend_path = pathlib.Path(__file__).parent.parent / "frontend.html"
+        info["path"] = str(frontend_path)
+        info["exists"] = frontend_path.exists()
+        if frontend_path.exists():
+            content = frontend_path.read_text(encoding='utf-8')
+            info["size_bytes"] = len(content.encode('utf-8'))
+            info["line_count"] = content.count('\n')
+            info["md5"] = hashlib.md5(content.encode('utf-8')).hexdigest()
+            info["has_platser_tab"] = "id: 'platser'" in content
+            info["has_extern_tab"] = "id: 'external'" in content
+            info["has_PlatserPage"] = "const PlatserPage" in content
+            info["has_version_marker"] = "FRONTEND_VERSION" in content
+            # First 200 chars
+            info["first_200_chars"] = content[:200]
+        else:
+            info["note"] = "frontend.html NOT FOUND at expected path"
+    except Exception as e:
+        info["error"] = str(e)
+
+    info["__file__"] = str(pathlib.Path(__file__))
+    info["cwd"] = str(pathlib.Path.cwd())
+    return info
 
 
 # ============== ADMIN ENDPOINTS (for debugging Supabase data) ==============
