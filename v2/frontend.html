@@ -113,6 +113,7 @@
                     { id: 'preferences', label: 'Preferenser', icon: '⚙️' },
                     { id: 'platser', label: 'Platser', icon: '📍' },
                     { id: 'letter', label: 'Personligt brev', icon: '✍️' },
+                    { id: 'gmail', label: 'Gmail', icon: '📬' },
                     { id: 'quiz', label: 'Quiz', icon: '✨' },
                     { id: 'profil', label: 'Profil', icon: '👤' }
                 ].map(tab => (
@@ -1085,8 +1086,8 @@
         };
 
         // Profil page - Profile photo + Training letter
-        const GmailSettingsSection = () => {
-            const [gmailStatus, setGmailStatus] = useState(null); // null | {connected, gmail_address}
+        const GmailPage = () => {
+            const [gmailStatus, setGmailStatus] = useState(null); // null | {connected, gmail_address, app_configured}
             const [disconnecting, setDisconnecting] = useState(false);
             const [connecting, setConnecting] = useState(false);
             const [msg, setMsg] = useState(null);
@@ -1095,7 +1096,7 @@
                 authFetch('/api/gmail/status')
                     .then(r => r.json())
                     .then(d => setGmailStatus(d))
-                    .catch(() => setGmailStatus({ connected: false }));
+                    .catch(() => setGmailStatus({ connected: false, app_configured: false }));
             }, []);
 
             const connectGmail = async () => {
@@ -1127,7 +1128,7 @@
             };
 
             const disconnectGmail = async () => {
-                if (!window.confirm('Är du säker? Appen kommer inte längre kunna spara utkast i din Gmail.')) return;
+                if (!window.confirm('Är du säker på att du vill koppla bort Gmail? Appen kommer inte längre kunna spara utkast i din inkorg.')) return;
                 setDisconnecting(true);
                 setMsg(null);
                 try {
@@ -1136,7 +1137,7 @@
                     });
                     const data = await resp.json();
                     if (data.success) {
-                        setGmailStatus({ connected: false });
+                        setGmailStatus({ connected: false, app_configured: true });
                         setMsg({ type: 'success', text: 'Gmail frånkopplat. Appen har inte längre åtkomst till din Gmail.' });
                     } else {
                         setMsg({ type: 'error', text: 'Kunde inte koppla bort. Försök igen.' });
@@ -1148,59 +1149,151 @@
             };
 
             return (
-                <div className="bg-white rounded-xl p-6 border border-slate-200">
-                    <h3 className="text-lg font-semibold mb-1">📬 Gmail-koppling</h3>
-                    <p className="text-sm text-slate-500 mb-4">
-                        Appen kan spara personliga brev som utkast i din Gmail. Du bestämmer alltid själv om du vill skicka.
-                    </p>
+                <div className="max-w-2xl mx-auto space-y-6">
+                    <div>
+                        <h2 className="text-2xl font-bold text-slate-800 mb-1">Gmail</h2>
+                        <p className="text-slate-500">Koppla din Gmail så att appen kan spara ansökningar som utkast direkt i din inkorg.</p>
+                    </div>
 
-                    {gmailStatus === null ? (
-                        <p className="text-sm text-slate-400">Kontrollerar status...</p>
-                    ) : gmailStatus.connected ? (
-                        <div>
-                            <div className="flex items-center gap-3 p-4 bg-green-50 border border-green-200 rounded-lg mb-4">
-                                <span className="text-xl">✅</span>
-                                <div>
-                                    <p className="font-medium text-green-800">Gmail kopplat</p>
-                                    <p className="text-sm text-green-700">{gmailStatus.gmail_address}</p>
-                                </div>
-                            </div>
-                            <button
-                                onClick={disconnectGmail}
-                                disabled={disconnecting}
-                                className="text-sm text-red-600 hover:text-red-800 underline disabled:opacity-50"
-                            >
-                                {disconnecting ? 'Kopplar bort...' : 'Koppla bort Gmail (återkalla åtkomst)'}
-                            </button>
-                            <p className="text-xs text-slate-400 mt-1">
-                                Du kan också återkalla åtkomst via <a href="https://myaccount.google.com/permissions" target="_blank" className="underline">Googles kontoinställningar</a>.
-                            </p>
-                        </div>
-                    ) : (
-                        <div>
-                            <div className="bg-blue-50 border border-blue-100 rounded-lg p-3 mb-4 text-sm text-blue-900">
-                                <p className="font-medium mb-1">Vad händer när du kopplar Gmail?</p>
-                                <ul className="space-y-0.5 text-blue-800">
-                                    <li>✓ Utkast sparas i din Gmail — inget skickas automatiskt</li>
-                                    <li>✓ Du granskar och skickar alltid själv</li>
-                                    <li>✓ Google frågar om tillstånd innan något händer</li>
-                                    <li>✓ Du kan koppla bort här när som helst</li>
-                                </ul>
-                            </div>
-                            <button
-                                onClick={connectGmail}
-                                disabled={connecting}
-                                className="flex items-center gap-2 bg-white border-2 border-slate-300 text-slate-700 py-2.5 px-4 rounded-lg font-medium hover:border-indigo-400 hover:bg-indigo-50 transition disabled:opacity-50"
-                            >
-                                <svg width="18" height="18" viewBox="0 0 24 24"><path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/><path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/><path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l3.66-2.84z"/><path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"/></svg>
-                                {connecting ? 'Öppnar...' : 'Koppla Gmail via Google'}
-                            </button>
+                    {/* Status message */}
+                    {msg && (
+                        <div className={`p-4 rounded-xl text-sm font-medium ${msg.type === 'success' ? 'bg-green-50 border border-green-200 text-green-800' : 'bg-red-50 border border-red-200 text-red-800'}`}>
+                            {msg.text}
                         </div>
                     )}
 
-                    {msg && (
-                        <div className={`mt-3 p-2 rounded-lg text-sm ${msg.type === 'success' ? 'bg-green-50 text-green-700' : 'bg-red-50 text-red-700'}`}>
-                            {msg.text}
+                    {gmailStatus === null ? (
+                        <div className="bg-white rounded-xl p-8 border border-slate-200 text-center">
+                            <p className="text-slate-400">Kontrollerar Gmail-status...</p>
+                        </div>
+                    ) : gmailStatus.connected ? (
+                        /* ===== CONNECTED STATE ===== */
+                        <div className="space-y-4">
+                            <div className="bg-white rounded-xl border border-slate-200 overflow-hidden">
+                                <div className="bg-green-50 border-b border-green-200 px-6 py-5 flex items-center gap-4">
+                                    <div className="w-12 h-12 bg-green-100 rounded-full flex items-center justify-center text-2xl">
+                                        <svg width="24" height="24" viewBox="0 0 24 24" fill="none"><path d="M20 4H4c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V6c0-1.1-.9-2-2-2zm0 4l-8 5-8-5V6l8 5 8-5v2z" fill="#16a34a"/></svg>
+                                    </div>
+                                    <div>
+                                        <p className="font-semibold text-green-800 text-lg">Gmail kopplad</p>
+                                        <p className="text-green-700">{gmailStatus.gmail_address}</p>
+                                    </div>
+                                </div>
+                                <div className="px-6 py-5 space-y-3">
+                                    <p className="text-sm text-slate-600">
+                                        Appen har tillgång att skapa utkast i din Gmail. Inga mail skickas automatiskt — du granskar och skickar alltid själv.
+                                    </p>
+                                    <div className="bg-slate-50 rounded-lg p-4">
+                                        <p className="text-xs font-medium text-slate-500 uppercase tracking-wide mb-2">Appen kan</p>
+                                        <ul className="text-sm text-slate-700 space-y-1.5">
+                                            <li className="flex items-start gap-2"><span className="text-green-500 mt-0.5">&#10003;</span> Skapa utkast i din Gmail med personligt brev och CV</li>
+                                            <li className="flex items-start gap-2"><span className="text-green-500 mt-0.5">&#10003;</span> Bifoga PDF-filer (personligt brev + CV)</li>
+                                        </ul>
+                                        <p className="text-xs font-medium text-slate-500 uppercase tracking-wide mb-2 mt-4">Appen kan inte</p>
+                                        <ul className="text-sm text-slate-700 space-y-1.5">
+                                            <li className="flex items-start gap-2"><span className="text-red-400 mt-0.5">&#10007;</span> Skicka mail</li>
+                                            <li className="flex items-start gap-2"><span className="text-red-400 mt-0.5">&#10007;</span> Läsa dina befintliga mail</li>
+                                            <li className="flex items-start gap-2"><span className="text-red-400 mt-0.5">&#10007;</span> Ta bort något i din inkorg</li>
+                                        </ul>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div className="bg-white rounded-xl border border-slate-200 px-6 py-5">
+                                <h3 className="font-semibold text-slate-800 mb-3">Koppla bort Gmail</h3>
+                                <p className="text-sm text-slate-500 mb-4">
+                                    Om du kopplar bort raderas alla sparade tokens. Appen förlorar åtkomst till din Gmail direkt.
+                                </p>
+                                <button
+                                    onClick={disconnectGmail}
+                                    disabled={disconnecting}
+                                    className="bg-red-50 text-red-700 border border-red-200 px-5 py-2.5 rounded-lg text-sm font-medium hover:bg-red-100 transition disabled:opacity-50"
+                                >
+                                    {disconnecting ? 'Kopplar bort...' : 'Koppla bort Gmail'}
+                                </button>
+                                <p className="text-xs text-slate-400 mt-3">
+                                    Du kan också återkalla åtkomst via <a href="https://myaccount.google.com/permissions" target="_blank" rel="noopener noreferrer" className="underline hover:text-slate-600">Googles kontoinställningar</a>.
+                                </p>
+                            </div>
+                        </div>
+                    ) : (
+                        /* ===== NOT CONNECTED STATE ===== */
+                        <div className="space-y-4">
+                            {/* What the app needs access to */}
+                            <div className="bg-white rounded-xl border border-slate-200 overflow-hidden">
+                                <div className="px-6 py-5 border-b border-slate-100">
+                                    <h3 className="font-semibold text-slate-800 text-lg">Varför koppla Gmail?</h3>
+                                    <p className="text-sm text-slate-500 mt-1">
+                                        När du ansöker om jobb skapar appen ett utkast i din Gmail med personligt brev och rätt CV bifogat. Du granskar alltid utkastet och skickar själv.
+                                    </p>
+                                </div>
+                                <div className="px-6 py-5">
+                                    <p className="text-xs font-medium text-slate-500 uppercase tracking-wide mb-3">Så här fungerar det</p>
+                                    <div className="space-y-4">
+                                        <div className="flex gap-4">
+                                            <div className="w-8 h-8 bg-indigo-100 text-indigo-700 rounded-full flex items-center justify-center text-sm font-bold shrink-0">1</div>
+                                            <div>
+                                                <p className="font-medium text-slate-800">Du klickar "Koppla Gmail"</p>
+                                                <p className="text-sm text-slate-500">Ett Google-fönster öppnas där du loggar in med ditt Gmail-konto.</p>
+                                            </div>
+                                        </div>
+                                        <div className="flex gap-4">
+                                            <div className="w-8 h-8 bg-indigo-100 text-indigo-700 rounded-full flex items-center justify-center text-sm font-bold shrink-0">2</div>
+                                            <div>
+                                                <p className="font-medium text-slate-800">Google frågar om tillstånd</p>
+                                                <p className="text-sm text-slate-500">Du ser exakt vilka rättigheter appen begär. Appen begär bara åtkomst att skapa utkast — inte läsa eller skicka mail.</p>
+                                            </div>
+                                        </div>
+                                        <div className="flex gap-4">
+                                            <div className="w-8 h-8 bg-indigo-100 text-indigo-700 rounded-full flex items-center justify-center text-sm font-bold shrink-0">3</div>
+                                            <div>
+                                                <p className="font-medium text-slate-800">Du godkänner</p>
+                                                <p className="text-sm text-slate-500">Fönstret stängs och din Gmail är kopplad. Nu kan appen spara ansökningsutkast direkt i din inkorg.</p>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+
+                            {/* Permissions detail */}
+                            <div className="bg-white rounded-xl border border-slate-200 px-6 py-5">
+                                <h3 className="font-semibold text-slate-800 mb-3">Rättigheter appen begär</h3>
+                                <div className="bg-slate-50 rounded-lg p-4">
+                                    <ul className="text-sm text-slate-700 space-y-2">
+                                        <li className="flex items-start gap-2"><span className="text-green-500 mt-0.5">&#10003;</span> <strong>Skapa utkast</strong> — ansökningsmejl med personligt brev och CV som bilagor</li>
+                                    </ul>
+                                    <div className="border-t border-slate-200 mt-3 pt-3">
+                                        <p className="text-xs font-medium text-slate-500 uppercase tracking-wide mb-2">Appen kan aldrig</p>
+                                        <ul className="text-sm text-slate-600 space-y-1.5">
+                                            <li className="flex items-start gap-2"><span className="text-red-400 mt-0.5">&#10007;</span> Skicka mail åt dig</li>
+                                            <li className="flex items-start gap-2"><span className="text-red-400 mt-0.5">&#10007;</span> Läsa befintliga mail eller kontakter</li>
+                                            <li className="flex items-start gap-2"><span className="text-red-400 mt-0.5">&#10007;</span> Ta bort eller ändra något i din inkorg</li>
+                                        </ul>
+                                    </div>
+                                </div>
+                            </div>
+
+                            {/* Connect button */}
+                            <div className="bg-white rounded-xl border border-slate-200 px-6 py-6 text-center">
+                                <button
+                                    onClick={connectGmail}
+                                    disabled={connecting}
+                                    className="inline-flex items-center gap-3 bg-white border-2 border-slate-300 text-slate-700 py-3.5 px-8 rounded-xl font-semibold text-lg hover:border-indigo-400 hover:bg-indigo-50 transition disabled:opacity-50"
+                                >
+                                    <svg width="22" height="22" viewBox="0 0 24 24"><path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/><path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/><path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l3.66-2.84z"/><path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"/></svg>
+                                    {connecting ? 'Öppnar Google-inloggning...' : 'Koppla Gmail via Google'}
+                                </button>
+                                <p className="text-xs text-slate-400 mt-3">
+                                    Google visar vilka rättigheter appen begär innan du godkänner.
+                                </p>
+                            </div>
+
+                            {/* Privacy note */}
+                            <div className="bg-amber-50 border border-amber-200 rounded-xl px-6 py-4">
+                                <p className="text-sm text-amber-800">
+                                    <strong>Integritet:</strong> Dina Gmail-tokens lagras krypterat och används bara för att skapa utkast. Du kan koppla bort när som helst — då raderas alla tokens omedelbart.
+                                </p>
+                            </div>
                         </div>
                     )}
                 </div>
@@ -1493,9 +1586,6 @@
                             </div>
                         )}
                     </div>
-
-                    {/* Gmail Connection Section */}
-                    <GmailSettingsSection />
 
                     {/* Training Letter Section */}
                     <div className="bg-white rounded-xl p-6 border border-slate-200">
@@ -6803,6 +6893,10 @@
 
                         {activeTab === 'letter' && (
                             <LetterPreferencesPage />
+                        )}
+
+                        {activeTab === 'gmail' && (
+                            <GmailPage />
                         )}
 
                         {activeTab === 'profil' && (
