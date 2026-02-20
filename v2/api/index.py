@@ -5478,6 +5478,38 @@ async def root():
     return HTMLResponse(content=html, headers={"Cache-Control": "no-cache, no-store, must-revalidate"})
 
 
+# ============== DEBUG: Frontend delivery check ==============
+
+@app.get("/api/debug/frontend-check")
+async def debug_frontend_check():
+    """Diagnose which frontend.html is being served and whether it contains recent code."""
+    import hashlib
+    info = {}
+    try:
+        frontend_path = pathlib.Path(__file__).parent.parent / "frontend.html"
+        info["path"] = str(frontend_path)
+        info["exists"] = frontend_path.exists()
+        if frontend_path.exists():
+            content = frontend_path.read_text(encoding='utf-8')
+            info["size_bytes"] = len(content.encode('utf-8'))
+            info["line_count"] = content.count('\n')
+            info["md5"] = hashlib.md5(content.encode('utf-8')).hexdigest()
+            info["has_platser_tab"] = "id: 'platser'" in content
+            info["has_extern_tab"] = "id: 'external'" in content
+            info["has_PlatserPage"] = "const PlatserPage" in content
+            info["has_version_marker"] = "FRONTEND_VERSION" in content
+            # First 200 chars
+            info["first_200_chars"] = content[:200]
+        else:
+            info["note"] = "frontend.html NOT FOUND at expected path"
+    except Exception as e:
+        info["error"] = str(e)
+
+    info["__file__"] = str(pathlib.Path(__file__))
+    info["cwd"] = str(pathlib.Path.cwd())
+    return info
+
+
 # ============== ADMIN ENDPOINTS (for debugging Supabase data) ==============
 
 @app.get("/api/admin/schema")
