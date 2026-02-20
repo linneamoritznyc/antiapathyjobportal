@@ -4593,6 +4593,56 @@
         const MasterCVEditor = ({ isOpen, onClose, masterCV, onSave, saving }) => {
             const [editedCV, setEditedCV] = useState(null);
             const [activeSection, setActiveSection] = useState('experiences');
+            const [anecdotes, setAnecdotes] = useState([]);
+            const [showAnecdoteForm, setShowAnecdoteForm] = useState(false);
+            const [newAnecdote, setNewAnecdote] = useState({ title: '', type: 'anecdote', content: '', keywords: '' });
+            const [savingAnecdote, setSavingAnecdote] = useState(false);
+
+            // Fetch anecdotes when modal opens
+            useEffect(() => {
+                if (isOpen) {
+                    authFetch('/api/user/anecdotes')
+                        .then(res => res.json())
+                        .then(data => { if (data.success) setAnecdotes(data.anecdotes || []); })
+                        .catch(err => console.error('Failed to fetch anecdotes:', err));
+                }
+            }, [isOpen]);
+
+            const saveAnecdote = async () => {
+                if (!newAnecdote.title.trim() || !newAnecdote.content.trim()) return;
+                setSavingAnecdote(true);
+                try {
+                    const res = await authFetch('/api/user/anecdotes', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            title: newAnecdote.title.trim(),
+                            type: newAnecdote.type,
+                            content: newAnecdote.content.trim(),
+                            keywords: newAnecdote.keywords.split(',').map(k => k.trim()).filter(Boolean)
+                        })
+                    });
+                    const data = await res.json();
+                    if (data.success) {
+                        setAnecdotes(prev => [data.anecdote, ...prev]);
+                        setNewAnecdote({ title: '', type: 'anecdote', content: '', keywords: '' });
+                        setShowAnecdoteForm(false);
+                    }
+                } catch (err) {
+                    console.error('Failed to save anecdote:', err);
+                } finally {
+                    setSavingAnecdote(false);
+                }
+            };
+
+            const deleteAnecdote = async (id) => {
+                try {
+                    await authFetch(`/api/user/anecdotes/${id}`, { method: 'DELETE' });
+                    setAnecdotes(prev => prev.filter(a => a.id !== id));
+                } catch (err) {
+                    console.error('Failed to delete anecdote:', err);
+                }
+            };
 
             useEffect(() => {
                 if (isOpen) {
@@ -4793,6 +4843,7 @@
                 { id: 'education', label: 'Utbildning', icon: '🎓', count: editedCV.education?.length || 0 },
                 { id: 'skills', label: 'Kompetenser', icon: '⭐', count: editedCV.skills?.length || 0 },
                 { id: 'profile', label: 'Profil', icon: '👤', count: null },
+                { id: 'anecdotes', label: 'Anekdoter', icon: '✨', count: anecdotes.length },
                 { id: 'import', label: 'LinkedIn Import', icon: '📥', count: null }
             ];
 
@@ -5071,6 +5122,123 @@
                                 <p className="text-sm text-slate-500 mt-4">
                                     Profilinformation redigeras under <a href="/account" className="text-indigo-600 hover:underline">Mitt konto</a>.
                                 </p>
+                            </div>
+                        )}
+
+                        {/* Anecdotes Section */}
+                        {activeSection === 'anecdotes' && (
+                            <div>
+                                <div className="flex justify-between items-center mb-4">
+                                    <h3 className="text-xl font-bold">✨ Anekdoter & Hobbys</h3>
+                                    <button
+                                        onClick={() => setShowAnecdoteForm(!showAnecdoteForm)}
+                                        className="bg-indigo-600 text-white px-4 py-2 rounded-lg text-sm hover:bg-indigo-700"
+                                    >
+                                        {showAnecdoteForm ? 'Avbryt' : '+ Lägg till'}
+                                    </button>
+                                </div>
+                                <p className="text-sm text-slate-500 mb-4">
+                                    Personliga historier och hobbys som AI kan väva in i dina personliga brev när de är relevanta för jobbet.
+                                </p>
+
+                                {/* Add form */}
+                                {showAnecdoteForm && (
+                                    <div className="bg-indigo-50 border border-indigo-200 rounded-xl p-4 mb-6 space-y-3">
+                                        <div className="grid md:grid-cols-2 gap-3">
+                                            <div>
+                                                <label className="text-xs font-medium text-slate-600 block mb-1">Titel (max 5 ord)</label>
+                                                <input
+                                                    placeholder="t.ex. Konfirmationsledare i Värmdö"
+                                                    value={newAnecdote.title}
+                                                    onChange={(e) => setNewAnecdote({ ...newAnecdote, title: e.target.value })}
+                                                    className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm"
+                                                />
+                                            </div>
+                                            <div>
+                                                <label className="text-xs font-medium text-slate-600 block mb-1">Typ</label>
+                                                <select
+                                                    value={newAnecdote.type}
+                                                    onChange={(e) => setNewAnecdote({ ...newAnecdote, type: e.target.value })}
+                                                    className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm"
+                                                >
+                                                    <option value="anecdote">Anekdot (personlig historia)</option>
+                                                    <option value="hobby">Hobby</option>
+                                                </select>
+                                            </div>
+                                        </div>
+                                        <div>
+                                            <label className="text-xs font-medium text-slate-600 block mb-1">
+                                                {newAnecdote.type === 'hobby' ? 'Beskriv din hobby' : 'Berätta din historia'}
+                                            </label>
+                                            <textarea
+                                                placeholder={newAnecdote.type === 'hobby'
+                                                    ? 't.ex. Gymmar regelbundet, fokus på styrketräning och disciplin'
+                                                    : 't.ex. Jag ledde konfirmationsgrupper i Värmdö Församling under 2 år och lärde mig hantera grupper med ungdomar...'}
+                                                value={newAnecdote.content}
+                                                onChange={(e) => setNewAnecdote({ ...newAnecdote, content: e.target.value })}
+                                                rows={3}
+                                                className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm"
+                                            />
+                                        </div>
+                                        <div>
+                                            <label className="text-xs font-medium text-slate-600 block mb-1">Nyckelord (komma-separerade)</label>
+                                            <input
+                                                placeholder="t.ex. ledarskap, ungdomar, kyrka, gruppdynamik"
+                                                value={newAnecdote.keywords}
+                                                onChange={(e) => setNewAnecdote({ ...newAnecdote, keywords: e.target.value })}
+                                                className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm"
+                                            />
+                                        </div>
+                                        <button
+                                            onClick={saveAnecdote}
+                                            disabled={savingAnecdote || !newAnecdote.title.trim() || !newAnecdote.content.trim()}
+                                            className="bg-indigo-600 text-white px-4 py-2 rounded-lg text-sm hover:bg-indigo-700 disabled:opacity-50"
+                                        >
+                                            {savingAnecdote ? 'Sparar...' : 'Spara'}
+                                        </button>
+                                    </div>
+                                )}
+
+                                {/* Anecdote list */}
+                                <div className="space-y-3">
+                                    {anecdotes.map(a => (
+                                        <div key={a.id} className="bg-slate-50 rounded-xl p-4 border border-slate-200">
+                                            <div className="flex justify-between items-start mb-2">
+                                                <div className="flex items-center gap-2">
+                                                    <span>{a.type === 'hobby' ? '🏋️' : '📖'}</span>
+                                                    <h4 className="font-medium text-sm">{a.title}</h4>
+                                                    <span className="text-[10px] uppercase tracking-wide bg-slate-200 text-slate-600 px-2 py-0.5 rounded-full">
+                                                        {a.type === 'hobby' ? 'Hobby' : 'Anekdot'}
+                                                    </span>
+                                                </div>
+                                                <button
+                                                    onClick={() => deleteAnecdote(a.id)}
+                                                    className="text-red-500 hover:text-red-700 text-sm"
+                                                >
+                                                    🗑️ Ta bort
+                                                </button>
+                                            </div>
+                                            <p className="text-sm text-slate-600 mb-2">{a.content}</p>
+                                            {a.keywords && a.keywords.length > 0 && (
+                                                <div className="flex flex-wrap gap-1">
+                                                    {a.keywords.map((kw, i) => (
+                                                        <span key={i} className="text-[10px] bg-indigo-100 text-indigo-700 px-2 py-0.5 rounded-full">{kw}</span>
+                                                    ))}
+                                                </div>
+                                            )}
+                                        </div>
+                                    ))}
+                                    {anecdotes.length === 0 && (
+                                        <p className="text-slate-400 text-center py-8">Inga anekdoter eller hobbys tillagda ännu. Klicka "+ Lägg till" ovan.</p>
+                                    )}
+                                </div>
+
+                                <div className="mt-6 p-4 bg-amber-50 border border-amber-200 rounded-xl">
+                                    <p className="text-sm text-amber-800">
+                                        <strong>Tips:</strong> AI:n väljer automatiskt relevanta anekdoter/hobbys baserat på jobbannonsens nyckelord.
+                                        Du behöver inte välja manuellt — fyll bara på med så många som möjligt!
+                                    </p>
+                                </div>
                             </div>
                         )}
 
