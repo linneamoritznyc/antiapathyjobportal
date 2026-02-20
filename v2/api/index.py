@@ -5474,7 +5474,8 @@ async def account_page():
 @app.get("/", response_class=HTMLResponse)
 async def root():
     """Serve frontend"""
-    return get_frontend_html()
+    html = get_frontend_html()
+    return HTMLResponse(content=html, headers={"Cache-Control": "no-cache, no-store, must-revalidate"})
 
 
 # ============== ADMIN ENDPOINTS (for debugging Supabase data) ==============
