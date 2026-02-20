@@ -2116,9 +2116,11 @@ async def apply_with_cv(request: Request, job_id: str):
                 "data": cv_pdf_bytes
             })
 
-        draft_id = await create_gmail_draft_for_user(
+        draft_id, draft_error = await create_gmail_draft_for_user(
             user_id, contact_email, subject, email_body, attachments
         )
+        if draft_error:
+            logger.warning(f"Auto-draft failed for user {user_id}: {draft_error}")
 
     return {
         "success": True,
@@ -2375,12 +2377,12 @@ async def save_gmail_draft_with_attachments(request: Request, job_id: str):
             "data": cv_pdf_bytes
         })
 
-    draft_id = await create_gmail_draft_for_user(
+    draft_id, draft_error = await create_gmail_draft_for_user(
         user_id, contact_email, subject, email_body, attachments
     )
 
     if not draft_id:
-        raise HTTPException(status_code=500, detail="Kunde inte skapa Gmail-utkast. Är Gmail kopplat?")
+        raise HTTPException(status_code=500, detail=draft_error or "Kunde inte skapa Gmail-utkast. Är Gmail kopplat?")
 
     return {
         "success": True,
@@ -4871,11 +4873,13 @@ async def export_user_data(request: Request):
 # ============== GMAIL OAUTH (App credentials shared, user tokens in Supabase) ==============
 
 @app.get("/api/gmail/auth-url")
-async def get_gmail_auth_url(user_id: str = "default_user", redirect_uri: str = None):
+async def get_gmail_auth_url(request: Request, redirect_uri: str = None):
     """
     Get Google OAuth URL for user to authorize Gmail access.
     Uses app-level credentials (GMAIL_CLIENT_ID env var).
     """
+    user_id = await get_user_id_from_request(request, required=True)
+
     if not GMAIL_CLIENT_ID:
         raise HTTPException(status_code=500, detail="Gmail integration not configured. Set GMAIL_CLIENT_ID in env vars.")
 
@@ -4966,9 +4970,22 @@ async def gmail_oauth_callback(code: str, state: str = "default_user"):
 
 
 @app.get("/api/gmail/status")
-async def get_gmail_status(user_id: str = "default_user"):
+async def get_gmail_status(request: Request):
     """Check if user has Gmail connected"""
+    user_id = await get_user_id_from_request(request)
+    if not user_id:
+        return {"connected": False, "gmail_address": None, "app_configured": bool(GMAIL_CLIENT_ID)}
     creds = await db_request("GET", "user_google_credentials", params={"user_id": f"eq.{user_id}"})
+
+    # Auto-migrate: if no creds under real user_id, check for legacy "default_user" creds
+    if (not creds or not creds[0].get("is_connected")) and user_id != "default_user":
+        legacy = await db_request("GET", "user_google_credentials", params={"user_id": "eq.default_user"})
+        if legacy and legacy[0].get("is_connected"):
+            # Move legacy creds to real user_id
+            await db_request("PATCH", "user_google_credentials?user_id=eq.default_user", data={"user_id": user_id})
+            logger.info(f"Migrated Gmail credentials from default_user to {user_id}")
+            creds = await db_request("GET", "user_google_credentials", params={"user_id": f"eq.{user_id}"})
+
     if not creds or not creds[0].get("is_connected"):
         return {"connected": False, "gmail_address": None, "app_configured": bool(GMAIL_CLIENT_ID)}
     cred = creds[0]
@@ -4980,11 +4997,12 @@ async def get_gmail_status(user_id: str = "default_user"):
 
 
 @app.post("/api/gmail/disconnect")
-async def disconnect_gmail(user_id: str = "default_user"):
+async def disconnect_gmail(request: Request):
     """
     Revoke Gmail access and delete all stored tokens for this user.
     GDPR: user has the right to withdraw consent at any time.
     """
+    user_id = await get_user_id_from_request(request, required=True)
     creds = await db_request("GET", "user_google_credentials", params={"user_id": f"eq.{user_id}"})
     if not creds:
         return {"success": True, "message": "Ingen Gmail-koppling hittades."}
@@ -5174,11 +5192,21 @@ async def create_gmail_draft_for_user(
     subject: str,
     body: str,
     attachments: Optional[List[Dict]] = None  # [{"filename": "...", "data": bytes}]
-) -> Optional[str]:
-    """Create a Gmail draft with optional PDF attachments. Returns draft ID or None."""
+) -> tuple:
+    """Create a Gmail draft with optional PDF attachments. Returns (draft_id, error_msg) tuple."""
     access_token = await refresh_gmail_token(user_id)
     if not access_token:
-        return None
+        # Figure out WHY token is missing for a useful error
+        if not all([GMAIL_CLIENT_ID, GMAIL_CLIENT_SECRET]):
+            return (None, "Gmail API-nycklar saknas i servern. Kontakta admin.")
+        creds = await db_request("GET", "user_google_credentials", params={"user_id": f"eq.{user_id}"})
+        if not creds:
+            return (None, "Gmail är inte kopplat. Gå till Profil → Gmail och koppla ditt konto.")
+        if not creds[0].get("is_connected"):
+            return (None, "Gmail-kopplingen är inaktiverad. Gå till Profil → Gmail och koppla om.")
+        if not creds[0].get("refresh_token"):
+            return (None, "Gmail refresh token saknas. Koppla bort och koppla om Gmail i Profil.")
+        return (None, "Gmail-token kunde inte förnyas. Koppla bort och koppla om Gmail i Profil.")
     try:
         from email.mime.multipart import MIMEMultipart
         from email.mime.text import MIMEText
@@ -5206,11 +5234,16 @@ async def create_gmail_draft_for_user(
                 timeout=20
             )
             if resp.status_code in [200, 201]:
-                return resp.json().get("id")
+                return (resp.json().get("id"), None)
             logger.error(f"Draft creation failed: {resp.status_code} {resp.text}")
+            if resp.status_code == 401:
+                return (None, "Gmail-token har gått ut. Koppla bort och koppla om Gmail i Profil.")
+            if resp.status_code == 403:
+                return (None, "Gmail-behörighet nekad. Koppla bort och koppla om Gmail med rätt behörigheter.")
+            return (None, f"Gmail API-fel ({resp.status_code}). Försök igen eller koppla om Gmail.")
     except Exception as e:
         logger.error(f"Gmail draft error: {e}")
-    return None
+        return (None, f"Tekniskt fel vid skapande av utkast: {str(e)[:100]}")
 
 
 @app.post("/api/gmail/draft")
