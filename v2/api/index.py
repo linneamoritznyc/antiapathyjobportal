@@ -498,8 +498,9 @@ async def fetch_taxonomy_data():
                     orphan_count += 1
                     logger.warning(f"Orphan municipality: {mlabel} (LAU={lau_code}, prefix={county_prefix})")
 
-            # Sort regions and kommuner alphabetically
-            result = sorted(regions.values(), key=lambda r: r["label"])
+            # Filter to only Swedish regions (those with at least one municipality assigned via SCB codes)
+            # and sort alphabetically
+            result = sorted([r for r in regions.values() if r["kommuner"]], key=lambda r: r["label"])
             for r in result:
                 r["kommuner"].sort(key=lambda k: k["label"])
 
