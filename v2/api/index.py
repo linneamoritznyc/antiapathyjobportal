@@ -4976,6 +4976,16 @@ async def get_gmail_status(request: Request):
     if not user_id:
         return {"connected": False, "gmail_address": None, "app_configured": bool(GMAIL_CLIENT_ID)}
     creds = await db_request("GET", "user_google_credentials", params={"user_id": f"eq.{user_id}"})
+
+    # Auto-migrate: if no creds under real user_id, check for legacy "default_user" creds
+    if (not creds or not creds[0].get("is_connected")) and user_id != "default_user":
+        legacy = await db_request("GET", "user_google_credentials", params={"user_id": "eq.default_user"})
+        if legacy and legacy[0].get("is_connected"):
+            # Move legacy creds to real user_id
+            await db_request("PATCH", "user_google_credentials?user_id=eq.default_user", data={"user_id": user_id})
+            logger.info(f"Migrated Gmail credentials from default_user to {user_id}")
+            creds = await db_request("GET", "user_google_credentials", params={"user_id": f"eq.{user_id}"})
+
     if not creds or not creds[0].get("is_connected"):
         return {"connected": False, "gmail_address": None, "app_configured": bool(GMAIL_CLIENT_ID)}
     cred = creds[0]
