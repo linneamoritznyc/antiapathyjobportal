@@ -7,7 +7,7 @@ from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, HTMLResponse
 from pydantic import BaseModel
-from typing import Optional, List, Dict
+from typing import Any, Optional, List, Dict
 import os
 import logging
 import httpx
@@ -1365,8 +1365,16 @@ async def scrape_jobs(request: JobSearchRequest = None):
             seen.add(job["id"])
             unique_jobs.append(job)
 
-    # Sort by deadline (soonest first) before returning
+    # Sort: email jobs first (direct apply), then external-application jobs at the end
+    # Within each group, sort by deadline (soonest first)
+    def has_email(j):
+        email = j.get("contact_email")
+        return bool(email and "@" in str(email))
+
     unique_jobs.sort(key=lambda j: j.get("deadline") or "2099-12-31")
+    with_email = [j for j in unique_jobs if has_email(j)]
+    without_email = [j for j in unique_jobs if not has_email(j)]
+    unique_jobs = with_email + without_email
 
     # Save to database if configured
     saved_count = await save_jobs_to_db(unique_jobs)
@@ -2233,6 +2241,160 @@ def _create_gmail_link(job: Dict, letter: str, subject: str = "") -> str:
         f"&su={urllib.parse.quote(subject)}"
         f"&body={urllib.parse.quote(letter)}"
     )
+
+
+@app.post("/api/jobs/{job_id}/cover-letter-pdf")
+async def download_cover_letter_pdf(request: Request, job_id: str):
+    """Generate and return a formatted cover letter PDF for download."""
+    from fastapi.responses import Response as RawResponse
+
+    user_id = await get_user_id_from_request(request)
+
+    try:
+        body = await request.json()
+    except Exception:
+        body = {}
+
+    cover_letter_text = body.get("cover_letter", "")
+    if not cover_letter_text:
+        raise HTTPException(status_code=400, detail="Inget brev att ladda ner")
+
+    # Get job info for subject line
+    jobs = await db_request("GET", "jobs", params={"id": f"eq.{job_id}"})
+    job = jobs[0] if jobs else body.get("job", {})
+    job_title = job.get("title", body.get("job_title", "Tjänst"))
+    company = job.get("company", body.get("company", ""))
+
+    # Get user profile for sender info
+    sender_name = "Jobbsökare"
+    sender_phone = ""
+    sender_email_addr = ""
+    sender_location = ""
+    if user_id:
+        profiles = await db_request("GET", "user_profiles", params={"user_id": f"eq.{user_id}"})
+        if profiles:
+            p = profiles[0]
+            sender_name = p.get("full_name", sender_name)
+            sender_phone = p.get("phone", "")
+            sender_email_addr = p.get("email", "")
+            sender_location = p.get("location", "")
+
+    pdf_bytes = generate_cover_letter_pdf(
+        cover_letter_text,
+        sender_name=sender_name,
+        sender_phone=sender_phone,
+        sender_email=sender_email_addr,
+        sender_location=sender_location,
+        job_title=job_title,
+        company=company,
+    )
+
+    filename = f"Personligt_Brev_{sender_name.replace(' ', '_')}.pdf"
+    return RawResponse(
+        content=pdf_bytes,
+        media_type="application/pdf",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'}
+    )
+
+
+@app.post("/api/jobs/{job_id}/answer-question")
+async def answer_application_question(request: Request, job_id: str):
+    """
+    Answer a free-form application question using AI + user profile + job context.
+    Used for external applications that have text fields like 'Varför vill du jobba här?'
+    """
+    user_id = await get_user_id_from_request(request)
+
+    try:
+        body = await request.json()
+    except Exception:
+        body = {}
+
+    question = body.get("question", "").strip()
+    if not question:
+        raise HTTPException(status_code=400, detail="Ingen fråga angiven")
+
+    # Get job info
+    jobs = await db_request("GET", "jobs", params={"id": f"eq.{job_id}"})
+    job = jobs[0] if jobs else body.get("job", {})
+
+    # Get user profile + CV for context
+    user_profile = None
+    cv_text = None
+    style_prefs = None
+    if user_id:
+        import asyncio as _asyncio
+        profiles_r, cvs_r, prefs_r = await _asyncio.gather(
+            db_request("GET", "user_profiles", params={"user_id": f"eq.{user_id}"}),
+            db_request("GET", "user_cvs", params={"user_id": f"eq.{user_id}", "limit": "1"}),
+            db_request("GET", "user_cover_letter_preferences", params={"user_id": f"eq.{user_id}"})
+        )
+        user_profile = profiles_r[0] if profiles_r else None
+        cv_text = cvs_r[0].get("cv_text") if cvs_r else None
+        style_prefs = prefs_r[0] if prefs_r else None
+
+    p = user_profile or {}
+    name = p.get("full_name", "Jobbsökare")
+    location = p.get("location", "")
+
+    # Build style instructions
+    style_hint = ""
+    if style_prefs:
+        if style_prefs.get("tone"):
+            style_hint += f"\nAnvändarens ton: {style_prefs['tone']}"
+        avoid = style_prefs.get("avoid_phrases") or []
+        if avoid:
+            style_hint += f"\nUndvik dessa fraser: {', '.join(avoid)}"
+
+    prompt = f"""Svara på en ansökningsfråga på svenska. Svaret ska vara personligt, ärligt och relevant.
+
+FRÅGAN SOM ARBETSGIVAREN STÄLLER:
+"{question}"
+
+JOBBET:
+- Titel: {job.get('title', 'Okänd')}
+- Företag: {job.get('company', 'Okänt')}
+- Plats: {job.get('location', '')}
+- Beskrivning: {job.get('description', '')[:2000]}
+
+OM SÖKANDEN:
+- Namn: {name}
+- Bor: {location}
+{f'- CV-sammanfattning: {cv_text[:1000]}' if cv_text else ''}
+{style_hint}
+
+INSTRUKTIONER:
+1. Svara direkt på frågan — inga onödiga inledningar
+2. 50-150 ord, kärnfullt och personligt
+3. Referera till specifika delar av jobbeskrivningen som visar varför sökanden passar
+4. Naturlig, varm svenska — inte krystad eller generisk
+5. ALDRIG nämn konst, målning, utställningar eller Shopify
+6. Svaret ska kunna klistras in direkt i ett webbformulär"""
+
+    if not ANTHROPIC_API_KEY:
+        return {"success": True, "answer": f"Jag är intresserad av tjänsten som {job.get('title', 'denna roll')} och tror att min bakgrund passar bra."}
+
+    try:
+        async with httpx.AsyncClient(timeout=30) as client:
+            res = await client.post(
+                "https://api.anthropic.com/v1/messages",
+                headers={
+                    "x-api-key": ANTHROPIC_API_KEY,
+                    "anthropic-version": "2023-06-01",
+                    "content-type": "application/json"
+                },
+                json={
+                    "model": "claude-sonnet-4-5-20250929",
+                    "max_tokens": 500,
+                    "messages": [{"role": "user", "content": prompt}]
+                }
+            )
+            data = res.json()
+            answer = data.get("content", [{}])[0].get("text", "").strip()
+            return {"success": True, "answer": answer}
+    except Exception as e:
+        logger.error(f"Answer question error: {e}")
+        raise HTTPException(status_code=500, detail="Kunde inte generera svar")
 
 
 @app.post("/api/jobs/{job_id}/save-draft")
@@ -3853,11 +4015,13 @@ class QuizProfileData(BaseModel):
 
 
 class UserPreferences(BaseModel):
+    model_config = {"extra": "ignore"}  # Silently drop unknown fields from frontend
     # Quiz fields (maps to Platsbanken data)
     search_terms: Optional[list] = None
     custom_search: Optional[str] = None
-    location: Optional[list] = None
-    working_hours: Optional[str] = None
+    location: Optional[list] = None  # Taxonomy municipality concept IDs
+    negative_keywords: Optional[list] = None  # Excluded job keywords
+    working_hours: Optional[Any] = None  # str or list from quiz vs PreferencesPage
     employment_form: Optional[list] = None
     duration: Optional[str] = None
     salary: Optional[str] = None
@@ -3971,25 +4135,34 @@ async def save_user_preferences(request: Request, prefs: UserPreferences):
     """Save user job preferences and Gmail credentials."""
     user_id = await get_user_id_from_request(request, required=True)
 
-    # Upsert preferences - store all quiz answers as JSONB
+    # Build quiz_answers JSONB — single source of truth for all preferences
+    quiz_answers = {
+        "search_terms": prefs.search_terms,
+        "custom_search": getattr(prefs, 'custom_search', None),
+        "location": prefs.location,  # Taxonomy municipality concept IDs
+        "negative_keywords": prefs.negative_keywords,
+        "working_hours": prefs.working_hours,
+        "employment_form": prefs.employment_form,
+        "duration": prefs.duration,
+        "salary": prefs.salary,
+        "dealbreakers": prefs.dealbreakers
+    }
+
+    # Build search keywords from custom_search and search_terms
+    search_kw = []
+    if prefs.custom_search:
+        search_kw = [k.strip() for k in prefs.custom_search.split(',') if k.strip()]
+    elif prefs.search_terms:
+        search_kw = prefs.search_terms
+
+    # Upsert — maps to actual DB columns in user_job_preferences
     prefs_data = {
         "user_id": user_id,
-        "job_titles": prefs.custom_search if hasattr(prefs, 'custom_search') and prefs.custom_search else (
-            ','.join(prefs.search_terms or prefs.role_type or []) if (prefs.search_terms or prefs.role_type) else (prefs.job_titles or '')
-        ),
-        "locations": ','.join(prefs.location or []) if prefs.location else (prefs.locations or ''),
-        "job_types": prefs.search_terms or prefs.role_type or prefs.job_types or [],
-        "experience_level": prefs.experience_level or '',
-        "quiz_answers": {
-            "search_terms": prefs.search_terms,
-            "custom_search": getattr(prefs, 'custom_search', None),
-            "location": prefs.location,
-            "working_hours": prefs.working_hours,
-            "employment_form": prefs.employment_form,
-            "duration": prefs.duration,
-            "salary": prefs.salary,
-            "dealbreakers": prefs.dealbreakers
-        },
+        "preferred_locations": prefs.location or [],  # TEXT[] of taxonomy municipality IDs
+        "search_keywords": search_kw,  # TEXT[] of positive search terms
+        "excluded_keywords": prefs.negative_keywords or [],  # TEXT[] of negative keywords
+        "job_types": prefs.job_types or prefs.search_terms or [],
+        "quiz_answers": quiz_answers,  # JSONB — all raw quiz/preference data
         "updated_at": "now()"
     }
 
