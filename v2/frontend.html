@@ -3782,31 +3782,6 @@
                         )}
                     </div>
 
-                    {/* Geography filter indicator */}
-                    {(() => {
-                        const locPrefs = quizPrefs.location || [];
-                        const activeKommuner = locPrefs.filter(k => k !== 'remote' && k !== 'anywhere');
-                        if (activeKommuner.length === 0 || locPrefs.includes('anywhere')) return null;
-                        const labels = activeKommuner.map(id => {
-                            for (const lan of LAN_DATA) { const f = lan.kommuner.find(k => k.id === id); if (f) return f.label; }
-                            return id;
-                        });
-                        return (
-                            <div className="flex items-center gap-2 mb-3 flex-wrap">
-                                <span className="text-xs text-slate-400">📍 Visar jobb i:</span>
-                                {labels.map(l => (
-                                    <span key={l} className="bg-amber-100 text-amber-700 text-xs px-2 py-0.5 rounded-full font-medium">{l}</span>
-                                ))}
-                                {locPrefs.includes('remote') && (
-                                    <span className="bg-green-100 text-green-700 text-xs px-2 py-0.5 rounded-full font-medium">Remote</span>
-                                )}
-                                {setActiveTab && (
-                                    <button onClick={() => setActiveTab('platser')} className="text-xs text-amber-500 hover:text-amber-700 underline">Ändra</button>
-                                )}
-                            </div>
-                        );
-                    })()}
-
                     {scraping ? (
                         <div className="bg-white rounded-2xl shadow-sm border border-slate-100 p-8" style={{minHeight: '60vh'}}>
                             <div className="flex items-center justify-center h-full" style={{minHeight: '50vh'}}>
@@ -4390,35 +4365,6 @@
                             </button>
                         )}
                     </div>
-
-                    {/* Active geography filter indicator */}
-                    {(() => {
-                        const locPrefs = quizPrefs.location || [];
-                        const activeKommuner = locPrefs.filter(k => k !== 'remote' && k !== 'anywhere');
-                        if (activeKommuner.length === 0 || locPrefs.includes('anywhere')) return null;
-                        const labels = activeKommuner.map(id => {
-                            for (const lan of LAN_DATA) {
-                                const found = lan.kommuner.find(k => k.id === id);
-                                if (found) return found.label;
-                            }
-                            return id;
-                        });
-                        return (
-                            <div className="flex items-center gap-2 mb-3 flex-wrap">
-                                <span className="text-xs text-slate-400">📍 Visar jobb i:</span>
-                                {labels.map(l => (
-                                    <span key={l} className="bg-indigo-100 text-indigo-700 text-xs px-2 py-0.5 rounded-full font-medium">{l}</span>
-                                ))}
-                                {locPrefs.includes('remote') && (
-                                    <span className="bg-green-100 text-green-700 text-xs px-2 py-0.5 rounded-full font-medium">Remote</span>
-                                )}
-                                <button
-                                    onClick={() => setActiveTab('platser')}
-                                    className="text-xs text-indigo-500 hover:text-indigo-700 underline"
-                                >Ändra</button>
-                            </div>
-                        );
-                    })()}
 
                     {/* ONE JOB AT A TIME */}
                     {(() => {
