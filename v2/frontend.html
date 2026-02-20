@@ -1092,7 +1092,7 @@
             const [msg, setMsg] = useState(null);
 
             useEffect(() => {
-                authFetch('/api/gmail/status?user_id=default_user')
+                authFetch('/api/gmail/status')
                     .then(r => r.json())
                     .then(d => setGmailStatus(d))
                     .catch(() => setGmailStatus({ connected: false }));
@@ -1102,7 +1102,7 @@
                 setConnecting(true);
                 setMsg(null);
                 try {
-                    const resp = await authFetch('/api/gmail/auth-url?user_id=default_user');
+                    const resp = await authFetch('/api/gmail/auth-url');
                     const data = await resp.json();
                     if (!data.auth_url) {
                         setMsg({ type: 'error', text: data.app_configured === false ? 'Gmail-integration är inte aktiverad av administratören.' : 'Kunde inte starta inloggning.' });
@@ -1113,7 +1113,7 @@
                     const timer = setInterval(async () => {
                         if (popup.closed) {
                             clearInterval(timer);
-                            const r2 = await authFetch('/api/gmail/status?user_id=default_user');
+                            const r2 = await authFetch('/api/gmail/status');
                             const d2 = await r2.json();
                             setGmailStatus(d2);
                             setConnecting(false);
@@ -1131,7 +1131,7 @@
                 setDisconnecting(true);
                 setMsg(null);
                 try {
-                    const resp = await authFetch('/api/gmail/disconnect?user_id=default_user', {
+                    const resp = await authFetch('/api/gmail/disconnect', {
                         method: 'POST'
                     });
                     const data = await resp.json();
@@ -5668,7 +5668,7 @@
             React.useEffect(() => {
                 const check = async () => {
                     try {
-                        const resp = await authFetch('/api/gmail/status?user_id=default_user');
+                        const resp = await authFetch('/api/gmail/status');
                         const data = await resp.json();
                         if (data.connected) {
                             setStatus('connected');
@@ -5686,7 +5686,7 @@
             const connectGmail = async () => {
                 setStatus('loading');
                 try {
-                    const resp = await authFetch('/api/gmail/auth-url?user_id=default_user');
+                    const resp = await authFetch('/api/gmail/auth-url');
                     const data = await resp.json();
                     if (data.auth_url) {
                         const popup = window.open(data.auth_url, 'gmail_auth', 'width=500,height=600');
@@ -5695,7 +5695,7 @@
                             if (popup.closed) {
                                 clearInterval(timer);
                                 // Re-check status
-                                const r2 = await authFetch('/api/gmail/status?user_id=default_user');
+                                const r2 = await authFetch('/api/gmail/status');
                                 const d2 = await r2.json();
                                 if (d2.connected) {
                                     setStatus('connected');

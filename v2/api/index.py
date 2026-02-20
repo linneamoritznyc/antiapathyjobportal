@@ -4873,11 +4873,13 @@ async def export_user_data(request: Request):
 # ============== GMAIL OAUTH (App credentials shared, user tokens in Supabase) ==============
 
 @app.get("/api/gmail/auth-url")
-async def get_gmail_auth_url(user_id: str = "default_user", redirect_uri: str = None):
+async def get_gmail_auth_url(request: Request, redirect_uri: str = None):
     """
     Get Google OAuth URL for user to authorize Gmail access.
     Uses app-level credentials (GMAIL_CLIENT_ID env var).
     """
+    user_id = await get_user_id_from_request(request, required=True)
+
     if not GMAIL_CLIENT_ID:
         raise HTTPException(status_code=500, detail="Gmail integration not configured. Set GMAIL_CLIENT_ID in env vars.")
 
@@ -4968,8 +4970,11 @@ async def gmail_oauth_callback(code: str, state: str = "default_user"):
 
 
 @app.get("/api/gmail/status")
-async def get_gmail_status(user_id: str = "default_user"):
+async def get_gmail_status(request: Request):
     """Check if user has Gmail connected"""
+    user_id = await get_user_id_from_request(request)
+    if not user_id:
+        return {"connected": False, "gmail_address": None, "app_configured": bool(GMAIL_CLIENT_ID)}
     creds = await db_request("GET", "user_google_credentials", params={"user_id": f"eq.{user_id}"})
     if not creds or not creds[0].get("is_connected"):
         return {"connected": False, "gmail_address": None, "app_configured": bool(GMAIL_CLIENT_ID)}
@@ -4982,11 +4987,12 @@ async def get_gmail_status(user_id: str = "default_user"):
 
 
 @app.post("/api/gmail/disconnect")
-async def disconnect_gmail(user_id: str = "default_user"):
+async def disconnect_gmail(request: Request):
     """
     Revoke Gmail access and delete all stored tokens for this user.
     GDPR: user has the right to withdraw consent at any time.
     """
+    user_id = await get_user_id_from_request(request, required=True)
     creds = await db_request("GET", "user_google_credentials", params={"user_id": f"eq.{user_id}"})
     if not creds:
         return {"success": True, "message": "Ingen Gmail-koppling hittades."}
