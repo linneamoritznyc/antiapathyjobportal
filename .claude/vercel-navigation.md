@@ -73,7 +73,7 @@ Settings
 ├── Domains
 ├── Environments          ← Production Branch lives here (NOT under Git)
 ├── Environment Variables ← API keys (ANTHROPIC_API_KEY, SUPABASE_URL, etc.)
-├── Git                   ← Deploy Hooks, PR/commit comments
+├── Git                   ← Connected repo, PR/commit comments, Deploy Hooks, Git LFS
 ├── Integrations
 ├── Deployment Protection
 ├── Functions             ← maxDuration setting
@@ -120,6 +120,23 @@ Contains these sections in order:
 7. **Deployment Checks** — checks needed before promoting to production
 8. **Rolling Releases** — gradual traffic rollout percentage per stage
 9. **Prioritize Production Builds** — enabled by default
+
+---
+
+## Git page (Settings → Git)
+
+Contains these sections in order:
+
+1. **Connected Git Repository** — shows which GitHub repo is connected (linneamoritznyc/antiapathyjobportal, connected Feb 10). Toggles for:
+   - Pull Request Comments (on/off)
+   - Commit Comments (on/off)
+   - Require Verified Commits (on/off)
+   - `deployment_status` Events (on/off)
+   - `repository_dispatch` Events (on/off)
+2. **Git Large File Storage (LFS)** — for large files (audio, video, datasets). Currently **Disabled**.
+3. **Deploy Hooks** — unique URLs that trigger a deployment of a given branch. Currently none configured. Fields: Name + Branch.
+
+⚠️ Note: **Production Branch** is NOT here — it's under Settings → Environments → Production → Branch Tracking.
 
 ---
 
