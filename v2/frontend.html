@@ -1105,20 +1105,35 @@
                 try {
                     const resp = await authFetch('/api/gmail/auth-url');
                     const data = await resp.json();
+                    if (!resp.ok) {
+                        setMsg({ type: 'error', text: data.detail || 'Kunde inte starta inloggning.' });
+                        setConnecting(false);
+                        return;
+                    }
                     if (!data.auth_url) {
                         setMsg({ type: 'error', text: data.app_configured === false ? 'Gmail-integration är inte aktiverad av administratören.' : 'Kunde inte starta inloggning.' });
                         setConnecting(false);
                         return;
                     }
                     const popup = window.open(data.auth_url, 'gmail_auth', 'width=500,height=600');
+                    if (!popup || popup.closed) {
+                        setMsg({ type: 'error', text: 'Popup blockerad av webbläsaren. Tillåt popups för den här sidan och försök igen.' });
+                        setConnecting(false);
+                        return;
+                    }
                     const timer = setInterval(async () => {
-                        if (popup.closed) {
+                        try {
+                            if (popup.closed) {
+                                clearInterval(timer);
+                                const r2 = await authFetch('/api/gmail/status');
+                                const d2 = await r2.json();
+                                setGmailStatus(d2);
+                                setConnecting(false);
+                                if (d2.connected) setMsg({ type: 'success', text: 'Gmail kopplat!' });
+                            }
+                        } catch(err) {
                             clearInterval(timer);
-                            const r2 = await authFetch('/api/gmail/status');
-                            const d2 = await r2.json();
-                            setGmailStatus(d2);
                             setConnecting(false);
-                            if (d2.connected) setMsg({ type: 'success', text: 'Gmail kopplat!' });
                         }
                     }, 1000);
                 } catch (e) {
@@ -2970,33 +2985,6 @@
                                     </div>
                                 );
                             })()}
-                        </div>
-                    )}
-
-                    {/* Selected summary */}
-                    {(kommunCount > 0 || selectedKommuner.includes('remote')) && (
-                        <div className="bg-white rounded-xl p-5 border border-slate-200">
-                            <h3 className="text-sm font-semibold text-slate-500 uppercase tracking-wide mb-3">
-                                Valda platser{kommunCount > 0 ? ` (${kommunCount})` : ''}
-                            </h3>
-                            <div className="flex flex-wrap gap-2">
-                                {selectedKommuner.filter(k => k !== 'remote' && k !== 'anywhere').map(kId => {
-                                    let label = kId;
-                                    for (const lan of LAN_DATA) { const f = lan.kommuner.find(k => k.id === kId); if (f) { label = f.label; break; } }
-                                    return (
-                                        <span key={kId} className="flex items-center gap-1 px-3 py-1.5 bg-indigo-100 text-indigo-800 rounded-full text-sm font-medium">
-                                            {label}
-                                            <button onClick={() => toggleKommun(kId)} className="text-indigo-400 hover:text-red-500 ml-0.5 font-bold">×</button>
-                                        </span>
-                                    );
-                                })}
-                                {selectedKommuner.includes('remote') && (
-                                    <span className="flex items-center gap-1 px-3 py-1.5 bg-green-100 text-green-800 rounded-full text-sm font-medium">
-                                        Distans / Remote
-                                        <button onClick={() => toggleKommun('remote')} className="text-green-400 hover:text-red-500 ml-0.5 font-bold">×</button>
-                                    </span>
-                                )}
-                            </div>
                         </div>
                     )}
 
@@ -6076,13 +6064,33 @@
 
             const [savedJobs, setSavedJobs] = useState([]);
 
-            const handleSaveJob = (jobId, isSaved) => {
+            const handleSaveJob = async (jobId, isSaved) => {
+                // Optimistic UI update
                 if (isSaved) {
                     setSavedJobs(prev => [...prev, jobId]);
                 } else {
                     setSavedJobs(prev => prev.filter(id => id !== jobId));
                 }
-                // Refresh applications list
+                try {
+                    const method = isSaved ? 'POST' : 'DELETE';
+                    const res = await authFetch(`/api/jobs/${jobId}/save`, { method });
+                    if (!res.ok) {
+                        // Revert on failure
+                        if (isSaved) {
+                            setSavedJobs(prev => prev.filter(id => id !== jobId));
+                        } else {
+                            setSavedJobs(prev => [...prev, jobId]);
+                        }
+                    }
+                } catch (err) {
+                    console.error('Error saving job:', err);
+                    // Revert on error
+                    if (isSaved) {
+                        setSavedJobs(prev => prev.filter(id => id !== jobId));
+                    } else {
+                        setSavedJobs(prev => [...prev, jobId]);
+                    }
+                }
                 fetchApplications();
             };
 
