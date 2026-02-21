@@ -1266,17 +1266,17 @@ async def save_jobs_to_db(jobs: List[Dict]) -> int:
         return 0
 
     # Only send columns that exist in the jobs table
-    db_columns = {"id", "title", "company", "location", "description", "url",
-                  "deadline", "priority", "contact_email", "contact_name",
+    db_columns = {"id", "title", "company", "location", "description", "description_summary",
+                  "url", "deadline", "priority", "contact_email", "contact_name",
                   "source", "scraped_at", "link_status"}
 
     saved = 0
     for job in jobs:
         db_job = {k: v for k, v in job.items() if k in db_columns}
-        # Save FULL description to DB (used for cover letter generation)
-        # The summarized version is in job["description"], full is in job["full_description"]
+        # description = full text (for cover letters), description_summary = short AI summary (for UI)
         if job.get("full_description"):
             db_job["description"] = job["full_description"]
+            db_job["description_summary"] = job.get("description", "")
         # Store extra fields in description as fallback
         extras = []
         if job.get("employment_type"):
@@ -1298,11 +1298,17 @@ async def save_jobs_to_db(jobs: List[Dict]) -> int:
 
 
 async def get_jobs_from_db(limit: int = 50) -> List[Dict]:
-    """Get jobs from database"""
+    """Get jobs from database. Returns description_summary as description for UI display."""
     jobs = await db_request("GET", "jobs", params={
         "order": "scraped_at.desc",
         "limit": str(limit)
     })
+    if jobs:
+        for job in jobs:
+            # Swap: UI gets the short summary, full text stays available as full_description
+            if job.get("description_summary"):
+                job["full_description"] = job["description"]
+                job["description"] = job["description_summary"]
     return jobs or []
 
 
