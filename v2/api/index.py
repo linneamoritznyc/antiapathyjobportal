@@ -5874,6 +5874,32 @@ async def get_profile(request: Request):
     }
 
 
+@app.patch("/api/profile/details")
+async def update_profile_details(request: Request):
+    """Update user profile fields (name, phone, email, location)."""
+    user_id = await get_user_id_from_request(request, required=True)
+
+    body = await request.json()
+    allowed_fields = {"full_name", "phone", "email", "location", "drivers_license"}
+    update_data = {k: v for k, v in body.items() if k in allowed_fields}
+    if not update_data:
+        raise HTTPException(status_code=400, detail="Inga giltiga fält att uppdatera")
+
+    update_data["updated_at"] = datetime.now().isoformat()
+
+    result = await db_request(
+        "PATCH",
+        f"user_profiles?user_id=eq.{user_id}",
+        data=update_data
+    )
+    if not result:
+        # No row yet — create one
+        update_data["user_id"] = user_id
+        await db_request("POST", "user_profiles", data=update_data)
+
+    return {"success": True}
+
+
 @app.patch("/api/profile/signature")
 async def update_email_signature(request: Request):
     """Save the user's custom email signature."""
