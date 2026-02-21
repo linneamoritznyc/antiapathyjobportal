@@ -3541,18 +3541,8 @@
             );
         };
 
-        // Render job description HTML (shared helper for both job pages)
-        const renderDescription = (desc) => {
-            if (!desc) return '<p style="color:#94a3b8">Ingen beskrivning tillgänglig.</p>';
-            // Cap at ~10 sentences or 800 chars — short and scannable by default
-            let text = desc;
-            const sentences = text.split(/(?<=[.!?])\s+/);
-            if (sentences.length > 10) text = sentences.slice(0, 10).join(' ');
-            if (text.length > 800) {
-                const truncated = text.substring(0, 800);
-                const lastPeriod = Math.max(truncated.lastIndexOf('.'), truncated.lastIndexOf('!'), truncated.lastIndexOf('?'));
-                text = lastPeriod > 200 ? text.substring(0, lastPeriod + 1) : truncated.replace(/\s\S*$/, '...');
-            }
+        // Format description HTML (shared helper for both job pages)
+        const formatDescriptionHtml = (text) => {
             text = text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
             let lines = text.split(/\n/);
             let html = '';
@@ -3577,6 +3567,18 @@
             }
             if (inList) html += '</ul>';
             return html;
+        };
+
+        // Render summary (no truncation — AI summary is already short)
+        const renderDescription = (desc) => {
+            if (!desc) return '<p style="color:#94a3b8">Ingen beskrivning tillgänglig.</p>';
+            return formatDescriptionHtml(desc);
+        };
+
+        // Render full description (no truncation — shows everything)
+        const renderFullDescription = (desc) => {
+            if (!desc) return '<p style="color:#94a3b8">Ingen beskrivning tillgänglig.</p>';
+            return formatDescriptionHtml(desc);
         };
 
         // External jobs page — jobs without contact email (apply via external website)
@@ -3951,27 +3953,35 @@
                                             {/* Job description view */}
                                             {leftPanel === 'description' && (
                                                 <>
-                                                    <p className="text-xs font-semibold text-slate-400 uppercase tracking-widest mb-3">Jobbannons</p>
-                                                    <div className="relative">
-                                                        <div
-                                                            className="prose prose-sm max-w-none text-slate-700 overflow-hidden"
-                                                            style={{
-                                                                lineHeight: '1.7',
-                                                                maxHeight: descExpanded ? 'none' : '15em',
-                                                            }}
-                                                            dangerouslySetInnerHTML={{ __html: renderDescription(currentJob.description) }}
-                                                        />
-                                                        {!descExpanded && currentJob.description && currentJob.description.length > 400 && (
-                                                            <div className="absolute bottom-0 left-0 right-0 h-16 bg-gradient-to-t from-white to-transparent" />
-                                                        )}
-                                                    </div>
-                                                    {currentJob.description && currentJob.description.length > 400 && (
-                                                        <button
-                                                            onClick={() => setDescExpanded(!descExpanded)}
-                                                            className="text-sm text-amber-600 hover:text-amber-800 font-medium mt-2"
-                                                        >
-                                                            {descExpanded ? '▲ Visa mindre' : '▼ Visa hela annonsen'}
-                                                        </button>
+                                                    {/* AI Summary */}
+                                                    <p className="text-xs font-semibold text-amber-600 uppercase tracking-widest mb-3">Sammanfattning</p>
+                                                    <div
+                                                        className="prose prose-sm max-w-none text-slate-700"
+                                                        style={{ lineHeight: '1.7' }}
+                                                        dangerouslySetInnerHTML={{ __html: renderDescription(currentJob.description) }}
+                                                    />
+
+                                                    {/* Expandable full description */}
+                                                    {currentJob.full_description && currentJob.full_description !== currentJob.description && (
+                                                        <>
+                                                            <button
+                                                                onClick={() => setDescExpanded(!descExpanded)}
+                                                                className="text-sm text-amber-600 hover:text-amber-800 font-medium mt-4 mb-2"
+                                                            >
+                                                                {descExpanded ? '▲ Dölj hela annonsen' : '▼ Visa hela annonsen'}
+                                                            </button>
+                                                            {descExpanded && (
+                                                                <>
+                                                                    <hr className="border-slate-200 my-3" />
+                                                                    <p className="text-xs font-semibold text-slate-400 uppercase tracking-widest mb-3">Hela annonsen</p>
+                                                                    <div
+                                                                        className="prose prose-sm max-w-none text-slate-600"
+                                                                        style={{ lineHeight: '1.7' }}
+                                                                        dangerouslySetInnerHTML={{ __html: renderFullDescription(currentJob.full_description) }}
+                                                                    />
+                                                                </>
+                                                            )}
+                                                        </>
                                                     )}
                                                 </>
                                             )}
@@ -4551,29 +4561,37 @@
 
                                                 {/* LEFT: description */}
                                                 <div className="flex-1 p-8 border-r border-slate-100 overflow-y-auto" style={{maxHeight: '82vh'}}>
-                                                    <p className="text-xs font-semibold text-slate-400 uppercase tracking-widest mb-3">Jobbannons</p>
                                                     {currentJob.description ? (
                                                         <>
-                                                            <div className="relative">
-                                                                <div
-                                                                    className="prose prose-sm max-w-none text-slate-700 overflow-hidden"
-                                                                    style={{
-                                                                        lineHeight: '1.7',
-                                                                        maxHeight: descExpanded ? 'none' : '15em',
-                                                                    }}
-                                                                    dangerouslySetInnerHTML={{ __html: renderDescription(currentJob.description) }}
-                                                                />
-                                                                {!descExpanded && currentJob.description.length > 400 && (
-                                                                    <div className="absolute bottom-0 left-0 right-0 h-16 bg-gradient-to-t from-white to-transparent" />
-                                                                )}
-                                                            </div>
-                                                            {currentJob.description.length > 400 && (
-                                                                <button
-                                                                    onClick={() => setDescExpanded(!descExpanded)}
-                                                                    className="text-sm text-indigo-600 hover:text-indigo-800 font-medium mt-2"
-                                                                >
-                                                                    {descExpanded ? '▲ Visa mindre' : '▼ Visa hela annonsen'}
-                                                                </button>
+                                                            {/* AI Summary */}
+                                                            <p className="text-xs font-semibold text-indigo-600 uppercase tracking-widest mb-3">Sammanfattning</p>
+                                                            <div
+                                                                className="prose prose-sm max-w-none text-slate-700"
+                                                                style={{ lineHeight: '1.7' }}
+                                                                dangerouslySetInnerHTML={{ __html: renderDescription(currentJob.description) }}
+                                                            />
+
+                                                            {/* Expandable full description */}
+                                                            {currentJob.full_description && currentJob.full_description !== currentJob.description && (
+                                                                <>
+                                                                    <button
+                                                                        onClick={() => setDescExpanded(!descExpanded)}
+                                                                        className="text-sm text-indigo-600 hover:text-indigo-800 font-medium mt-4 mb-2"
+                                                                    >
+                                                                        {descExpanded ? '▲ Dölj hela annonsen' : '▼ Visa hela annonsen'}
+                                                                    </button>
+                                                                    {descExpanded && (
+                                                                        <>
+                                                                            <hr className="border-slate-200 my-3" />
+                                                                            <p className="text-xs font-semibold text-slate-400 uppercase tracking-widest mb-3">Hela annonsen</p>
+                                                                            <div
+                                                                                className="prose prose-sm max-w-none text-slate-600"
+                                                                                style={{ lineHeight: '1.7' }}
+                                                                                dangerouslySetInnerHTML={{ __html: renderFullDescription(currentJob.full_description) }}
+                                                                            />
+                                                                        </>
+                                                                    )}
+                                                                </>
                                                             )}
                                                         </>
                                                     ) : (

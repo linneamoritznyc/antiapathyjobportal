@@ -1298,16 +1298,17 @@ async def save_jobs_to_db(jobs: List[Dict]) -> int:
 
 
 async def get_jobs_from_db(limit: int = 50) -> List[Dict]:
-    """Get jobs from database. Returns description_summary as description for UI display."""
+    """Get jobs from database. Returns description_summary + full_description for UI."""
     jobs = await db_request("GET", "jobs", params={
         "order": "scraped_at.desc",
         "limit": str(limit)
     })
     if jobs:
         for job in jobs:
-            # Swap: UI gets the short summary, full text stays available as full_description
+            # Always expose full_description for cover letters and "Visa hela annonsen"
+            job["full_description"] = job.get("description", "")
+            # If we have an AI summary, put it in description for the UI
             if job.get("description_summary"):
-                job["full_description"] = job["description"]
                 job["description"] = job["description_summary"]
     return jobs or []
 
