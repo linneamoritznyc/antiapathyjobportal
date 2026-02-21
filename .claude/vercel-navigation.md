@@ -201,11 +201,47 @@ Contains these sections in order:
 
 ---
 
-## If deployment isn't updating
+## How to make Vercel auto-deploy to Production (no manual "Promote" needed)
 
-1. Check Settings → Environments → Production → Branch Tracking = `main`
-2. Check that the merge to `main` actually completed on GitHub
-3. Check **Deployments** tab (top nav) — latest `main` deploy should say "Production" not "Preview"
-4. If still wrong: click the deploy → ⋮ → "Promote to Production"
-5. Check **Logs** (top nav) for serverless function errors if the deploy succeeded but the app is broken
-6. Check Settings → Build and Deployment → Framework Settings for "Production Overrides differ" warning
+If you have to manually click "Promote to Production" after every push, something is misconfigured. Follow this checklist to fix it:
+
+### Step 1: Set Production Branch to `main`
+This is the #1 cause. If Vercel doesn't know `main` is your production branch, every deploy becomes a Preview.
+- **Path**: Settings → **Environments** → click **Production** → **Branch Tracking**
+- Set it to `main`
+- ⚠️ This is NOT under Settings → Git (even though Google/AI results say so)
+
+### Step 2: Enable "Auto-assign Custom Production Domains"
+If this is off, Vercel builds the code but doesn't publish it to your domain.
+- **Path**: Settings → **Environments** → **Production** section
+- Make sure **Auto-assign Custom Production Domains** is **Enabled**
+
+### Step 3: Check "Ignored Build Step" is not blocking
+If this is set to something other than "Automatic", it may skip builds silently.
+- **Path**: Settings → **Build and Deployment** → **Ignored Build Step**
+- Should be set to **Automatic** (or left empty) for every commit to `main` to deploy
+
+### Step 4: Check "Deployment Protection" isn't requiring approval
+Advanced Deployment Protection can require manual approval before a deploy goes live.
+- **Path**: Settings → **Deployment Protection**
+- Make sure "Vercel Authentication" or similar isn't blocking production deploys
+
+### Step 5: Use the right Git workflow
+Vercel auto-deploys to Production when you **push or merge to `main`**. Feature branches always become Preview deploys — this is by design.
+- Push directly to `main` → Production deploy
+- Merge a PR into `main` → Production deploy
+- Push to any other branch → Preview deploy (never auto-promoted)
+
+### If it STILL doesn't work
+- Check that the GitHub repo connection is healthy: Settings → **Git** → Connected Git Repository
+- Try disconnecting and reconnecting the GitHub repo as a last resort
+- Check Settings → Build and Deployment → Framework Settings for "Production Overrides differ" warning — click "Project Settings" link to sync them
+
+---
+
+## If deployment deployed but app is broken
+
+1. Check **Deployments** tab (top nav) — latest `main` deploy should say "Production"
+2. Check **Logs** (top nav) for serverless function errors
+3. Check Settings → Build and Deployment → Framework Settings for "Production Overrides differ" warning
+4. If a bad deploy went live: Deployments → find last working deploy → ⋮ → "Promote to Production" to rollback
