@@ -5311,7 +5311,7 @@ async def create_gmail_draft_for_user(
     if not access_token:
         # Figure out WHY token is missing for a useful error
         if not all([GMAIL_CLIENT_ID, GMAIL_CLIENT_SECRET]):
-            return (None, "Gmail API-nycklar saknas i servern. Kontakta admin.")
+            return (None, "Gmail-kopplingen är inte tillgänglig just nu. Försök igen senare.")
         creds = await db_request("GET", "user_google_credentials", params={"user_id": f"eq.{user_id}"})
         if not creds:
             return (None, "Gmail är inte kopplat. Gå till Profil → Gmail och koppla ditt konto.")

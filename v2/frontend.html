@@ -1111,7 +1111,7 @@
                         return;
                     }
                     if (!data.auth_url) {
-                        setMsg({ type: 'error', text: data.app_configured === false ? 'Gmail-integration är inte aktiverad av administratören.' : 'Kunde inte starta inloggning.' });
+                        setMsg({ type: 'error', text: data.app_configured === false ? 'Gmail-kopplingen är inte tillgänglig just nu. Försök igen senare.' : 'Kunde inte starta inloggning.' });
                         setConnecting(false);
                         return;
                     }
@@ -5902,7 +5902,7 @@
                     ) : status === 'not_configured' ? (
                         <div className="bg-amber-50 border border-amber-200 rounded-xl p-5 mb-6">
                             <p className="text-sm text-amber-800">
-                                Gmail-integrationen är inte aktiverad än. Kontakta administratören.
+                                Gmail-kopplingen är inte tillgänglig just nu. Försök igen senare.
                             </p>
                         </div>
                     ) : (
