@@ -847,12 +847,12 @@ OM MIG:
 
 INSTRUKTIONER:
 1. Börja med: {contact_greeting}
-2. Skriv 150-200 ord på naturlig, varm svenska
+2. Skriv 150-250 ord på naturlig, varm svenska (längre om det behövs för att nämna alla valda erfarenheter)
 3. Matcha tonen mot jobbet: fysisk/praktisk tjänst → enkelt och jordnära; kontorsjobb → lite mer formellt
-4. Lyft BARA erfarenheter som faktiskt passar jobbet. Om inga erfarenheter matchar direkt, fokusera istället på personliga egenskaper som passar (t.ex. noggrannhet, pålitlighet, initiativförmåga, servicekänsla). Försök ALDRIG koppla irrelevant erfarenhet till jobbet på ett konstruerat sätt.
+4. Lyft erfarenheter som passar jobbet. Om inga erfarenheter matchar direkt, fokusera istället på personliga egenskaper som passar (t.ex. noggrannhet, pålitlighet, initiativförmåga, servicekänsla). Försök ALDRIG koppla irrelevant erfarenhet till jobbet på ett konstruerat sätt.
 5. VIKTIGT: Om annonsen nämner specifika krav eller önskemål (t.ex. körkort, bil, fysisk förmåga, kvällar/helger, sommarsäsong, "annan sysselsättning"), bekräfta kortfattat att jag uppfyller/passar dem — utan att överdriva
 6. Nämn var jag bor och att jag är flexibel med arbetstider
-7. Om "EXTRA ERFARENHETER SOM MÅSTE NÄMNAS I BREVET" finns ovan — nämn dem ALLTID specifikt i brevet, även om de inte är den starkaste matchningen
+7. KRITISKT: Om "EXTRA ERFARENHETER SOM MÅSTE NÄMNAS I BREVET" finns ovan — du MÅSTE nämna VARJE ENSKILD erfarenhet som listas där i brevet. Hoppa inte över en enda. Nämn alla, även om de inte matchar jobbet perfekt — hitta en naturlig koppling för var och en
 8. Om "MIN SKRIVSTIL" finns ovan — följ den stilen. Undvik ALLA fraser listade under "Fraser jag INTE vill ha". Använd gärna fraser från "Fraser jag gillar".
 9. Om "MINA PERSONLIGA ANEKDOTER & HOBBYS" finns ovan — väv in EN relevant anekdot eller hobby om den passar jobbet. Tvinga inte in irrelevanta anekdoter.
 10. VIKTIGT om ålder: Om du nämner ålder, använd EXAKT den ålder som står under "OM MIG" ovan. Ignorera eventuell ålder som nämns i bakgrund/erfarenheter — den kan vara gammal.
@@ -875,7 +875,7 @@ Skriv ENDAST det färdiga brevet, inget annat."""
                 },
                 json={
                     "model": "claude-haiku-4-5-20251001",
-                    "max_tokens": 600,
+                    "max_tokens": 900,
                     "messages": [{"role": "user", "content": prompt}]
                 },
                 timeout=25
