@@ -1105,20 +1105,35 @@
                 try {
                     const resp = await authFetch('/api/gmail/auth-url');
                     const data = await resp.json();
+                    if (!resp.ok) {
+                        setMsg({ type: 'error', text: data.detail || 'Kunde inte starta inloggning.' });
+                        setConnecting(false);
+                        return;
+                    }
                     if (!data.auth_url) {
                         setMsg({ type: 'error', text: data.app_configured === false ? 'Gmail-integration är inte aktiverad av administratören.' : 'Kunde inte starta inloggning.' });
                         setConnecting(false);
                         return;
                     }
                     const popup = window.open(data.auth_url, 'gmail_auth', 'width=500,height=600');
+                    if (!popup || popup.closed) {
+                        setMsg({ type: 'error', text: 'Popup blockerad av webbläsaren. Tillåt popups för den här sidan och försök igen.' });
+                        setConnecting(false);
+                        return;
+                    }
                     const timer = setInterval(async () => {
-                        if (popup.closed) {
+                        try {
+                            if (popup.closed) {
+                                clearInterval(timer);
+                                const r2 = await authFetch('/api/gmail/status');
+                                const d2 = await r2.json();
+                                setGmailStatus(d2);
+                                setConnecting(false);
+                                if (d2.connected) setMsg({ type: 'success', text: 'Gmail kopplat!' });
+                            }
+                        } catch(err) {
                             clearInterval(timer);
-                            const r2 = await authFetch('/api/gmail/status');
-                            const d2 = await r2.json();
-                            setGmailStatus(d2);
                             setConnecting(false);
-                            if (d2.connected) setMsg({ type: 'success', text: 'Gmail kopplat!' });
                         }
                     }, 1000);
                 } catch (e) {
@@ -6076,13 +6091,33 @@
 
             const [savedJobs, setSavedJobs] = useState([]);
 
-            const handleSaveJob = (jobId, isSaved) => {
+            const handleSaveJob = async (jobId, isSaved) => {
+                // Optimistic UI update
                 if (isSaved) {
                     setSavedJobs(prev => [...prev, jobId]);
                 } else {
                     setSavedJobs(prev => prev.filter(id => id !== jobId));
                 }
-                // Refresh applications list
+                try {
+                    const method = isSaved ? 'POST' : 'DELETE';
+                    const res = await authFetch(`/api/jobs/${jobId}/save`, { method });
+                    if (!res.ok) {
+                        // Revert on failure
+                        if (isSaved) {
+                            setSavedJobs(prev => prev.filter(id => id !== jobId));
+                        } else {
+                            setSavedJobs(prev => [...prev, jobId]);
+                        }
+                    }
+                } catch (err) {
+                    console.error('Error saving job:', err);
+                    // Revert on error
+                    if (isSaved) {
+                        setSavedJobs(prev => prev.filter(id => id !== jobId));
+                    } else {
+                        setSavedJobs(prev => [...prev, jobId]);
+                    }
+                }
                 fetchApplications();
             };
 
