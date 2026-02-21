@@ -612,6 +612,11 @@ async def scrape_platsbanken(keyword: str, max_jobs: int = 15, municipality_ids:
                 description = re.sub(r'<[^>]+>', ' ', description)
                 description = re.sub(r'\s+', ' ', description).strip()
 
+                # Truncate to ~15 sentences so users aren't overwhelmed
+                sentences = re.split(r'(?<=[.!?])\s+', description)
+                if len(sentences) > 15:
+                    description = ' '.join(sentences[:15])
+
                 job = {
                     "id": job_id,
                     "title": title,
