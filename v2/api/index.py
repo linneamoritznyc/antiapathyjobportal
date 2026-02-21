@@ -4988,6 +4988,31 @@ async def get_user_gmail_credentials(user_id: str) -> Optional[dict]:
     return None
 
 
+@app.post("/api/gmail/credentials")
+async def save_gmail_credentials(request: Request):
+    """Save Google OAuth client_id and client_secret for this user."""
+    user_id = await get_user_id_from_request(request, required=True)
+    body = await request.json()
+    client_id = body.get("client_id", "").strip()
+    client_secret = body.get("client_secret", "").strip()
+    if not client_id or not client_secret:
+        raise HTTPException(status_code=400, detail="Både Client ID och Client Secret krävs.")
+
+    existing = await db_request("GET", "user_google_credentials", params={"user_id": f"eq.{user_id}"})
+    data = {
+        "user_id": user_id,
+        "client_id": client_id,
+        "client_secret": client_secret,
+        "updated_at": datetime.now().isoformat()
+    }
+    if existing:
+        await db_request("PATCH", f"user_google_credentials?user_id=eq.{user_id}", data=data)
+    else:
+        await db_request("POST", "user_google_credentials", data=data)
+
+    return {"success": True, "message": "Credentials sparade. Du kan nu koppla din Gmail."}
+
+
 @app.get("/api/gmail/auth-url")
 async def get_gmail_auth_url(request: Request, redirect_uri: str = None):
     """
