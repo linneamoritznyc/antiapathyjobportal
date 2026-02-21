@@ -2988,33 +2988,6 @@
                         </div>
                     )}
 
-                    {/* Selected summary */}
-                    {(kommunCount > 0 || selectedKommuner.includes('remote')) && (
-                        <div className="bg-white rounded-xl p-5 border border-slate-200">
-                            <h3 className="text-sm font-semibold text-slate-500 uppercase tracking-wide mb-3">
-                                Valda platser{kommunCount > 0 ? ` (${kommunCount})` : ''}
-                            </h3>
-                            <div className="flex flex-wrap gap-2">
-                                {selectedKommuner.filter(k => k !== 'remote' && k !== 'anywhere').map(kId => {
-                                    let label = kId;
-                                    for (const lan of LAN_DATA) { const f = lan.kommuner.find(k => k.id === kId); if (f) { label = f.label; break; } }
-                                    return (
-                                        <span key={kId} className="flex items-center gap-1 px-3 py-1.5 bg-indigo-100 text-indigo-800 rounded-full text-sm font-medium">
-                                            {label}
-                                            <button onClick={() => toggleKommun(kId)} className="text-indigo-400 hover:text-red-500 ml-0.5 font-bold">×</button>
-                                        </span>
-                                    );
-                                })}
-                                {selectedKommuner.includes('remote') && (
-                                    <span className="flex items-center gap-1 px-3 py-1.5 bg-green-100 text-green-800 rounded-full text-sm font-medium">
-                                        Distans / Remote
-                                        <button onClick={() => toggleKommun('remote')} className="text-green-400 hover:text-red-500 ml-0.5 font-bold">×</button>
-                                    </span>
-                                )}
-                            </div>
-                        </div>
-                    )}
-
                     {/* Save */}
                     <div className="flex justify-end pb-8">
                         <button
