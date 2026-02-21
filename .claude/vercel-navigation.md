@@ -71,7 +71,7 @@ Settings
 ├── General
 ├── Build and Deployment  ← Root Directory, Framework, Node.js version, Ignored Build Step
 ├── Domains
-├── Environments          ← Production Branch lives here (NOT under Git)
+├── Environments          ← Production Branch, Auto-assign Domains, Env Vars per environment
 ├── Environment Variables ← API keys (ANTHROPIC_API_KEY, SUPABASE_URL, etc.)
 ├── Git                   ← Connected repo, PR/commit comments, Deploy Hooks, Git LFS
 ├── Integrations
@@ -137,6 +137,34 @@ Contains these sections in order:
 3. **Deploy Hooks** — unique URLs that trigger a deployment of a given branch. Currently none configured. Fields: Name + Branch.
 
 ⚠️ Note: **Production Branch** is NOT here — it's under Settings → Environments → Production → Branch Tracking.
+
+---
+
+## Environments page (Settings → Environments)
+
+Top-level tabs: **No Environment · Production · Preview · Development** + "Your project has no custom environments"
+
+### Production environment (click "Production")
+
+Contains these sections:
+
+1. **Branch Tracking** — which branch triggers Production deploys.
+   - "Every commit pushed to the **[branch]** branch will create a Production Deployment."
+   - **MUST be set to `main`**. If set to anything else (like an old claude/ branch), all `main` merges become Preview instead of Production.
+   - If the field is empty/deleted, it defaults to `main` (which is correct).
+2. **Auto-assign Custom Production Domains** — toggle (should be **Enabled**).
+   - When enabled: your domain (`platsbanken-ai.vercel.app`) automatically points to the latest Production deploy.
+   - When disabled: Vercel builds the code but your domain doesn't update — you'd have to manually promote.
+3. **Domains** — shows which custom domains are assigned to Production.
+   - Currently: `platsbanken-ai.vercel.app`
+   - Custom domains are managed under Settings → Domains.
+4. **Environment Variables** — environment-specific overrides. Shows all env vars with tabs for Project / Shared.
+   - Our vars (all set to "All Environments"): `ANTHROPIC_API_KEY`, `SUPABASE_SERVICE_ROLE_KEY`, `SUPABASE_ANON_KEY`, `SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY`
+5. **Automatically expose System Environment Variables** — toggle
+
+### Preview & Development environments
+- **Preview**: deploys for non-production branches (PRs, feature branches). Gets a unique URL but not the production domain.
+- **Development**: for local dev (not used — we have no local dev setup).
 
 ---
 
