@@ -77,11 +77,11 @@ Vercel dashboard changes often. These are the CONFIRMED paths as of Feb 2026.
 ```
 Settings
 ├── General
-├── Build and Deployment
+├── Build and Deployment  ← Root Directory, Framework, Node.js version, Ignored Build Step
 ├── Domains
 ├── Environments          ← Production Branch lives here
 ├── Environment Variables ← API keys (ANTHROPIC_API_KEY, SUPABASE_URL, etc.)
-├── Git
+├── Git                   ← Deploy Hooks, PR/commit comments
 ├── Integrations
 ├── Deployment Protection
 ├── Functions             ← maxDuration setting
@@ -96,13 +96,27 @@ Settings
 └── Advanced
 ```
 
+### Build and Deployment page (Settings → Build and Deployment)
+Contains these sections in order:
+1. **Framework Settings** — auto-detected framework, build command, output dir, install command
+2. **Root Directory** — set to `v2/`. Has checkboxes for "Include files outside root" and "Skip if no changes"
+3. **Ignored Build Step** — controls when to skip builds (Auto / Only production / Only pre-production / etc.)
+4. **Node.js Version** — 24.x, 22.x, or 20.x
+5. **On-Demand Concurrent Builds** — queue settings
+6. **Build Machine** — Standard / Enhanced / Turbo performance
+7. **Deployment Checks** — checks needed before promoting to production
+8. **Rolling Releases** — gradual traffic rollout
+9. **Prioritize Production Builds** — enabled by default
+
 ### Key settings and where to find them
 | Setting | Path |
 |---------|------|
 | Production branch | Settings → **Environments** → Production → Branch Tracking |
+| Root directory | Settings → **Build and Deployment** → Root Directory (set to `v2`) |
+| Framework / build command | Settings → **Build and Deployment** → Framework Settings |
+| Node.js version | Settings → **Build and Deployment** → Node.js Version |
+| Ignored build step | Settings → **Build and Deployment** → Ignored Build Step |
 | Environment variables | Settings → **Environment Variables** |
-| Root directory | Settings → **General** → Root Directory (set to `v2`) |
-| Build settings | Settings → **Build and Deployment** |
 | Custom domains | Settings → **Domains** |
 | Function max duration | Settings → **Functions** |
 | Deploy hooks | Settings → **Git** → Deploy Hooks |
