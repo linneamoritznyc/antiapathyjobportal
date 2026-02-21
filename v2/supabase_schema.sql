@@ -7,7 +7,8 @@ CREATE TABLE IF NOT EXISTS jobs (
     title TEXT NOT NULL,
     company TEXT,
     location TEXT,
-    description TEXT,
+    description TEXT,                -- Full job description (used by cover letter AI)
+    description_summary TEXT,        -- AI-generated 3-4 sentence summary (shown in UI)
     url TEXT,
     deadline TIMESTAMPTZ,
     priority TEXT DEFAULT 'normal',
@@ -815,3 +816,6 @@ COMMENT ON TABLE user_anecdotes IS 'Personal anecdotes and hobbies for AI cover 
 -- ============== MIGRATIONS APPLIED ==============
 -- 2026-02-19: user_job_preferences.quiz_answers JSONB — LIVE
 --   Single source of truth for kommun IDs, search keywords, dealbreakers, etc.
+-- 2026-02-21: jobs.description_summary TEXT — LIVE
+--   AI-generated short summary for UI display. Full text stays in description for cover letters.
+--   Migration: ALTER TABLE jobs ADD COLUMN IF NOT EXISTS description_summary TEXT;
