@@ -1315,6 +1315,9 @@
             const [birthDate, setBirthDate] = useState('');
             const [savingBirthDate, setSavingBirthDate] = useState(false);
             const [birthDateStatus, setBirthDateStatus] = useState(null);
+            const [profileDetails, setProfileDetails] = useState({ full_name: '', phone: '', email: '', location: '' });
+            const [savingDetails, setSavingDetails] = useState(false);
+            const [detailsStatus, setDetailsStatus] = useState(null);
 
             const calculateAge = (bd) => {
                 if (!bd) return null;
@@ -1353,6 +1356,12 @@
                     if (data.birth_date) {
                         setBirthDate(data.birth_date);
                     }
+                    setProfileDetails({
+                        full_name: data.full_name || '',
+                        phone: data.phone || '',
+                        email: data.email || '',
+                        location: data.location || ''
+                    });
                 } catch (err) {
                     console.error('Error fetching profile:', err);
                 }
@@ -1552,6 +1561,88 @@
                         <p className="text-xs text-slate-400 mt-3">
                             Accepterade format: JPG, PNG
                         </p>
+                    </div>
+
+                    {/* Personal Details Section */}
+                    <div className="bg-white rounded-xl p-6 border border-slate-200">
+                        <h3 className="text-lg font-semibold mb-1">👤 Personuppgifter</h3>
+                        <p className="text-sm text-slate-500 mb-4">
+                            Används i personliga brev och ansökningar. Ändra här om något stämmer inte.
+                        </p>
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                            <div>
+                                <label className="block text-xs font-medium text-slate-500 mb-1">Namn</label>
+                                <input
+                                    type="text"
+                                    value={profileDetails.full_name}
+                                    onChange={e => setProfileDetails(p => ({...p, full_name: e.target.value}))}
+                                    placeholder="Förnamn Efternamn"
+                                    className="w-full px-3 py-2.5 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300"
+                                />
+                            </div>
+                            <div>
+                                <label className="block text-xs font-medium text-slate-500 mb-1">Telefon</label>
+                                <input
+                                    type="tel"
+                                    value={profileDetails.phone}
+                                    onChange={e => setProfileDetails(p => ({...p, phone: e.target.value}))}
+                                    placeholder="07XXXXXXXX"
+                                    className="w-full px-3 py-2.5 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300"
+                                />
+                            </div>
+                            <div>
+                                <label className="block text-xs font-medium text-slate-500 mb-1">E-post</label>
+                                <input
+                                    type="email"
+                                    value={profileDetails.email}
+                                    onChange={e => setProfileDetails(p => ({...p, email: e.target.value}))}
+                                    placeholder="din@email.se"
+                                    className="w-full px-3 py-2.5 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300"
+                                />
+                            </div>
+                            <div>
+                                <label className="block text-xs font-medium text-slate-500 mb-1">Bor i</label>
+                                <input
+                                    type="text"
+                                    value={profileDetails.location}
+                                    onChange={e => setProfileDetails(p => ({...p, location: e.target.value}))}
+                                    placeholder="t.ex. Norsborg"
+                                    className="w-full px-3 py-2.5 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300"
+                                />
+                            </div>
+                        </div>
+                        <div className="flex items-center gap-3 mt-4">
+                            <button
+                                onClick={async () => {
+                                    setSavingDetails(true);
+                                    setDetailsStatus(null);
+                                    try {
+                                        const res = await authFetch('/api/profile/details', {
+                                            method: 'PATCH',
+                                            body: JSON.stringify(profileDetails)
+                                        });
+                                        if (res.ok) {
+                                            setDetailsStatus('✓ Sparat!');
+                                        } else {
+                                            setDetailsStatus('Kunde inte spara.');
+                                        }
+                                    } catch(e) {
+                                        setDetailsStatus('Fel vid sparande.');
+                                    } finally {
+                                        setSavingDetails(false);
+                                    }
+                                }}
+                                disabled={savingDetails}
+                                className="bg-indigo-600 text-white px-5 py-2.5 rounded-lg font-medium hover:bg-indigo-700 disabled:opacity-50 transition text-sm"
+                            >
+                                {savingDetails ? 'Sparar...' : 'Spara'}
+                            </button>
+                            {detailsStatus && (
+                                <span className={`text-sm ${detailsStatus.startsWith('✓') ? 'text-green-600' : 'text-red-600'}`}>
+                                    {detailsStatus}
+                                </span>
+                            )}
+                        </div>
                     </div>
 
                     {/* Birth Date Section */}
@@ -3462,6 +3553,36 @@
             );
         };
 
+        // Render job description HTML (shared helper for both job pages)
+        const renderDescription = (desc) => {
+            if (!desc) return '<p style="color:#94a3b8">Ingen beskrivning tillgänglig.</p>';
+            let text = desc.substring(0, 6000);
+            text = text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+            let lines = text.split(/\n/);
+            let html = '';
+            let inList = false;
+            for (const line of lines) {
+                const trimmed = line.trim();
+                if (!trimmed) {
+                    if (inList) { html += '</ul>'; inList = false; }
+                    html += '<div style="height:0.5rem"></div>';
+                    continue;
+                }
+                if (/^[•\-–—\*]\s/.test(trimmed)) {
+                    if (!inList) { html += '<ul style="margin:0.5rem 0 0.5rem 1.2rem;padding:0">'; inList = true; }
+                    html += '<li style="margin-bottom:0.25rem">' + trimmed.replace(/^[•\-–—\*]\s*/, '') + '</li>';
+                } else if (/^[A-ZÅÄÖ\s]{4,50}:?\s*$/.test(trimmed)) {
+                    if (inList) { html += '</ul>'; inList = false; }
+                    html += '<p style="font-weight:600;color:#374151;margin:1rem 0 0.25rem;font-size:0.8rem;text-transform:uppercase;letter-spacing:0.05em">' + trimmed + '</p>';
+                } else {
+                    if (inList) { html += '</ul>'; inList = false; }
+                    html += '<p style="margin-bottom:0.4rem">' + trimmed + '</p>';
+                }
+            }
+            if (inList) html += '</ul>';
+            return html;
+        };
+
         // External jobs page — jobs without contact email (apply via external website)
         const ExternalJobsPage = ({ jobs, onScrape, scraping, savedJobs, onSaveJob, onOpenQuiz, setActiveTab }) => {
             const [keywords, setKeywords] = useState('');
@@ -3476,6 +3597,7 @@
             const [copied, setCopied] = useState(false);
             const [downloadingPdf, setDownloadingPdf] = useState(false);
             const [leftPanel, setLeftPanel] = useState('description');  // 'description' | 'letter' | 'qa'
+            const [descExpanded, setDescExpanded] = useState(false);
 
             // Q&A state
             const [qaQuestion, setQaQuestion] = useState('');
@@ -3717,41 +3839,12 @@
 
             // Reset panel when changing jobs
             useEffect(() => {
+                setDescExpanded(false);
                 if (currentJob && !generatedLetter[currentJob.id]) {
                     setLeftPanel('description');
                     setEditMode(false);
                 }
             }, [currentPage]);
-
-            // Render job description HTML (shared helper)
-            const renderDescription = (desc) => {
-                if (!desc) return '<p style="color:#94a3b8">Ingen beskrivning tillgänglig.</p>';
-                let text = desc.substring(0, 6000);
-                text = text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
-                let lines = text.split(/\n/);
-                let html = '';
-                let inList = false;
-                for (const line of lines) {
-                    const trimmed = line.trim();
-                    if (!trimmed) {
-                        if (inList) { html += '</ul>'; inList = false; }
-                        html += '<div style="height:0.5rem"></div>';
-                        continue;
-                    }
-                    if (/^[•\-–—\*]\s/.test(trimmed)) {
-                        if (!inList) { html += '<ul style="margin:0.5rem 0 0.5rem 1.2rem;padding:0">'; inList = true; }
-                        html += '<li style="margin-bottom:0.25rem">' + trimmed.replace(/^[•\-–—\*]\s*/, '') + '</li>';
-                    } else if (/^[A-ZÅÄÖ\s]{4,50}:?\s*$/.test(trimmed)) {
-                        if (inList) { html += '</ul>'; inList = false; }
-                        html += '<p style="font-weight:600;color:#374151;margin:1rem 0 0.25rem;font-size:0.8rem;text-transform:uppercase;letter-spacing:0.05em">' + trimmed + '</p>';
-                    } else {
-                        if (inList) { html += '</ul>'; inList = false; }
-                        html += '<p style="margin-bottom:0.4rem">' + trimmed + '</p>';
-                    }
-                }
-                if (inList) html += '</ul>';
-                return html;
-            };
 
             return (
                 <div>
@@ -3781,31 +3874,6 @@
                             </button>
                         )}
                     </div>
-
-                    {/* Geography filter indicator */}
-                    {(() => {
-                        const locPrefs = quizPrefs.location || [];
-                        const activeKommuner = locPrefs.filter(k => k !== 'remote' && k !== 'anywhere');
-                        if (activeKommuner.length === 0 || locPrefs.includes('anywhere')) return null;
-                        const labels = activeKommuner.map(id => {
-                            for (const lan of LAN_DATA) { const f = lan.kommuner.find(k => k.id === id); if (f) return f.label; }
-                            return id;
-                        });
-                        return (
-                            <div className="flex items-center gap-2 mb-3 flex-wrap">
-                                <span className="text-xs text-slate-400">📍 Visar jobb i:</span>
-                                {labels.map(l => (
-                                    <span key={l} className="bg-amber-100 text-amber-700 text-xs px-2 py-0.5 rounded-full font-medium">{l}</span>
-                                ))}
-                                {locPrefs.includes('remote') && (
-                                    <span className="bg-green-100 text-green-700 text-xs px-2 py-0.5 rounded-full font-medium">Remote</span>
-                                )}
-                                {setActiveTab && (
-                                    <button onClick={() => setActiveTab('platser')} className="text-xs text-amber-500 hover:text-amber-700 underline">Ändra</button>
-                                )}
-                            </div>
-                        );
-                    })()}
 
                     {scraping ? (
                         <div className="bg-white rounded-2xl shadow-sm border border-slate-100 p-8" style={{minHeight: '60vh'}}>
@@ -3888,12 +3956,26 @@
                                             {leftPanel === 'description' && (
                                                 <>
                                                     <p className="text-xs font-semibold text-slate-400 uppercase tracking-widest mb-3">Jobbannons</p>
-                                                    <div className="prose prose-sm max-w-none text-slate-700" style={{lineHeight: '1.7'}}
-                                                         dangerouslySetInnerHTML={{ __html: renderDescription(currentJob.description) }} />
-                                                    {currentJob.description && currentJob.description.length > 6000 && (
-                                                        <p className="text-xs text-slate-400 mt-3">
-                                                            … <a href={currentJob.url} target="_blank" className="text-indigo-600 hover:underline">Läs mer på Platsbanken ↗</a>
-                                                        </p>
+                                                    <div className="relative">
+                                                        <div
+                                                            className="prose prose-sm max-w-none text-slate-700 overflow-hidden"
+                                                            style={{
+                                                                lineHeight: '1.7',
+                                                                maxHeight: descExpanded ? 'none' : '15em',
+                                                            }}
+                                                            dangerouslySetInnerHTML={{ __html: renderDescription(currentJob.description) }}
+                                                        />
+                                                        {!descExpanded && currentJob.description && currentJob.description.length > 400 && (
+                                                            <div className="absolute bottom-0 left-0 right-0 h-16 bg-gradient-to-t from-white to-transparent" />
+                                                        )}
+                                                    </div>
+                                                    {currentJob.description && currentJob.description.length > 400 && (
+                                                        <button
+                                                            onClick={() => setDescExpanded(!descExpanded)}
+                                                            className="text-sm text-amber-600 hover:text-amber-800 font-medium mt-2"
+                                                        >
+                                                            {descExpanded ? '▲ Visa mindre' : '▼ Visa hela annonsen'}
+                                                        </button>
                                                     )}
                                                 </>
                                             )}
@@ -4184,6 +4266,7 @@
             const [prefsKey, setPrefsKey] = useState(0);
             const [hiddenJobIds, setHiddenJobIds] = useState(new Set()); // locally rejected jobs
             const [showHidden, setShowHidden] = useState(false);
+            const [descExpanded, setDescExpanded] = useState(false);
 
             // Log interaction signal to backend (Meta-style event collection)
             const logInteraction = async (jobId, action, context = {}) => {
@@ -4362,6 +4445,9 @@
                     return 0;
                 });
 
+            // Reset description expand when navigating between jobs
+            useEffect(() => { setDescExpanded(false); }, [currentPage]);
+
             return (
                 <div>
                     {/* Compact top bar: search + count + hidden toggle */}
@@ -4390,35 +4476,6 @@
                             </button>
                         )}
                     </div>
-
-                    {/* Active geography filter indicator */}
-                    {(() => {
-                        const locPrefs = quizPrefs.location || [];
-                        const activeKommuner = locPrefs.filter(k => k !== 'remote' && k !== 'anywhere');
-                        if (activeKommuner.length === 0 || locPrefs.includes('anywhere')) return null;
-                        const labels = activeKommuner.map(id => {
-                            for (const lan of LAN_DATA) {
-                                const found = lan.kommuner.find(k => k.id === id);
-                                if (found) return found.label;
-                            }
-                            return id;
-                        });
-                        return (
-                            <div className="flex items-center gap-2 mb-3 flex-wrap">
-                                <span className="text-xs text-slate-400">📍 Visar jobb i:</span>
-                                {labels.map(l => (
-                                    <span key={l} className="bg-indigo-100 text-indigo-700 text-xs px-2 py-0.5 rounded-full font-medium">{l}</span>
-                                ))}
-                                {locPrefs.includes('remote') && (
-                                    <span className="bg-green-100 text-green-700 text-xs px-2 py-0.5 rounded-full font-medium">Remote</span>
-                                )}
-                                <button
-                                    onClick={() => setActiveTab('platser')}
-                                    className="text-xs text-indigo-500 hover:text-indigo-700 underline"
-                                >Ändra</button>
-                            </div>
-                        );
-                    })()}
 
                     {/* ONE JOB AT A TIME */}
                     {(() => {
@@ -4500,42 +4557,29 @@
                                                 <div className="flex-1 p-8 border-r border-slate-100 overflow-y-auto" style={{maxHeight: '82vh'}}>
                                                     <p className="text-xs font-semibold text-slate-400 uppercase tracking-widest mb-3">Jobbannons</p>
                                                     {currentJob.description ? (
-                                                        <div className="prose prose-sm max-w-none text-slate-700" style={{lineHeight: '1.7'}}>
-                                                            <div dangerouslySetInnerHTML={{
-                                                                __html: (() => {
-                                                                    let text = currentJob.description.substring(0, 6000);
-                                                                    text = text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
-                                                                    let lines = text.split(/\n/);
-                                                                    let html = '';
-                                                                    let inList = false;
-                                                                    for (const line of lines) {
-                                                                        const trimmed = line.trim();
-                                                                        if (!trimmed) {
-                                                                            if (inList) { html += '</ul>'; inList = false; }
-                                                                            html += '<div style="height:0.5rem"></div>';
-                                                                            continue;
-                                                                        }
-                                                                        if (/^[•\-–—\*]\s/.test(trimmed)) {
-                                                                            if (!inList) { html += '<ul style="margin:0.5rem 0 0.5rem 1.2rem;padding:0">'; inList = true; }
-                                                                            html += '<li style="margin-bottom:0.25rem">' + trimmed.replace(/^[•\-–—\*]\s*/, '') + '</li>';
-                                                                        } else if (/^[A-ZÅÄÖ\s]{4,50}:?\s*$/.test(trimmed)) {
-                                                                            if (inList) { html += '</ul>'; inList = false; }
-                                                                            html += '<p style="font-weight:600;color:#374151;margin:1rem 0 0.25rem;font-size:0.8rem;text-transform:uppercase;letter-spacing:0.05em">' + trimmed + '</p>';
-                                                                        } else {
-                                                                            if (inList) { html += '</ul>'; inList = false; }
-                                                                            html += '<p style="margin-bottom:0.4rem">' + trimmed + '</p>';
-                                                                        }
-                                                                    }
-                                                                    if (inList) html += '</ul>';
-                                                                    return html;
-                                                                })()
-                                                            }} />
-                                                            {currentJob.description.length > 6000 && (
-                                                                <p style={{color:'#94a3b8',fontSize:'0.75rem',marginTop:'0.75rem'}}>
-                                                                    … <a href={currentJob.url} target="_blank" style={{color:'#6366f1'}}>Läs mer på Platsbanken ↗</a>
-                                                                </p>
+                                                        <>
+                                                            <div className="relative">
+                                                                <div
+                                                                    className="prose prose-sm max-w-none text-slate-700 overflow-hidden"
+                                                                    style={{
+                                                                        lineHeight: '1.7',
+                                                                        maxHeight: descExpanded ? 'none' : '15em',
+                                                                    }}
+                                                                    dangerouslySetInnerHTML={{ __html: renderDescription(currentJob.description) }}
+                                                                />
+                                                                {!descExpanded && currentJob.description.length > 400 && (
+                                                                    <div className="absolute bottom-0 left-0 right-0 h-16 bg-gradient-to-t from-white to-transparent" />
+                                                                )}
+                                                            </div>
+                                                            {currentJob.description.length > 400 && (
+                                                                <button
+                                                                    onClick={() => setDescExpanded(!descExpanded)}
+                                                                    className="text-sm text-indigo-600 hover:text-indigo-800 font-medium mt-2"
+                                                                >
+                                                                    {descExpanded ? '▲ Visa mindre' : '▼ Visa hela annonsen'}
+                                                                </button>
                                                             )}
-                                                        </div>
+                                                        </>
                                                     ) : (
                                                         <p className="text-slate-400 text-sm">Ingen beskrivning tillgänglig.</p>
                                                     )}
@@ -6798,7 +6842,7 @@
                         </div>
                     </header>
 
-                    <main className="w-full px-6 py-4">
+                    <main className="max-w-5xl mx-auto px-6 py-4">
 
                         {activeTab === 'jobs' && (
                             <JobsPage

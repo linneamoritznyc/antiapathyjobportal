@@ -110,7 +110,14 @@
 - AI lär sig vilka brev-stilar som funkar bäst per bransch
 - Automatisk A/B-testning av brev-varianter
 
-### 6. Don't re-scrape applied jobs
+### 6. Master CV editing & upload
+- Redigera befintliga erfarenheter i Master CV direkt i appen (titel, företag, beskrivning, datum)
+- Ladda upp fler CV:er (PDF) och koppla till branschkategorier
+- Ta bort/ändra ordning på erfarenheter
+- Redigera personuppgifter (namn, telefon, e-post, adress) i Master CV
+- Möjlighet att importera erfarenheter från uppladdad PDF (AI-parsning)
+
+### 7. Don't re-scrape applied jobs
 - When scraping, check `user_job_interactions` table and exclude applied/rejected jobs from results
 - Or: frontend merges scrape results with existing state instead of replacing
 - Local cache of applied job IDs in localStorage as Supabase fallback
