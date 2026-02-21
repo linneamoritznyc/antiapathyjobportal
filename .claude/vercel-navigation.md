@@ -2,24 +2,43 @@
 
 > DO NOT GUESS — use this reference. Vercel dashboard changes often.
 > These are the CONFIRMED paths as of Feb 2026.
+> Based on user screenshots + Vercel docs/changelog.
 
 ---
 
-## Top-level dashboard navigation
+## ⚠️ Old vs New Dashboard (Jan 2026)
 
-When you log into Vercel you land on the **Team Overview** page. The top-level navigation bar has:
+Vercel announced a **new sidebar-based dashboard** on Jan 22, 2026 (opt-in).
+Our project currently uses the **old horizontal-tabs dashboard**.
+You can switch between them:
+- **Opt out of new**: "Opt Out" on team overview, or three-dot menu → "Switch Back to the Old Dashboard"
+- **Opt into new**: "Try the New Dashboard" banner
+
+This guide documents the **OLD dashboard** (horizontal tabs) since that's what we use.
+
+---
+
+## Top-level navigation (Team / Account level)
+
+When you log into Vercel you land on the **Team Overview** page. The top navigation bar has:
 
 ```
-┌──────────────────────────────────────────────────────────────────┐
-│  ▲ [Team name]   Overview · Activity · Integrations · Settings  │
-│                                                      [Search]   │
-└──────────────────────────────────────────────────────────────────┘
+┌──────────────────────────────────────────────────────────────────────────────┐
+│  ▲  linneamoritznyc's projects                                              │
+│  Overview · Integrations · Activity · Usage · Monitoring · Settings · Support│
+│                                                              [🔍] [🔔] [👤]│
+└──────────────────────────────────────────────────────────────────────────────┘
 ```
 
-- **Overview** — list of all projects. Click a project name to enter that project.
-- **Activity** — team-wide deployment log
+- **Overview** — list of all projects as cards. Click a project name to enter it. Shows domain + last update time. Has "Add New..." and "Import" buttons.
 - **Integrations** — team-level integrations (different from project-level)
-- **Settings** — TEAM settings (members, billing, etc.) — NOT project settings
+- **Activity** — team-wide deployment/activity log
+- **Usage** — billing usage, bandwidth, function invocations, build minutes, etc.
+- **Monitoring** — observability & alerting across all projects
+- **Settings** — TEAM settings (members, billing, team domains, etc.) — NOT project settings
+- **Support** — contact Vercel support
+
+Also: **Universal Search** (🔍) lets you search teams, projects, repos, deployments, pages, and settings. Includes an AI-powered Navigation Assistant.
 
 ---
 
@@ -28,18 +47,18 @@ When you log into Vercel you land on the **Team Overview** page. The top-level n
 After clicking a project (e.g. "platsbanken"), you're inside the **Project dashboard**. The project nav bar has:
 
 ```
-┌──────────────────────────────────────────────────────────────────┐
-│  ← [Project name]   Deployments · Analytics · Speed Insights    │
-│                      Logs · Storage · Settings                   │
-└──────────────────────────────────────────────────────────────────┘
+┌──────────────────────────────────────────────────────────────────────────────┐
+│  ← platsbanken                                                               │
+│  Deployments · Analytics · Speed Insights · Logs · Storage · Settings        │
+└──────────────────────────────────────────────────────────────────────────────┘
 ```
 
-- **Deployments** — list of all deploys (Production, Preview). Click any deploy to see build logs, URL, etc. The ⋮ menu on each deploy has "Promote to Production", "Redeploy", etc.
-- **Analytics** — traffic/request analytics (Pro feature)
-- **Speed Insights** — Web Vitals performance data
-- **Logs** — real-time serverless function logs (Runtime Logs). Critical for debugging API errors.
-- **Storage** — Vercel-managed databases (KV, Postgres, Blob, Edge Config). We use Supabase instead.
-- **Settings** — PROJECT settings (this is where Build, Domains, Env Vars, etc. live)
+- **Deployments** — list of all deploys (Production, Preview). Click any deploy to see build logs, URL, etc. The ⋮ menu on each deploy has "Promote to Production", "Redeploy", etc. Each deployment has a **Resources** tab (replaced the old "Functions" tab) showing functions, middleware, and static assets.
+- **Analytics** — Web Vitals / real user metrics. Shows how users actually experience the app.
+- **Speed Insights** — performance data (LCP, FCP, CLS, etc.)
+- **Logs** — real-time serverless function logs (Runtime Logs). Critical for debugging API errors. Note: runtime logs only stored for 1 hour unless you set up a log drain.
+- **Storage** — Vercel-managed databases (KV, Postgres, Blob, Edge Config). We use Supabase instead so this is irrelevant.
+- **Settings** — PROJECT settings. This opens the settings sidebar (see below).
 
 ---
 
@@ -71,6 +90,39 @@ Settings
 
 ---
 
+## Build and Deployment page (Settings → Build and Deployment)
+
+Contains these sections in order:
+
+1. **Framework Settings** — auto-detected framework, build command, output dir, install command. Shows warning banner if "Configuration Settings in the current Production deployment differ from your current Project Settings" with links to Production Overrides vs Project Settings.
+2. **Root Directory** — set to `v2/`. Checkboxes:
+   - "Include files outside the root directory in the Build Step"
+   - "Skip deployments when there are no changes to the root directory or its dependencies"
+3. **Ignored Build Step** — controls when to skip builds. Dropdown options:
+   - Automatic
+   - Only build production
+   - Only build pre-production
+   - Only build if there are changes
+   - Only build if there are changes in a folder
+   - Don't build anything
+   - Run my Bash script
+   - Run my Node script
+   - Custom
+4. **Node.js Version** — radio buttons: 24.x / 22.x / 20.x
+5. **On-Demand Concurrent Builds** — radio buttons:
+   - Run all builds immediately (skip queue for all)
+   - Run up to one build per branch (new deployments within branch queued)
+   - Disable on-demand concurrent builds (queued, max one at a time)
+6. **Build Machine** — radio buttons:
+   - Standard performance (4 vCPUs, 8 GB, $0.014/min)
+   - Enhanced performance (8 vCPUs, 16 GB, $0.03/min)
+   - Turbo performance (30 vCPUs, 60 GB, $0.126/min) — **Default**
+7. **Deployment Checks** — checks needed before promoting to production
+8. **Rolling Releases** — gradual traffic rollout percentage per stage
+9. **Prioritize Production Builds** — enabled by default
+
+---
+
 ## ⚠️ Common navigation traps
 
 | What you want | WRONG place | RIGHT place |
@@ -80,6 +132,8 @@ Settings
 | Team settings | Project → Settings | Top nav → team **Settings** (different page!) |
 | Function logs | Settings → Functions | Project nav → **Logs** (top bar, not settings) |
 | Deploy list | Settings → anything | Project nav → **Deployments** (top bar) |
+| Build logs | Project nav → Logs | Project nav → **Deployments** → click a deploy → build logs |
+| Function resources | Old "Functions" tab | Deployments → click deploy → **Resources** tab |
 
 ---
 
@@ -101,18 +155,11 @@ Settings
 
 ---
 
-## Build and Deployment page (Settings → Build and Deployment)
+## Vercel logs — important details
 
-Contains these sections in order:
-1. **Framework Settings** — auto-detected framework, build command, output dir, install command. Shows warning if Production Overrides differ from Project Settings.
-2. **Root Directory** — set to `v2/`. Has checkboxes for "Include files outside root" and "Skip if no changes"
-3. **Ignored Build Step** — controls when to skip builds. Options: Automatic / Only build production / Only build pre-production / Only build if there are changes / Only build if there are changes in a folder / Don't build anything / Run my Bash script / Run my Node script / Custom
-4. **Node.js Version** — 24.x, 22.x, or 20.x
-5. **On-Demand Concurrent Builds** — Run all builds immediately / Run up to one build per branch / Disable
-6. **Build Machine** — Standard (4 vCPU, 8 GB) / Enhanced (8 vCPU, 16 GB) / Turbo (30 vCPU, 60 GB, Default)
-7. **Deployment Checks** — checks needed before promoting to production
-8. **Rolling Releases** — gradual traffic rollout
-9. **Prioritize Production Builds** — enabled by default
+- **Build logs**: found inside each deployment (Deployments → click deploy). Stored indefinitely, truncated at 4 MB.
+- **Runtime logs**: found under project nav → Logs. Only stored for **1 hour**. For long-term storage, set up a log drain (Settings → Drains).
+- **Activity logs**: found under team-level Activity tab.
 
 ---
 
@@ -130,7 +177,10 @@ Contains these sections in order:
 | Function max duration | Settings → **Functions** |
 | Deploy hooks | Settings → **Git** → Deploy Hooks |
 | Runtime / function logs | Project top nav → **Logs** (NOT in Settings) |
+| Build logs for a deploy | Project top nav → **Deployments** → click deploy |
 | Deploy history | Project top nav → **Deployments** (NOT in Settings) |
+| Function/resource list | Deployments → click deploy → **Resources** tab |
+| Log drains (long-term) | Settings → **Drains** |
 
 ---
 
@@ -141,3 +191,4 @@ Contains these sections in order:
 3. Check **Deployments** tab (top nav) — latest `main` deploy should say "Production" not "Preview"
 4. If still wrong: click the deploy → ⋮ → "Promote to Production"
 5. Check **Logs** (top nav) for serverless function errors if the deploy succeeded but the app is broken
+6. Check Settings → Build and Deployment → Framework Settings for "Production Overrides differ" warning
