@@ -57,6 +57,12 @@ frontend_path = pathlib.Path(__file__).parent.parent / "frontend.html"
 
 ---
 
+## ⚠️ Vercel dashboard navigation
+
+**READ THIS FILE FIRST**: `.claude/vercel-navigation.md` — full guide to Vercel dashboard navigation, settings locations, and common traps. Always consult it before giving Vercel UI instructions.
+
+---
+
 ## Active files (v2 — the live deployed app)
 
 | File | Purpose |
