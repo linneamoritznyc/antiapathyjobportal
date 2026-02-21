@@ -5,7 +5,7 @@ En jobbportal som hjälper dig söka jobb via e-post direkt till arbetsgivare.
 
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse, HTMLResponse
+from fastapi.responses import JSONResponse, HTMLResponse, RedirectResponse
 from pydantic import BaseModel
 from typing import Any, Optional, List, Dict
 import os
@@ -2569,6 +2569,16 @@ async def debug_env():
         "anthropic_key_exists": bool(ANTHROPIC_API_KEY),
         "all_env_vars": list(os.environ.keys())[:10]  # First 10 env var names
     }
+
+@app.get("/api/auth/google")
+async def google_auth():
+    """Redirect user to Google Sign-In via Supabase OAuth."""
+    if not SUPABASE_URL or not SUPABASE_ANON_KEY:
+        raise HTTPException(status_code=500, detail="Supabase not configured")
+    redirect_to = "https://platsbanken-ai.vercel.app/login"
+    url = f"{SUPABASE_URL}/auth/v1/authorize?provider=google&redirect_to={redirect_to}"
+    return RedirectResponse(url)
+
 
 @app.post("/api/auth/signup")
 async def sign_up(request: SignUpRequest):
