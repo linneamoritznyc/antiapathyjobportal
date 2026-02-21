@@ -3569,10 +3569,29 @@
             return html;
         };
 
-        // Render summary (no truncation — AI summary is already short)
-        const renderDescription = (desc) => {
+        // Check if job has a real AI summary (description differs from full_description)
+        const hasSummary = (job) => job.full_description && job.full_description !== job.description;
+
+        // Truncate text to ~4 sentences for fallback when no AI summary exists
+        const truncateText = (text) => {
+            if (!text || text.length <= 500) return text;
+            const sentences = text.split(/(?<=[.!?])\s+/);
+            if (sentences.length > 4) {
+                const short = sentences.slice(0, 4).join(' ');
+                return short.length <= 600 ? short : short.substring(0, 600).replace(/\s\S*$/, '...');
+            }
+            if (text.length > 600) {
+                const truncated = text.substring(0, 600);
+                const lastPeriod = Math.max(truncated.lastIndexOf('.'), truncated.lastIndexOf('!'), truncated.lastIndexOf('?'));
+                return lastPeriod > 200 ? text.substring(0, lastPeriod + 1) : truncated.replace(/\s\S*$/, '...');
+            }
+            return text;
+        };
+
+        // Render summary — short if AI summary, truncated if fallback
+        const renderDescription = (desc, isSummary) => {
             if (!desc) return '<p style="color:#94a3b8">Ingen beskrivning tillgänglig.</p>';
-            return formatDescriptionHtml(desc);
+            return formatDescriptionHtml(isSummary ? desc : truncateText(desc));
         };
 
         // Render full description (no truncation — shows everything)
@@ -3953,16 +3972,17 @@
                                             {/* Job description view */}
                                             {leftPanel === 'description' && (
                                                 <>
-                                                    {/* AI Summary */}
-                                                    <p className="text-xs font-semibold text-amber-600 uppercase tracking-widest mb-3">Sammanfattning</p>
+                                                    <p className="text-xs font-semibold text-amber-600 uppercase tracking-widest mb-3">
+                                                        {hasSummary(currentJob) ? 'Sammanfattning' : 'Jobbannons'}
+                                                    </p>
                                                     <div
                                                         className="prose prose-sm max-w-none text-slate-700"
                                                         style={{ lineHeight: '1.7' }}
-                                                        dangerouslySetInnerHTML={{ __html: renderDescription(currentJob.description) }}
+                                                        dangerouslySetInnerHTML={{ __html: renderDescription(currentJob.description, hasSummary(currentJob)) }}
                                                     />
 
-                                                    {/* Expandable full description */}
-                                                    {currentJob.full_description && currentJob.full_description !== currentJob.description && (
+                                                    {/* Expandable full description — show toggle if AI summary exists OR text was truncated */}
+                                                    {(hasSummary(currentJob) || (currentJob.description && currentJob.description.length > 500)) && (
                                                         <>
                                                             <button
                                                                 onClick={() => setDescExpanded(!descExpanded)}
@@ -3977,7 +3997,7 @@
                                                                     <div
                                                                         className="prose prose-sm max-w-none text-slate-600"
                                                                         style={{ lineHeight: '1.7' }}
-                                                                        dangerouslySetInnerHTML={{ __html: renderFullDescription(currentJob.full_description) }}
+                                                                        dangerouslySetInnerHTML={{ __html: renderFullDescription(currentJob.full_description || currentJob.description) }}
                                                                     />
                                                                 </>
                                                             )}
@@ -4563,16 +4583,17 @@
                                                 <div className="flex-1 p-8 border-r border-slate-100 overflow-y-auto" style={{maxHeight: '82vh'}}>
                                                     {currentJob.description ? (
                                                         <>
-                                                            {/* AI Summary */}
-                                                            <p className="text-xs font-semibold text-indigo-600 uppercase tracking-widest mb-3">Sammanfattning</p>
+                                                            <p className="text-xs font-semibold text-indigo-600 uppercase tracking-widest mb-3">
+                                                                {hasSummary(currentJob) ? 'Sammanfattning' : 'Jobbannons'}
+                                                            </p>
                                                             <div
                                                                 className="prose prose-sm max-w-none text-slate-700"
                                                                 style={{ lineHeight: '1.7' }}
-                                                                dangerouslySetInnerHTML={{ __html: renderDescription(currentJob.description) }}
+                                                                dangerouslySetInnerHTML={{ __html: renderDescription(currentJob.description, hasSummary(currentJob)) }}
                                                             />
 
                                                             {/* Expandable full description */}
-                                                            {currentJob.full_description && currentJob.full_description !== currentJob.description && (
+                                                            {(hasSummary(currentJob) || currentJob.description.length > 500) && (
                                                                 <>
                                                                     <button
                                                                         onClick={() => setDescExpanded(!descExpanded)}
@@ -4587,7 +4608,7 @@
                                                                             <div
                                                                                 className="prose prose-sm max-w-none text-slate-600"
                                                                                 style={{ lineHeight: '1.7' }}
-                                                                                dangerouslySetInnerHTML={{ __html: renderFullDescription(currentJob.full_description) }}
+                                                                                dangerouslySetInnerHTML={{ __html: renderFullDescription(currentJob.full_description || currentJob.description) }}
                                                                             />
                                                                         </>
                                                                     )}
