@@ -3544,11 +3544,15 @@
         // Render job description HTML (shared helper for both job pages)
         const renderDescription = (desc) => {
             if (!desc) return '<p style="color:#94a3b8">Ingen beskrivning tillgänglig.</p>';
-            // Cap at ~15 sentences to keep descriptions digestible
+            // Cap at ~10 sentences or 800 chars — short and scannable by default
             let text = desc;
             const sentences = text.split(/(?<=[.!?])\s+/);
-            if (sentences.length > 15) text = sentences.slice(0, 15).join(' ');
-            text = text.substring(0, 6000);
+            if (sentences.length > 10) text = sentences.slice(0, 10).join(' ');
+            if (text.length > 800) {
+                const truncated = text.substring(0, 800);
+                const lastPeriod = Math.max(truncated.lastIndexOf('.'), truncated.lastIndexOf('!'), truncated.lastIndexOf('?'));
+                text = lastPeriod > 200 ? text.substring(0, lastPeriod + 1) : truncated.replace(/\s\S*$/, '...');
+            }
             text = text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
             let lines = text.split(/\n/);
             let html = '';

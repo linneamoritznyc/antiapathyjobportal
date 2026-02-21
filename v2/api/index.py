@@ -451,6 +451,81 @@ def _job_in_municipalities(job: Dict, municipality_labels_lower: List[str]) -> b
     return False
 
 
+# ============== JOB DESCRIPTION SUMMARIZER ==============
+
+async def summarize_job_descriptions(jobs: List[Dict]) -> List[Dict]:
+    """
+    Batch-summarize job descriptions using AI.
+    Takes full descriptions and produces short, scannable summaries.
+    Processes all jobs in one API call for efficiency.
+    """
+    if not jobs:
+        return jobs
+
+    # Build batch prompt with all job descriptions
+    job_entries = []
+    for i, job in enumerate(jobs):
+        full_desc = job.get("full_description", job.get("description", ""))
+        if len(full_desc) > 2000:
+            full_desc = full_desc[:2000]
+        job_entries.append(f"[JOB {i}] {job.get('title', '')} — {job.get('company', '')}\n{full_desc}")
+
+    batch_text = "\n---\n".join(job_entries)
+
+    prompt = f"""Sammanfatta varje jobbannons till MAX 3-4 korta meningar på svenska.
+Inkludera BARA det viktigaste:
+- Vad jobbet går ut på (1 mening)
+- Viktigaste kravet/erfarenheten (1 mening)
+- Anställningsform/tider om det nämns (1 kort mening)
+
+Svara med exakt samma format: [JOB 0] sammanfattning, [JOB 1] sammanfattning, osv.
+Inga rubriker, inga bullet points, bara löpande text per jobb.
+
+{batch_text}"""
+
+    try:
+        async with httpx.AsyncClient() as client:
+            response = await client.post(
+                "https://api.anthropic.com/v1/messages",
+                headers={
+                    "x-api-key": ANTHROPIC_API_KEY,
+                    "anthropic-version": "2023-06-01",
+                    "content-type": "application/json",
+                },
+                json={
+                    "model": "claude-haiku-4-5-20251001",
+                    "max_tokens": 300 * len(jobs),
+                    "messages": [{"role": "user", "content": prompt}],
+                },
+                timeout=30,
+            )
+            if response.status_code == 200:
+                result = response.json()
+                summary_text = result["content"][0]["text"]
+
+                # Parse summaries back to individual jobs
+                for i, job in enumerate(jobs):
+                    marker = f"[JOB {i}]"
+                    next_marker = f"[JOB {i+1}]"
+                    start = summary_text.find(marker)
+                    if start == -1:
+                        continue
+                    start += len(marker)
+                    end = summary_text.find(next_marker) if i < len(jobs) - 1 else len(summary_text)
+                    if end == -1:
+                        end = len(summary_text)
+                    summary = summary_text[start:end].strip()
+                    if summary:
+                        job["description"] = summary
+                logger.info(f"Summarized {len(jobs)} job descriptions")
+            else:
+                logger.warning(f"Summary API returned {response.status_code}, keeping truncated descriptions")
+    except Exception as e:
+        logger.warning(f"Job summary failed, keeping truncated descriptions: {e}")
+
+    return jobs
+
+
 # ============== PLATSBANKEN SCRAPER ==============
 
 
@@ -612,10 +687,18 @@ async def scrape_platsbanken(keyword: str, max_jobs: int = 15, municipality_ids:
                 description = re.sub(r'<[^>]+>', ' ', description)
                 description = re.sub(r'\s+', ' ', description).strip()
 
-                # Truncate to ~15 sentences so users aren't overwhelmed
-                sentences = re.split(r'(?<=[.!?])\s+', description)
-                if len(sentences) > 15:
-                    description = ' '.join(sentences[:15])
+                # Keep full description for AI cover letter generation
+                full_description = description
+
+                # Truncate display description to ~500 chars (short intro only)
+                # Users can click "Se originalannons" for full text
+                if len(description) > 500:
+                    truncated = description[:500]
+                    last_period = max(truncated.rfind('.'), truncated.rfind('!'), truncated.rfind('?'))
+                    if last_period > 150:
+                        description = description[:last_period + 1]
+                    else:
+                        description = truncated.rsplit(' ', 1)[0] + '...'
 
                 job = {
                     "id": job_id,
@@ -625,7 +708,8 @@ async def scrape_platsbanken(keyword: str, max_jobs: int = 15, municipality_ids:
                     "municipality": municipality,
                     "county": county,
                     "occupation": occupation,
-                    "description": description[:6000],
+                    "description": description,
+                    "full_description": full_description[:6000],
                     "url": f"https://arbetsformedlingen.se/platsbanken/annonser/{job_id}",
                     "deadline": deadline,
                     "priority": calculate_priority(deadline),
@@ -657,6 +741,10 @@ async def scrape_platsbanken(keyword: str, max_jobs: int = 15, municipality_ids:
         before = len(jobs)
         jobs = [j for j in jobs if _job_in_municipalities(j, municipality_labels_lower)]
         logger.info(f"Geography post-filter: {before} → {len(jobs)} jobs")
+
+    # AI-summarize descriptions for display (keeps full_description for cover letters)
+    if jobs:
+        jobs = await summarize_job_descriptions(jobs)
 
     return jobs
 
@@ -721,8 +809,17 @@ async def generate_cover_letter(job: Dict, user_cv_text: Optional[str] = None, u
     if not ANTHROPIC_API_KEY:
         return generate_template_letter(job)
 
+    # If job only has short summary, fetch full description from DB for better cover letter
+    if not job.get("full_description") and job.get("id") and SUPABASE_URL:
+        try:
+            db_job = await db_request("GET", "jobs", params={"id": f"eq.{job['id']}", "select": "description"})
+            if db_job and db_job[0].get("description"):
+                job["full_description"] = db_job[0]["description"]
+        except Exception:
+            pass
+
     # Get relevant experience
-    category = detect_job_category(job.get("title", ""), job.get("description", ""))
+    category = detect_job_category(job.get("title", ""), job.get("full_description", job.get("description", "")))
     experience = user_cv_text or DEFAULT_EXPERIENCE.get(category, DEFAULT_EXPERIENCE["default"])
 
     # Append any extra hints the user selected in the UI
@@ -842,7 +939,7 @@ JOBBET:
 - Företag: {job.get('company')}
 - Plats: {job.get('location')}
 {extras_text}
-- Beskrivning: {job.get('description', '')[:2500]}
+- Beskrivning: {job.get('full_description', job.get('description', ''))[:2500]}
 
 MIN BAKGRUND (använd som inspiration — plocka bara det som faktiskt är relevant):
 {experience}
@@ -1176,6 +1273,10 @@ async def save_jobs_to_db(jobs: List[Dict]) -> int:
     saved = 0
     for job in jobs:
         db_job = {k: v for k, v in job.items() if k in db_columns}
+        # Save FULL description to DB (used for cover letter generation)
+        # The summarized version is in job["description"], full is in job["full_description"]
+        if job.get("full_description"):
+            db_job["description"] = job["full_description"]
         # Store extra fields in description as fallback
         extras = []
         if job.get("employment_type"):
