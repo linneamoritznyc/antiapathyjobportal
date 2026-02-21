@@ -57,6 +57,64 @@ frontend_path = pathlib.Path(__file__).parent.parent / "frontend.html"
 
 ---
 
+## ⚠️ Vercel dashboard navigation (DO NOT GUESS — use this reference)
+
+Vercel dashboard changes often. These are the CONFIRMED paths as of Feb 2026.
+
+### Production Branch setting
+**Path**: Project → Settings → **Environments** → click **Production** → **Branch Tracking**
+- NOT under Settings → Git
+- NOT under Settings → General
+- Set to `main` so every merge to main auto-deploys to Production
+
+### How Vercel deployments work
+- **Production deploy**: Only triggered by pushes/merges to the **Production Branch** (configured above)
+- **Preview deploy**: Every other branch push. Preview deploys do NOT go live on the main domain.
+- If user sees old version after merging PR: the Production Branch is probably misconfigured.
+- To manually promote a Preview to Production: click the deploy → three dots ⋮ → "Promote to Production"
+
+### Vercel Project Settings sidebar (EXACT menu as of Feb 2026)
+```
+Settings
+├── General
+├── Build and Deployment
+├── Domains
+├── Environments          ← Production Branch lives here
+├── Environment Variables ← API keys (ANTHROPIC_API_KEY, SUPABASE_URL, etc.)
+├── Git
+├── Integrations
+├── Deployment Protection
+├── Functions             ← maxDuration setting
+├── Caches
+├── Cron Jobs
+├── Microfrontends
+├── Project Members
+├── Webhooks
+├── Drains
+├── Security
+├── Connectivity
+└── Advanced
+```
+
+### Key settings and where to find them
+| Setting | Path |
+|---------|------|
+| Production branch | Settings → **Environments** → Production → Branch Tracking |
+| Environment variables | Settings → **Environment Variables** |
+| Root directory | Settings → **General** → Root Directory (set to `v2`) |
+| Build settings | Settings → **Build and Deployment** |
+| Custom domains | Settings → **Domains** |
+| Function max duration | Settings → **Functions** |
+| Deploy hooks | Settings → **Git** → Deploy Hooks |
+
+### If deployment isn't updating
+1. Check Settings → Environments → Production → Branch Tracking = `main`
+2. Check that the merge to `main` actually completed on GitHub
+3. Check Deployments tab — latest `main` deploy should say "Production" not "Preview"
+4. If still wrong: click the deploy → ⋮ → "Promote to Production"
+
+---
+
 ## Active files (v2 — the live deployed app)
 
 | File | Purpose |
