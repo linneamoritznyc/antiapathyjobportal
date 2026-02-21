@@ -4202,8 +4202,8 @@ async def save_user_preferences(request: Request, prefs: UserPreferences):
     if prefs.gmail_client_id and prefs.gmail_client_secret:
         gmail_data = {
             "user_id": user_id,
-            "google_client_id": prefs.gmail_client_id,
-            "google_client_secret": prefs.gmail_client_secret,
+            "client_id": prefs.gmail_client_id,
+            "client_secret": prefs.gmail_client_secret,
             "updated_at": "now()"
         }
 
@@ -4983,7 +4983,7 @@ async def export_user_data(request: Request):
 async def get_user_gmail_credentials(user_id: str) -> Optional[dict]:
     """Fetch Gmail OAuth credentials (client_id, client_secret) from user_google_credentials table."""
     creds = await db_request("GET", "user_google_credentials", params={"user_id": f"eq.{user_id}"})
-    if creds and creds[0].get("google_client_id") and creds[0].get("google_client_secret"):
+    if creds and creds[0].get("client_id") and creds[0].get("client_secret"):
         return creds[0]
     return None
 
@@ -5007,7 +5007,7 @@ async def get_gmail_auth_url(request: Request, redirect_uri: str = None):
         redirect_uri = f"{base}/api/gmail/callback"
 
     params = {
-        "client_id": user_creds["google_client_id"],
+        "client_id": user_creds["client_id"],
         "redirect_uri": redirect_uri,
         "response_type": "code",
         "scope": "https://www.googleapis.com/auth/gmail.compose",
@@ -5037,8 +5037,8 @@ async def gmail_oauth_callback(code: str, state: str = "default_user"):
         response = await client.post(
             "https://oauth2.googleapis.com/token",
             data={
-                "client_id": user_creds["google_client_id"],
-                "client_secret": user_creds["google_client_secret"],
+                "client_id": user_creds["client_id"],
+                "client_secret": user_creds["client_secret"],
                 "code": code,
                 "grant_type": "authorization_code",
                 "redirect_uri": redirect_uri
@@ -5109,7 +5109,7 @@ async def get_gmail_status(request: Request):
         return {"connected": False, "gmail_address": None, "app_configured": False}
 
     cred = creds[0]
-    has_oauth_creds = bool(cred.get("google_client_id") and cred.get("google_client_secret"))
+    has_oauth_creds = bool(cred.get("client_id") and cred.get("client_secret"))
 
     if not cred.get("is_connected"):
         return {"connected": False, "gmail_address": None, "app_configured": has_oauth_creds}
@@ -5167,8 +5167,8 @@ async def refresh_gmail_token(user_id: str) -> Optional[str]:
     cred = creds[0]
 
     # Need per-user OAuth credentials for token refresh
-    client_id = cred.get("google_client_id")
-    client_secret = cred.get("google_client_secret")
+    client_id = cred.get("client_id")
+    client_secret = cred.get("client_secret")
     if not client_id or not client_secret:
         return None
 
@@ -5329,7 +5329,7 @@ async def create_gmail_draft_for_user(
         if not creds:
             return (None, "Gmail är inte kopplat. Gå till Profil → Gmail och koppla ditt konto.")
         cred = creds[0]
-        if not cred.get("google_client_id") or not cred.get("google_client_secret"):
+        if not cred.get("client_id") or not cred.get("client_secret"):
             return (None, "Gmail-kopplingen är inte konfigurerad. Försök igen senare.")
         if not cred.get("is_connected"):
             return (None, "Gmail-kopplingen är inaktiverad. Gå till Profil → Gmail och koppla om.")

@@ -481,14 +481,13 @@ CREATE UNIQUE INDEX IF NOT EXISTS idx_user_job_interactions_unique ON user_job_i
 CREATE TABLE IF NOT EXISTS user_google_credentials (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     user_id TEXT NOT NULL UNIQUE,
-    google_client_id TEXT NOT NULL,
-    google_client_secret TEXT NOT NULL,  -- Stored securely, user provides their own
+    client_id TEXT,                      -- Google OAuth client ID
+    client_secret TEXT,                  -- Google OAuth client secret
     access_token TEXT,
     refresh_token TEXT,
     token_expires_at TIMESTAMPTZ,
     gmail_address TEXT,  -- User's Gmail address after OAuth
     is_connected BOOLEAN DEFAULT FALSE,
-    created_at TIMESTAMPTZ DEFAULT NOW(),
     updated_at TIMESTAMPTZ DEFAULT NOW()
 );
 
