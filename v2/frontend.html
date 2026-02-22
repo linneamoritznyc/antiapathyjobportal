@@ -121,6 +121,7 @@
                     { id: 'preferences', label: 'Preferenser', icon: '⚙️' },
                     { id: 'platser', label: 'Platser', icon: '📍' },
                     { id: 'letter', label: 'Personligt brev', icon: '✍️' },
+                    { id: 'brevformat', label: 'Brevformat', icon: '📝' },
                     { id: 'gmail', label: 'Gmail', icon: '📬' },
                     { id: 'quiz', label: 'Quiz', icon: '✨' },
                     { id: 'profil', label: 'Profil', icon: '👤' }
@@ -3195,6 +3196,174 @@
             );
         };
 
+        // ============== BREVFORMAT PAGE (own tab) ==============
+        const BrevformatPage = () => {
+            const [loading, setLoading] = useState(true);
+            const [signOffName, setSignOffName] = useState('');
+            const [signOffPhone, setSignOffPhone] = useState('');
+            const [signOffEmail, setSignOffEmail] = useState('');
+            const [greetingStyle, setGreetingStyle] = useState('');
+            const [signatureStyle, setSignatureStyle] = useState('');
+            const [maxWords, setMaxWords] = useState(200);
+            const [saving, setSaving] = useState(false);
+            const [saved, setSaved] = useState(false);
+
+            useEffect(() => { fetchFormat(); }, []);
+
+            const fetchFormat = async () => {
+                if (!localStorage.getItem('auth_token')) { setLoading(false); return; }
+                try {
+                    const res = await authFetch('/api/user/letter-style');
+                    if (res.ok) {
+                        const data = await res.json();
+                        const s = data.style_summary;
+                        if (s) {
+                            setSignOffName(s.sign_off_name || '');
+                            setSignOffPhone(s.sign_off_phone || '');
+                            setSignOffEmail(s.sign_off_email || '');
+                            setGreetingStyle(s.greeting_style || '');
+                            setSignatureStyle(s.signature_style || '');
+                            setMaxWords(s.max_words || 200);
+                        }
+                    }
+                } catch(e) {}
+                setLoading(false);
+            };
+
+            const saveFormat = async () => {
+                setSaving(true);
+                setSaved(false);
+                try {
+                    const res = await authFetch('/api/user/letter-style', {
+                        method: 'PATCH',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            greeting_style: greetingStyle,
+                            signature_style: signatureStyle,
+                            sign_off_name: signOffName,
+                            sign_off_phone: signOffPhone,
+                            sign_off_email: signOffEmail,
+                            max_words: parseInt(maxWords) || 200
+                        })
+                    });
+                    if (res.ok) {
+                        setSaved(true);
+                        setTimeout(() => setSaved(false), 3000);
+                    }
+                } catch(e) {}
+                setSaving(false);
+            };
+
+            if (loading) return <div className="max-w-3xl mx-auto text-slate-400 text-sm p-8">Laddar...</div>;
+
+            return (
+                <div className="max-w-3xl mx-auto space-y-6">
+                    <div className="flex items-center gap-3 mb-2">
+                        <h2 className="text-2xl font-bold">Brevformat</h2>
+                    </div>
+
+                    {/* Preview */}
+                    <div className="bg-gradient-to-br from-indigo-50 to-purple-50 rounded-xl p-6 border border-indigo-200">
+                        <h3 className="text-sm font-semibold text-slate-400 uppercase tracking-wide mb-3">Förhandsgranskning</h3>
+                        <div className="bg-white rounded-lg p-5 text-sm text-slate-700 leading-relaxed border border-slate-200 font-serif">
+                            <div>{greetingStyle || 'Hej!'} {'{kontaktperson}'}</div>
+                            <div className="my-4 text-slate-400 italic">[Brevets innehåll — ca {maxWords} ord]</div>
+                            <div>{signatureStyle || 'Med vänliga hälsningar,'}</div>
+                            <div className="font-medium">{signOffName || '{Ditt namn}'}</div>
+                            <div className="text-slate-500">{signOffPhone || '{Telefon}'}</div>
+                            <div className="text-slate-500">{signOffEmail || '{E-post}'}</div>
+                        </div>
+                    </div>
+
+                    {/* Form */}
+                    <div className="bg-white rounded-xl p-6 border border-slate-200">
+                        <div className="space-y-4">
+                            <div>
+                                <label className="text-xs font-semibold text-slate-400 uppercase tracking-wide block mb-1">Hälsning</label>
+                                <input
+                                    type="text"
+                                    value={greetingStyle}
+                                    onChange={e => { setGreetingStyle(e.target.value); setSaved(false); }}
+                                    placeholder="Hej!"
+                                    className="w-full text-sm px-3 py-2 border border-slate-200 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:outline-none"
+                                />
+                                <p className="text-[11px] text-slate-400 mt-1">Om jobbannonsen har kontaktperson läggs namnet till automatiskt</p>
+                            </div>
+                            <div>
+                                <label className="text-xs font-semibold text-slate-400 uppercase tracking-wide block mb-1">Avslutningsfras</label>
+                                <input
+                                    type="text"
+                                    value={signatureStyle}
+                                    onChange={e => { setSignatureStyle(e.target.value); setSaved(false); }}
+                                    placeholder="Med vänliga hälsningar,"
+                                    className="w-full text-sm px-3 py-2 border border-slate-200 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:outline-none"
+                                />
+                            </div>
+                            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                                <div>
+                                    <label className="text-xs font-semibold text-slate-400 uppercase tracking-wide block mb-1">Namn i signatur</label>
+                                    <input
+                                        type="text"
+                                        value={signOffName}
+                                        onChange={e => { setSignOffName(e.target.value); setSaved(false); }}
+                                        placeholder="Linnea Moritz"
+                                        className="w-full text-sm px-3 py-2 border border-slate-200 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:outline-none"
+                                    />
+                                </div>
+                                <div>
+                                    <label className="text-xs font-semibold text-slate-400 uppercase tracking-wide block mb-1">Telefon</label>
+                                    <input
+                                        type="text"
+                                        value={signOffPhone}
+                                        onChange={e => { setSignOffPhone(e.target.value); setSaved(false); }}
+                                        placeholder="076-123 45 67"
+                                        className="w-full text-sm px-3 py-2 border border-slate-200 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:outline-none"
+                                    />
+                                </div>
+                                <div>
+                                    <label className="text-xs font-semibold text-slate-400 uppercase tracking-wide block mb-1">E-post</label>
+                                    <input
+                                        type="text"
+                                        value={signOffEmail}
+                                        onChange={e => { setSignOffEmail(e.target.value); setSaved(false); }}
+                                        placeholder="namn@gmail.com"
+                                        className="w-full text-sm px-3 py-2 border border-slate-200 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:outline-none"
+                                    />
+                                </div>
+                            </div>
+                            <div>
+                                <label className="text-xs font-semibold text-slate-400 uppercase tracking-wide block mb-1">Ordgräns</label>
+                                <div className="flex items-center gap-3">
+                                    <input
+                                        type="range"
+                                        min="100"
+                                        max="400"
+                                        step="25"
+                                        value={maxWords}
+                                        onChange={e => { setMaxWords(parseInt(e.target.value)); setSaved(false); }}
+                                        className="flex-1 accent-indigo-600"
+                                    />
+                                    <span className="text-sm font-medium text-slate-700 w-16 text-right">{maxWords} ord</span>
+                                </div>
+                            </div>
+                            <div className="flex items-center justify-between pt-2">
+                                <span className="text-xs text-green-600 font-medium">
+                                    {saved ? 'Sparat!' : ''}
+                                </span>
+                                <button
+                                    onClick={saveFormat}
+                                    disabled={saving}
+                                    className="px-5 py-2 bg-indigo-600 text-white text-sm rounded-lg font-medium hover:bg-indigo-700 disabled:opacity-50"
+                                >
+                                    {saving ? 'Sparar...' : 'Spara'}
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            );
+        };
+
         // ============== PERSONLIGT BREV-PREFERENSER PAGE ==============
 
         const LetterPreferencesPage = () => {
@@ -3221,12 +3390,14 @@
             const [feedbackStatus, setFeedbackStatus] = useState(null);
 
             // Inline editing state
-            const [editingField, setEditingField] = useState(null); // 'tone', 'structure', 'length_preference', 'opening_style'
+            const [editingField, setEditingField] = useState(null);
             const [editValue, setEditValue] = useState('');
             const [savingField, setSavingField] = useState(null);
             const [customInstructions, setCustomInstructions] = useState('');
             const [savingInstructions, setSavingInstructions] = useState(false);
             const [instructionsSaved, setInstructionsSaved] = useState(false);
+
+            const [newNeverMention, setNewNeverMention] = useState('');
 
             useEffect(() => {
                 fetchLetterStyle();
@@ -3646,6 +3817,37 @@
                                         <button
                                             onClick={() => { updatePhrase('phrases', 'add', newLikePhrase); setNewLikePhrase(''); }}
                                             className="px-3 py-1.5 bg-indigo-600 text-white text-xs rounded-lg hover:bg-indigo-700"
+                                        >+</button>
+                                    </div>
+                                </div>
+
+                                {/* Never mention topics */}
+                                <div className="bg-slate-50 rounded-lg p-4 border border-slate-100">
+                                    <div className="text-xs font-semibold text-slate-400 uppercase tracking-wide mb-2">Ämnen att aldrig nämna</div>
+                                    <p className="text-[11px] text-slate-400 mb-2">Ämnen AI aldrig ska ta upp i brev (t.ex. konst, Shopify)</p>
+                                    <div className="flex flex-wrap gap-2 mb-3">
+                                        {(letterStyle?.never_mention || []).map((p, i) => (
+                                            <span key={i} className="px-2.5 py-1 bg-orange-100 text-orange-700 text-xs rounded-full flex items-center gap-1">
+                                                {p}
+                                                <button onClick={() => updatePhrase('never_mention', 'remove', p)} className="text-orange-400 hover:text-orange-700 ml-0.5">&times;</button>
+                                            </span>
+                                        ))}
+                                        {(!letterStyle?.never_mention || letterStyle.never_mention.length === 0) && (
+                                            <span className="text-xs text-slate-400 italic">Inga ämnen tillagda</span>
+                                        )}
+                                    </div>
+                                    <div className="flex gap-2">
+                                        <input
+                                            type="text"
+                                            value={newNeverMention}
+                                            onChange={e => setNewNeverMention(e.target.value)}
+                                            onKeyDown={e => { if (e.key === 'Enter') { updatePhrase('never_mention', 'add', newNeverMention); setNewNeverMention(''); }}}
+                                            placeholder="Lägg till ämne..."
+                                            className="flex-1 text-xs px-3 py-1.5 border border-slate-200 rounded-lg focus:ring-2 focus:ring-orange-500 focus:border-orange-500"
+                                        />
+                                        <button
+                                            onClick={() => { updatePhrase('never_mention', 'add', newNeverMention); setNewNeverMention(''); }}
+                                            className="px-3 py-1.5 bg-orange-600 text-white text-xs rounded-lg hover:bg-orange-700"
                                         >+</button>
                                     </div>
                                 </div>
@@ -7451,6 +7653,10 @@
 
                         {activeTab === 'letter' && (
                             <LetterPreferencesPage />
+                        )}
+
+                        {activeTab === 'brevformat' && (
+                            <BrevformatPage />
                         )}
 
                         {activeTab === 'gmail' && (
