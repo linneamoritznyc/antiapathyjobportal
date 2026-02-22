@@ -871,15 +871,17 @@ async def generate_cover_letter(job: Dict, user_cv_text: Optional[str] = None, u
     if linkedin:
         user_info += f"\n- LinkedIn: {linkedin}"
 
-    # Fetch style preferences and anecdotes if user is logged in
+    # Fetch style preferences, anecdotes, and AI feedback if user is logged in
     style_section = ""
     anecdotes_section = ""
+    feedback_section = ""
     if user_id:
         try:
             import asyncio as _asyncio
-            prefs_result, anecdotes_result = await _asyncio.gather(
+            prefs_result, anecdotes_result, feedback_result = await _asyncio.gather(
                 db_request("GET", "user_cover_letter_preferences", params={"user_id": f"eq.{user_id}"}),
-                db_request("GET", "user_anecdotes", params={"user_id": f"eq.{user_id}"})
+                db_request("GET", "user_anecdotes", params={"user_id": f"eq.{user_id}"}),
+                db_request("GET", "user_ai_feedback", params={"user_id": f"eq.{user_id}", "is_active": "eq.true", "order": "created_at.desc", "limit": "10"})
             )
 
             # Build style instructions from preferences
@@ -924,8 +926,14 @@ async def generate_cover_letter(job: Dict, user_cv_text: Optional[str] = None, u
                 if anecdote_parts:
                     anecdotes_section = "\n\nMINA PERSONLIGA ANEKDOTER & HOBBYS (använd BARA om de passar jobbet):\n" + "\n".join(anecdote_parts)
 
+            # Build feedback section from previous user feedback
+            if feedback_result and len(feedback_result) > 0:
+                feedback_parts = [f"- {fb['feedback_text']}" for fb in feedback_result if fb.get("feedback_text")]
+                if feedback_parts:
+                    feedback_section = "\n\nTIDIGARE FEEDBACK FRÅN MIG (följ detta STRIKT):\n" + "\n".join(feedback_parts)
+
         except Exception as e:
-            logger.error(f"Error fetching style/anecdotes: {e}")
+            logger.error(f"Error fetching style/anecdotes/feedback: {e}")
 
     prompt = f"""Skriv ett personligt brev på svenska för denna jobbansökan.
 
@@ -940,7 +948,7 @@ MIN BAKGRUND (använd som inspiration — plocka bara det som faktiskt är relev
 {experience}
 
 OM MIG:
-{user_info}{style_section}{anecdotes_section}
+{user_info}{style_section}{anecdotes_section}{feedback_section}
 
 INSTRUKTIONER:
 1. Börja med: {contact_greeting}
@@ -1292,11 +1300,12 @@ async def save_jobs_to_db(jobs: List[Dict]) -> int:
     return saved
 
 
-async def get_jobs_from_db(limit: int = 50) -> List[Dict]:
+async def get_jobs_from_db(limit: int = 50, offset: int = 0) -> List[Dict]:
     """Get jobs from database. Returns description_summary + full_description for UI."""
     jobs = await db_request("GET", "jobs", params={
         "order": "scraped_at.desc",
-        "limit": str(limit)
+        "limit": str(limit),
+        "offset": str(offset)
     })
     if jobs:
         for job in jobs:
@@ -1406,12 +1415,12 @@ async def scrape_jobs(request: JobSearchRequest = None):
 
 
 @app.get("/api/jobs")
-async def list_jobs(request: Request, limit: int = 50):
+async def list_jobs(request: Request, limit: int = 50, offset: int = 0):
     """List all jobs, filtered by user's interaction history if logged in"""
     user_id = await get_user_id_from_request(request)
 
     # Try database first
-    jobs = await get_jobs_from_db(limit)
+    jobs = await get_jobs_from_db(limit, offset)
 
     if not jobs:
         # Fallback: scrape live AND save to DB so apply-with-cv can find them
@@ -2186,9 +2195,11 @@ async def apply_with_cv(request: Request, job_id: str):
     job_title = job.get("title", "Tjänst")
     subject = f"Ansökan: {job_title} – {sender_name}"
 
-    # Append custom email signature if the user has one saved
+    # Short email body — cover letter goes in PDF attachment only
     email_signature = user_profile.get("email_signature", "") if user_profile else ""
-    email_body = cover_letter + ("\n\n" + email_signature if email_signature else "")
+    email_body = f"Hej,\n\nJag hittade er annons för {job_title} på Platsbanken och vill gärna söka. Se bifogat CV och personligt brev.\n\nVänligen,\n{sender_name}"
+    if email_signature:
+        email_body += f"\n\n{email_signature}"
 
     # Create Gmail draft with PDF attachments if user has connected Gmail
     draft_id = None
@@ -2201,7 +2212,7 @@ async def apply_with_cv(request: Request, job_id: str):
         sender_location = user_profile.get("location", "Sollentuna") if user_profile else "Sollentuna"
         try:
             cover_letter_pdf = generate_cover_letter_pdf(
-                email_body,
+                cover_letter,
                 sender_name=sender_name,
                 sender_phone=sender_phone,
                 sender_email=sender_email_addr,
@@ -2450,9 +2461,11 @@ async def save_gmail_draft_with_attachments(request: Request, job_id: str):
     job_title = job.get("title", "Tjänst")
     subject = f"Ansökan: {job_title} – {sender_name}"
 
-    # Append custom signature if the user has one saved
+    # Short email body — cover letter goes in PDF attachment only
     email_signature = user_profile.get("email_signature", "")
-    email_body = cover_letter_text + ("\n\n" + email_signature if email_signature else "")
+    email_body = f"Hej,\n\nJag hittade er annons för {job_title} på Platsbanken och vill gärna söka. Se bifogat CV och personligt brev.\n\nVänligen,\n{sender_name}"
+    if email_signature:
+        email_body += f"\n\n{email_signature}"
 
     attachments = []
 
@@ -2462,7 +2475,7 @@ async def save_gmail_draft_with_attachments(request: Request, job_id: str):
     sender_location = user_profile.get("location", "Sollentuna")
     try:
         cover_letter_pdf = generate_cover_letter_pdf(
-            email_body,
+            cover_letter_text,
             sender_name=sender_name,
             sender_phone=sender_phone,
             sender_email=sender_email_addr,
