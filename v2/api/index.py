@@ -2226,8 +2226,13 @@ async def apply_with_cv(request: Request, job_id: str):
                 job_title=job_title,
                 company=job.get("company", ""),
             )
+            company_clean = re.sub(r'[^\w\s-]', '', job.get("company", "")).strip().replace(' ', '_')
+            if company_clean:
+                cl_filename = f"Personligt_Brev_{company_clean}_{sender_name.replace(' ', '_')}.pdf"
+            else:
+                cl_filename = f"Personligt_Brev_{sender_name.replace(' ', '_')}.pdf"
             attachments.append({
-                "filename": f"Personligt_Brev_{sender_name.replace(' ', '_')}.pdf",
+                "filename": cl_filename,
                 "data": cover_letter_pdf
             })
         except Exception as e:
@@ -2326,7 +2331,11 @@ async def download_cover_letter_pdf(request: Request, job_id: str):
         company=company,
     )
 
-    filename = f"Personligt_Brev_{sender_name.replace(' ', '_')}.pdf"
+    company_clean = re.sub(r'[^\w\s-]', '', company).strip().replace(' ', '_')
+    if company_clean:
+        filename = f"Personligt_Brev_{company_clean}_{sender_name.replace(' ', '_')}.pdf"
+    else:
+        filename = f"Personligt_Brev_{sender_name.replace(' ', '_')}.pdf"
     return RawResponse(
         content=pdf_bytes,
         media_type="application/pdf",
@@ -2495,8 +2504,13 @@ async def save_gmail_draft_with_attachments(request: Request, job_id: str):
             job_title=job_title,
             company=job.get("company", ""),
         )
+        company_clean = re.sub(r'[^\w\s-]', '', job.get("company", "")).strip().replace(' ', '_')
+        if company_clean:
+            cl_filename = f"Personligt_Brev_{company_clean}_{sender_name.replace(' ', '_')}.pdf"
+        else:
+            cl_filename = f"Personligt_Brev_{sender_name.replace(' ', '_')}.pdf"
         attachments.append({
-            "filename": f"Personligt_Brev_{sender_name.replace(' ', '_')}.pdf",
+            "filename": cl_filename,
             "data": cover_letter_pdf
         })
     except Exception as e:
