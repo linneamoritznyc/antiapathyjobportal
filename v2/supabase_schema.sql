@@ -66,20 +66,19 @@ CREATE TABLE IF NOT EXISTS user_cover_letter_preferences (
     max_words INT DEFAULT 200,
     greeting_style TEXT DEFAULT 'Hej!',  -- 'Hej [Company]!', 'Till [Company],'
     signature_style TEXT DEFAULT 'Med vänliga hälsningar',
-    sign_off_name TEXT,  -- Full name for signature
-    sign_off_phone TEXT,
-    sign_off_email TEXT,
     liked_phrases TEXT[] DEFAULT ARRAY[]::TEXT[],  -- ['flexibel med tider', 'körkort'] — phrases user likes to use (not forced)
     never_mention TEXT[] DEFAULT ARRAY[]::TEXT[],  -- ['konst', 'Shopify']
-    priority_experiences_per_vibe JSONB,  -- {"restaurant": ["Max Hamburgare"], "tech": ["Clubhouse"]}
-    custom_ai_instructions TEXT,  -- Free-form additional rules
-    -- Added 2026-02-17: rich AI style analysis fields (from analyze_writing_tone_rich)
-    writing_style TEXT,             -- How the letter is structured
+    priority_jobs JSONB,  -- priority job types/preferences
+    writing_style TEXT,             -- How the letter is structured (from AI analysis)
     avoid_phrases JSONB DEFAULT '[]'::jsonb,  -- Phrases/clichés the user never uses
     length_preference TEXT,         -- Short/long preference description
     opening_style TEXT,             -- How user typically opens letters
     created_at TIMESTAMPTZ DEFAULT NOW(),
     updated_at TIMESTAMPTZ DEFAULT NOW()
+    -- NOT IN DB (schema-only aspirational, add via migration when needed):
+    -- sign_off_name TEXT, sign_off_phone TEXT, sign_off_email TEXT
+    -- priority_experiences_per_vibe JSONB
+    -- custom_ai_instructions TEXT
 );
 
 -- Job search preferences per user
