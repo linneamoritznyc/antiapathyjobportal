@@ -2197,7 +2197,16 @@ async def apply_with_cv(request: Request, job_id: str):
 
     # Short email body — cover letter goes in PDF attachment only
     email_signature = user_profile.get("email_signature", "") if user_profile else ""
-    email_body = f"Hej,\n\nJag hittade er annons för {job_title} på Platsbanken och vill gärna söka. Se bifogat CV och personligt brev.\n\nVänligen,\n{sender_name}"
+    company_name = job.get("company", "")
+    job_url = job.get("url", "")
+    greeting = f"Hej {company_name}!" if company_name else "Hej!"
+    job_ref = f"tjänsten som {job_title}"
+    if company_name:
+        job_ref += f" hos {company_name}"
+    email_body = f"{greeting}\n\nJag skriver till er angående annonsen på Platsbanken om {job_ref}!"
+    if job_url:
+        email_body += f"\n{job_url}"
+    email_body += f"\n\nSe bifogat CV och personligt brev.\n\nVänligen,\n{sender_name}"
     if email_signature:
         email_body += f"\n\n{email_signature}"
 
@@ -2463,7 +2472,16 @@ async def save_gmail_draft_with_attachments(request: Request, job_id: str):
 
     # Short email body — cover letter goes in PDF attachment only
     email_signature = user_profile.get("email_signature", "")
-    email_body = f"Hej,\n\nJag hittade er annons för {job_title} på Platsbanken och vill gärna söka. Se bifogat CV och personligt brev.\n\nVänligen,\n{sender_name}"
+    company_name = job.get("company", "")
+    job_url = job.get("url", "")
+    greeting = f"Hej {company_name}!" if company_name else "Hej!"
+    job_ref = f"tjänsten som {job_title}"
+    if company_name:
+        job_ref += f" hos {company_name}"
+    email_body = f"{greeting}\n\nJag skriver till er angående annonsen på Platsbanken om {job_ref}!"
+    if job_url:
+        email_body += f"\n{job_url}"
+    email_body += f"\n\nSe bifogat CV och personligt brev.\n\nVänligen,\n{sender_name}"
     if email_signature:
         email_body += f"\n\n{email_signature}"
 
