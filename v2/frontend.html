@@ -3052,16 +3052,27 @@
                 });
             };
 
-            const saveLocation = () => {
+            const saveLocation = async () => {
                 const updated = { ...prefs, location: selectedKommuner };
                 localStorage.setItem('job_preferences', JSON.stringify(updated));
                 setPrefs(updated);
-                setSaved(true);
                 window.dispatchEvent(new Event('prefsUpdated'));
-                setTimeout(() => setSaved(false), 2000);
-                authFetch('/api/user/locations', {
-                    method: 'POST', body: JSON.stringify({ locations: selectedKommuner })
-                }).catch(err => console.warn('Failed to sync location:', err));
+                try {
+                    const res = await authFetch('/api/user/locations', {
+                        method: 'POST', body: JSON.stringify({ locations: selectedKommuner })
+                    });
+                    const data = await res.json();
+                    if (data.success) {
+                        setSaved(true);
+                        setTimeout(() => setSaved(false), 2000);
+                    } else {
+                        console.error('Save locations failed:', data);
+                        alert('Kunde inte spara platser till servern: ' + (data.detail || 'okänt fel'));
+                    }
+                } catch (err) {
+                    console.error('Failed to sync locations:', err);
+                    alert('Kunde inte spara platser till servern. Kolla konsolen.');
+                }
             };
 
             const kommunCount = selectedKommuner.filter(k => k !== 'remote' && k !== 'anywhere').length;
