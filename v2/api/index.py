@@ -2576,7 +2576,11 @@ async def google_auth():
     if not SUPABASE_URL or not SUPABASE_ANON_KEY:
         raise HTTPException(status_code=500, detail="Supabase not configured")
     redirect_to = "https://platsbanken-ai.vercel.app/login"
-    url = f"{SUPABASE_URL}/auth/v1/authorize?provider=google&redirect_to={redirect_to}"
+    url = (
+        f"{SUPABASE_URL}/auth/v1/authorize?provider=google"
+        f"&redirect_to={redirect_to}"
+        f"&query_params=prompt%3Dselect_account"
+    )
     return RedirectResponse(url)
 
 
