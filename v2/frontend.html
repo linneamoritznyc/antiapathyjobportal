@@ -33,6 +33,12 @@
             return fetch(url, { ...options, headers });
         };
 
+        // Load job preferences from localStorage (shared by PreferencesPage, PlatserPage)
+        const loadPrefs = () => {
+            try { return JSON.parse(localStorage.getItem('job_preferences') || '{}'); }
+            catch(e) { return {}; }
+        };
+
         // Common button style constants
         const BTN = {
             primary: "bg-indigo-600 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-indigo-700 transition",
@@ -124,24 +130,6 @@
                     >
                         {tab.icon} {tab.label}{tab.count > 0 ? ` (${tab.count})` : ''}
                     </button>
-                ))}
-            </div>
-        );
-
-        // Stats dashboard
-        const Stats = ({ stats }) => (
-            <div className="grid grid-cols-2 md:grid-cols-5 gap-4 mb-6">
-                {[
-                    { label: "Jobb", value: stats.total_jobs, color: "text-indigo-600", bg: "bg-indigo-50" },
-                    { label: "CV-vibes", value: stats.cv_vibes || 0, color: "text-purple-600", bg: "bg-purple-50" },
-                    { label: "Skickade", value: stats.sent, color: "text-green-600", bg: "bg-green-50" },
-                    { label: "Intervjuer", value: stats.interviews, color: "text-amber-600", bg: "bg-amber-50" },
-                    { label: "Deadline idag", value: stats.deadline_today || 0, color: "text-red-600", bg: "bg-red-50" }
-                ].map(({ label, value, color, bg }) => (
-                    <div key={label} className={`${bg} rounded-xl p-4`}>
-                        <div className={`text-3xl font-bold ${color}`}>{value || 0}</div>
-                        <div className="text-slate-500 text-sm">{label}</div>
-                    </div>
                 ))}
             </div>
         );
@@ -2553,10 +2541,6 @@
         ];
 
         const PreferencesPage = () => {
-            const loadPrefs = () => {
-                try { return JSON.parse(localStorage.getItem('job_preferences') || '{}'); }
-                catch(e) { return {}; }
-            };
             const [prefs, setPrefs] = useState(loadPrefs);
 
             // Positive keywords
@@ -2848,11 +2832,6 @@
         // ============== PLATSER PAGE ==============
 
         const PlatserPage = () => {
-            const loadPrefs = () => {
-                try { return JSON.parse(localStorage.getItem('job_preferences') || '{}'); }
-                catch { return {}; }
-            };
-
             const [prefs, setPrefs] = useState(loadPrefs);
             const [selectedKommuner, setSelectedKommuner] = useState(prefs.location || []);
             const [expandedLan, setExpandedLan] = useState(null);
