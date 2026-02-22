@@ -4139,7 +4139,6 @@ class UserPreferences(BaseModel):
     # Quiz fields (maps to Platsbanken data)
     search_terms: Optional[list] = None
     custom_search: Optional[str] = None
-    location: Optional[list] = None  # Taxonomy municipality concept IDs
     negative_keywords: Optional[list] = None  # Excluded job keywords
     working_hours: Optional[Any] = None  # str or list from quiz vs PreferencesPage
     employment_form: Optional[list] = None
@@ -4305,10 +4304,10 @@ async def save_user_preferences(request: Request, prefs: UserPreferences):
         pass
 
     # Build new values — only override fields that were actually sent (not None)
+    # NOTE: location is NOT here — it's managed by PlatserPage, not the quiz
     incoming = {
         "search_terms": prefs.search_terms,
         "custom_search": getattr(prefs, 'custom_search', None),
-        "location": prefs.location,
         "negative_keywords": prefs.negative_keywords,
         "working_hours": prefs.working_hours,
         "employment_form": prefs.employment_form,
@@ -4333,9 +4332,9 @@ async def save_user_preferences(request: Request, prefs: UserPreferences):
         search_kw = st
 
     # Upsert — maps to actual DB columns in user_job_preferences
+    # NOTE: preferred_locations is NOT set here — only PlatserPage manages locations
     prefs_data = {
         "user_id": user_id,
-        "preferred_locations": quiz_answers.get("location") or [],
         "search_keywords": search_kw,
         "excluded_keywords": quiz_answers.get("negative_keywords") or [],
         "job_types": prefs.job_types or quiz_answers.get("search_terms") or [],
@@ -4380,6 +4379,35 @@ async def save_user_preferences(request: Request, prefs: UserPreferences):
             )
 
     return {"success": True, "message": "Preferenser sparade!"}
+
+
+@app.post("/api/user/locations")
+async def save_user_locations(request: Request):
+    """Save preferred work locations (from PlatserPage)."""
+    user_id = await get_user_id_from_request(request, required=True)
+    body = await request.json()
+    locations = body.get("locations", [])
+
+    async with httpx.AsyncClient() as client:
+        resp = await client.post(
+            f"{SUPABASE_URL}/rest/v1/user_job_preferences",
+            headers={
+                "apikey": SUPABASE_KEY,
+                "Authorization": f"Bearer {SUPABASE_KEY}",
+                "Content-Type": "application/json",
+                "Prefer": "resolution=merge-duplicates"
+            },
+            json={
+                "user_id": user_id,
+                "preferred_locations": locations,
+                "updated_at": datetime.now().isoformat()
+            }
+        )
+        if resp.status_code >= 400:
+            logger.error(f"Failed to save locations: {resp.status_code} {resp.text}")
+            raise HTTPException(status_code=500, detail=f"Kunde inte spara platser: {resp.text[:200]}")
+
+    return {"success": True, "message": "Platser sparade!"}
 
 
 class UserProfile(BaseModel):

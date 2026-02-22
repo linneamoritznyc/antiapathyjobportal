@@ -693,7 +693,6 @@
                             education_level: merged.education_level || '',
                             search_terms: merged.search_terms || [],
                             custom_search: merged.custom_search || '',
-                            location: merged.location || [],
                             working_hours: merged.working_hours || [],
                             employment_form: merged.employment_form || [],
                             duration: merged.duration || '',
@@ -716,7 +715,6 @@
                     education_level: '',
                     search_terms: [],
                     custom_search: '',
-                    location: [],
                     working_hours: [],
                     employment_form: [],
                     duration: '',
@@ -751,7 +749,6 @@
                         education_level: '',
                         search_terms: [],
                         custom_search: '',
-                        location: [],
                         working_hours: [],
                         employment_form: [],
                         duration: '',
@@ -873,17 +870,6 @@
                     ]
                 },
                 {
-                    id: 'location',
-                    question: 'Var vill du jobba?',
-                    subtitle: 'Välj kommuner under Preferenser efter quizzet — här väljer du bara bredd',
-                    type: 'multi',
-                    allowEmpty: true,
-                    options: [
-                        { value: 'anywhere', label: 'Hela Sverige' },
-                        { value: 'remote', label: 'Distans/Remote' },
-                    ]
-                },
-                {
                     id: 'working_hours',
                     question: 'Hur mycket vill du jobba?',
                     subtitle: 'Välj alla som funkar - matchar Platsbanken-fältet "Omfattning"',
@@ -954,7 +940,7 @@
                 full_name: 'Namn', phone: 'Telefon', home_location: 'Bor i', age: 'Ålder',
                 drivers_license: 'Körkort', own_car: 'Egen bil', earliest_start: 'Kan börja',
                 linkedin: 'LinkedIn', education_level: 'Utbildning',
-                search_terms: 'Vill jobba med', location: 'Plats',
+                search_terms: 'Vill jobba med',
                 working_hours: 'Omfattning', employment_form: 'Anställningsform',
                 duration: 'Varaktighet', salary: 'Lön', dealbreakers: 'Vill inte'
             };
@@ -971,12 +957,6 @@
                     return val.map(v => {
                         const opt = q.options.find(o => o.value === v);
                         if (opt) return opt.label;
-                        if (q.id === 'location' && typeof LAN_DATA !== 'undefined') {
-                            for (const lan of LAN_DATA) {
-                                const found = lan.kommuner.find(k => k.id === v);
-                                if (found) return found.label;
-                            }
-                        }
                         return v;
                     }).join(', ');
                 }
@@ -1026,7 +1006,6 @@
                     const prefData = {
                         search_terms: answers.search_terms,
                         custom_search: answers.custom_search,
-                        location: answers.location,
                         working_hours: answers.working_hours,
                         employment_form: answers.employment_form,
                         duration: answers.duration,
@@ -1192,7 +1171,7 @@
                                                 full_name: '', phone: '', home_location: '', age: '',
                                                 drivers_license: '', own_car: '', linkedin: '',
                                                 earliest_start: '', education_level: '',
-                                                search_terms: [], custom_search: '', location: [],
+                                                search_terms: [], custom_search: '',
                                                 working_hours: [], employment_form: [], duration: '',
                                                 salary: '', dealbreakers: []
                                             });
@@ -3060,8 +3039,8 @@
                 setSaved(true);
                 window.dispatchEvent(new Event('prefsUpdated'));
                 setTimeout(() => setSaved(false), 2000);
-                authFetch('/api/user/preferences', {
-                    method: 'POST', body: JSON.stringify(updated)
+                authFetch('/api/user/locations', {
+                    method: 'POST', body: JSON.stringify({ locations: selectedKommuner })
                 }).catch(err => console.warn('Failed to sync location:', err));
             };
 
@@ -6564,7 +6543,6 @@
                     const prefData = {
                         search_terms: answers.search_terms,
                         custom_search: answers.custom_search,
-                        location: answers.location,
                         working_hours: answers.working_hours,
                         employment_form: answers.employment_form,
                         duration: answers.duration,
