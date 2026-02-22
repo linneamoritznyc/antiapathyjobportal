@@ -4054,8 +4054,10 @@ UTMÄRKELSER
 class QuizProfileData(BaseModel):
     full_name: Optional[str] = None
     phone: Optional[str] = None
+    home_location: Optional[str] = None
     age: Optional[str] = None
     drivers_license: Optional[str] = None
+    own_car: Optional[str] = None
     linkedin: Optional[str] = None
     earliest_start: Optional[str] = None
     education_level: Optional[str] = None
@@ -4122,6 +4124,8 @@ async def save_profile_from_quiz(request: Request, profile: QuizProfileData):
         profile_data["phone"] = profile.phone
     if profile.drivers_license:
         profile_data["drivers_license"] = profile.drivers_license != "no"
+    if profile.home_location:
+        profile_data["location"] = profile.home_location
     if profile.linkedin:
         profile_data["linkedin"] = profile.linkedin
 
@@ -4136,6 +4140,8 @@ async def save_profile_from_quiz(request: Request, profile: QuizProfileData):
         quiz_profile["education_level"] = profile.education_level
     if profile.drivers_license:
         quiz_profile["drivers_license_type"] = profile.drivers_license
+    if profile.own_car:
+        quiz_profile["own_car"] = profile.own_car
 
     # Upsert to user_profiles
     async with httpx.AsyncClient() as client:

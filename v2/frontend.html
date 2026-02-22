@@ -772,6 +772,13 @@
                     placeholder: '07X XXX XX XX'
                 },
                 {
+                    id: 'home_location',
+                    question: 'Var bor du?',
+                    subtitle: 'T.ex. Sollentuna, Göteborg, Malmö',
+                    type: 'text',
+                    placeholder: 'Stad eller kommun'
+                },
+                {
                     id: 'age',
                     question: 'Hur gammal är du?',
                     type: 'single',
@@ -792,6 +799,16 @@
                         { value: 'manuell', label: 'Ja, manuell (och automat)' },
                         { value: 'automat', label: 'Ja, bara automat' },
                         { value: 'no', label: 'Nej, inget körkort' }
+                    ]
+                },
+                {
+                    id: 'own_car',
+                    question: 'Har du egen bil?',
+                    subtitle: 'Vissa jobb kräver tillgång till bil',
+                    type: 'single',
+                    options: [
+                        { value: 'yes', label: 'Ja' },
+                        { value: 'no', label: 'Nej' }
                     ]
                 },
                 {
@@ -927,8 +944,8 @@
 
             // Summary view helpers
             const summaryLabels = {
-                full_name: 'Namn', phone: 'Telefon', age: 'Ålder',
-                drivers_license: 'Körkort', earliest_start: 'Kan börja',
+                full_name: 'Namn', phone: 'Telefon', home_location: 'Bor i', age: 'Ålder',
+                drivers_license: 'Körkort', own_car: 'Egen bil', earliest_start: 'Kan börja',
                 linkedin: 'LinkedIn', education_level: 'Utbildning',
                 search_terms: 'Vill jobba med', location: 'Plats',
                 working_hours: 'Omfattning', employment_form: 'Anställningsform',
@@ -946,7 +963,14 @@
                 if (q.type === 'multi') {
                     return val.map(v => {
                         const opt = q.options.find(o => o.value === v);
-                        return opt ? opt.label : v;
+                        if (opt) return opt.label;
+                        if (q.id === 'location' && typeof LAN_DATA !== 'undefined') {
+                            for (const lan of LAN_DATA) {
+                                const found = lan.kommuner.find(k => k.id === v);
+                                if (found) return found.label;
+                            }
+                        }
+                        return v;
                     }).join(', ');
                 }
                 if (q.type === 'freetext_multi') {
@@ -984,8 +1008,10 @@
                     const profileData = {
                         full_name: answers.full_name,
                         phone: answers.phone,
+                        home_location: answers.home_location,
                         age: answers.age,
                         drivers_license: answers.drivers_license,
+                        own_car: answers.own_car,
                         linkedin: answers.linkedin,
                         earliest_start: answers.earliest_start,
                         education_level: answers.education_level
@@ -2643,9 +2669,25 @@
 
         const PreferencesPage = () => {
             const [prefs, setPrefs] = useState(loadPrefs);
+            const [loading, setLoading] = useState(true);
 
-            // Positive keywords
-            const [posKeywords, setPosKeywords] = useState(prefs.custom_search ? prefs.custom_search.split(',').map(k => k.trim()).filter(Boolean) : []);
+            // Search terms from quiz (chips like "Servering", "Kundtjänst")
+            const SEARCH_TERM_LABELS = {
+                servitor: 'Servering', kundtjanst: 'Kundtjänst', butik: 'Butik/Försäljning',
+                lager: 'Lager', kontor: 'Kontor/Admin', tech: 'IT/Tech',
+                vard: 'Vård/Omsorg', hotell: 'Hotell', barn: 'Barn/Nanny',
+                skola: 'Skola/Lärare', tradgard: 'Trädgård', stad: 'Städ/Lokalvård'
+            };
+
+            // Positive keywords (from custom_search + search_terms)
+            const buildPosKeywords = (p) => {
+                const fromCustom = p.custom_search ? p.custom_search.split(',').map(k => k.trim()).filter(Boolean) : [];
+                const fromTerms = (p.search_terms || []).map(t => SEARCH_TERM_LABELS[t] || t);
+                // Deduplicate
+                return [...new Set([...fromTerms, ...fromCustom])];
+            };
+
+            const [posKeywords, setPosKeywords] = useState(buildPosKeywords(prefs));
             const [newPosKw, setNewPosKw] = useState('');
 
             // Negative keywords
@@ -2662,15 +2704,37 @@
 
             const [saved, setSaved] = useState(false);
 
-            // Re-sync state when Supabase data arrives
+            // Fetch from Supabase on mount (source of truth)
+            useEffect(() => {
+                const fetchFromServer = async () => {
+                    try {
+                        const res = await authFetch('/api/user/preferences');
+                        const data = await res.json();
+                        if (data.success && data.preferences) {
+                            const serverPrefs = data.preferences.quiz_answers || {};
+                            const merged = { ...loadPrefs(), ...serverPrefs };
+                            localStorage.setItem('job_preferences', JSON.stringify(merged));
+                            setPrefs(merged);
+                            setPosKeywords(buildPosKeywords(merged));
+                            if (merged.negative_keywords) setNegKeywords(merged.negative_keywords);
+                            if (merged.working_hours) setSelectedHours(Array.isArray(merged.working_hours) ? merged.working_hours : [merged.working_hours]);
+                            if (merged.dealbreakers) setSelectedDealbreakers(merged.dealbreakers);
+                        }
+                    } catch (e) { console.warn('Failed to fetch prefs from server:', e); }
+                    setLoading(false);
+                };
+                fetchFromServer();
+            }, []);
+
+            // Re-sync state when Supabase data arrives from other tabs
             useEffect(() => {
                 const onPrefsUpdated = () => {
                     const fresh = loadPrefs();
                     setPrefs(fresh);
+                    setPosKeywords(buildPosKeywords(fresh));
                     if (fresh.negative_keywords) setNegKeywords(fresh.negative_keywords);
                     if (fresh.working_hours) setSelectedHours(Array.isArray(fresh.working_hours) ? fresh.working_hours : [fresh.working_hours]);
                     if (fresh.dealbreakers) setSelectedDealbreakers(fresh.dealbreakers);
-                    if (fresh.custom_search) setPosKeywords(fresh.custom_search.split(',').map(k => k.trim()).filter(Boolean));
                 };
                 window.addEventListener('prefsUpdated', onPrefsUpdated);
                 return () => window.removeEventListener('prefsUpdated', onPrefsUpdated);
@@ -2713,10 +2777,23 @@
                 );
             };
 
-            const savePreferences = () => {
+            const savePreferences = async () => {
+                // Split keywords back into search_terms (known chips) and custom_search (free text)
+                const knownValues = Object.keys(SEARCH_TERM_LABELS);
+                const knownLabels = Object.values(SEARCH_TERM_LABELS);
+                const searchTerms = [];
+                const customParts = [];
+                posKeywords.forEach(kw => {
+                    // Check if it's a known search term (by label or value)
+                    const entry = Object.entries(SEARCH_TERM_LABELS).find(([v, l]) => l === kw || v === kw);
+                    if (entry) { searchTerms.push(entry[0]); }
+                    else { customParts.push(kw); }
+                });
+
                 const updated = {
                     ...prefs,
-                    custom_search: posKeywords.join(', '),
+                    search_terms: searchTerms,
+                    custom_search: customParts.join(', '),
                     negative_keywords: negKeywords,
                     working_hours: selectedHours,
                     dealbreakers: selectedDealbreakers
@@ -2727,11 +2804,13 @@
                 window.dispatchEvent(new Event('prefsUpdated'));
                 setTimeout(() => setSaved(false), 2000);
 
-                // Sync to Supabase so preferences persist across devices/browsers
-                authFetch('/api/user/preferences', {
-                    method: 'POST',
-                    body: JSON.stringify(updated)
-                }).catch(err => console.warn('Failed to sync preferences to server:', err));
+                // Save to Supabase (source of truth)
+                try {
+                    await authFetch('/api/user/preferences', {
+                        method: 'POST',
+                        body: JSON.stringify(updated)
+                    });
+                } catch (err) { console.warn('Failed to sync preferences to server:', err); }
             };
 
             // Filter visible chips
@@ -6052,8 +6131,10 @@
                     const profileData = {
                         full_name: answers.full_name,
                         phone: answers.phone,
+                        home_location: answers.home_location,
                         age: answers.age,
                         drivers_license: answers.drivers_license,
+                        own_car: answers.own_car,
                         linkedin: answers.linkedin,
                         earliest_start: answers.earliest_start,
                         education_level: answers.education_level
@@ -6156,6 +6237,19 @@
                 // Check if quiz was completed locally
                 const onboardingComplete = localStorage.getItem('onboarding_complete');
                 if (onboardingComplete) return;
+
+                // Check Supabase — maybe quiz was done on another device/browser
+                try {
+                    const res = await authFetch('/api/user/preferences');
+                    const data = await res.json();
+                    if (data.success && data.preferences && data.preferences.quiz_answers) {
+                        const qa = data.preferences.quiz_answers;
+                        if (qa.search_terms || qa.location || qa.working_hours) {
+                            localStorage.setItem('onboarding_complete', 'true');
+                            return;
+                        }
+                    }
+                } catch (e) { /* ignore - no auth or network error */ }
 
                 // No quiz done yet - show it
                 setShowOnboarding(true);
@@ -7097,8 +7191,36 @@
                         {activeTab === 'quiz' && (
                             <div className="max-w-3xl mx-auto">
                                 <QuizPage
-                                    onComplete={(answers) => {
+                                    onComplete={async (answers) => {
                                         localStorage.setItem('job_preferences', JSON.stringify(answers));
+                                        // Also save to Supabase
+                                        try {
+                                            const profileData = {
+                                                full_name: answers.full_name,
+                                                phone: answers.phone,
+                                                home_location: answers.home_location,
+                                                age: answers.age,
+                                                drivers_license: answers.drivers_license,
+                                                own_car: answers.own_car,
+                                                linkedin: answers.linkedin,
+                                                earliest_start: answers.earliest_start,
+                                                education_level: answers.education_level
+                                            };
+                                            const prefData = {
+                                                search_terms: answers.search_terms,
+                                                custom_search: answers.custom_search,
+                                                location: answers.location,
+                                                working_hours: answers.working_hours,
+                                                employment_form: answers.employment_form,
+                                                duration: answers.duration,
+                                                salary: answers.salary,
+                                                dealbreakers: answers.dealbreakers
+                                            };
+                                            await Promise.all([
+                                                authFetch('/api/user/profile-from-quiz', { method: 'POST', body: JSON.stringify(profileData) }),
+                                                authFetch('/api/user/preferences', { method: 'POST', body: JSON.stringify(prefData) })
+                                            ]);
+                                        } catch (e) { console.warn('Quiz save to server failed:', e); }
                                     }}
                                     saving={false}
                                 />
