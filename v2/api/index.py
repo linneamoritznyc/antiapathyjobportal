@@ -5040,11 +5040,7 @@ async def get_gmail_auth_url(request: Request, redirect_uri: str = None):
     if not user_creds:
         raise HTTPException(status_code=400, detail="Gmail-kopplingen är inte konfigurerad. Kontakta support.")
 
-    if not redirect_uri:
-        base = os.getenv("APP_URL", "") or os.getenv("VERCEL_URL", "http://localhost:8000")
-        if base and not base.startswith("http"):
-            base = f"https://{base}"
-        redirect_uri = f"{base}/api/gmail/callback"
+    redirect_uri = "https://platsbanken-ai.vercel.app/api/gmail/callback"
 
     params = {
         "client_id": user_creds["client_id"],
@@ -5068,10 +5064,7 @@ async def gmail_oauth_callback(code: str, state: str = "default_user"):
     if not user_creds:
         raise HTTPException(status_code=400, detail="Gmail-kopplingen är inte konfigurerad.")
 
-    base = os.getenv("APP_URL", "") or os.getenv("VERCEL_URL", "http://localhost:8000")
-    if base and not base.startswith("http"):
-        base = f"https://{base}"
-    redirect_uri = f"{base}/api/gmail/callback"
+    redirect_uri = "https://platsbanken-ai.vercel.app/api/gmail/callback"
 
     async with httpx.AsyncClient() as client:
         response = await client.post(
