@@ -912,10 +912,9 @@ async def generate_cover_letter(job: Dict, user_cv_text: Optional[str] = None, u
                 if isinstance(never, list) and never:
                     style_parts.append(f"- Ämnen att ALDRIG nämna: {', '.join(never)}")
 
-                # custom_ai_instructions — column not yet in DB, uncomment when migrated
-                # custom_instr = sp.get("custom_ai_instructions", "") or ""
-                # if custom_instr.strip():
-                #     style_parts.append(f"- Mina egna instruktioner: {custom_instr.strip()}")
+                custom_instr = sp.get("custom_ai_instructions", "") or ""
+                if custom_instr.strip():
+                    style_parts.append(f"- Mina egna instruktioner: {custom_instr.strip()}")
 
                 if style_parts:
                     style_section = "\n\nMIN SKRIVSTIL (skriv brevet i min stil):\n" + "\n".join(style_parts)

@@ -69,16 +69,17 @@ CREATE TABLE IF NOT EXISTS user_cover_letter_preferences (
     liked_phrases TEXT[] DEFAULT ARRAY[]::TEXT[],  -- ['flexibel med tider', 'körkort'] — phrases user likes to use (not forced)
     never_mention TEXT[] DEFAULT ARRAY[]::TEXT[],  -- ['konst', 'Shopify']
     priority_jobs JSONB,  -- priority job types/preferences
+    sign_off_name TEXT,
+    sign_off_phone TEXT,
+    sign_off_email TEXT,
+    priority_experiences_per_vibe JSONB,  -- {"restaurant": ["Max Hamburgare"], "tech": ["Clubhouse"]}
+    custom_ai_instructions TEXT,  -- Free-form additional rules
     writing_style TEXT,             -- How the letter is structured (from AI analysis)
     avoid_phrases JSONB DEFAULT '[]'::jsonb,  -- Phrases/clichés the user never uses
     length_preference TEXT,         -- Short/long preference description
     opening_style TEXT,             -- How user typically opens letters
     created_at TIMESTAMPTZ DEFAULT NOW(),
     updated_at TIMESTAMPTZ DEFAULT NOW()
-    -- NOT IN DB (schema-only aspirational, add via migration when needed):
-    -- sign_off_name TEXT, sign_off_phone TEXT, sign_off_email TEXT
-    -- priority_experiences_per_vibe JSONB
-    -- custom_ai_instructions TEXT
 );
 
 -- Job search preferences per user
@@ -821,3 +822,5 @@ COMMENT ON TABLE user_anecdotes IS 'Personal anecdotes and hobbies for AI cover 
 -- 2026-02-22: user_cover_letter_preferences.always_mention → liked_phrases
 --   Renamed column: "always_mention" was misleading (implies forced). Now "liked_phrases".
 --   Migration: ALTER TABLE user_cover_letter_preferences RENAME COLUMN always_mention TO liked_phrases;
+-- 2026-02-22: Added 5 missing columns to user_cover_letter_preferences — LIVE
+--   sign_off_name, sign_off_phone, sign_off_email, priority_experiences_per_vibe, custom_ai_instructions
