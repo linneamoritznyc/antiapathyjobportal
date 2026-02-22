@@ -5648,7 +5648,7 @@ async def save_ai_feedback(request: Request, feedback: AIFeedback):
         "user_id": user_id,
         "feedback_text": feedback.feedback_text,
         "feedback_type": feedback.feedback_type,
-        "applies_to_vibes": feedback.applies_to_vibes,
+        "applies_to_branscher": feedback.applies_to_vibes or [],
         "is_active": True,
         "created_at": datetime.now().isoformat()
     }
