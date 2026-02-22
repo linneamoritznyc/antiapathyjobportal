@@ -5041,7 +5041,7 @@ async def get_gmail_auth_url(request: Request, redirect_uri: str = None):
         raise HTTPException(status_code=400, detail="Gmail-kopplingen är inte konfigurerad. Kontakta support.")
 
     if not redirect_uri:
-        base = os.getenv("VERCEL_URL", "http://localhost:8000")
+        base = os.getenv("APP_URL", "") or os.getenv("VERCEL_URL", "http://localhost:8000")
         if base and not base.startswith("http"):
             base = f"https://{base}"
         redirect_uri = f"{base}/api/gmail/callback"
@@ -5068,7 +5068,7 @@ async def gmail_oauth_callback(code: str, state: str = "default_user"):
     if not user_creds:
         raise HTTPException(status_code=400, detail="Gmail-kopplingen är inte konfigurerad.")
 
-    base = os.getenv("VERCEL_URL", "http://localhost:8000")
+    base = os.getenv("APP_URL", "") or os.getenv("VERCEL_URL", "http://localhost:8000")
     if base and not base.startswith("http"):
         base = f"https://{base}"
     redirect_uri = f"{base}/api/gmail/callback"
