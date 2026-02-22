@@ -2200,10 +2200,11 @@ async def apply_with_cv(request: Request, job_id: str):
     company_name = job.get("company", "")
     job_url = job.get("url", "")
     greeting = f"Hej {company_name}!" if company_name else "Hej!"
-    job_link = f'<a href="{job_url}"><i>{job_title}</i></a>' if job_url else f"<i>{job_title}</i>"
-    email_body = f"{greeting}<br><br>Jag såg er annons på Platsbanken för {job_link}."
+    email_body = f"{greeting}<br><br>Jag såg er annons på Platsbanken för <i>{job_title}</i>."
     email_body += f"<br>Jag kan börja omgående och är flexibel med tider."
     email_body += f"<br>Vänligen se bifogat personligt brev och CV för min ansökan."
+    if job_url:
+        email_body += f"<br><br>Länk till annonsen: <a href=\"{job_url}\">{job_url}</a>"
     email_body += f"<br><br>Vänliga hälsningar,<br>{sender_name}"
     if email_signature:
         email_body += f"<br><br>{email_signature}"
@@ -2473,10 +2474,11 @@ async def save_gmail_draft_with_attachments(request: Request, job_id: str):
     company_name = job.get("company", "")
     job_url = job.get("url", "")
     greeting = f"Hej {company_name}!" if company_name else "Hej!"
-    job_link = f'<a href="{job_url}"><i>{job_title}</i></a>' if job_url else f"<i>{job_title}</i>"
-    email_body = f"{greeting}<br><br>Jag såg er annons på Platsbanken för {job_link}."
+    email_body = f"{greeting}<br><br>Jag såg er annons på Platsbanken för <i>{job_title}</i>."
     email_body += f"<br>Jag kan börja omgående och är flexibel med tider."
     email_body += f"<br>Vänligen se bifogat personligt brev och CV för min ansökan."
+    if job_url:
+        email_body += f"<br><br>Länk till annonsen: <a href=\"{job_url}\">{job_url}</a>"
     email_body += f"<br><br>Vänliga hälsningar,<br>{sender_name}"
     if email_signature:
         email_body += f"<br><br>{email_signature}"
