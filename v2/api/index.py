@@ -4991,10 +4991,15 @@ async def export_user_data(request: Request):
 # ============== GMAIL OAUTH (Per-user credentials from Supabase) ==============
 
 async def get_user_gmail_credentials(user_id: str) -> Optional[dict]:
-    """Fetch Gmail OAuth credentials (client_id, client_secret) from user_google_credentials table."""
+    """Fetch Gmail OAuth credentials. Falls back to app-level env vars if user has no per-user creds."""
     creds = await db_request("GET", "user_google_credentials", params={"user_id": f"eq.{user_id}"})
     if creds and creds[0].get("client_id") and creds[0].get("client_secret"):
         return creds[0]
+    # Fall back to app-level credentials from environment variables
+    app_client_id = os.getenv("GOOGLE_CLIENT_ID", "")
+    app_client_secret = os.getenv("GOOGLE_CLIENT_SECRET", "")
+    if app_client_id and app_client_secret:
+        return {"user_id": user_id, "client_id": app_client_id, "client_secret": app_client_secret}
     return None
 
 
@@ -5140,11 +5145,14 @@ async def get_gmail_status(request: Request):
             logger.info(f"Migrated Gmail credentials from default_user to {user_id}")
             creds = await db_request("GET", "user_google_credentials", params={"user_id": f"eq.{user_id}"})
 
+    # Check for app-level credentials as fallback
+    app_configured = bool(os.getenv("GOOGLE_CLIENT_ID") and os.getenv("GOOGLE_CLIENT_SECRET"))
+
     if not creds:
-        return {"connected": False, "gmail_address": None, "app_configured": False}
+        return {"connected": False, "gmail_address": None, "app_configured": app_configured}
 
     cred = creds[0]
-    has_oauth_creds = bool(cred.get("client_id") and cred.get("client_secret"))
+    has_oauth_creds = bool(cred.get("client_id") and cred.get("client_secret")) or app_configured
 
     if not cred.get("is_connected"):
         return {"connected": False, "gmail_address": None, "app_configured": has_oauth_creds}
@@ -5201,9 +5209,9 @@ async def refresh_gmail_token(user_id: str) -> Optional[str]:
 
     cred = creds[0]
 
-    # Need per-user OAuth credentials for token refresh
-    client_id = cred.get("client_id")
-    client_secret = cred.get("client_secret")
+    # Need OAuth credentials for token refresh — try per-user, then app-level
+    client_id = cred.get("client_id") or os.getenv("GOOGLE_CLIENT_ID", "")
+    client_secret = cred.get("client_secret") or os.getenv("GOOGLE_CLIENT_SECRET", "")
     if not client_id or not client_secret:
         return None
 
