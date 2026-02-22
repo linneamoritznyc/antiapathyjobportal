@@ -33,7 +33,7 @@ SUPABASE_ANON_KEY = os.getenv("SUPABASE_ANON_KEY")  # For client-side auth
 ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY")
 
 # Gmail API scopes
-GMAIL_SCOPES = "https://www.googleapis.com/auth/gmail.compose https://www.googleapis.com/auth/gmail.modify"
+GMAIL_SCOPES = "https://www.googleapis.com/auth/gmail.drafts"
 
 app = FastAPI(
     title="Anti-Apathy Job Portal",
@@ -5040,17 +5040,13 @@ async def get_gmail_auth_url(request: Request, redirect_uri: str = None):
     if not user_creds:
         raise HTTPException(status_code=400, detail="Gmail-kopplingen är inte konfigurerad. Kontakta support.")
 
-    if not redirect_uri:
-        base = os.getenv("APP_URL", "") or os.getenv("VERCEL_URL", "http://localhost:8000")
-        if base and not base.startswith("http"):
-            base = f"https://{base}"
-        redirect_uri = f"{base}/api/gmail/callback"
+    redirect_uri = "https://platsbanken-ai.vercel.app/api/gmail/callback"
 
     params = {
         "client_id": user_creds["client_id"],
         "redirect_uri": redirect_uri,
         "response_type": "code",
-        "scope": "https://www.googleapis.com/auth/gmail.compose",
+        "scope": "https://www.googleapis.com/auth/gmail.drafts",
         "access_type": "offline",
         "prompt": "consent",
         "state": user_id
@@ -5068,10 +5064,7 @@ async def gmail_oauth_callback(code: str, state: str = "default_user"):
     if not user_creds:
         raise HTTPException(status_code=400, detail="Gmail-kopplingen är inte konfigurerad.")
 
-    base = os.getenv("APP_URL", "") or os.getenv("VERCEL_URL", "http://localhost:8000")
-    if base and not base.startswith("http"):
-        base = f"https://{base}"
-    redirect_uri = f"{base}/api/gmail/callback"
+    redirect_uri = "https://platsbanken-ai.vercel.app/api/gmail/callback"
 
     async with httpx.AsyncClient() as client:
         response = await client.post(
