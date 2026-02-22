@@ -2200,14 +2200,13 @@ async def apply_with_cv(request: Request, job_id: str):
     company_name = job.get("company", "")
     job_url = job.get("url", "")
     greeting = f"Hej {company_name}!" if company_name else "Hej!"
-    email_body = f"{greeting}\n\nJag såg er annons på Platsbanken för {job_title} och vill gärna söka!"
-    if job_url:
-        email_body += f"\n{job_url}"
-    email_body += f"\n\nJag kan börja omgående och är flexibel med tider."
-    email_body += f"\nVänligen se bifogat personligt brev och CV för min ansökan."
-    email_body += f"\n\nVänliga hälsningar,\n{sender_name}"
+    job_link = f'<a href="{job_url}"><i>{job_title}</i></a>' if job_url else f"<i>{job_title}</i>"
+    email_body = f"{greeting}<br><br>Jag såg er annons på Platsbanken för {job_link} och vill gärna söka!"
+    email_body += f"<br><br>Jag kan börja omgående och är flexibel med tider."
+    email_body += f"<br>Vänligen se bifogat personligt brev och CV för min ansökan."
+    email_body += f"<br><br>Vänliga hälsningar,<br>{sender_name}"
     if email_signature:
-        email_body += f"\n\n{email_signature}"
+        email_body += f"<br><br>{email_signature}"
 
     # Create Gmail draft with PDF attachments if user has connected Gmail
     draft_id = None
@@ -2474,14 +2473,13 @@ async def save_gmail_draft_with_attachments(request: Request, job_id: str):
     company_name = job.get("company", "")
     job_url = job.get("url", "")
     greeting = f"Hej {company_name}!" if company_name else "Hej!"
-    email_body = f"{greeting}\n\nJag såg er annons på Platsbanken för {job_title} och vill gärna söka!"
-    if job_url:
-        email_body += f"\n{job_url}"
-    email_body += f"\n\nJag kan börja omgående och är flexibel med tider."
-    email_body += f"\nVänligen se bifogat personligt brev och CV för min ansökan."
-    email_body += f"\n\nVänliga hälsningar,\n{sender_name}"
+    job_link = f'<a href="{job_url}"><i>{job_title}</i></a>' if job_url else f"<i>{job_title}</i>"
+    email_body = f"{greeting}<br><br>Jag såg er annons på Platsbanken för {job_link} och vill gärna söka!"
+    email_body += f"<br><br>Jag kan börja omgående och är flexibel med tider."
+    email_body += f"<br>Vänligen se bifogat personligt brev och CV för min ansökan."
+    email_body += f"<br><br>Vänliga hälsningar,<br>{sender_name}"
     if email_signature:
-        email_body += f"\n\n{email_signature}"
+        email_body += f"<br><br>{email_signature}"
 
     attachments = []
 
@@ -5420,7 +5418,9 @@ async def create_gmail_draft_for_user(
         msg = MIMEMultipart()
         msg["to"] = to_email
         msg["subject"] = subject
-        msg.attach(MIMEText(body, "plain", "utf-8"))
+        # If body contains HTML tags, send as HTML; otherwise plain text
+        content_type = "html" if "<br>" in body or "<i>" in body else "plain"
+        msg.attach(MIMEText(body, content_type, "utf-8"))
 
         for att in (attachments or []):
             part = MIMEBase("application", "octet-stream")
