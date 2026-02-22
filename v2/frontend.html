@@ -683,8 +683,10 @@
                         return {
                             full_name: merged.full_name || '',
                             phone: merged.phone || '',
+                            home_location: merged.home_location || '',
                             age: merged.age || '',
                             drivers_license: merged.drivers_license || '',
+                            own_car: merged.own_car || '',
                             linkedin: merged.linkedin || '',
                             earliest_start: merged.earliest_start || '',
                             education_level: merged.education_level || '',
@@ -704,8 +706,10 @@
                 return {
                     full_name: '',
                     phone: '',
+                    home_location: '',
                     age: '',
                     drivers_license: '',
+                    own_car: '',
                     linkedin: '',
                     earliest_start: '',
                     education_level: '',
@@ -737,8 +741,10 @@
                     setAnswers({
                         full_name: '',
                         phone: '',
+                        home_location: '',
                         age: '',
                         drivers_license: '',
+                        own_car: '',
                         linkedin: '',
                         earliest_start: '',
                         education_level: '',
@@ -1182,8 +1188,9 @@
                                             localStorage.removeItem('job_preferences');
                                             setStep(0);
                                             setAnswers({
-                                                full_name: '', phone: '', age: '', drivers_license: '',
-                                                linkedin: '', earliest_start: '', education_level: '',
+                                                full_name: '', phone: '', home_location: '', age: '',
+                                                drivers_license: '', own_car: '', linkedin: '',
+                                                earliest_start: '', education_level: '',
                                                 search_terms: [], custom_search: '', location: [],
                                                 working_hours: [], employment_form: [], duration: '',
                                                 salary: '', dealbreakers: []
@@ -3213,6 +3220,14 @@
             const [sendingFeedback, setSendingFeedback] = useState(false);
             const [feedbackStatus, setFeedbackStatus] = useState(null);
 
+            // Inline editing state
+            const [editingField, setEditingField] = useState(null); // 'tone', 'structure', 'length_preference', 'opening_style'
+            const [editValue, setEditValue] = useState('');
+            const [savingField, setSavingField] = useState(null);
+            const [customInstructions, setCustomInstructions] = useState('');
+            const [savingInstructions, setSavingInstructions] = useState(false);
+            const [instructionsSaved, setInstructionsSaved] = useState(false);
+
             useEffect(() => {
                 fetchLetterStyle();
                 fetchUploadedLetters();
@@ -3251,7 +3266,11 @@
                     const res = await authFetch('/api/user/letter-style');
                     if (res.ok) {
                         const data = await res.json();
-                        setLetterStyle(data.style_summary || null);
+                        const style = data.style_summary || null;
+                        setLetterStyle(style);
+                        if (style && style.custom_ai_instructions) {
+                            setCustomInstructions(style.custom_ai_instructions);
+                        }
                     }
                 } catch(e) {}
                 setLoadingStyle(false);
@@ -3364,6 +3383,58 @@
                 } catch(e) {}
             };
 
+            // ---- Inline style field editing ----
+            const startEditing = (field, currentValue) => {
+                setEditingField(field);
+                setEditValue(currentValue || '');
+            };
+
+            const cancelEditing = () => {
+                setEditingField(null);
+                setEditValue('');
+            };
+
+            const saveField = async (field, value) => {
+                setSavingField(field);
+                try {
+                    const res = await authFetch('/api/user/letter-style', {
+                        method: 'PATCH',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ [field]: value })
+                    });
+                    if (res.ok) {
+                        await fetchLetterStyle();
+                        setEditingField(null);
+                        setEditValue('');
+                    }
+                } catch(e) {}
+                setSavingField(null);
+            };
+
+            const saveCustomInstructions = async () => {
+                setSavingInstructions(true);
+                setInstructionsSaved(false);
+                try {
+                    const res = await authFetch('/api/user/letter-style', {
+                        method: 'PATCH',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ custom_ai_instructions: customInstructions })
+                    });
+                    if (res.ok) {
+                        setInstructionsSaved(true);
+                        setTimeout(() => setInstructionsSaved(false), 3000);
+                    }
+                } catch(e) {}
+                setSavingInstructions(false);
+            };
+
+            // Suggested avoid phrases (common AI clichés in Swedish)
+            const suggestedAvoidPhrases = [
+                'solid erfarenhet', 'brinner för', 'gedigen kompetens', 'passionerad',
+                'vittnar om', 'starkt engagemang', 'unik möjlighet', 'spännande utmaning',
+                'värdefull tillgång', 'driven och ambitiös', 'med glädje', 'djup förståelse'
+            ];
+
             const uploadFile = async (file) => {
                 const token = localStorage.getItem('auth_token');
                 if (!token || !file) return;
@@ -3430,170 +3501,137 @@
                 setLoading(false);
             };
 
+            // Editable style field component
+            const EditableField = ({ label, icon, field, value, placeholder }) => {
+                const isEditing = editingField === field;
+                const isSaving = savingField === field;
+                return (
+                    <div className="bg-slate-50 rounded-lg p-4 border border-slate-100">
+                        <div className="flex items-center justify-between mb-1">
+                            <div className="text-xs font-semibold text-slate-400 uppercase tracking-wide">{icon} {label}</div>
+                            {!isEditing && value && (
+                                <button onClick={() => startEditing(field, value)} className="text-xs text-indigo-500 hover:text-indigo-700 font-medium">Redigera</button>
+                            )}
+                        </div>
+                        {isEditing ? (
+                            <div className="mt-2">
+                                <textarea
+                                    value={editValue}
+                                    onChange={e => setEditValue(e.target.value)}
+                                    rows={2}
+                                    placeholder={placeholder}
+                                    className="w-full text-sm px-3 py-2 border border-indigo-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:outline-none resize-none"
+                                    autoFocus
+                                />
+                                <div className="flex gap-2 mt-2">
+                                    <button
+                                        onClick={() => saveField(field, editValue)}
+                                        disabled={isSaving}
+                                        className="px-3 py-1.5 bg-indigo-600 text-white text-xs rounded-lg hover:bg-indigo-700 disabled:opacity-50"
+                                    >{isSaving ? 'Sparar...' : 'Spara'}</button>
+                                    <button onClick={cancelEditing} className="px-3 py-1.5 text-slate-500 text-xs hover:text-slate-700">Avbryt</button>
+                                </div>
+                            </div>
+                        ) : value ? (
+                            <div className="text-sm text-slate-700">{value}</div>
+                        ) : (
+                            <button
+                                onClick={() => startEditing(field, '')}
+                                className="text-sm text-indigo-500 hover:text-indigo-700 italic"
+                            >+ Lägg till {label.toLowerCase()}</button>
+                        )}
+                    </div>
+                );
+            };
+
             return (
                 <div className="max-w-3xl mx-auto space-y-6">
                     <div className="flex items-center gap-3 mb-2">
-                        <h2 className="text-2xl font-bold">✍️ Personligt brev — preferenser</h2>
+                        <h2 className="text-2xl font-bold">Personligt brev — preferenser</h2>
                     </div>
 
-                    {/* Explanation */}
-                    <div className="bg-indigo-50 border border-indigo-100 rounded-xl p-5">
-                        <h3 className="font-semibold text-indigo-900 mb-2">💡 Hur detta fungerar</h3>
-                        <p className="text-sm text-indigo-800 leading-relaxed">
-                            AI läser igenom ett eller flera personliga brev du skrivit och lär sig din stil — din ton, hur du presenterar dig, vilka fraser du brukar använda.
-                            <br/><br/>
-                            Du kan se exakt vad AI har lärt sig nedan, och ge specifik feedback. Det är mycket enklare att säga <em>"jag vill inte att du skriver 'passionerad'"</em> än att säga <em>"låt det låta mer som mig"</em>.
+                    {/* Quick AI Feedback — most prominent section */}
+                    <div className="bg-gradient-to-br from-indigo-50 to-purple-50 rounded-xl p-6 border border-indigo-200">
+                        <h3 className="text-lg font-semibold mb-1">Berätta för AI hur du vill att breven ska låta</h3>
+                        <p className="text-sm text-slate-600 mb-3">
+                            Skriv vad du vill — AI förstår och uppdaterar dina brevpreferenser automatiskt.
+                            T.ex. fraser du inte gillar, ton du vill ha, eller hur brev ska inledas.
                         </p>
-                    </div>
-
-                    {/* Upload or paste */}
-                    <div className="bg-white rounded-xl p-6 border border-slate-200">
-                        <h3 className="text-lg font-semibold mb-1">📤 Träna din AI</h3>
-                        <p className="text-sm text-slate-500 mb-4">
-                            Vi säljer aldrig din data. Brevet används enbart för att göra dina ansökningar bättre.{' '}
-                            <a href="https://gdpr.eu/what-is-gdpr/" target="_blank" rel="noopener noreferrer" className="text-indigo-500 underline hover:text-indigo-700">Läs mer om GDPR</a>.
-                        </p>
-
-                        {/* Mode toggle */}
-                        <div className="flex gap-2 mb-5 p-1 bg-slate-100 rounded-lg w-fit">
+                        <textarea
+                            value={feedbackText}
+                            onChange={e => setFeedbackText(e.target.value)}
+                            rows={4}
+                            placeholder={'Exempel:\n- "solid butikserfarenhet" låter inte naturligt, undvik det\n- Jag vill ha kortare meningar och en mer avslappnad ton\n- Nämn alltid att jag kan börja direkt\n- Sluta använda "brinner för" och "gedigen erfarenhet"'}
+                            className="w-full text-sm px-4 py-3 border border-indigo-200 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:outline-none bg-white resize-none"
+                        />
+                        <div className="flex items-center justify-between mt-3">
+                            <span className="text-xs text-slate-400">
+                                {feedbackText.trim() ? `${feedbackText.trim().length} tecken` : 'AI uppdaterar ton, fraser och stil automatiskt'}
+                            </span>
                             <button
-                                onClick={() => setMode('upload')}
-                                className={`px-4 py-2 rounded-lg text-sm font-medium transition ${mode === 'upload' ? 'bg-white shadow text-slate-800' : 'text-slate-500'}`}
+                                onClick={submitFeedback}
+                                disabled={sendingFeedback || !feedbackText.trim()}
+                                className="px-6 py-2.5 bg-indigo-600 text-white text-sm rounded-xl font-medium hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed whitespace-nowrap"
                             >
-                                📂 Ladda upp fil
-                            </button>
-                            <button
-                                onClick={() => setMode('paste')}
-                                className={`px-4 py-2 rounded-lg text-sm font-medium transition ${mode === 'paste' ? 'bg-white shadow text-slate-800' : 'text-slate-500'}`}
-                            >
-                                📋 Klistra in text
+                                {sendingFeedback ? 'AI analyserar...' : 'Skicka till AI'}
                             </button>
                         </div>
-
-                        {mode === 'upload' && (
-                            <div
-                                onDragOver={(e) => { e.preventDefault(); setDragOver(true); }}
-                                onDragLeave={() => setDragOver(false)}
-                                onDrop={handleDrop}
-                                onClick={!uploading ? handleUpload : undefined}
-                                className={`w-full border-2 border-dashed rounded-xl py-12 text-center transition cursor-pointer select-none ${
-                                    uploading ? 'opacity-50 cursor-default' :
-                                    dragOver ? 'border-indigo-500 bg-indigo-50 text-indigo-600 scale-[1.01]' :
-                                    'border-slate-300 hover:border-indigo-400 text-slate-500 hover:text-indigo-600'
-                                }`}
-                            >
-                                <div className="text-4xl mb-2">{dragOver ? '📥' : uploading ? '⏳' : '📂'}</div>
-                                <div className="font-medium text-base">
-                                    {uploading ? 'Analyserar...' : dragOver ? 'Släpp filen här' : 'Dra hit en fil, eller klicka för att välja'}
+                        {feedbackStatus && (
+                            <div className={`mt-3 p-4 rounded-lg text-sm ${
+                                feedbackStatus.type === 'success'
+                                    ? 'bg-green-50 border border-green-200 text-green-800'
+                                    : 'bg-red-50 border border-red-200 text-red-800'
+                            }`}>
+                                <div className="font-medium mb-1">{feedbackStatus.type === 'success' ? 'AI förstod och uppdaterade dina preferenser:' : 'Fel:'}</div>
+                                <div>{feedbackStatus.message}</div>
+                                {feedbackStatus.details && (
+                                    <div className="mt-2 pt-2 border-t border-green-200 text-xs opacity-75">{feedbackStatus.details}</div>
+                                )}
+                            </div>
+                        )}
+                        {feedbackItems.length > 0 && (
+                            <div className="mt-4 pt-4 border-t border-indigo-100">
+                                <div className="text-xs font-semibold text-slate-400 uppercase tracking-wide mb-2">Sparad feedback ({feedbackItems.length})</div>
+                                <div className="space-y-1.5">
+                                    {feedbackItems.map(f => (
+                                        <div key={f.id} className="flex items-start justify-between bg-white rounded-lg px-3 py-2 border border-slate-200">
+                                            <span className="text-xs text-slate-600 leading-relaxed flex-1 mr-2">{f.feedback_text}</span>
+                                            <button onClick={() => deleteFeedback(f.id)} className="text-red-400 hover:text-red-600 text-xs flex-shrink-0 mt-0.5">&times;</button>
+                                        </div>
+                                    ))}
                                 </div>
-                                <div className="text-xs mt-1 text-slate-400">PDF, DOCX, DOC, TXT, RTF, ODT</div>
-                            </div>
-                        )}
-
-                        {mode === 'paste' && (
-                            <div>
-                                <textarea
-                                    value={pastedText}
-                                    onChange={e => setPastedText(e.target.value)}
-                                    placeholder="Klistra in ditt personliga brev här..."
-                                    rows={10}
-                                    className="w-full border border-slate-300 rounded-xl p-4 text-sm focus:ring-2 focus:ring-indigo-500 focus:outline-none resize-none"
-                                />
-                                <button
-                                    onClick={handlePasteSubmit}
-                                    disabled={loading || !pastedText.trim()}
-                                    className="mt-3 w-full bg-indigo-600 text-white py-3 rounded-lg font-medium hover:bg-indigo-700 disabled:opacity-50"
-                                >
-                                    {loading ? 'Analyserar...' : '🔍 Analysera brevets stil'}
-                                </button>
-                            </div>
-                        )}
-
-                        {saveStatus && (
-                            <div className={`mt-4 p-3 rounded-lg text-sm ${saveStatus.startsWith('✓') ? 'bg-green-50 text-green-700 border border-green-200' : 'bg-red-50 text-red-700 border border-red-200'}`}>
-                                {saveStatus}
                             </div>
                         )}
                     </div>
 
-                    {/* Uploaded letters list */}
-                    {uploadedLetters.length > 0 && (
-                        <div className="bg-white rounded-xl p-6 border border-slate-200">
-                            <h3 className="text-lg font-semibold mb-1">📚 Dina uppladdade brev</h3>
-                            <p className="text-sm text-slate-500 mb-4">
-                                {uploadedLetters.length} av 20 brev uppladdade
-                            </p>
-                            <div className="space-y-2">
-                                {uploadedLetters.map(letter => (
-                                    <div key={letter.id} className="flex items-center justify-between bg-slate-50 rounded-lg px-4 py-3 border border-slate-100">
-                                        <div className="flex items-center gap-3 min-w-0">
-                                            <span className="text-lg flex-shrink-0">📄</span>
-                                            <div className="min-w-0">
-                                                <div className="text-sm font-medium text-slate-700 truncate">{letter.filename}</div>
-                                                <div className="text-xs text-slate-400">
-                                                    {new Date(letter.uploaded_at).toLocaleDateString('sv-SE')}
-                                                </div>
-                                            </div>
-                                        </div>
-                                        <div className="flex items-center gap-2 flex-shrink-0">
-                                            {letter.file_url && (
-                                                <a
-                                                    href={letter.file_url}
-                                                    target="_blank"
-                                                    rel="noopener noreferrer"
-                                                    className="text-indigo-600 hover:text-indigo-800 text-sm font-medium"
-                                                >
-                                                    Visa
-                                                </a>
-                                            )}
-                                            <button
-                                                onClick={() => deleteLetter(letter.id)}
-                                                disabled={deletingId === letter.id}
-                                                className="text-red-400 hover:text-red-600 text-sm disabled:opacity-50"
-                                            >
-                                                {deletingId === letter.id ? '...' : '✕'}
-                                            </button>
-                                        </div>
-                                    </div>
-                                ))}
-                            </div>
-                        </div>
-                    )}
-
-                    {/* AI style summary */}
+                    {/* AI style summary — editable */}
                     <div className="bg-white rounded-xl p-6 border border-slate-200">
-                        <h3 className="text-lg font-semibold mb-1">🤖 Vad AI vet om din stil</h3>
+                        <h3 className="text-lg font-semibold mb-1">Vad AI vet om din stil</h3>
                         <p className="text-sm text-slate-500 mb-4">
-                            Detta är exakt hur AI förstår din skrivstil. Om något stämmer dåligt — uppdatera det!
+                            Klicka "Redigera" för att ändra. Allt här styr hur AI skriver dina brev.
                         </p>
 
                         {loadingStyle ? (
                             <div className="text-slate-400 text-sm">Laddar...</div>
-                        ) : letterStyle ? (
-                            <div className="space-y-4">
-                                {letterStyle.tone && (
-                                    <div className="bg-slate-50 rounded-lg p-4 border border-slate-100">
-                                        <div className="text-xs font-semibold text-slate-400 uppercase tracking-wide mb-1">🎭 Ton</div>
-                                        <div className="text-sm text-slate-700">{letterStyle.tone}</div>
-                                    </div>
-                                )}
-                                {letterStyle.structure && (
-                                    <div className="bg-slate-50 rounded-lg p-4 border border-slate-100">
-                                        <div className="text-xs font-semibold text-slate-400 uppercase tracking-wide mb-1">📐 Struktur</div>
-                                        <div className="text-sm text-slate-700">{letterStyle.structure}</div>
-                                    </div>
-                                )}
+                        ) : letterStyle || true ? (
+                            <div className="space-y-3">
+                                <EditableField label="Ton" icon="" field="tone" value={letterStyle?.tone} placeholder="T.ex. Varm och personlig, men professionell" />
+                                <EditableField label="Struktur" icon="" field="structure" value={letterStyle?.structure} placeholder="T.ex. Kort intro, varför jobbet passar mig, avslut" />
+                                <EditableField label="Längd & tempo" icon="" field="length_preference" value={letterStyle?.length_preference} placeholder="T.ex. Korta meningar, max 150 ord" />
+                                <EditableField label="Hur jag börjar brev" icon="" field="opening_style" value={letterStyle?.opening_style} placeholder="T.ex. Direkt och personligt, inte formellt" />
+
+                                {/* Phrases I like */}
                                 <div className="bg-slate-50 rounded-lg p-4 border border-slate-100">
-                                    <div className="text-xs font-semibold text-slate-400 uppercase tracking-wide mb-2">💬 Fraser jag gillar</div>
+                                    <div className="text-xs font-semibold text-slate-400 uppercase tracking-wide mb-2">Fraser jag gillar</div>
                                     <div className="flex flex-wrap gap-2 mb-3">
-                                        {(letterStyle.phrases || []).map((p, i) => (
-                                            <span key={i} className="px-2 py-1 bg-indigo-100 text-indigo-700 text-xs rounded-full flex items-center gap-1">
-                                                "{p}"
-                                                <button onClick={() => updatePhrase('phrases', 'remove', p)} className="text-indigo-400 hover:text-indigo-700 ml-1">&times;</button>
+                                        {(letterStyle?.phrases || []).map((p, i) => (
+                                            <span key={i} className="px-2.5 py-1 bg-indigo-100 text-indigo-700 text-xs rounded-full flex items-center gap-1">
+                                                {p}
+                                                <button onClick={() => updatePhrase('phrases', 'remove', p)} className="text-indigo-400 hover:text-indigo-700 ml-0.5">&times;</button>
                                             </span>
                                         ))}
-                                        {(!letterStyle.phrases || letterStyle.phrases.length === 0) && (
-                                            <span className="text-xs text-slate-400">Inga fraser tillagda</span>
+                                        {(!letterStyle?.phrases || letterStyle.phrases.length === 0) && (
+                                            <span className="text-xs text-slate-400 italic">Inga fraser tillagda</span>
                                         )}
                                     </div>
                                     <div className="flex gap-2">
@@ -3611,20 +3649,22 @@
                                         >+</button>
                                     </div>
                                 </div>
+
+                                {/* Phrases to avoid — with suggestions */}
                                 <div className="bg-slate-50 rounded-lg p-4 border border-slate-100">
-                                    <div className="text-xs font-semibold text-slate-400 uppercase tracking-wide mb-2">🚫 Fraser jag INTE vill ha</div>
+                                    <div className="text-xs font-semibold text-slate-400 uppercase tracking-wide mb-2">Fraser jag INTE vill ha</div>
                                     <div className="flex flex-wrap gap-2 mb-3">
-                                        {(letterStyle.avoid || []).map((p, i) => (
-                                            <span key={i} className="px-2 py-1 bg-red-100 text-red-700 text-xs rounded-full flex items-center gap-1">
-                                                "{p}"
-                                                <button onClick={() => updatePhrase('avoid', 'remove', p)} className="text-red-400 hover:text-red-700 ml-1">&times;</button>
+                                        {(letterStyle?.avoid || []).map((p, i) => (
+                                            <span key={i} className="px-2.5 py-1 bg-red-100 text-red-700 text-xs rounded-full flex items-center gap-1">
+                                                {p}
+                                                <button onClick={() => updatePhrase('avoid', 'remove', p)} className="text-red-400 hover:text-red-700 ml-0.5">&times;</button>
                                             </span>
                                         ))}
-                                        {(!letterStyle.avoid || letterStyle.avoid.length === 0) && (
-                                            <span className="text-xs text-slate-400">Inga fraser tillagda</span>
+                                        {(!letterStyle?.avoid || letterStyle.avoid.length === 0) && (
+                                            <span className="text-xs text-slate-400 italic">Inga fraser tillagda</span>
                                         )}
                                     </div>
-                                    <div className="flex gap-2">
+                                    <div className="flex gap-2 mb-3">
                                         <input
                                             type="text"
                                             value={newAvoidPhrase}
@@ -3638,94 +3678,143 @@
                                             className="px-3 py-1.5 bg-red-600 text-white text-xs rounded-lg hover:bg-red-700"
                                         >+</button>
                                     </div>
-                                </div>
-                                {letterStyle.length_preference && (
-                                    <div className="bg-slate-50 rounded-lg p-4 border border-slate-100">
-                                        <div className="text-xs font-semibold text-slate-400 uppercase tracking-wide mb-1">📏 Längd & tempo</div>
-                                        <div className="text-sm text-slate-700">{letterStyle.length_preference}</div>
-                                    </div>
-                                )}
-                                {letterStyle.opening_style && (
-                                    <div className="bg-slate-50 rounded-lg p-4 border border-slate-100">
-                                        <div className="text-xs font-semibold text-slate-400 uppercase tracking-wide mb-1">🚀 Hur du brukar börja</div>
-                                        <div className="text-sm text-slate-700">{letterStyle.opening_style}</div>
-                                    </div>
-                                )}
-
-                                <div className="bg-amber-50 border border-amber-200 rounded-lg p-4">
-                                    <p className="text-xs text-amber-800">
-                                        <strong>💡 Tips:</strong> Om AI:s beskrivning av din stil inte stämmer, ladda upp ett brev du är nöjd med för att "träna om" den.
-                                    </p>
+                                    {/* Suggested phrases to avoid */}
+                                    {(() => {
+                                        const currentAvoid = letterStyle?.avoid || [];
+                                        const suggestions = suggestedAvoidPhrases.filter(s => !currentAvoid.includes(s));
+                                        if (suggestions.length === 0) return null;
+                                        return (
+                                            <div>
+                                                <div className="text-[10px] font-medium text-slate-400 uppercase mb-1.5">Vanliga AI-klichéer (klicka för att blockera):</div>
+                                                <div className="flex flex-wrap gap-1.5">
+                                                    {suggestions.slice(0, 8).map((s, i) => (
+                                                        <button
+                                                            key={i}
+                                                            onClick={() => updatePhrase('avoid', 'add', s)}
+                                                            className="px-2 py-0.5 bg-red-50 text-red-500 text-[11px] rounded-full border border-red-100 hover:bg-red-100 hover:text-red-700 transition"
+                                                        >+ {s}</button>
+                                                    ))}
+                                                </div>
+                                            </div>
+                                        );
+                                    })()}
                                 </div>
                             </div>
-                        ) : (
-                            <div className="text-center py-10 text-slate-400">
-                                <div className="text-4xl mb-3">📭</div>
-                                <div className="font-medium mb-1">Inget brev analyserat ännu</div>
-                                <div className="text-sm">Ladda upp eller klistra in ett brev ovan för att träna din AI</div>
-                            </div>
-                        )}
+                        ) : null}
                     </div>
 
-                    {/* Free-form AI Feedback */}
+                    {/* General AI Instructions */}
                     <div className="bg-white rounded-xl p-6 border border-slate-200">
-                        <h3 className="text-lg font-semibold mb-1">💬 Ge feedback till AI</h3>
+                        <h3 className="text-lg font-semibold mb-1">Egna instruktioner till AI</h3>
                         <p className="text-sm text-slate-500 mb-4">
-                            Skriv fritt vad du tycker om dina personliga brev. AI förstår dig och sparar det som en preferens.
-                            T.ex. <em>"ordet 'solid' låter konstigt på svenska"</em> eller <em>"jag vill att det ska låta mer avslappnat"</em>.
+                            Skriv regler som AI alltid ska följa när den skriver dina personliga brev.
+                        </p>
+                        <textarea
+                            value={customInstructions}
+                            onChange={e => { setCustomInstructions(e.target.value); setInstructionsSaved(false); }}
+                            rows={4}
+                            placeholder={'T.ex.:\n- Skriv på naturlig, flytande svenska\n- Nämn alltid att jag kan börja omgående\n- Håll brevet kort, max 150 ord\n- Undvik AI-floskler som "gedigen" och "brinner för"'}
+                            className="w-full border border-slate-300 rounded-xl p-4 text-sm focus:ring-2 focus:ring-indigo-500 focus:outline-none resize-none"
+                        />
+                        <div className="flex items-center justify-between mt-3">
+                            <span className="text-xs text-slate-400">
+                                {instructionsSaved ? 'Sparat!' : customInstructions ? '' : 'Inga instruktioner sparade'}
+                            </span>
+                            <button
+                                onClick={saveCustomInstructions}
+                                disabled={savingInstructions}
+                                className="px-5 py-2 bg-indigo-600 text-white text-sm rounded-lg font-medium hover:bg-indigo-700 disabled:opacity-50"
+                            >
+                                {savingInstructions ? 'Sparar...' : 'Spara instruktioner'}
+                            </button>
+                        </div>
+                    </div>
+
+                    {/* Upload or paste training letters */}
+                    <div className="bg-white rounded-xl p-6 border border-slate-200">
+                        <h3 className="text-lg font-semibold mb-1">Träna AI med dina brev</h3>
+                        <p className="text-sm text-slate-500 mb-4">
+                            Ladda upp brev du skrivit — AI analyserar din stil automatiskt. Ju fler brev, desto bättre resultat.
                         </p>
 
-                        <div className="mb-4">
-                            <textarea
-                                value={feedbackText}
-                                onChange={e => setFeedbackText(e.target.value)}
-                                placeholder={'Skriv din feedback här...\n\nExempel:\n- "solid butikserfarenhet" är inte bra svenska\n- Jag vill inte att brevet låter som en robot\n- Nämn alltid att jag är flexibel med tider'}
-                                rows={4}
-                                className="w-full border border-slate-300 rounded-xl p-4 text-sm focus:ring-2 focus:ring-indigo-500 focus:outline-none resize-none"
-                                onKeyDown={e => { if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) submitFeedback(); }}
-                            />
-                            <div className="flex items-center justify-between mt-2">
-                                <span className="text-xs text-slate-400">Ctrl+Enter för att skicka</span>
-                                <button
-                                    onClick={submitFeedback}
-                                    disabled={sendingFeedback || !feedbackText.trim()}
-                                    className="px-5 py-2 bg-indigo-600 text-white text-sm rounded-lg font-medium hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed"
-                                >
-                                    {sendingFeedback ? 'AI tänker...' : '🧠 Skicka till AI'}
-                                </button>
-                            </div>
+                        {/* Mode toggle */}
+                        <div className="flex gap-2 mb-5 p-1 bg-slate-100 rounded-lg w-fit">
+                            <button
+                                onClick={() => setMode('upload')}
+                                className={`px-4 py-2 rounded-lg text-sm font-medium transition ${mode === 'upload' ? 'bg-white shadow text-slate-800' : 'text-slate-500'}`}
+                            >
+                                Ladda upp fil
+                            </button>
+                            <button
+                                onClick={() => setMode('paste')}
+                                className={`px-4 py-2 rounded-lg text-sm font-medium transition ${mode === 'paste' ? 'bg-white shadow text-slate-800' : 'text-slate-500'}`}
+                            >
+                                Klistra in text
+                            </button>
                         </div>
 
-                        {feedbackStatus && (
-                            <div className={`mb-4 p-4 rounded-lg text-sm ${
-                                feedbackStatus.type === 'success'
-                                    ? 'bg-green-50 border border-green-200 text-green-800'
-                                    : 'bg-red-50 border border-red-200 text-red-800'
-                            }`}>
-                                <div className="font-medium mb-1">{feedbackStatus.type === 'success' ? '✓ AI förstod:' : 'Fel:'}</div>
-                                <div>{feedbackStatus.message}</div>
-                                {feedbackStatus.details && (
-                                    <div className="text-xs mt-1 opacity-75">{feedbackStatus.details}</div>
-                                )}
+                        {mode === 'upload' && (
+                            <div
+                                onDragOver={(e) => { e.preventDefault(); setDragOver(true); }}
+                                onDragLeave={() => setDragOver(false)}
+                                onDrop={handleDrop}
+                                onClick={!uploading ? handleUpload : undefined}
+                                className={`w-full border-2 border-dashed rounded-xl py-10 text-center transition cursor-pointer select-none ${
+                                    uploading ? 'opacity-50 cursor-default' :
+                                    dragOver ? 'border-indigo-500 bg-indigo-50 text-indigo-600' :
+                                    'border-slate-300 hover:border-indigo-400 text-slate-500 hover:text-indigo-600'
+                                }`}
+                            >
+                                <div className="font-medium text-sm">
+                                    {uploading ? 'Analyserar...' : dragOver ? 'Släpp filen här' : 'Dra hit en fil, eller klicka för att välja'}
+                                </div>
+                                <div className="text-xs mt-1 text-slate-400">PDF, DOCX, DOC, TXT, RTF, ODT</div>
                             </div>
                         )}
 
-                        {feedbackItems.length > 0 && (
+                        {mode === 'paste' && (
                             <div>
-                                <div className="text-xs font-semibold text-slate-400 uppercase tracking-wide mb-2">Sparad feedback ({feedbackItems.length})</div>
-                                <div className="space-y-2">
-                                    {feedbackItems.map(f => (
-                                        <div key={f.id} className="flex items-start justify-between bg-slate-50 rounded-lg px-4 py-3 border border-slate-100">
-                                            <div className="flex-1 min-w-0">
-                                                <div className="text-sm text-slate-700">{f.feedback_text}</div>
-                                                <div className="text-xs text-slate-400 mt-1">
-                                                    {new Date(f.created_at).toLocaleDateString('sv-SE')}
+                                <textarea
+                                    value={pastedText}
+                                    onChange={e => setPastedText(e.target.value)}
+                                    placeholder="Klistra in ditt personliga brev här..."
+                                    rows={8}
+                                    className="w-full border border-slate-300 rounded-xl p-4 text-sm focus:ring-2 focus:ring-indigo-500 focus:outline-none resize-none"
+                                />
+                                <button
+                                    onClick={handlePasteSubmit}
+                                    disabled={loading || !pastedText.trim()}
+                                    className="mt-3 w-full bg-indigo-600 text-white py-3 rounded-lg font-medium hover:bg-indigo-700 disabled:opacity-50"
+                                >
+                                    {loading ? 'Analyserar...' : 'Analysera brevets stil'}
+                                </button>
+                            </div>
+                        )}
+
+                        {saveStatus && (
+                            <div className={`mt-4 p-3 rounded-lg text-sm ${saveStatus.startsWith('✓') ? 'bg-green-50 text-green-700 border border-green-200' : 'bg-red-50 text-red-700 border border-red-200'}`}>
+                                {saveStatus}
+                            </div>
+                        )}
+
+                        {/* Uploaded letters inline */}
+                        {uploadedLetters.length > 0 && (
+                            <div className="mt-5 pt-5 border-t border-slate-100">
+                                <div className="text-xs font-semibold text-slate-400 uppercase tracking-wide mb-2">Uppladdade brev ({uploadedLetters.length}/20)</div>
+                                <div className="space-y-1.5">
+                                    {uploadedLetters.map(letter => (
+                                        <div key={letter.id} className="flex items-center justify-between bg-slate-50 rounded-lg px-3 py-2 border border-slate-100">
+                                            <div className="flex items-center gap-2 min-w-0">
+                                                <div className="min-w-0">
+                                                    <div className="text-xs font-medium text-slate-700 truncate">{letter.filename}</div>
+                                                    <div className="text-[10px] text-slate-400">{new Date(letter.uploaded_at).toLocaleDateString('sv-SE')}</div>
                                                 </div>
                                             </div>
                                             <button
-                                                onClick={() => deleteFeedback(f.id)}
-                                                className="text-red-400 hover:text-red-600 text-sm ml-3 flex-shrink-0"
-                                            >✕</button>
+                                                onClick={() => deleteLetter(letter.id)}
+                                                disabled={deletingId === letter.id}
+                                                className="text-red-400 hover:text-red-600 text-xs disabled:opacity-50 flex-shrink-0"
+                                            >{deletingId === letter.id ? '...' : '✕'}</button>
                                         </div>
                                     ))}
                                 </div>
@@ -3736,7 +3825,7 @@
                     {/* Anecdotes & Hobbies */}
                     <div className="bg-white rounded-xl p-6 border border-slate-200">
                         <div className="flex items-center justify-between mb-1">
-                            <h3 className="text-lg font-semibold">✨ Mina anekdoter & hobbys</h3>
+                            <h3 className="text-lg font-semibold">Mina anekdoter & hobbys</h3>
                             <button
                                 onClick={() => setShowAnecdoteForm(!showAnecdoteForm)}
                                 className="px-3 py-1.5 bg-indigo-600 text-white text-xs rounded-lg hover:bg-indigo-700"

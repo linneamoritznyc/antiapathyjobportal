@@ -830,6 +830,8 @@ async def generate_cover_letter(job: Dict, user_cv_text: Optional[str] = None, u
     has_license = p.get("drivers_license", True)
     linkedin = p.get("linkedin", "")
 
+    own_car = p.get("own_car", False)
+
     contact_greeting = f"Hej {job.get('contact_name', '')}!" if job.get('contact_name') else "Hej!"
 
     # Build extra job details for the prompt
@@ -862,10 +864,11 @@ async def generate_cover_letter(job: Dict, user_cv_text: Optional[str] = None, u
     if real_age:
         user_info += f", {real_age} år"
     user_info += f", bor i {location}"
-    if has_license:
-        user_info += f"\n- Har B-körkort, egen bil, flexibel med arbetstider"
-    else:
-        user_info += f"\n- Flexibel med arbetstider"
+    if has_license and own_car:
+        user_info += f"\n- Har B-körkort och egen bil"
+    elif has_license:
+        user_info += f"\n- Har B-körkort (ingen egen bil)"
+    user_info += f"\n- Flexibel med arbetstider"
     user_info += f"\n- Telefon: {phone}"
     user_info += f"\n- Svenska (modersmål), Engelska (flytande)"
     if linkedin:
@@ -897,7 +900,7 @@ async def generate_cover_letter(job: Dict, user_cv_text: Optional[str] = None, u
                 if sp.get("length_preference"):
                     style_parts.append(f"- Längd: {sp['length_preference']}")
 
-                phrases = sp.get("always_mention", []) or []
+                phrases = sp.get("liked_phrases", []) or []
                 if isinstance(phrases, list) and phrases:
                     style_parts.append(f"- Fraser jag gillar att använda: {', '.join(phrases)}")
 
@@ -908,6 +911,10 @@ async def generate_cover_letter(job: Dict, user_cv_text: Optional[str] = None, u
                 never = sp.get("never_mention", []) or []
                 if isinstance(never, list) and never:
                     style_parts.append(f"- Ämnen att ALDRIG nämna: {', '.join(never)}")
+
+                custom_instr = sp.get("custom_ai_instructions", "") or ""
+                if custom_instr.strip():
+                    style_parts.append(f"- Mina egna instruktioner: {custom_instr.strip()}")
 
                 if style_parts:
                     style_section = "\n\nMIN SKRIVSTIL (skriv brevet i min stil):\n" + "\n".join(style_parts)
@@ -967,6 +974,17 @@ INSTRUKTIONER:
    {phone}
    {email}
 
+SPRÅKREGLER — KRITISKT (brevet MÅSTE låta som riktig svenska, inte översatt engelska):
+- INGA anglicismer: Skriv aldrig "solid grund" (säg "bra grund"), "omfattar" (säg "inkluderar" eller skriv om), "leverera resultat", "spännande möjlighet", "säkerställa". Tänk: hur skulle en svensk 25-åring formulera detta?
+- KORREKTA svenska fraser: "Flera års erfarenhet" (INTE "erfarenhet från flera år"). "Jobba i kassan" (INTE "på kassavagn"). "Stå i butik" (INTE "arbeta i butiksmiljö"). "Packa paket" (INTE "hantera paketdistribution"). Använd vardagliga svenska ord, inte byråkratiska.
+- INGEN over-explaining: Förklara inte självklara saker. "Jag är noggrann" räcker — du behöver INTE lägga till "och det betyder mycket för mig att få arbetet gjort rätt". Skriv inte som en reklamtext.
+- VARIERA meningsbyggnaden: Börja INTE varje mening med "Jag". Blanda meningslängder. Använd bisatser och naturliga övergångar. Texten ska ha flyt, inte låta som en punktlista.
+- ALDRIG defensiv om saknad erfarenhet: Skriv ALDRIG "Jag inser att er annons efterfrågar..." eller "Även om min erfarenhet inte redan omfattar...". Det låter som en ursäkt. Säg det kort och rakt istället: "Jag har inte jobbat med X förut, men jag lär mig snabbt." MAX en mening om saknad erfarenhet — fokusera sedan på vad du KAN.
+- RÄTT ordval för arbetsmeriter: Skriv aldrig "självförtroende" (låter som terapi). Säg istället "trygg i min roll", "van vid att jobba självständigt" eller "bekväm med kundkontakt". Skriv aldrig "genuint intresserad av att utvecklas inom butiksverksamhet" — ingen pratar så. Håll det enkelt och ärligt.
+- Undvik inställsamma AI-floskler: "passionerad", "brinner för", "gedigen", "vittnar om", "värdefull tillgång", "unik möjlighet", "driven och ambitiös", "med glädje", "genuint intresserad", "relevant butikserfarenhet".
+- PROPORTIONER: Lägg 80% av brevet på vad du KAN och har gjort. Max 20% på saker du inte gjort. Brevet ska sälja, inte be om ursäkt.
+- Skriv som en RIKTIG person som söker jobb — inte som en AI som försöker imponera.
+
 Skriv ENDAST det färdiga brevet, inget annat."""
 
     try:
@@ -979,11 +997,11 @@ Skriv ENDAST det färdiga brevet, inget annat."""
                     "content-type": "application/json"
                 },
                 json={
-                    "model": "claude-haiku-4-5-20251001",
+                    "model": "claude-sonnet-4-5-20250929",
                     "max_tokens": 900,
                     "messages": [{"role": "user", "content": prompt}]
                 },
-                timeout=25
+                timeout=45
             )
 
             if response.status_code == 200:
@@ -2200,10 +2218,9 @@ async def apply_with_cv(request: Request, job_id: str):
     company_name = job.get("company", "")
     job_url = job.get("url", "")
     greeting = f"Hej {company_name}!" if company_name else "Hej!"
-    job_link = f'<a href="{job_url}"><i>{job_title}</i></a>' if job_url else f"<i>{job_title}</i>"
-    email_body = f"{greeting}<br><br>Jag såg er annons på Platsbanken för {job_link}."
-    email_body += f"<br>Jag kan börja omgående och är flexibel med tider."
-    email_body += f"<br>Vänligen se bifogat personligt brev och CV för min ansökan."
+    job_ref = f"{job_title} - <a href=\"{job_url}\">{job_url}</a>" if job_url else job_title
+    email_body = f"{greeting}<br><br>Jag såg er annons på Platsbanken för {job_ref}<br>"
+    email_body += f"Jag kan börja omgående och är flexibel med tider. Vänligen se bifogat personligt brev och CV för min ansökan."
     email_body += f"<br><br>Vänliga hälsningar,<br>{sender_name}"
     if email_signature:
         email_body += f"<br><br>{email_signature}"
@@ -2227,8 +2244,13 @@ async def apply_with_cv(request: Request, job_id: str):
                 job_title=job_title,
                 company=job.get("company", ""),
             )
+            company_clean = re.sub(r'[^\w\s-]', '', job.get("company", "")).strip().replace(' ', '_')
+            if company_clean:
+                cl_filename = f"Personligt_Brev_{company_clean}_{sender_name.replace(' ', '_')}.pdf"
+            else:
+                cl_filename = f"Personligt_Brev_{sender_name.replace(' ', '_')}.pdf"
             attachments.append({
-                "filename": f"Personligt_Brev_{sender_name.replace(' ', '_')}.pdf",
+                "filename": cl_filename,
                 "data": cover_letter_pdf
             })
         except Exception as e:
@@ -2327,7 +2349,11 @@ async def download_cover_letter_pdf(request: Request, job_id: str):
         company=company,
     )
 
-    filename = f"Personligt_Brev_{sender_name.replace(' ', '_')}.pdf"
+    company_clean = re.sub(r'[^\w\s-]', '', company).strip().replace(' ', '_')
+    if company_clean:
+        filename = f"Personligt_Brev_{company_clean}_{sender_name.replace(' ', '_')}.pdf"
+    else:
+        filename = f"Personligt_Brev_{sender_name.replace(' ', '_')}.pdf"
     return RawResponse(
         content=pdf_bytes,
         media_type="application/pdf",
@@ -2473,10 +2499,9 @@ async def save_gmail_draft_with_attachments(request: Request, job_id: str):
     company_name = job.get("company", "")
     job_url = job.get("url", "")
     greeting = f"Hej {company_name}!" if company_name else "Hej!"
-    job_link = f'<a href="{job_url}"><i>{job_title}</i></a>' if job_url else f"<i>{job_title}</i>"
-    email_body = f"{greeting}<br><br>Jag såg er annons på Platsbanken för {job_link}."
-    email_body += f"<br>Jag kan börja omgående och är flexibel med tider."
-    email_body += f"<br>Vänligen se bifogat personligt brev och CV för min ansökan."
+    job_ref = f"{job_title} - <a href=\"{job_url}\">{job_url}</a>" if job_url else job_title
+    email_body = f"{greeting}<br><br>Jag såg er annons på Platsbanken för {job_ref}<br>"
+    email_body += f"Jag kan börja omgående och är flexibel med tider. Vänligen se bifogat personligt brev och CV för min ansökan."
     email_body += f"<br><br>Vänliga hälsningar,<br>{sender_name}"
     if email_signature:
         email_body += f"<br><br>{email_signature}"
@@ -2497,8 +2522,13 @@ async def save_gmail_draft_with_attachments(request: Request, job_id: str):
             job_title=job_title,
             company=job.get("company", ""),
         )
+        company_clean = re.sub(r'[^\w\s-]', '', job.get("company", "")).strip().replace(' ', '_')
+        if company_clean:
+            cl_filename = f"Personligt_Brev_{company_clean}_{sender_name.replace(' ', '_')}.pdf"
+        else:
+            cl_filename = f"Personligt_Brev_{sender_name.replace(' ', '_')}.pdf"
         attachments.append({
-            "filename": f"Personligt_Brev_{sender_name.replace(' ', '_')}.pdf",
+            "filename": cl_filename,
             "data": cover_letter_pdf
         })
     except Exception as e:
@@ -3018,7 +3048,7 @@ async def migrate_user_data(request: Request):
         "sign_off_name": "Linnea Moritz",
         "sign_off_phone": "076-116 61 09",
         "sign_off_email": "linneamoritz1@gmail.com",
-        "always_mention": ["flexibel med tider", "korkort", "flytande engelska"],
+        "liked_phrases": ["flexibel med tider", "korkort", "flytande engelska"],
         "never_mention": ["konst", "malning", "utstallningar", "Shopify", "e-handel", "oljemaalning", "linneamoritz.com"],
         "custom_ai_instructions": "Skriv pa naturlig, flytande svenska. Undvik AI-floskler som 'gedigen', 'brinner for', 'vittnar om'. Beratta varfor jag vill ha just det jobbet.",
     }
@@ -4140,6 +4170,8 @@ async def save_profile_from_quiz(request: Request, profile: QuizProfileData):
         profile_data["drivers_license"] = profile.drivers_license != "no"
     if profile.home_location:
         profile_data["location"] = profile.home_location
+    if profile.own_car:
+        profile_data["own_car"] = profile.own_car == "yes"
     # Note: linkedin is NOT a column in user_profiles — stored in quiz_answers instead
 
     # Upsert to user_profiles
@@ -4235,11 +4267,21 @@ async def save_user_preferences(request: Request, prefs: UserPreferences):
     """Save user job preferences and Gmail credentials."""
     user_id = await get_user_id_from_request(request, required=True)
 
-    # Build quiz_answers JSONB — single source of truth for all preferences
-    quiz_answers = {
+    # Fetch existing quiz_answers so we MERGE instead of overwrite
+    existing_qa = {}
+    try:
+        existing = await db_request("GET", "user_job_preferences",
+            params={"user_id": f"eq.{user_id}", "select": "quiz_answers"})
+        if existing and len(existing) > 0:
+            existing_qa = existing[0].get("quiz_answers") or {}
+    except Exception:
+        pass
+
+    # Build new values — only override fields that were actually sent (not None)
+    incoming = {
         "search_terms": prefs.search_terms,
         "custom_search": getattr(prefs, 'custom_search', None),
-        "location": prefs.location,  # Taxonomy municipality concept IDs
+        "location": prefs.location,
         "negative_keywords": prefs.negative_keywords,
         "working_hours": prefs.working_hours,
         "employment_form": prefs.employment_form,
@@ -4248,21 +4290,29 @@ async def save_user_preferences(request: Request, prefs: UserPreferences):
         "dealbreakers": prefs.dealbreakers
     }
 
-    # Build search keywords from custom_search and search_terms
+    # Merge: keep existing values for any field the frontend didn't send
+    quiz_answers = {**existing_qa}
+    for key, value in incoming.items():
+        if value is not None:
+            quiz_answers[key] = value
+
+    # Build search keywords from merged data
     search_kw = []
-    if prefs.custom_search:
-        search_kw = [k.strip() for k in prefs.custom_search.split(',') if k.strip()]
-    elif prefs.search_terms:
-        search_kw = prefs.search_terms
+    cs = quiz_answers.get("custom_search")
+    st = quiz_answers.get("search_terms")
+    if cs:
+        search_kw = [k.strip() for k in cs.split(',') if k.strip()]
+    elif st:
+        search_kw = st
 
     # Upsert — maps to actual DB columns in user_job_preferences
     prefs_data = {
         "user_id": user_id,
-        "preferred_locations": prefs.location or [],  # TEXT[] of taxonomy municipality IDs
-        "search_keywords": search_kw,  # TEXT[] of positive search terms
-        "excluded_keywords": prefs.negative_keywords or [],  # TEXT[] of negative keywords
-        "job_types": prefs.job_types or prefs.search_terms or [],
-        "quiz_answers": quiz_answers,  # JSONB — all raw quiz/preference data
+        "preferred_locations": quiz_answers.get("location") or [],
+        "search_keywords": search_kw,
+        "excluded_keywords": quiz_answers.get("negative_keywords") or [],
+        "job_types": prefs.job_types or quiz_answers.get("search_terms") or [],
+        "quiz_answers": quiz_answers,  # JSONB — merged, never loses data
         "updated_at": "now()"
     }
 
@@ -5598,7 +5648,7 @@ async def save_ai_feedback(request: Request, feedback: AIFeedback):
         "user_id": user_id,
         "feedback_text": feedback.feedback_text,
         "feedback_type": feedback.feedback_type,
-        "applies_to_vibes": feedback.applies_to_vibes,
+        "applies_to_branscher": feedback.applies_to_vibes or [],
         "is_active": True,
         "created_at": datetime.now().isoformat()
     }
@@ -5752,7 +5802,7 @@ Regler:
             current_phrases = []
             if existing:
                 current_avoid = existing[0].get("avoid_phrases") or []
-                current_phrases = existing[0].get("always_mention") or []
+                current_phrases = existing[0].get("liked_phrases") or []
 
             new_avoid = list(set(current_avoid + avoid_phrases))
             new_phrases = list(set(current_phrases + like_phrases))
@@ -5760,7 +5810,7 @@ Regler:
             pref_data = {
                 "user_id": user_id,
                 "avoid_phrases": new_avoid,
-                "always_mention": new_phrases,
+                "liked_phrases": new_phrases,
                 "updated_at": datetime.now().isoformat()
             }
             async with httpx.AsyncClient() as client:
@@ -6429,7 +6479,7 @@ async def upload_training_letter(request: Request):
                 params={"user_id": f"eq.{user_id}"},
                 data={
                     "tone": tone_analysis.get("tone"),
-                    "always_mention": tone_analysis.get("favorite_phrases", [])
+                    "liked_phrases": tone_analysis.get("favorite_phrases", [])
                 }
             )
         else:
@@ -6440,7 +6490,7 @@ async def upload_training_letter(request: Request):
                 data={
                     "user_id": user_id,
                     "tone": tone_analysis.get("tone"),
-                    "always_mention": tone_analysis.get("favorite_phrases", [])
+                    "liked_phrases": tone_analysis.get("favorite_phrases", [])
                 }
             )
 
@@ -6468,10 +6518,11 @@ async def get_letter_style(request: Request):
     style_summary = {
         "tone": p.get("tone"),
         "structure": p.get("writing_style"),
-        "phrases": p.get("always_mention") if isinstance(p.get("always_mention"), list) else [],
+        "phrases": p.get("liked_phrases") if isinstance(p.get("liked_phrases"), list) else [],
         "avoid": p.get("avoid_phrases") if isinstance(p.get("avoid_phrases"), list) else [],
         "length_preference": p.get("length_preference"),
-        "opening_style": p.get("opening_style")
+        "opening_style": p.get("opening_style"),
+        "custom_ai_instructions": p.get("custom_ai_instructions") or ""
     }
     return {"style_summary": style_summary}
 
@@ -6636,7 +6687,7 @@ async def save_letter_style(user_id: str, analysis: dict):
     data = {
         "tone": analysis.get("tone"),
         "writing_style": analysis.get("structure"),
-        "always_mention": analysis.get("phrases", []),
+        "liked_phrases": analysis.get("phrases", []),
         "avoid_phrases": analysis.get("avoid", []),
         "length_preference": analysis.get("length_preference"),
         "opening_style": analysis.get("opening_style")
@@ -6971,11 +7022,49 @@ async def delete_user_anecdote(anecdote_id: str, request: Request):
     return {"success": True}
 
 
+# ============== STYLE FIELD EDITING ==============
+
+@app.patch("/api/user/letter-style")
+async def update_letter_style(request: Request):
+    """Update individual style fields (tone, structure, length_preference, opening_style, custom_ai_instructions)"""
+    user_id = await get_user_id_from_request(request, required=True)
+    body = await request.json()
+
+    # Only allow updating these specific fields
+    allowed_fields = {
+        "tone": "tone",
+        "structure": "writing_style",
+        "length_preference": "length_preference",
+        "opening_style": "opening_style",
+        "custom_ai_instructions": "custom_ai_instructions"
+    }
+
+    update_data = {}
+    for frontend_key, db_column in allowed_fields.items():
+        if frontend_key in body:
+            update_data[db_column] = body[frontend_key]
+
+    if not update_data:
+        raise HTTPException(status_code=400, detail="Inga fält att uppdatera")
+
+    update_data["updated_at"] = datetime.now().isoformat()
+
+    existing = await db_request("GET", "user_cover_letter_preferences", params={"user_id": f"eq.{user_id}"})
+    if existing and len(existing) > 0:
+        await db_request("PATCH", "user_cover_letter_preferences",
+            params={"user_id": f"eq.{user_id}"}, data=update_data)
+    else:
+        await db_request("POST", "user_cover_letter_preferences",
+            data={"user_id": user_id, **update_data})
+
+    return {"success": True}
+
+
 # ============== STYLE PHRASE EDITING ==============
 
 @app.patch("/api/user/letter-style/phrases")
 async def update_letter_style_phrases(request: Request):
-    """Add or remove phrases from the avoid or always_mention lists"""
+    """Add or remove phrases from the avoid or liked_phrases lists"""
     user_id = await get_user_id_from_request(request, required=True)
     body = await request.json()
 
@@ -6989,7 +7078,7 @@ async def update_letter_style_phrases(request: Request):
         raise HTTPException(status_code=400, detail="Fras krävs")
 
     # Map frontend names to DB column names
-    db_column = "avoid_phrases" if list_name == "avoid" else "always_mention"
+    db_column = "avoid_phrases" if list_name == "avoid" else "liked_phrases"
 
     # Get current preferences
     prefs = await db_request("GET", "user_cover_letter_preferences",
