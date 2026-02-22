@@ -992,11 +992,11 @@ Skriv ENDAST det färdiga brevet, inget annat."""
                     "content-type": "application/json"
                 },
                 json={
-                    "model": "claude-haiku-4-5-20251001",
+                    "model": "claude-sonnet-4-5-20250929",
                     "max_tokens": 900,
                     "messages": [{"role": "user", "content": prompt}]
                 },
-                timeout=25
+                timeout=45
             )
 
             if response.status_code == 200:
