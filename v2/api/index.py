@@ -909,6 +909,10 @@ async def generate_cover_letter(job: Dict, user_cv_text: Optional[str] = None, u
                 if isinstance(never, list) and never:
                     style_parts.append(f"- Ämnen att ALDRIG nämna: {', '.join(never)}")
 
+                custom_instr = sp.get("custom_ai_instructions", "") or ""
+                if custom_instr.strip():
+                    style_parts.append(f"- Mina egna instruktioner: {custom_instr.strip()}")
+
                 if style_parts:
                     style_section = "\n\nMIN SKRIVSTIL (skriv brevet i min stil):\n" + "\n".join(style_parts)
 
@@ -6483,7 +6487,8 @@ async def get_letter_style(request: Request):
         "phrases": p.get("always_mention") if isinstance(p.get("always_mention"), list) else [],
         "avoid": p.get("avoid_phrases") if isinstance(p.get("avoid_phrases"), list) else [],
         "length_preference": p.get("length_preference"),
-        "opening_style": p.get("opening_style")
+        "opening_style": p.get("opening_style"),
+        "custom_ai_instructions": p.get("custom_ai_instructions") or ""
     }
     return {"style_summary": style_summary}
 
@@ -6980,6 +6985,44 @@ async def delete_user_anecdote(anecdote_id: str, request: Request):
     user_id = await get_user_id_from_request(request, required=True)
     await db_request("DELETE", "user_anecdotes",
         params={"id": f"eq.{anecdote_id}", "user_id": f"eq.{user_id}"})
+    return {"success": True}
+
+
+# ============== STYLE FIELD EDITING ==============
+
+@app.patch("/api/user/letter-style")
+async def update_letter_style(request: Request):
+    """Update individual style fields (tone, structure, length_preference, opening_style, custom_ai_instructions)"""
+    user_id = await get_user_id_from_request(request, required=True)
+    body = await request.json()
+
+    # Only allow updating these specific fields
+    allowed_fields = {
+        "tone": "tone",
+        "structure": "writing_style",
+        "length_preference": "length_preference",
+        "opening_style": "opening_style",
+        "custom_ai_instructions": "custom_ai_instructions"
+    }
+
+    update_data = {}
+    for frontend_key, db_column in allowed_fields.items():
+        if frontend_key in body:
+            update_data[db_column] = body[frontend_key]
+
+    if not update_data:
+        raise HTTPException(status_code=400, detail="Inga fält att uppdatera")
+
+    update_data["updated_at"] = datetime.now().isoformat()
+
+    existing = await db_request("GET", "user_cover_letter_preferences", params={"user_id": f"eq.{user_id}"})
+    if existing and len(existing) > 0:
+        await db_request("PATCH", "user_cover_letter_preferences",
+            params={"user_id": f"eq.{user_id}"}, data=update_data)
+    else:
+        await db_request("POST", "user_cover_letter_preferences",
+            data={"user_id": user_id, **update_data})
+
     return {"success": True}
 
 
