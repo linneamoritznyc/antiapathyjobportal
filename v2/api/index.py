@@ -4247,7 +4247,7 @@ async def save_profile_from_quiz(request: Request, profile: QuizProfileData):
             prefs_data = {
                 "user_id": user_id,
                 "quiz_answers": merged_qa,
-                "updated_at": "now()"
+                "updated_at": datetime.now().isoformat()
             }
             async with httpx.AsyncClient() as client:
                 await client.post(
@@ -4340,11 +4340,11 @@ async def save_user_preferences(request: Request, prefs: UserPreferences):
         "excluded_keywords": quiz_answers.get("negative_keywords") or [],
         "job_types": prefs.job_types or quiz_answers.get("search_terms") or [],
         "quiz_answers": quiz_answers,  # JSONB — merged, never loses data
-        "updated_at": "now()"
+        "updated_at": datetime.now().isoformat()
     }
 
     async with httpx.AsyncClient() as client:
-        await client.post(
+        resp = await client.post(
             f"{SUPABASE_URL}/rest/v1/user_job_preferences",
             headers={
                 "apikey": SUPABASE_KEY,
@@ -4354,6 +4354,9 @@ async def save_user_preferences(request: Request, prefs: UserPreferences):
             },
             json=prefs_data
         )
+        if resp.status_code >= 400:
+            logger.error(f"Failed to save preferences: {resp.status_code} {resp.text}")
+            raise HTTPException(status_code=500, detail=f"Kunde inte spara preferenser: {resp.text[:200]}")
 
     # Save Gmail credentials if provided
     if prefs.gmail_client_id and prefs.gmail_client_secret:
@@ -4361,7 +4364,7 @@ async def save_user_preferences(request: Request, prefs: UserPreferences):
             "user_id": user_id,
             "client_id": prefs.gmail_client_id,
             "client_secret": prefs.gmail_client_secret,
-            "updated_at": "now()"
+            "updated_at": datetime.now().isoformat()
         }
 
         async with httpx.AsyncClient() as client:
@@ -4422,7 +4425,7 @@ async def save_user_profile(request: Request, profile: UserProfile):
         "phone": profile.phone,
         "linkedin_url": profile.linkedin_url,
         "summary": profile.summary,
-        "updated_at": "now()"
+        "updated_at": datetime.now().isoformat()
     }
 
     async with httpx.AsyncClient() as client:
