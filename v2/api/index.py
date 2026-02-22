@@ -2206,7 +2206,7 @@ async def apply_with_cv(request: Request, job_id: str):
     email_body = f"{greeting}\n\nJag skriver till er angående annonsen på Platsbanken om {job_ref}!"
     if job_url:
         email_body += f"\n{job_url}"
-    email_body += f"\n\nSe bifogat CV och personligt brev.\n\nVänligen,\n{sender_name}"
+    email_body += f"\n\nVänligen se bifogat personligt brev och CV för min ansökan.\n\nVänliga hälsningar,\n{sender_name}"
     if email_signature:
         email_body += f"\n\n{email_signature}"
 
@@ -2481,7 +2481,7 @@ async def save_gmail_draft_with_attachments(request: Request, job_id: str):
     email_body = f"{greeting}\n\nJag skriver till er angående annonsen på Platsbanken om {job_ref}!"
     if job_url:
         email_body += f"\n{job_url}"
-    email_body += f"\n\nSe bifogat CV och personligt brev.\n\nVänligen,\n{sender_name}"
+    email_body += f"\n\nVänligen se bifogat personligt brev och CV för min ansökan.\n\nVänliga hälsningar,\n{sender_name}"
     if email_signature:
         email_body += f"\n\n{email_signature}"
 
