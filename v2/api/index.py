@@ -1292,11 +1292,12 @@ async def save_jobs_to_db(jobs: List[Dict]) -> int:
     return saved
 
 
-async def get_jobs_from_db(limit: int = 50) -> List[Dict]:
+async def get_jobs_from_db(limit: int = 50, offset: int = 0) -> List[Dict]:
     """Get jobs from database. Returns description_summary + full_description for UI."""
     jobs = await db_request("GET", "jobs", params={
         "order": "scraped_at.desc",
-        "limit": str(limit)
+        "limit": str(limit),
+        "offset": str(offset)
     })
     if jobs:
         for job in jobs:
@@ -1406,12 +1407,12 @@ async def scrape_jobs(request: JobSearchRequest = None):
 
 
 @app.get("/api/jobs")
-async def list_jobs(request: Request, limit: int = 50):
+async def list_jobs(request: Request, limit: int = 50, offset: int = 0):
     """List all jobs, filtered by user's interaction history if logged in"""
     user_id = await get_user_id_from_request(request)
 
     # Try database first
-    jobs = await get_jobs_from_db(limit)
+    jobs = await get_jobs_from_db(limit, offset)
 
     if not jobs:
         # Fallback: scrape live AND save to DB so apply-with-cv can find them

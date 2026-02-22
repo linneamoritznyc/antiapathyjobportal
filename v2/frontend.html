@@ -3707,7 +3707,7 @@
         };
 
         // External jobs page — jobs without contact email (apply via external website)
-        const ExternalJobsPage = ({ jobs, onScrape, scraping, savedJobs, onSaveJob, onOpenQuiz, setActiveTab }) => {
+        const ExternalJobsPage = ({ jobs, onScrape, scraping, savedJobs, onSaveJob, onOpenQuiz, setActiveTab, onLoadMore, loadingMore, noMoreJobs }) => {
             const [keywords, setKeywords] = useState('');
             const [currentPage, setCurrentPage] = useState(1);
             const [hiddenJobIds, setHiddenJobIds] = useState(new Set());
@@ -4375,12 +4375,23 @@
                         <div className="bg-white rounded-xl p-10 text-center shadow-sm max-w-3xl mx-auto">
                             <p className="text-lg font-semibold text-slate-700 mb-2">Klart!</p>
                             <p className="text-slate-500">Du har gått igenom alla {filteredJobs.length} externa jobb.</p>
-                            <button
-                                onClick={() => setCurrentPage(1)}
-                                className="mt-4 px-5 py-2.5 bg-amber-500 text-white rounded-xl font-medium hover:bg-amber-600 transition"
-                            >
-                                Börja om
-                            </button>
+                            <div className="flex flex-col items-center gap-3 mt-4">
+                                {!noMoreJobs && onLoadMore && (
+                                    <button
+                                        onClick={onLoadMore}
+                                        disabled={loadingMore}
+                                        className="px-6 py-2.5 bg-indigo-600 text-white rounded-xl font-medium hover:bg-indigo-700 disabled:opacity-50 transition"
+                                    >
+                                        {loadingMore ? 'Laddar...' : 'Ladda fler jobb'}
+                                    </button>
+                                )}
+                                <button
+                                    onClick={() => setCurrentPage(1)}
+                                    className="px-5 py-2.5 bg-amber-500 text-white rounded-xl font-medium hover:bg-amber-600 transition"
+                                >
+                                    Börja om
+                                </button>
+                            </div>
                         </div>
                     )}
                 </div>
@@ -4388,7 +4399,7 @@
         };
 
         // Jobs page (email-apply jobs only)
-        const JobsPage = ({ jobs, onScrape, onApply, scraping, applyingJob, savedJobs, onSaveJob, onOpenQuiz }) => {
+        const JobsPage = ({ jobs, onScrape, onApply, scraping, applyingJob, savedJobs, onSaveJob, onOpenQuiz, onLoadMore, loadingMore, noMoreJobs }) => {
             const [keywords, setKeywords] = useState('');
             const [filterText, setFilterText] = useState('');
             const [filterPriority, setFilterPriority] = useState('all');
@@ -4847,14 +4858,25 @@
                                     </div>
                                 ) : (
                                     <div className="bg-white rounded-xl p-10 text-center shadow-sm max-w-3xl mx-auto">
-                                        <p className="text-lg font-semibold text-slate-700 mb-2">Klart! 🎉</p>
+                                        <p className="text-lg font-semibold text-slate-700 mb-2">Klart!</p>
                                         <p className="text-slate-500">Du har gått igenom alla {filteredJobs.length} jobb.</p>
-                                        <button
-                                            onClick={() => setCurrentPage(1)}
-                                            className="mt-4 px-5 py-2.5 bg-pink-600 text-white rounded-xl font-medium hover:bg-pink-700 transition"
-                                        >
-                                            Börja om
-                                        </button>
+                                        <div className="flex flex-col items-center gap-3 mt-4">
+                                            {!noMoreJobs && onLoadMore && (
+                                                <button
+                                                    onClick={onLoadMore}
+                                                    disabled={loadingMore}
+                                                    className="px-6 py-2.5 bg-indigo-600 text-white rounded-xl font-medium hover:bg-indigo-700 disabled:opacity-50 transition"
+                                                >
+                                                    {loadingMore ? 'Laddar...' : 'Ladda fler jobb'}
+                                                </button>
+                                            )}
+                                            <button
+                                                onClick={() => setCurrentPage(1)}
+                                                className="px-5 py-2.5 bg-pink-600 text-white rounded-xl font-medium hover:bg-pink-700 transition"
+                                            >
+                                                Börja om
+                                            </button>
+                                        </div>
                                     </div>
                                 )}
                             </>
@@ -6139,10 +6161,35 @@
                 setShowOnboarding(true);
             };
 
+            const [loadingMore, setLoadingMore] = useState(false);
+            const [noMoreJobs, setNoMoreJobs] = useState(false);
+
             const fetchJobs = async () => {
                 const res = await authFetch('/api/jobs');
                 const data = await res.json();
-                if (data.success) setJobs(data.jobs || []);
+                if (data.success) {
+                    setJobs(data.jobs || []);
+                    setNoMoreJobs((data.jobs || []).length < 50);
+                }
+            };
+
+            const loadMoreJobs = async () => {
+                setLoadingMore(true);
+                try {
+                    const res = await authFetch(`/api/jobs?limit=50&offset=${jobs.length}`);
+                    const data = await res.json();
+                    if (data.success && data.jobs && data.jobs.length > 0) {
+                        const existingIds = new Set(jobs.map(j => j.id));
+                        const newJobs = data.jobs.filter(j => !existingIds.has(j.id));
+                        setJobs(prev => [...prev, ...newJobs]);
+                        if (data.jobs.length < 50) setNoMoreJobs(true);
+                    } else {
+                        setNoMoreJobs(true);
+                    }
+                } catch (e) {
+                    console.error('Error loading more jobs:', e);
+                }
+                setLoadingMore(false);
             };
 
             const fetchVibes = async () => {
@@ -6980,6 +7027,9 @@
                                 savedJobs={savedJobs}
                                 onSaveJob={handleSaveJob}
                                 onOpenQuiz={() => setShowOnboarding(true)}
+                                onLoadMore={loadMoreJobs}
+                                loadingMore={loadingMore}
+                                noMoreJobs={noMoreJobs}
                             />
                         )}
 
@@ -6992,6 +7042,9 @@
                                 onSaveJob={handleSaveJob}
                                 onOpenQuiz={() => setShowOnboarding(true)}
                                 setActiveTab={setActiveTab}
+                                onLoadMore={loadMoreJobs}
+                                loadingMore={loadingMore}
+                                noMoreJobs={noMoreJobs}
                             />
                         )}
 
