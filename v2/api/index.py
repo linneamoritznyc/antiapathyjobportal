@@ -971,6 +971,15 @@ INSTRUKTIONER:
    {phone}
    {email}
 
+SPRÅKREGLER — KRITISKT (brevet MÅSTE låta som riktig svenska, inte översatt engelska):
+- INGA anglicismer: Skriv aldrig "solid grund" (säg "bra grund"), "omfattar" (säg "inkluderar" eller skriv om), "leverera resultat", "spännande möjlighet", "säkerställa". Tänk: hur skulle en svensk 25-åring formulera detta?
+- KORREKTA svenska termer: "Jobba i kassan" (INTE "på kassavagn"). "Stå i butik" (INTE "arbeta i butiksmiljö"). "Packa paket" (INTE "hantera paketdistribution"). Använd vardagliga svenska ord, inte byråkratiska.
+- INGEN over-explaining: Förklara inte självklara saker. "Jag är noggrann" räcker — du behöver INTE lägga till "och det betyder mycket för mig att få arbetet gjort rätt". Skriv inte som en reklamtext.
+- VARIERA meningsbyggnaden: Börja INTE varje mening med "Jag". Blanda meningslängder. Använd bisatser och naturliga övergångar. Texten ska ha flyt, inte låta som en punktlista.
+- OM du saknar erfarenhet för specifika uppgifter i annonsen: Säg det kort och rakt. "Jag har inte jobbat med X förut, men jag lär mig snabbt" är bättre än "Även om min erfarenhet inte redan omfattar X, ser jag detta som en spännande möjlighet att utvecklas inom nya områden."
+- Undvik inställsamma AI-floskler: "passionerad", "brinner för", "gedigen", "vittnar om", "värdefull tillgång", "unik möjlighet", "driven och ambitiös", "med glädje".
+- Skriv som en RIKTIG person som söker jobb — inte som en AI som försöker imponera.
+
 Skriv ENDAST det färdiga brevet, inget annat."""
 
     try:
