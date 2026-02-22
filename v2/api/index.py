@@ -2200,10 +2200,7 @@ async def apply_with_cv(request: Request, job_id: str):
     company_name = job.get("company", "")
     job_url = job.get("url", "")
     greeting = f"Hej {company_name}!" if company_name else "Hej!"
-    job_ref = f"tjänsten som {job_title}"
-    if company_name:
-        job_ref += f" hos {company_name}"
-    email_body = f"{greeting}\n\nJag skriver till er angående annonsen på Platsbanken om {job_ref}!"
+    email_body = f"{greeting}\n\nJag såg er annons på Platsbanken för {job_title} och vill gärna söka!"
     if job_url:
         email_body += f"\n{job_url}"
     email_body += f"\n\nJag kan börja omgående och är flexibel med tider."
@@ -2477,10 +2474,7 @@ async def save_gmail_draft_with_attachments(request: Request, job_id: str):
     company_name = job.get("company", "")
     job_url = job.get("url", "")
     greeting = f"Hej {company_name}!" if company_name else "Hej!"
-    job_ref = f"tjänsten som {job_title}"
-    if company_name:
-        job_ref += f" hos {company_name}"
-    email_body = f"{greeting}\n\nJag skriver till er angående annonsen på Platsbanken om {job_ref}!"
+    email_body = f"{greeting}\n\nJag såg er annons på Platsbanken för {job_title} och vill gärna söka!"
     if job_url:
         email_body += f"\n{job_url}"
     email_body += f"\n\nJag kan börja omgående och är flexibel med tider."
