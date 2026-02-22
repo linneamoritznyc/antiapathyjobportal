@@ -33,7 +33,7 @@ SUPABASE_ANON_KEY = os.getenv("SUPABASE_ANON_KEY")  # For client-side auth
 ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY")
 
 # Gmail API scopes
-GMAIL_SCOPES = "https://www.googleapis.com/auth/gmail.compose https://www.googleapis.com/auth/gmail.modify"
+GMAIL_SCOPES = "https://www.googleapis.com/auth/gmail.drafts"
 
 app = FastAPI(
     title="Anti-Apathy Job Portal",
@@ -5046,7 +5046,7 @@ async def get_gmail_auth_url(request: Request, redirect_uri: str = None):
         "client_id": user_creds["client_id"],
         "redirect_uri": redirect_uri,
         "response_type": "code",
-        "scope": "https://www.googleapis.com/auth/gmail.compose",
+        "scope": "https://www.googleapis.com/auth/gmail.drafts",
         "access_type": "offline",
         "prompt": "consent",
         "state": user_id
