@@ -826,3 +826,6 @@ COMMENT ON TABLE user_anecdotes IS 'Personal anecdotes and hobbies for AI cover 
 --   Migration: ALTER TABLE user_cover_letter_preferences RENAME COLUMN always_mention TO liked_phrases;
 -- 2026-02-22: Added 5 missing columns to user_cover_letter_preferences — LIVE
 --   sign_off_name, sign_off_phone, sign_off_email, priority_experiences_per_vibe, custom_ai_instructions
+-- 2026-02-22: user_job_preferences.preferred_locations TEXT[] — LIVE
+--   Stores user's selected kommun/län names from PlatserPage.
+--   Migration: ALTER TABLE user_job_preferences ADD COLUMN IF NOT EXISTS preferred_locations TEXT[] DEFAULT ARRAY[]::TEXT[];
