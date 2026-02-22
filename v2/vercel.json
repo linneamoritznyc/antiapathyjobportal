@@ -11,7 +11,9 @@
           "account.html",
           "anvandarvillkor.html",
           "integritetspolicy.html",
-          "cv_template.html"
+          "cv_template.html",
+          "lan-data.js",
+          "linkedin-parser.js"
         ]
       }
     }

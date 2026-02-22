@@ -33,7 +33,7 @@ SUPABASE_ANON_KEY = os.getenv("SUPABASE_ANON_KEY")  # For client-side auth
 ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY")
 
 # Gmail API scopes
-GMAIL_SCOPES = "https://www.googleapis.com/auth/gmail.drafts"
+GMAIL_SCOPES = "https://www.googleapis.com/auth/gmail.compose"
 
 app = FastAPI(
     title="Anti-Apathy Job Portal",
@@ -2576,7 +2576,11 @@ async def google_auth():
     if not SUPABASE_URL or not SUPABASE_ANON_KEY:
         raise HTTPException(status_code=500, detail="Supabase not configured")
     redirect_to = "https://platsbanken-ai.vercel.app/login"
-    url = f"{SUPABASE_URL}/auth/v1/authorize?provider=google&redirect_to={redirect_to}"
+    url = (
+        f"{SUPABASE_URL}/auth/v1/authorize?provider=google"
+        f"&redirect_to={redirect_to}"
+        f"&query_params=prompt%3Dselect_account"
+    )
     return RedirectResponse(url)
 
 
@@ -5046,7 +5050,7 @@ async def get_gmail_auth_url(request: Request, redirect_uri: str = None):
         "client_id": user_creds["client_id"],
         "redirect_uri": redirect_uri,
         "response_type": "code",
-        "scope": "https://www.googleapis.com/auth/gmail.drafts",
+        "scope": "https://www.googleapis.com/auth/gmail.compose",
         "access_type": "offline",
         "prompt": "consent",
         "state": user_id
@@ -5464,6 +5468,23 @@ async def create_gmail_draft(request: CreateGmailDraftRequest, user_id: str = "d
         "draft_id": draft.get("id"),
         "message": "Draft created! Check your Gmail drafts folder."
     }
+
+
+# ============== STATIC JS FILES ==============
+
+@app.get("/static/{filename}")
+async def serve_static_js(filename: str):
+    """Serve extracted JS files (lan-data.js, linkedin-parser.js)"""
+    from fastapi.responses import Response
+    allowed = {"lan-data.js", "linkedin-parser.js"}
+    if filename not in allowed:
+        raise HTTPException(status_code=404, detail="Not found")
+    file_path = pathlib.Path(__file__).parent.parent / filename
+    if not file_path.exists():
+        raise HTTPException(status_code=404, detail=f"{filename} not found")
+    content = file_path.read_text(encoding='utf-8')
+    return Response(content=content, media_type="application/javascript",
+                    headers={"Cache-Control": "public, max-age=86400"})
 
 
 # ============== FRONTEND ==============

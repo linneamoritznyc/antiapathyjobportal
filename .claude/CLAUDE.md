@@ -92,6 +92,21 @@ frontend_path = pathlib.Path(__file__).parent.parent / "frontend.html"
 
 ---
 
+## Authentication
+
+Users can log in via **two methods** (both must work):
+
+1. **E-post + lösenord** — Standard Supabase email/password auth (`POST /api/auth/signup`, `POST /api/auth/signin`)
+2. **Logga in via Google** — Supabase Google OAuth (`GET /api/auth/google` → redirects to Google account picker → callback to `/login`)
+
+Both methods store tokens in localStorage (`auth_token`, `refresh_token`, `user`) and use the same `authFetch()` wrapper for authenticated API calls.
+
+**Login page**: `v2/login.html`
+**Auth endpoints**: `v2/api/index.py` (around line 2573+)
+**Supabase requirement**: Google provider must be enabled in Supabase Dashboard → Authentication → Providers → Google
+
+---
+
 ## Key constraints
 
 - All UI text in Swedish
