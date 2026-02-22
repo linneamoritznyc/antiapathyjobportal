@@ -4267,11 +4267,21 @@ async def save_user_preferences(request: Request, prefs: UserPreferences):
     """Save user job preferences and Gmail credentials."""
     user_id = await get_user_id_from_request(request, required=True)
 
-    # Build quiz_answers JSONB — single source of truth for all preferences
-    quiz_answers = {
+    # Fetch existing quiz_answers so we MERGE instead of overwrite
+    existing_qa = {}
+    try:
+        existing = await db_request("GET", "user_job_preferences",
+            params={"user_id": f"eq.{user_id}", "select": "quiz_answers"})
+        if existing and len(existing) > 0:
+            existing_qa = existing[0].get("quiz_answers") or {}
+    except Exception:
+        pass
+
+    # Build new values — only override fields that were actually sent (not None)
+    incoming = {
         "search_terms": prefs.search_terms,
         "custom_search": getattr(prefs, 'custom_search', None),
-        "location": prefs.location,  # Taxonomy municipality concept IDs
+        "location": prefs.location,
         "negative_keywords": prefs.negative_keywords,
         "working_hours": prefs.working_hours,
         "employment_form": prefs.employment_form,
@@ -4280,21 +4290,29 @@ async def save_user_preferences(request: Request, prefs: UserPreferences):
         "dealbreakers": prefs.dealbreakers
     }
 
-    # Build search keywords from custom_search and search_terms
+    # Merge: keep existing values for any field the frontend didn't send
+    quiz_answers = {**existing_qa}
+    for key, value in incoming.items():
+        if value is not None:
+            quiz_answers[key] = value
+
+    # Build search keywords from merged data
     search_kw = []
-    if prefs.custom_search:
-        search_kw = [k.strip() for k in prefs.custom_search.split(',') if k.strip()]
-    elif prefs.search_terms:
-        search_kw = prefs.search_terms
+    cs = quiz_answers.get("custom_search")
+    st = quiz_answers.get("search_terms")
+    if cs:
+        search_kw = [k.strip() for k in cs.split(',') if k.strip()]
+    elif st:
+        search_kw = st
 
     # Upsert — maps to actual DB columns in user_job_preferences
     prefs_data = {
         "user_id": user_id,
-        "preferred_locations": prefs.location or [],  # TEXT[] of taxonomy municipality IDs
-        "search_keywords": search_kw,  # TEXT[] of positive search terms
-        "excluded_keywords": prefs.negative_keywords or [],  # TEXT[] of negative keywords
-        "job_types": prefs.job_types or prefs.search_terms or [],
-        "quiz_answers": quiz_answers,  # JSONB — all raw quiz/preference data
+        "preferred_locations": quiz_answers.get("location") or [],
+        "search_keywords": search_kw,
+        "excluded_keywords": quiz_answers.get("negative_keywords") or [],
+        "job_types": prefs.job_types or quiz_answers.get("search_terms") or [],
+        "quiz_answers": quiz_answers,  # JSONB — merged, never loses data
         "updated_at": "now()"
     }
 
