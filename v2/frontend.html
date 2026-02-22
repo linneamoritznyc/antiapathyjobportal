@@ -1091,6 +1091,9 @@
             const [disconnecting, setDisconnecting] = useState(false);
             const [connecting, setConnecting] = useState(false);
             const [msg, setMsg] = useState(null);
+            const [consent, setConsent] = useState({ drafts: false, neverSend: false, canRevoke: false });
+
+            const allConsented = consent.drafts && consent.neverSend && consent.canRevoke;
 
             useEffect(() => {
                 authFetch('/api/gmail/status')
@@ -1111,7 +1114,7 @@
                         return;
                     }
                     if (!data.auth_url) {
-                        setMsg({ type: 'error', text: data.app_configured === false ? 'Gmail-integration är inte aktiverad av administratören.' : 'Kunde inte starta inloggning.' });
+                        setMsg({ type: 'error', text: data.app_configured === false ? 'Gmail-kopplingen är inte tillgänglig just nu. Försök igen senare.' : 'Kunde inte starta inloggning.' });
                         setConnecting(false);
                         return;
                     }
@@ -1162,6 +1165,21 @@
                 }
                 setDisconnecting(false);
             };
+
+            const ConsentCheckbox = ({ id, checked, onChange, children }) => (
+                <label htmlFor={id} className="flex items-start gap-3 cursor-pointer group">
+                    <div className="pt-0.5">
+                        <input
+                            type="checkbox"
+                            id={id}
+                            checked={checked}
+                            onChange={onChange}
+                            className="w-5 h-5 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500 cursor-pointer"
+                        />
+                    </div>
+                    <span className="text-sm text-slate-700 group-hover:text-slate-900">{children}</span>
+                </label>
+            );
 
             return (
                 <div className="max-w-2xl mx-auto space-y-6">
@@ -1232,75 +1250,83 @@
                             </div>
                         </div>
                     ) : (
-                        /* ===== NOT CONNECTED STATE ===== */
+                        /* ===== NOT CONNECTED STATE — CONSENT FLOW ===== */
                         <div className="space-y-4">
-                            {/* What the app needs access to */}
+                            {/* What the app will do */}
                             <div className="bg-white rounded-xl border border-slate-200 overflow-hidden">
                                 <div className="px-6 py-5 border-b border-slate-100">
-                                    <h3 className="font-semibold text-slate-800 text-lg">Varför koppla Gmail?</h3>
+                                    <h3 className="font-semibold text-slate-800 text-lg">Ge appen tillgång till din Gmail?</h3>
                                     <p className="text-sm text-slate-500 mt-1">
-                                        När du ansöker om jobb skapar appen ett utkast i din Gmail med personligt brev och rätt CV bifogat. Du granskar alltid utkastet och skickar själv.
+                                        Innan du kopplar din Gmail behöver vi ditt samtycke. Läs igenom och kryssa i rutorna nedan.
                                     </p>
                                 </div>
-                                <div className="px-6 py-5">
-                                    <p className="text-xs font-medium text-slate-500 uppercase tracking-wide mb-3">Så här fungerar det</p>
+                                <div className="px-6 py-5 space-y-5">
+                                    {/* Consent checkboxes */}
                                     <div className="space-y-4">
-                                        <div className="flex gap-4">
-                                            <div className="w-8 h-8 bg-indigo-100 text-indigo-700 rounded-full flex items-center justify-center text-sm font-bold shrink-0">1</div>
-                                            <div>
-                                                <p className="font-medium text-slate-800">Du klickar "Koppla Gmail"</p>
-                                                <p className="text-sm text-slate-500">Ett Google-fönster öppnas där du loggar in med ditt Gmail-konto.</p>
-                                            </div>
-                                        </div>
-                                        <div className="flex gap-4">
-                                            <div className="w-8 h-8 bg-indigo-100 text-indigo-700 rounded-full flex items-center justify-center text-sm font-bold shrink-0">2</div>
-                                            <div>
-                                                <p className="font-medium text-slate-800">Google frågar om tillstånd</p>
-                                                <p className="text-sm text-slate-500">Du ser exakt vilka rättigheter appen begär. Appen begär bara åtkomst att skapa utkast — inte läsa eller skicka mail.</p>
-                                            </div>
-                                        </div>
-                                        <div className="flex gap-4">
-                                            <div className="w-8 h-8 bg-indigo-100 text-indigo-700 rounded-full flex items-center justify-center text-sm font-bold shrink-0">3</div>
-                                            <div>
-                                                <p className="font-medium text-slate-800">Du godkänner</p>
-                                                <p className="text-sm text-slate-500">Fönstret stängs och din Gmail är kopplad. Nu kan appen spara ansökningsutkast direkt i din inkorg.</p>
-                                            </div>
-                                        </div>
-                                    </div>
-                                </div>
-                            </div>
+                                        <ConsentCheckbox
+                                            id="consent-drafts"
+                                            checked={consent.drafts}
+                                            onChange={e => setConsent(p => ({...p, drafts: e.target.checked}))}
+                                        >
+                                            Jag godkänner att appen skapar <strong>e-postutkast</strong> i min Gmail med personligt brev och CV bifogat.
+                                        </ConsentCheckbox>
 
-                            {/* Permissions detail */}
-                            <div className="bg-white rounded-xl border border-slate-200 px-6 py-5">
-                                <h3 className="font-semibold text-slate-800 mb-3">Rättigheter appen begär</h3>
-                                <div className="bg-slate-50 rounded-lg p-4">
-                                    <ul className="text-sm text-slate-700 space-y-2">
-                                        <li className="flex items-start gap-2"><span className="text-green-500 mt-0.5">&#10003;</span> <strong>Skapa utkast</strong> — ansökningsmejl med personligt brev och CV som bilagor</li>
-                                    </ul>
-                                    <div className="border-t border-slate-200 mt-3 pt-3">
-                                        <p className="text-xs font-medium text-slate-500 uppercase tracking-wide mb-2">Appen kan aldrig</p>
-                                        <ul className="text-sm text-slate-600 space-y-1.5">
-                                            <li className="flex items-start gap-2"><span className="text-red-400 mt-0.5">&#10007;</span> Skicka mail åt dig</li>
-                                            <li className="flex items-start gap-2"><span className="text-red-400 mt-0.5">&#10007;</span> Läsa befintliga mail eller kontakter</li>
-                                            <li className="flex items-start gap-2"><span className="text-red-400 mt-0.5">&#10007;</span> Ta bort eller ändra något i din inkorg</li>
+                                        <ConsentCheckbox
+                                            id="consent-no-send"
+                                            checked={consent.neverSend}
+                                            onChange={e => setConsent(p => ({...p, neverSend: e.target.checked}))}
+                                        >
+                                            Jag förstår att appen <strong>aldrig skickar mail</strong> — jag granskar och skickar alltid själv.
+                                        </ConsentCheckbox>
+
+                                        <ConsentCheckbox
+                                            id="consent-revoke"
+                                            checked={consent.canRevoke}
+                                            onChange={e => setConsent(p => ({...p, canRevoke: e.target.checked}))}
+                                        >
+                                            Jag förstår att jag kan <strong>koppla bort Gmail</strong> när som helst och att alla tokens raderas direkt.
+                                        </ConsentCheckbox>
+                                    </div>
+
+                                    {/* Permissions summary */}
+                                    <div className="bg-slate-50 rounded-lg p-4">
+                                        <p className="text-xs font-medium text-slate-500 uppercase tracking-wide mb-2">Appen begär tillgång att</p>
+                                        <ul className="text-sm text-slate-700 space-y-1.5">
+                                            <li className="flex items-start gap-2"><span className="text-green-500 mt-0.5">&#10003;</span> Skapa utkast i din Gmail</li>
+                                            <li className="flex items-start gap-2"><span className="text-green-500 mt-0.5">&#10003;</span> Bifoga PDF-filer (personligt brev + CV)</li>
                                         </ul>
+                                        <div className="border-t border-slate-200 mt-3 pt-3">
+                                            <p className="text-xs font-medium text-slate-500 uppercase tracking-wide mb-2">Appen kan aldrig</p>
+                                            <ul className="text-sm text-slate-600 space-y-1.5">
+                                                <li className="flex items-start gap-2"><span className="text-red-400 mt-0.5">&#10007;</span> Skicka mail åt dig</li>
+                                                <li className="flex items-start gap-2"><span className="text-red-400 mt-0.5">&#10007;</span> Läsa befintliga mail eller kontakter</li>
+                                                <li className="flex items-start gap-2"><span className="text-red-400 mt-0.5">&#10007;</span> Ta bort eller ändra något i din inkorg</li>
+                                            </ul>
+                                        </div>
                                     </div>
                                 </div>
                             </div>
 
-                            {/* Connect button */}
+                            {/* Connect button — only enabled after all consent checkboxes */}
                             <div className="bg-white rounded-xl border border-slate-200 px-6 py-6 text-center">
                                 <button
                                     onClick={connectGmail}
-                                    disabled={connecting}
-                                    className="inline-flex items-center gap-3 bg-white border-2 border-slate-300 text-slate-700 py-3.5 px-8 rounded-xl font-semibold text-lg hover:border-indigo-400 hover:bg-indigo-50 transition disabled:opacity-50"
+                                    disabled={connecting || !allConsented}
+                                    className={`inline-flex items-center gap-3 py-3.5 px-8 rounded-xl font-semibold text-lg transition ${allConsented ? 'bg-white border-2 border-slate-300 text-slate-700 hover:border-indigo-400 hover:bg-indigo-50' : 'bg-slate-100 border-2 border-slate-200 text-slate-400 cursor-not-allowed'}`}
                                 >
-                                    <svg width="22" height="22" viewBox="0 0 24 24"><path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/><path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/><path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l3.66-2.84z"/><path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"/></svg>
+                                    <svg width="22" height="22" viewBox="0 0 24 24"><path fill={allConsented ? "#4285F4" : "#94a3b8"} d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/><path fill={allConsented ? "#34A853" : "#94a3b8"} d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/><path fill={allConsented ? "#FBBC05" : "#94a3b8"} d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l3.66-2.84z"/><path fill={allConsented ? "#EA4335" : "#94a3b8"} d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"/></svg>
                                     {connecting ? 'Öppnar Google-inloggning...' : 'Koppla Gmail via Google'}
                                 </button>
-                                <p className="text-xs text-slate-400 mt-3">
-                                    Google visar vilka rättigheter appen begär innan du godkänner.
-                                </p>
+                                {!allConsented && (
+                                    <p className="text-xs text-slate-400 mt-3">
+                                        Kryssa i alla rutor ovan för att fortsätta.
+                                    </p>
+                                )}
+                                {allConsented && (
+                                    <p className="text-xs text-slate-400 mt-3">
+                                        Google visar vilka rättigheter appen begär innan du godkänner.
+                                    </p>
+                                )}
                             </div>
 
                             {/* Privacy note */}
@@ -3569,10 +3595,29 @@
             return html;
         };
 
-        // Render summary (no truncation — AI summary is already short)
-        const renderDescription = (desc) => {
+        // Check if job has a real AI summary (description differs from full_description)
+        const hasSummary = (job) => job.full_description && job.full_description !== job.description;
+
+        // Truncate text to ~4 sentences for fallback when no AI summary exists
+        const truncateText = (text) => {
+            if (!text || text.length <= 500) return text;
+            const sentences = text.split(/(?<=[.!?])\s+/);
+            if (sentences.length > 4) {
+                const short = sentences.slice(0, 4).join(' ');
+                return short.length <= 600 ? short : short.substring(0, 600).replace(/\s\S*$/, '...');
+            }
+            if (text.length > 600) {
+                const truncated = text.substring(0, 600);
+                const lastPeriod = Math.max(truncated.lastIndexOf('.'), truncated.lastIndexOf('!'), truncated.lastIndexOf('?'));
+                return lastPeriod > 200 ? text.substring(0, lastPeriod + 1) : truncated.replace(/\s\S*$/, '...');
+            }
+            return text;
+        };
+
+        // Render summary — short if AI summary, truncated if fallback
+        const renderDescription = (desc, isSummary) => {
             if (!desc) return '<p style="color:#94a3b8">Ingen beskrivning tillgänglig.</p>';
-            return formatDescriptionHtml(desc);
+            return formatDescriptionHtml(isSummary ? desc : truncateText(desc));
         };
 
         // Render full description (no truncation — shows everything)
@@ -3953,16 +3998,17 @@
                                             {/* Job description view */}
                                             {leftPanel === 'description' && (
                                                 <>
-                                                    {/* AI Summary */}
-                                                    <p className="text-xs font-semibold text-amber-600 uppercase tracking-widest mb-3">Sammanfattning</p>
+                                                    <p className="text-xs font-semibold text-amber-600 uppercase tracking-widest mb-3">
+                                                        {hasSummary(currentJob) ? 'Sammanfattning' : 'Jobbannons'}
+                                                    </p>
                                                     <div
                                                         className="prose prose-sm max-w-none text-slate-700"
                                                         style={{ lineHeight: '1.7' }}
-                                                        dangerouslySetInnerHTML={{ __html: renderDescription(currentJob.description) }}
+                                                        dangerouslySetInnerHTML={{ __html: renderDescription(currentJob.description, hasSummary(currentJob)) }}
                                                     />
 
-                                                    {/* Expandable full description */}
-                                                    {currentJob.full_description && currentJob.full_description !== currentJob.description && (
+                                                    {/* Expandable full description — show toggle if AI summary exists OR text was truncated */}
+                                                    {(hasSummary(currentJob) || (currentJob.description && currentJob.description.length > 500)) && (
                                                         <>
                                                             <button
                                                                 onClick={() => setDescExpanded(!descExpanded)}
@@ -3977,7 +4023,7 @@
                                                                     <div
                                                                         className="prose prose-sm max-w-none text-slate-600"
                                                                         style={{ lineHeight: '1.7' }}
-                                                                        dangerouslySetInnerHTML={{ __html: renderFullDescription(currentJob.full_description) }}
+                                                                        dangerouslySetInnerHTML={{ __html: renderFullDescription(currentJob.full_description || currentJob.description) }}
                                                                     />
                                                                 </>
                                                             )}
@@ -4563,16 +4609,17 @@
                                                 <div className="flex-1 p-8 border-r border-slate-100 overflow-y-auto" style={{maxHeight: '82vh'}}>
                                                     {currentJob.description ? (
                                                         <>
-                                                            {/* AI Summary */}
-                                                            <p className="text-xs font-semibold text-indigo-600 uppercase tracking-widest mb-3">Sammanfattning</p>
+                                                            <p className="text-xs font-semibold text-indigo-600 uppercase tracking-widest mb-3">
+                                                                {hasSummary(currentJob) ? 'Sammanfattning' : 'Jobbannons'}
+                                                            </p>
                                                             <div
                                                                 className="prose prose-sm max-w-none text-slate-700"
                                                                 style={{ lineHeight: '1.7' }}
-                                                                dangerouslySetInnerHTML={{ __html: renderDescription(currentJob.description) }}
+                                                                dangerouslySetInnerHTML={{ __html: renderDescription(currentJob.description, hasSummary(currentJob)) }}
                                                             />
 
                                                             {/* Expandable full description */}
-                                                            {currentJob.full_description && currentJob.full_description !== currentJob.description && (
+                                                            {(hasSummary(currentJob) || currentJob.description.length > 500) && (
                                                                 <>
                                                                     <button
                                                                         onClick={() => setDescExpanded(!descExpanded)}
@@ -4587,7 +4634,7 @@
                                                                             <div
                                                                                 className="prose prose-sm max-w-none text-slate-600"
                                                                                 style={{ lineHeight: '1.7' }}
-                                                                                dangerouslySetInnerHTML={{ __html: renderFullDescription(currentJob.full_description) }}
+                                                                                dangerouslySetInnerHTML={{ __html: renderFullDescription(currentJob.full_description || currentJob.description) }}
                                                                             />
                                                                         </>
                                                                     )}
@@ -5881,7 +5928,7 @@
                     ) : status === 'not_configured' ? (
                         <div className="bg-amber-50 border border-amber-200 rounded-xl p-5 mb-6">
                             <p className="text-sm text-amber-800">
-                                Gmail-integrationen är inte aktiverad än. Kontakta administratören.
+                                Gmail-kopplingen är inte tillgänglig just nu. Försök igen senare.
                             </p>
                         </div>
                     ) : (

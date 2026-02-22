@@ -5,7 +5,7 @@ En jobbportal som hjälper dig söka jobb via e-post direkt till arbetsgivare.
 
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse, HTMLResponse
+from fastapi.responses import JSONResponse, HTMLResponse, RedirectResponse
 from pydantic import BaseModel
 from typing import Any, Optional, List, Dict
 import os
@@ -32,12 +32,7 @@ SUPABASE_KEY = os.getenv("SUPABASE_SERVICE_ROLE_KEY") or os.getenv("SUPABASE_ANO
 SUPABASE_ANON_KEY = os.getenv("SUPABASE_ANON_KEY")  # For client-side auth
 ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY")
 
-# App-level Gmail OAuth credentials (shared by all users, set in Vercel env vars)
-# Each user's access/refresh tokens are stored per-user in Supabase
-GMAIL_CLIENT_ID = os.getenv("GMAIL_CLIENT_ID")
-GMAIL_CLIENT_SECRET = os.getenv("GMAIL_CLIENT_SECRET")
-
-# Gmail API scopes (for user's own Google Cloud credentials)
+# Gmail API scopes
 GMAIL_SCOPES = "https://www.googleapis.com/auth/gmail.compose https://www.googleapis.com/auth/gmail.modify"
 
 app = FastAPI(
@@ -2575,6 +2570,16 @@ async def debug_env():
         "all_env_vars": list(os.environ.keys())[:10]  # First 10 env var names
     }
 
+@app.get("/api/auth/google")
+async def google_auth():
+    """Redirect user to Google Sign-In via Supabase OAuth."""
+    if not SUPABASE_URL or not SUPABASE_ANON_KEY:
+        raise HTTPException(status_code=500, detail="Supabase not configured")
+    redirect_to = "https://platsbanken-ai.vercel.app/login"
+    url = f"{SUPABASE_URL}/auth/v1/authorize?provider=google&redirect_to={redirect_to}"
+    return RedirectResponse(url)
+
+
 @app.post("/api/auth/signup")
 async def sign_up(request: SignUpRequest):
     """
@@ -4983,18 +4988,57 @@ async def export_user_data(request: Request):
     }
 
 
-# ============== GMAIL OAUTH (App credentials shared, user tokens in Supabase) ==============
+# ============== GMAIL OAUTH (Per-user credentials from Supabase) ==============
+
+async def get_user_gmail_credentials(user_id: str) -> Optional[dict]:
+    """Fetch Gmail OAuth credentials. Falls back to app-level env vars if user has no per-user creds."""
+    creds = await db_request("GET", "user_google_credentials", params={"user_id": f"eq.{user_id}"})
+    if creds and creds[0].get("client_id") and creds[0].get("client_secret"):
+        return creds[0]
+    # Fall back to app-level credentials from environment variables
+    app_client_id = os.getenv("GOOGLE_CLIENT_ID", "")
+    app_client_secret = os.getenv("GOOGLE_CLIENT_SECRET", "")
+    if app_client_id and app_client_secret:
+        return {"user_id": user_id, "client_id": app_client_id, "client_secret": app_client_secret}
+    return None
+
+
+@app.post("/api/gmail/credentials")
+async def save_gmail_credentials(request: Request):
+    """Save Google OAuth client_id and client_secret for this user."""
+    user_id = await get_user_id_from_request(request, required=True)
+    body = await request.json()
+    client_id = body.get("client_id", "").strip()
+    client_secret = body.get("client_secret", "").strip()
+    if not client_id or not client_secret:
+        raise HTTPException(status_code=400, detail="Både Client ID och Client Secret krävs.")
+
+    existing = await db_request("GET", "user_google_credentials", params={"user_id": f"eq.{user_id}"})
+    data = {
+        "user_id": user_id,
+        "client_id": client_id,
+        "client_secret": client_secret,
+        "updated_at": datetime.now().isoformat()
+    }
+    if existing:
+        await db_request("PATCH", f"user_google_credentials?user_id=eq.{user_id}", data=data)
+    else:
+        await db_request("POST", "user_google_credentials", data=data)
+
+    return {"success": True, "message": "Credentials sparade. Du kan nu koppla din Gmail."}
+
 
 @app.get("/api/gmail/auth-url")
 async def get_gmail_auth_url(request: Request, redirect_uri: str = None):
     """
     Get Google OAuth URL for user to authorize Gmail access.
-    Uses app-level credentials (GMAIL_CLIENT_ID env var).
+    Uses per-user credentials from user_google_credentials table.
     """
     user_id = await get_user_id_from_request(request, required=True)
 
-    if not GMAIL_CLIENT_ID:
-        raise HTTPException(status_code=500, detail="Gmail integration not configured. Set GMAIL_CLIENT_ID in env vars.")
+    user_creds = await get_user_gmail_credentials(user_id)
+    if not user_creds:
+        raise HTTPException(status_code=400, detail="Gmail-kopplingen är inte konfigurerad. Kontakta support.")
 
     if not redirect_uri:
         base = os.getenv("VERCEL_URL", "http://localhost:8000")
@@ -5003,7 +5047,7 @@ async def get_gmail_auth_url(request: Request, redirect_uri: str = None):
         redirect_uri = f"{base}/api/gmail/callback"
 
     params = {
-        "client_id": GMAIL_CLIENT_ID,
+        "client_id": user_creds["client_id"],
         "redirect_uri": redirect_uri,
         "response_type": "code",
         "scope": "https://www.googleapis.com/auth/gmail.compose",
@@ -5017,11 +5061,13 @@ async def get_gmail_auth_url(request: Request, redirect_uri: str = None):
 
 @app.get("/api/gmail/callback")
 async def gmail_oauth_callback(code: str, state: str = "default_user"):
-    """Handle OAuth callback. Exchange code for tokens using app credentials."""
-    if not all([GMAIL_CLIENT_ID, GMAIL_CLIENT_SECRET]):
-        raise HTTPException(status_code=500, detail="Gmail integration not configured.")
-
+    """Handle OAuth callback. Exchange code for tokens using per-user credentials from DB."""
     user_id = state
+
+    user_creds = await get_user_gmail_credentials(user_id)
+    if not user_creds:
+        raise HTTPException(status_code=400, detail="Gmail-kopplingen är inte konfigurerad.")
+
     base = os.getenv("VERCEL_URL", "http://localhost:8000")
     if base and not base.startswith("http"):
         base = f"https://{base}"
@@ -5031,8 +5077,8 @@ async def gmail_oauth_callback(code: str, state: str = "default_user"):
         response = await client.post(
             "https://oauth2.googleapis.com/token",
             data={
-                "client_id": GMAIL_CLIENT_ID,
-                "client_secret": GMAIL_CLIENT_SECRET,
+                "client_id": user_creds["client_id"],
+                "client_secret": user_creds["client_secret"],
                 "code": code,
                 "grant_type": "authorization_code",
                 "redirect_uri": redirect_uri
@@ -5087,7 +5133,7 @@ async def get_gmail_status(request: Request):
     """Check if user has Gmail connected"""
     user_id = await get_user_id_from_request(request)
     if not user_id:
-        return {"connected": False, "gmail_address": None, "app_configured": bool(GMAIL_CLIENT_ID)}
+        return {"connected": False, "gmail_address": None, "app_configured": False}
     creds = await db_request("GET", "user_google_credentials", params={"user_id": f"eq.{user_id}"})
 
     # Auto-migrate: if no creds under real user_id, check for legacy "default_user" creds
@@ -5099,13 +5145,22 @@ async def get_gmail_status(request: Request):
             logger.info(f"Migrated Gmail credentials from default_user to {user_id}")
             creds = await db_request("GET", "user_google_credentials", params={"user_id": f"eq.{user_id}"})
 
-    if not creds or not creds[0].get("is_connected"):
-        return {"connected": False, "gmail_address": None, "app_configured": bool(GMAIL_CLIENT_ID)}
+    # Check for app-level credentials as fallback
+    app_configured = bool(os.getenv("GOOGLE_CLIENT_ID") and os.getenv("GOOGLE_CLIENT_SECRET"))
+
+    if not creds:
+        return {"connected": False, "gmail_address": None, "app_configured": app_configured}
+
     cred = creds[0]
+    has_oauth_creds = bool(cred.get("client_id") and cred.get("client_secret")) or app_configured
+
+    if not cred.get("is_connected"):
+        return {"connected": False, "gmail_address": None, "app_configured": has_oauth_creds}
+
     return {
         "connected": True,
         "gmail_address": cred.get("gmail_address"),
-        "app_configured": bool(GMAIL_CLIENT_ID)
+        "app_configured": has_oauth_creds
     }
 
 
@@ -5148,14 +5203,17 @@ async def disconnect_gmail(request: Request):
 
 async def refresh_gmail_token(user_id: str) -> Optional[str]:
     """Get a valid Gmail access token for this user, refreshing if needed."""
-    if not all([GMAIL_CLIENT_ID, GMAIL_CLIENT_SECRET]):
-        return None
-
     creds = await db_request("GET", "user_google_credentials", params={"user_id": f"eq.{user_id}"})
     if not creds or not creds[0].get("is_connected"):
         return None
 
     cred = creds[0]
+
+    # Need OAuth credentials for token refresh — try per-user, then app-level
+    client_id = cred.get("client_id") or os.getenv("GOOGLE_CLIENT_ID", "")
+    client_secret = cred.get("client_secret") or os.getenv("GOOGLE_CLIENT_SECRET", "")
+    if not client_id or not client_secret:
+        return None
 
     # Return existing token if still valid (with 5-min buffer)
     expires_at = cred.get("token_expires_at")
@@ -5173,7 +5231,7 @@ async def refresh_gmail_token(user_id: str) -> Optional[str]:
         except (ValueError, TypeError):
             pass
 
-    # Refresh using app credentials
+    # Refresh using per-user credentials from DB
     refresh_token = cred.get("refresh_token")
     if not refresh_token:
         return None
@@ -5182,8 +5240,8 @@ async def refresh_gmail_token(user_id: str) -> Optional[str]:
         response = await client.post(
             "https://oauth2.googleapis.com/token",
             data={
-                "client_id": GMAIL_CLIENT_ID,
-                "client_secret": GMAIL_CLIENT_SECRET,
+                "client_id": client_id,
+                "client_secret": client_secret,
                 "refresh_token": refresh_token,
                 "grant_type": "refresh_token"
             },
@@ -5310,14 +5368,15 @@ async def create_gmail_draft_for_user(
     access_token = await refresh_gmail_token(user_id)
     if not access_token:
         # Figure out WHY token is missing for a useful error
-        if not all([GMAIL_CLIENT_ID, GMAIL_CLIENT_SECRET]):
-            return (None, "Gmail API-nycklar saknas i servern. Kontakta admin.")
         creds = await db_request("GET", "user_google_credentials", params={"user_id": f"eq.{user_id}"})
         if not creds:
             return (None, "Gmail är inte kopplat. Gå till Profil → Gmail och koppla ditt konto.")
-        if not creds[0].get("is_connected"):
+        cred = creds[0]
+        if not cred.get("client_id") or not cred.get("client_secret"):
+            return (None, "Gmail-kopplingen är inte konfigurerad. Försök igen senare.")
+        if not cred.get("is_connected"):
             return (None, "Gmail-kopplingen är inaktiverad. Gå till Profil → Gmail och koppla om.")
-        if not creds[0].get("refresh_token"):
+        if not cred.get("refresh_token"):
             return (None, "Gmail refresh token saknas. Koppla bort och koppla om Gmail i Profil.")
         return (None, "Gmail-token kunde inte förnyas. Koppla bort och koppla om Gmail i Profil.")
     try:
