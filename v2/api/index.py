@@ -2201,8 +2201,8 @@ async def apply_with_cv(request: Request, job_id: str):
     job_url = job.get("url", "")
     greeting = f"Hej {company_name}!" if company_name else "Hej!"
     job_link = f'<a href="{job_url}"><i>{job_title}</i></a>' if job_url else f"<i>{job_title}</i>"
-    email_body = f"{greeting}<br><br>Jag såg er annons på Platsbanken för {job_link} och vill gärna söka!"
-    email_body += f"<br><br>Jag kan börja omgående och är flexibel med tider."
+    email_body = f"{greeting}<br><br>Jag såg er annons på Platsbanken för {job_link}."
+    email_body += f"<br>Jag kan börja omgående och är flexibel med tider."
     email_body += f"<br>Vänligen se bifogat personligt brev och CV för min ansökan."
     email_body += f"<br><br>Vänliga hälsningar,<br>{sender_name}"
     if email_signature:
@@ -2474,8 +2474,8 @@ async def save_gmail_draft_with_attachments(request: Request, job_id: str):
     job_url = job.get("url", "")
     greeting = f"Hej {company_name}!" if company_name else "Hej!"
     job_link = f'<a href="{job_url}"><i>{job_title}</i></a>' if job_url else f"<i>{job_title}</i>"
-    email_body = f"{greeting}<br><br>Jag såg er annons på Platsbanken för {job_link} och vill gärna söka!"
-    email_body += f"<br><br>Jag kan börja omgående och är flexibel med tider."
+    email_body = f"{greeting}<br><br>Jag såg er annons på Platsbanken för {job_link}."
+    email_body += f"<br>Jag kan börja omgående och är flexibel med tider."
     email_body += f"<br>Vänligen se bifogat personligt brev och CV för min ansökan."
     email_body += f"<br><br>Vänliga hälsningar,<br>{sender_name}"
     if email_signature:
@@ -4126,7 +4126,7 @@ async def save_profile_from_quiz(request: Request, profile: QuizProfileData):
         user_id = user.get("id")
         user_email = user.get("email", "")
 
-    # Build profile data for upsert
+    # Build profile data for upsert — only columns that exist in user_profiles table
     profile_data = {
         "user_id": user_id,
         "email": user_email,
@@ -4140,22 +4140,7 @@ async def save_profile_from_quiz(request: Request, profile: QuizProfileData):
         profile_data["drivers_license"] = profile.drivers_license != "no"
     if profile.home_location:
         profile_data["location"] = profile.home_location
-    if profile.linkedin:
-        profile_data["linkedin"] = profile.linkedin
-
-    # Store extra quiz fields in a JSONB column or as individual fields
-    # age, earliest_start, education_level go into quiz_profile JSONB
-    quiz_profile = {}
-    if profile.age:
-        quiz_profile["age"] = profile.age
-    if profile.earliest_start:
-        quiz_profile["earliest_start"] = profile.earliest_start
-    if profile.education_level:
-        quiz_profile["education_level"] = profile.education_level
-    if profile.drivers_license:
-        quiz_profile["drivers_license_type"] = profile.drivers_license
-    if profile.own_car:
-        quiz_profile["own_car"] = profile.own_car
+    # Note: linkedin is NOT a column in user_profiles — stored in quiz_answers instead
 
     # Upsert to user_profiles
     async with httpx.AsyncClient() as client:
@@ -4169,7 +4154,55 @@ async def save_profile_from_quiz(request: Request, profile: QuizProfileData):
             },
             json=profile_data
         )
-        logger.info(f"Profile save: {res.status_code}")
+        logger.info(f"Profile save: {res.status_code} - {res.text[:200] if res.status_code >= 400 else 'OK'}")
+
+    # Save all personal quiz fields into user_job_preferences.quiz_answers
+    # This ensures age, education, earliest_start, own_car, linkedin persist in Supabase
+    quiz_personal = {}
+    if profile.full_name:
+        quiz_personal["full_name"] = profile.full_name
+    if profile.phone:
+        quiz_personal["phone"] = profile.phone
+    if profile.home_location:
+        quiz_personal["home_location"] = profile.home_location
+    if profile.age:
+        quiz_personal["age"] = profile.age
+    if profile.earliest_start:
+        quiz_personal["earliest_start"] = profile.earliest_start
+    if profile.education_level:
+        quiz_personal["education_level"] = profile.education_level
+    if profile.drivers_license:
+        quiz_personal["drivers_license"] = profile.drivers_license
+    if profile.own_car:
+        quiz_personal["own_car"] = profile.own_car
+    if profile.linkedin:
+        quiz_personal["linkedin"] = profile.linkedin
+
+    if quiz_personal:
+        # Merge into existing quiz_answers (don't overwrite job preference fields)
+        try:
+            existing = await db_request("GET", "user_job_preferences", params={"user_id": f"eq.{user_id}"})
+            existing_qa = existing[0].get("quiz_answers", {}) if existing else {}
+            merged_qa = {**existing_qa, **quiz_personal}
+
+            prefs_data = {
+                "user_id": user_id,
+                "quiz_answers": merged_qa,
+                "updated_at": "now()"
+            }
+            async with httpx.AsyncClient() as client:
+                await client.post(
+                    f"{SUPABASE_URL}/rest/v1/user_job_preferences",
+                    headers={
+                        "apikey": SUPABASE_KEY,
+                        "Authorization": f"Bearer {SUPABASE_KEY}",
+                        "Content-Type": "application/json",
+                        "Prefer": "resolution=merge-duplicates"
+                    },
+                    json=prefs_data
+                )
+        except Exception as e:
+            logger.warning(f"Failed to save quiz personal data to preferences: {e}")
 
     return {"success": True, "saved_to_db": True}
 
