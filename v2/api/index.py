@@ -973,11 +973,13 @@ INSTRUKTIONER:
 
 SPRÅKREGLER — KRITISKT (brevet MÅSTE låta som riktig svenska, inte översatt engelska):
 - INGA anglicismer: Skriv aldrig "solid grund" (säg "bra grund"), "omfattar" (säg "inkluderar" eller skriv om), "leverera resultat", "spännande möjlighet", "säkerställa". Tänk: hur skulle en svensk 25-åring formulera detta?
-- KORREKTA svenska termer: "Jobba i kassan" (INTE "på kassavagn"). "Stå i butik" (INTE "arbeta i butiksmiljö"). "Packa paket" (INTE "hantera paketdistribution"). Använd vardagliga svenska ord, inte byråkratiska.
+- KORREKTA svenska fraser: "Flera års erfarenhet" (INTE "erfarenhet från flera år"). "Jobba i kassan" (INTE "på kassavagn"). "Stå i butik" (INTE "arbeta i butiksmiljö"). "Packa paket" (INTE "hantera paketdistribution"). Använd vardagliga svenska ord, inte byråkratiska.
 - INGEN over-explaining: Förklara inte självklara saker. "Jag är noggrann" räcker — du behöver INTE lägga till "och det betyder mycket för mig att få arbetet gjort rätt". Skriv inte som en reklamtext.
 - VARIERA meningsbyggnaden: Börja INTE varje mening med "Jag". Blanda meningslängder. Använd bisatser och naturliga övergångar. Texten ska ha flyt, inte låta som en punktlista.
-- OM du saknar erfarenhet för specifika uppgifter i annonsen: Säg det kort och rakt. "Jag har inte jobbat med X förut, men jag lär mig snabbt" är bättre än "Även om min erfarenhet inte redan omfattar X, ser jag detta som en spännande möjlighet att utvecklas inom nya områden."
-- Undvik inställsamma AI-floskler: "passionerad", "brinner för", "gedigen", "vittnar om", "värdefull tillgång", "unik möjlighet", "driven och ambitiös", "med glädje".
+- ALDRIG defensiv om saknad erfarenhet: Skriv ALDRIG "Jag inser att er annons efterfrågar..." eller "Även om min erfarenhet inte redan omfattar...". Det låter som en ursäkt. Säg det kort och rakt istället: "Jag har inte jobbat med X förut, men jag lär mig snabbt." MAX en mening om saknad erfarenhet — fokusera sedan på vad du KAN.
+- RÄTT ordval för arbetsmeriter: Skriv aldrig "självförtroende" (låter som terapi). Säg istället "trygg i min roll", "van vid att jobba självständigt" eller "bekväm med kundkontakt". Skriv aldrig "genuint intresserad av att utvecklas inom butiksverksamhet" — ingen pratar så. Håll det enkelt och ärligt.
+- Undvik inställsamma AI-floskler: "passionerad", "brinner för", "gedigen", "vittnar om", "värdefull tillgång", "unik möjlighet", "driven och ambitiös", "med glädje", "genuint intresserad", "relevant butikserfarenhet".
+- PROPORTIONER: Lägg 80% av brevet på vad du KAN och har gjort. Max 20% på saker du inte gjort. Brevet ska sälja, inte be om ursäkt.
 - Skriv som en RIKTIG person som söker jobb — inte som en AI som försöker imponera.
 
 Skriv ENDAST det färdiga brevet, inget annat."""
