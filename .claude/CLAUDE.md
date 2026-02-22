@@ -147,7 +147,7 @@ Users can add personal anecdotes (stories) and hobbies that AI weaves into cover
 Users can manually add/remove phrases from their "like" and "avoid" lists.
 - **Backend**: `PATCH /api/user/letter-style/phrases` (action: add/remove, list: phrases/avoid)
 - **UI**: Chips with X to remove + input to add new ones
-- **Cover letter integration**: `avoid_phrases` and `always_mention` from `user_cover_letter_preferences` are fed into the prompt
+- **Cover letter integration**: `avoid_phrases` and `liked_phrases` from `user_cover_letter_preferences` are fed into the prompt
 
 ---
 
@@ -171,6 +171,17 @@ Handled by:
 - **Writing migrations**: Ask user to show actual schema first. Don't write blind.
 - **Migration files**: Give SQL directly in chat — never create SQL files in the repo. Update `v2/supabase_schema.sql` to reflect changes.
 - **Direct DB connection**: Blocked by network. Don't try.
+
+### ⚠️ IRON RULE: If it's a feature, the DB must support it
+
+**Every feature in the app MUST have its database tables and columns created in the live database.**
+
+When you write code that references a table or column:
+1. **CHECK** `v2/supabase_schema.sql` — does it exist there?
+2. **PROVIDE the migration SQL** in the same response — never assume the user will figure it out later.
+3. **The schema file must match reality** — if you add code that uses a new column, update the schema file AND give the ALTER TABLE migration in the same message. No "aspirational" schema entries.
+4. **Never write code against non-existent columns** — if you reference `excluded_keywords` in backend code, that column MUST exist in the live DB. Period.
+5. **Test your assumptions** — `"now()"` is NOT valid in Supabase PostgREST JSON. Use `datetime.now().isoformat()`. Always check error responses from Supabase, never fire-and-forget.
 
 ---
 
