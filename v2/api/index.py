@@ -2187,9 +2187,11 @@ async def apply_with_cv(request: Request, job_id: str):
     job_title = job.get("title", "Tjänst")
     subject = f"Ansökan: {job_title} – {sender_name}"
 
-    # Append custom email signature if the user has one saved
+    # Short email body — cover letter goes in PDF attachment only
     email_signature = user_profile.get("email_signature", "") if user_profile else ""
-    email_body = cover_letter + ("\n\n" + email_signature if email_signature else "")
+    email_body = f"Hej,\n\nJag hittade er annons för {job_title} på Platsbanken och vill gärna söka. Se bifogat CV och personligt brev.\n\nVänligen,\n{sender_name}"
+    if email_signature:
+        email_body += f"\n\n{email_signature}"
 
     # Create Gmail draft with PDF attachments if user has connected Gmail
     draft_id = None
@@ -2202,7 +2204,7 @@ async def apply_with_cv(request: Request, job_id: str):
         sender_location = user_profile.get("location", "Sollentuna") if user_profile else "Sollentuna"
         try:
             cover_letter_pdf = generate_cover_letter_pdf(
-                email_body,
+                cover_letter,
                 sender_name=sender_name,
                 sender_phone=sender_phone,
                 sender_email=sender_email_addr,
@@ -2451,9 +2453,11 @@ async def save_gmail_draft_with_attachments(request: Request, job_id: str):
     job_title = job.get("title", "Tjänst")
     subject = f"Ansökan: {job_title} – {sender_name}"
 
-    # Append custom signature if the user has one saved
+    # Short email body — cover letter goes in PDF attachment only
     email_signature = user_profile.get("email_signature", "")
-    email_body = cover_letter_text + ("\n\n" + email_signature if email_signature else "")
+    email_body = f"Hej,\n\nJag hittade er annons för {job_title} på Platsbanken och vill gärna söka. Se bifogat CV och personligt brev.\n\nVänligen,\n{sender_name}"
+    if email_signature:
+        email_body += f"\n\n{email_signature}"
 
     attachments = []
 
@@ -2463,7 +2467,7 @@ async def save_gmail_draft_with_attachments(request: Request, job_id: str):
     sender_location = user_profile.get("location", "Sollentuna")
     try:
         cover_letter_pdf = generate_cover_letter_pdf(
-            email_body,
+            cover_letter_text,
             sender_name=sender_name,
             sender_phone=sender_phone,
             sender_email=sender_email_addr,
