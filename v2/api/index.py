@@ -5470,6 +5470,23 @@ async def create_gmail_draft(request: CreateGmailDraftRequest, user_id: str = "d
     }
 
 
+# ============== STATIC JS FILES ==============
+
+@app.get("/static/{filename}")
+async def serve_static_js(filename: str):
+    """Serve extracted JS files (lan-data.js, linkedin-parser.js)"""
+    from fastapi.responses import Response
+    allowed = {"lan-data.js", "linkedin-parser.js"}
+    if filename not in allowed:
+        raise HTTPException(status_code=404, detail="Not found")
+    file_path = pathlib.Path(__file__).parent.parent / filename
+    if not file_path.exists():
+        raise HTTPException(status_code=404, detail=f"{filename} not found")
+    content = file_path.read_text(encoding='utf-8')
+    return Response(content=content, media_type="application/javascript",
+                    headers={"Cache-Control": "public, max-age=86400"})
+
+
 # ============== FRONTEND ==============
 
 @app.get("/setup", response_class=HTMLResponse)
