@@ -69,7 +69,7 @@ CREATE TABLE IF NOT EXISTS user_cover_letter_preferences (
     sign_off_name TEXT,  -- Full name for signature
     sign_off_phone TEXT,
     sign_off_email TEXT,
-    always_mention TEXT[] DEFAULT ARRAY[]::TEXT[],  -- ['flexibel med tider', 'körkort']
+    liked_phrases TEXT[] DEFAULT ARRAY[]::TEXT[],  -- ['flexibel med tider', 'körkort'] — phrases user likes to use (not forced)
     never_mention TEXT[] DEFAULT ARRAY[]::TEXT[],  -- ['konst', 'Shopify']
     priority_experiences_per_vibe JSONB,  -- {"restaurant": ["Max Hamburgare"], "tech": ["Clubhouse"]}
     custom_ai_instructions TEXT,  -- Free-form additional rules
@@ -808,10 +808,8 @@ COMMENT ON TABLE user_anecdotes IS 'Personal anecdotes and hobbies for AI cover 
 -- user_anecdotes: LIVE (created Feb 18 2026)
 -- user_profiles.birth_date: LIVE (added Feb 18 2026)
 --
--- ============== TABLES NOT YET CREATED IN LIVE DB ==============
--- user_ai_feedback — AI feedback for personalized cover letters
---   (Not in DB as of Feb 2026. Row counts query returned no entry for this table.)
---   To create: run the CREATE TABLE IF NOT EXISTS user_ai_feedback block above.
+-- ============== TABLES STATUS ==============
+-- user_ai_feedback — LIVE (created 2026-02-22)
 --
 -- ============== MIGRATIONS APPLIED ==============
 -- 2026-02-19: user_job_preferences.quiz_answers JSONB — LIVE
@@ -819,3 +817,8 @@ COMMENT ON TABLE user_anecdotes IS 'Personal anecdotes and hobbies for AI cover 
 -- 2026-02-21: jobs.description_summary TEXT — LIVE
 --   AI-generated short summary for UI display. Full text stays in description for cover letters.
 --   Migration: ALTER TABLE jobs ADD COLUMN IF NOT EXISTS description_summary TEXT;
+-- 2026-02-22: user_ai_feedback — LIVE
+--   Created table for AI feedback on cover letters.
+-- 2026-02-22: user_cover_letter_preferences.always_mention → liked_phrases
+--   Renamed column: "always_mention" was misleading (implies forced). Now "liked_phrases".
+--   Migration: ALTER TABLE user_cover_letter_preferences RENAME COLUMN always_mention TO liked_phrases;

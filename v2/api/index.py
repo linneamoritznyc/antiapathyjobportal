@@ -900,7 +900,7 @@ async def generate_cover_letter(job: Dict, user_cv_text: Optional[str] = None, u
                 if sp.get("length_preference"):
                     style_parts.append(f"- Längd: {sp['length_preference']}")
 
-                phrases = sp.get("always_mention", []) or []
+                phrases = sp.get("liked_phrases", []) or []
                 if isinstance(phrases, list) and phrases:
                     style_parts.append(f"- Fraser jag gillar att använda: {', '.join(phrases)}")
 
@@ -3048,7 +3048,7 @@ async def migrate_user_data(request: Request):
         "sign_off_name": "Linnea Moritz",
         "sign_off_phone": "076-116 61 09",
         "sign_off_email": "linneamoritz1@gmail.com",
-        "always_mention": ["flexibel med tider", "korkort", "flytande engelska"],
+        "liked_phrases": ["flexibel med tider", "korkort", "flytande engelska"],
         "never_mention": ["konst", "malning", "utstallningar", "Shopify", "e-handel", "oljemaalning", "linneamoritz.com"],
         "custom_ai_instructions": "Skriv pa naturlig, flytande svenska. Undvik AI-floskler som 'gedigen', 'brinner for', 'vittnar om'. Beratta varfor jag vill ha just det jobbet.",
     }
@@ -5802,7 +5802,7 @@ Regler:
             current_phrases = []
             if existing:
                 current_avoid = existing[0].get("avoid_phrases") or []
-                current_phrases = existing[0].get("always_mention") or []
+                current_phrases = existing[0].get("liked_phrases") or []
 
             new_avoid = list(set(current_avoid + avoid_phrases))
             new_phrases = list(set(current_phrases + like_phrases))
@@ -5810,7 +5810,7 @@ Regler:
             pref_data = {
                 "user_id": user_id,
                 "avoid_phrases": new_avoid,
-                "always_mention": new_phrases,
+                "liked_phrases": new_phrases,
                 "updated_at": datetime.now().isoformat()
             }
             async with httpx.AsyncClient() as client:
@@ -6479,7 +6479,7 @@ async def upload_training_letter(request: Request):
                 params={"user_id": f"eq.{user_id}"},
                 data={
                     "tone": tone_analysis.get("tone"),
-                    "always_mention": tone_analysis.get("favorite_phrases", [])
+                    "liked_phrases": tone_analysis.get("favorite_phrases", [])
                 }
             )
         else:
@@ -6490,7 +6490,7 @@ async def upload_training_letter(request: Request):
                 data={
                     "user_id": user_id,
                     "tone": tone_analysis.get("tone"),
-                    "always_mention": tone_analysis.get("favorite_phrases", [])
+                    "liked_phrases": tone_analysis.get("favorite_phrases", [])
                 }
             )
 
@@ -6518,7 +6518,7 @@ async def get_letter_style(request: Request):
     style_summary = {
         "tone": p.get("tone"),
         "structure": p.get("writing_style"),
-        "phrases": p.get("always_mention") if isinstance(p.get("always_mention"), list) else [],
+        "phrases": p.get("liked_phrases") if isinstance(p.get("liked_phrases"), list) else [],
         "avoid": p.get("avoid_phrases") if isinstance(p.get("avoid_phrases"), list) else [],
         "length_preference": p.get("length_preference"),
         "opening_style": p.get("opening_style"),
@@ -6687,7 +6687,7 @@ async def save_letter_style(user_id: str, analysis: dict):
     data = {
         "tone": analysis.get("tone"),
         "writing_style": analysis.get("structure"),
-        "always_mention": analysis.get("phrases", []),
+        "liked_phrases": analysis.get("phrases", []),
         "avoid_phrases": analysis.get("avoid", []),
         "length_preference": analysis.get("length_preference"),
         "opening_style": analysis.get("opening_style")
@@ -7064,7 +7064,7 @@ async def update_letter_style(request: Request):
 
 @app.patch("/api/user/letter-style/phrases")
 async def update_letter_style_phrases(request: Request):
-    """Add or remove phrases from the avoid or always_mention lists"""
+    """Add or remove phrases from the avoid or liked_phrases lists"""
     user_id = await get_user_id_from_request(request, required=True)
     body = await request.json()
 
@@ -7078,7 +7078,7 @@ async def update_letter_style_phrases(request: Request):
         raise HTTPException(status_code=400, detail="Fras krävs")
 
     # Map frontend names to DB column names
-    db_column = "avoid_phrases" if list_name == "avoid" else "always_mention"
+    db_column = "avoid_phrases" if list_name == "avoid" else "liked_phrases"
 
     # Get current preferences
     prefs = await db_request("GET", "user_cover_letter_preferences",
