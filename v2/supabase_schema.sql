@@ -35,9 +35,12 @@ CREATE TABLE IF NOT EXISTS user_profiles (
     about_me TEXT,  -- Professional bio/summary
     birth_date DATE,  -- For accurate age calculation in cover letters (added 2026-02-18)
     email_signature TEXT DEFAULT '',  -- Custom email signature for Gmail drafts
-    onboarding_completed BOOLEAN DEFAULT FALSE,
-    privacy_policy_accepted BOOLEAN DEFAULT FALSE,
-    data_consent_given_at TIMESTAMPTZ,
+    -- Legacy columns (exist in live DB, used by quiz flow — stored here + in quiz_answers JSONB)
+    linkedin TEXT,
+    age TEXT,
+    earliest_start TEXT,
+    education_level TEXT,
+    preferred_locations TEXT[] DEFAULT ARRAY[]::TEXT[],  -- Also on user_job_preferences; legacy duplication
     created_at TIMESTAMPTZ DEFAULT NOW(),
     updated_at TIMESTAMPTZ DEFAULT NOW()
 );
@@ -61,7 +64,8 @@ CREATE TABLE IF NOT EXISTS user_cv_branscher (
 
 -- Cover letter preferences per user
 CREATE TABLE IF NOT EXISTS user_cover_letter_preferences (
-    user_id TEXT PRIMARY KEY,
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),  -- Live DB has separate id + user_id
+    user_id TEXT NOT NULL UNIQUE,
     tone TEXT DEFAULT 'professional_friendly',  -- 'formal', 'casual', 'warm'
     max_words INT DEFAULT 200,
     greeting_style TEXT DEFAULT 'Hej!',  -- 'Hej [Company]!', 'Till [Company],'
@@ -415,6 +419,12 @@ CREATE TABLE IF NOT EXISTS user_cvs (
     vibe_emoji TEXT,
     cv_text TEXT NOT NULL,
     pdf_url TEXT,           -- Added 2026-02-17: Supabase Storage URL for uploaded/generated PDF
+    -- Extra columns in live DB (not used by backend code, but exist)
+    is_ai_generated BOOLEAN,
+    created_via_conversation BOOLEAN,
+    conversation_id UUID,
+    job_types_matched TEXT[],
+    times_used INT DEFAULT 0,
     created_at TIMESTAMPTZ DEFAULT NOW(),
     updated_at TIMESTAMPTZ DEFAULT NOW(),
     UNIQUE(user_id, vibe_id)
@@ -507,17 +517,15 @@ CREATE TABLE IF NOT EXISTS applications (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     user_id TEXT DEFAULT 'default_user',
     job_id TEXT REFERENCES jobs(id),
-    cv_id UUID REFERENCES user_cvs(id),
+    cv_id UUID,
     bransch_id TEXT,  -- Which bransch CV was used
     cover_letter TEXT,
     status TEXT DEFAULT 'draft',
     gmail_draft_id TEXT,
-    gmail_message_id TEXT,  -- After sending
     notes TEXT,
     created_at TIMESTAMPTZ DEFAULT NOW(),
     updated_at TIMESTAMPTZ DEFAULT NOW(),
     sent_at TIMESTAMPTZ,
-    response_at TIMESTAMPTZ,
     UNIQUE(user_id, job_id)  -- One application per job per user
 );
 
@@ -829,3 +837,13 @@ COMMENT ON TABLE user_anecdotes IS 'Personal anecdotes and hobbies for AI cover 
 -- 2026-02-22: user_job_preferences.preferred_locations TEXT[] — LIVE
 --   Stores user's selected kommun/län names from PlatserPage.
 --   Migration: ALTER TABLE user_job_preferences ADD COLUMN IF NOT EXISTS preferred_locations TEXT[] DEFAULT ARRAY[]::TEXT[];
+-- 2026-02-22: FULL AUDIT — synced schema with live DB. All changes below are LIVE.
+--   applications: added cv_id, bransch_id, gmail_draft_id, notes, updated_at, sent_at
+--     Removed aspirational columns: gmail_message_id, response_at (not in live, not used by code)
+--   user_cover_letter_preferences: added id UUID, created_at, updated_at
+--   user_cvs: added vibe_emoji, is_ai_generated, created_via_conversation, conversation_id, job_types_matched, times_used
+--   user_experiences: added dates, bullets, created_at
+--   user_education: added created_at
+--   user_profiles: added certificates, about_me, updated_at; documented legacy cols (linkedin, age, earliest_start, education_level, preferred_locations)
+--     Removed aspirational columns: onboarding_completed, privacy_policy_accepted, data_consent_given_at (never created in live DB)
+--   user_skills: added created_at
