@@ -683,8 +683,10 @@
                         return {
                             full_name: merged.full_name || '',
                             phone: merged.phone || '',
+                            home_location: merged.home_location || '',
                             age: merged.age || '',
                             drivers_license: merged.drivers_license || '',
+                            own_car: merged.own_car || '',
                             linkedin: merged.linkedin || '',
                             earliest_start: merged.earliest_start || '',
                             education_level: merged.education_level || '',
@@ -704,8 +706,10 @@
                 return {
                     full_name: '',
                     phone: '',
+                    home_location: '',
                     age: '',
                     drivers_license: '',
+                    own_car: '',
                     linkedin: '',
                     earliest_start: '',
                     education_level: '',
@@ -737,8 +741,10 @@
                     setAnswers({
                         full_name: '',
                         phone: '',
+                        home_location: '',
                         age: '',
                         drivers_license: '',
+                        own_car: '',
                         linkedin: '',
                         earliest_start: '',
                         education_level: '',
@@ -1182,8 +1188,9 @@
                                             localStorage.removeItem('job_preferences');
                                             setStep(0);
                                             setAnswers({
-                                                full_name: '', phone: '', age: '', drivers_license: '',
-                                                linkedin: '', earliest_start: '', education_level: '',
+                                                full_name: '', phone: '', home_location: '', age: '',
+                                                drivers_license: '', own_car: '', linkedin: '',
+                                                earliest_start: '', education_level: '',
                                                 search_terms: [], custom_search: '', location: [],
                                                 working_hours: [], employment_form: [], duration: '',
                                                 salary: '', dealbreakers: []

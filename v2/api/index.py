@@ -830,16 +830,7 @@ async def generate_cover_letter(job: Dict, user_cv_text: Optional[str] = None, u
     has_license = p.get("drivers_license", True)
     linkedin = p.get("linkedin", "")
 
-    # Get own_car from quiz_answers (stored in user_job_preferences, not user_profiles)
-    own_car = False
-    if user_id:
-        try:
-            prefs = await db_request("GET", "user_job_preferences", params={"user_id": f"eq.{user_id}"})
-            if prefs:
-                qa = prefs[0].get("quiz_answers", {}) or {}
-                own_car = qa.get("own_car") == "yes"
-        except Exception:
-            pass
+    own_car = p.get("own_car", False)
 
     contact_greeting = f"Hej {job.get('contact_name', '')}!" if job.get('contact_name') else "Hej!"
 
@@ -4179,6 +4170,8 @@ async def save_profile_from_quiz(request: Request, profile: QuizProfileData):
         profile_data["drivers_license"] = profile.drivers_license != "no"
     if profile.home_location:
         profile_data["location"] = profile.home_location
+    if profile.own_car:
+        profile_data["own_car"] = profile.own_car == "yes"
     # Note: linkedin is NOT a column in user_profiles — stored in quiz_answers instead
 
     # Upsert to user_profiles

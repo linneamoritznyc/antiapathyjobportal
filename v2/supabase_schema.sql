@@ -29,6 +29,7 @@ CREATE TABLE IF NOT EXISTS user_profiles (
     location TEXT,
     photo_url TEXT,  -- Supabase Storage URL
     drivers_license BOOLEAN DEFAULT FALSE,
+    own_car BOOLEAN DEFAULT FALSE,
     languages TEXT[] DEFAULT ARRAY['Svenska (Modersmål)', 'Engelska (flytande)']::TEXT[],
     certificates TEXT[] DEFAULT ARRAY[]::TEXT[],  -- ['B-körkort', 'ICA kassahantering', etc.]
     about_me TEXT,  -- Professional bio/summary
