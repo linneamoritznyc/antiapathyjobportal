@@ -2197,9 +2197,16 @@ async def apply_with_cv(request: Request, job_id: str):
 
     # Short email body — cover letter goes in PDF attachment only
     email_signature = user_profile.get("email_signature", "") if user_profile else ""
-    email_body = f"Hej,\n\nJag hittade er annons för {job_title} på Platsbanken och vill gärna söka. Se bifogat CV och personligt brev.\n\nVänligen,\n{sender_name}"
+    company_name = job.get("company", "")
+    job_url = job.get("url", "")
+    greeting = f"Hej {company_name}!" if company_name else "Hej!"
+    job_link = f'<a href="{job_url}"><i>{job_title}</i></a>' if job_url else f"<i>{job_title}</i>"
+    email_body = f"{greeting}<br><br>Jag såg er annons på Platsbanken för {job_link}."
+    email_body += f"<br>Jag kan börja omgående och är flexibel med tider."
+    email_body += f"<br>Vänligen se bifogat personligt brev och CV för min ansökan."
+    email_body += f"<br><br>Vänliga hälsningar,<br>{sender_name}"
     if email_signature:
-        email_body += f"\n\n{email_signature}"
+        email_body += f"<br><br>{email_signature}"
 
     # Create Gmail draft with PDF attachments if user has connected Gmail
     draft_id = None
@@ -2463,9 +2470,16 @@ async def save_gmail_draft_with_attachments(request: Request, job_id: str):
 
     # Short email body — cover letter goes in PDF attachment only
     email_signature = user_profile.get("email_signature", "")
-    email_body = f"Hej,\n\nJag hittade er annons för {job_title} på Platsbanken och vill gärna söka. Se bifogat CV och personligt brev.\n\nVänligen,\n{sender_name}"
+    company_name = job.get("company", "")
+    job_url = job.get("url", "")
+    greeting = f"Hej {company_name}!" if company_name else "Hej!"
+    job_link = f'<a href="{job_url}"><i>{job_title}</i></a>' if job_url else f"<i>{job_title}</i>"
+    email_body = f"{greeting}<br><br>Jag såg er annons på Platsbanken för {job_link}."
+    email_body += f"<br>Jag kan börja omgående och är flexibel med tider."
+    email_body += f"<br>Vänligen se bifogat personligt brev och CV för min ansökan."
+    email_body += f"<br><br>Vänliga hälsningar,<br>{sender_name}"
     if email_signature:
-        email_body += f"\n\n{email_signature}"
+        email_body += f"<br><br>{email_signature}"
 
     attachments = []
 
@@ -4054,8 +4068,10 @@ UTMÄRKELSER
 class QuizProfileData(BaseModel):
     full_name: Optional[str] = None
     phone: Optional[str] = None
+    home_location: Optional[str] = None
     age: Optional[str] = None
     drivers_license: Optional[str] = None
+    own_car: Optional[str] = None
     linkedin: Optional[str] = None
     earliest_start: Optional[str] = None
     education_level: Optional[str] = None
@@ -4110,7 +4126,7 @@ async def save_profile_from_quiz(request: Request, profile: QuizProfileData):
         user_id = user.get("id")
         user_email = user.get("email", "")
 
-    # Build profile data for upsert
+    # Build profile data for upsert — only columns that exist in user_profiles table
     profile_data = {
         "user_id": user_id,
         "email": user_email,
@@ -4122,20 +4138,9 @@ async def save_profile_from_quiz(request: Request, profile: QuizProfileData):
         profile_data["phone"] = profile.phone
     if profile.drivers_license:
         profile_data["drivers_license"] = profile.drivers_license != "no"
-    if profile.linkedin:
-        profile_data["linkedin"] = profile.linkedin
-
-    # Store extra quiz fields in a JSONB column or as individual fields
-    # age, earliest_start, education_level go into quiz_profile JSONB
-    quiz_profile = {}
-    if profile.age:
-        quiz_profile["age"] = profile.age
-    if profile.earliest_start:
-        quiz_profile["earliest_start"] = profile.earliest_start
-    if profile.education_level:
-        quiz_profile["education_level"] = profile.education_level
-    if profile.drivers_license:
-        quiz_profile["drivers_license_type"] = profile.drivers_license
+    if profile.home_location:
+        profile_data["location"] = profile.home_location
+    # Note: linkedin is NOT a column in user_profiles — stored in quiz_answers instead
 
     # Upsert to user_profiles
     async with httpx.AsyncClient() as client:
@@ -4149,7 +4154,55 @@ async def save_profile_from_quiz(request: Request, profile: QuizProfileData):
             },
             json=profile_data
         )
-        logger.info(f"Profile save: {res.status_code}")
+        logger.info(f"Profile save: {res.status_code} - {res.text[:200] if res.status_code >= 400 else 'OK'}")
+
+    # Save all personal quiz fields into user_job_preferences.quiz_answers
+    # This ensures age, education, earliest_start, own_car, linkedin persist in Supabase
+    quiz_personal = {}
+    if profile.full_name:
+        quiz_personal["full_name"] = profile.full_name
+    if profile.phone:
+        quiz_personal["phone"] = profile.phone
+    if profile.home_location:
+        quiz_personal["home_location"] = profile.home_location
+    if profile.age:
+        quiz_personal["age"] = profile.age
+    if profile.earliest_start:
+        quiz_personal["earliest_start"] = profile.earliest_start
+    if profile.education_level:
+        quiz_personal["education_level"] = profile.education_level
+    if profile.drivers_license:
+        quiz_personal["drivers_license"] = profile.drivers_license
+    if profile.own_car:
+        quiz_personal["own_car"] = profile.own_car
+    if profile.linkedin:
+        quiz_personal["linkedin"] = profile.linkedin
+
+    if quiz_personal:
+        # Merge into existing quiz_answers (don't overwrite job preference fields)
+        try:
+            existing = await db_request("GET", "user_job_preferences", params={"user_id": f"eq.{user_id}"})
+            existing_qa = existing[0].get("quiz_answers", {}) if existing else {}
+            merged_qa = {**existing_qa, **quiz_personal}
+
+            prefs_data = {
+                "user_id": user_id,
+                "quiz_answers": merged_qa,
+                "updated_at": "now()"
+            }
+            async with httpx.AsyncClient() as client:
+                await client.post(
+                    f"{SUPABASE_URL}/rest/v1/user_job_preferences",
+                    headers={
+                        "apikey": SUPABASE_KEY,
+                        "Authorization": f"Bearer {SUPABASE_KEY}",
+                        "Content-Type": "application/json",
+                        "Prefer": "resolution=merge-duplicates"
+                    },
+                    json=prefs_data
+                )
+        except Exception as e:
+            logger.warning(f"Failed to save quiz personal data to preferences: {e}")
 
     return {"success": True, "saved_to_db": True}
 
@@ -5398,7 +5451,9 @@ async def create_gmail_draft_for_user(
         msg = MIMEMultipart()
         msg["to"] = to_email
         msg["subject"] = subject
-        msg.attach(MIMEText(body, "plain", "utf-8"))
+        # If body contains HTML tags, send as HTML; otherwise plain text
+        content_type = "html" if "<br>" in body or "<i>" in body else "plain"
+        msg.attach(MIMEText(body, content_type, "utf-8"))
 
         for att in (attachments or []):
             part = MIMEBase("application", "octet-stream")
@@ -5585,6 +5640,149 @@ async def get_ai_feedback(request: Request):
             return {"success": False, "feedback": []}
 
         return {"success": True, "feedback": response.json()}
+
+
+@app.delete("/api/user/ai-feedback/{feedback_id}")
+async def delete_ai_feedback(request: Request, feedback_id: str):
+    """Soft-delete a single AI feedback entry."""
+    user_id = await get_user_id_from_request(request, required=True)
+
+    async with httpx.AsyncClient() as client:
+        response = await client.patch(
+            f"{SUPABASE_URL}/rest/v1/user_ai_feedback?id=eq.{feedback_id}&user_id=eq.{user_id}",
+            headers={
+                "apikey": SUPABASE_KEY,
+                "Authorization": f"Bearer {SUPABASE_KEY}",
+                "Content-Type": "application/json",
+                "Prefer": "return=minimal"
+            },
+            json={"is_active": False}
+        )
+        if response.status_code >= 400:
+            return {"success": False, "message": "Kunde inte ta bort feedback"}
+
+    return {"success": True}
+
+
+class SmartFeedbackInput(BaseModel):
+    text: str
+
+
+@app.post("/api/user/ai-feedback/smart")
+async def save_smart_feedback(request: Request, body: SmartFeedbackInput):
+    """User writes free-form text. AI understands it and saves as structured feedback."""
+    user_id = await get_user_id_from_request(request, required=True)
+
+    if not body.text.strip():
+        return {"success": False, "message": "Tom text"}
+
+    # Use Claude to understand what the user wants and create a clean summary
+    prompt = f"""Du hjälper en jobbsökare som ger feedback om hur AI ska skriva deras personliga brev (cover letters).
+
+Användaren skrev:
+"{body.text}"
+
+Analysera vad användaren menar. Det kan vara:
+- Ord eller fraser de INTE vill se (t.ex. "solid butikserfarenhet" låter konstigt)
+- Ton eller stil de vill ha (t.ex. mer avslappnat, kortare meningar)
+- Grammatikfel de vill undvika
+- Saker de VILL att AI nämner
+- Generella tankar om hur brevet ska låta
+
+Svara EXAKT i detta JSON-format (inget annat):
+{{
+  "summary": "Kort sammanfattning på svenska av vad användaren vill (1-2 meningar)",
+  "avoid_phrases": ["fras1", "fras2"],
+  "like_phrases": ["fras1"],
+  "feedback_type": "cover_letter"
+}}
+
+Regler:
+- "summary" ska vara tydlig och kort, på svenska
+- "avoid_phrases" = specifika ord/fraser användaren inte vill ha (kan vara tom lista)
+- "like_phrases" = specifika ord/fraser användaren vill ha (kan vara tom lista)
+- Om användaren bara ger en generell tanke, lägg den i summary och lämna listorna tomma
+- Svara BARA med JSON, ingen annan text"""
+
+    ai_response = await call_claude_api(prompt, max_tokens=400, timeout=15)
+
+    if not ai_response:
+        # Fallback: save raw text as feedback
+        feedback_data = {
+            "user_id": user_id,
+            "feedback_text": body.text.strip(),
+            "feedback_type": "cover_letter",
+            "is_active": True,
+            "created_at": datetime.now().isoformat()
+        }
+        await db_request("POST", "user_ai_feedback", data=feedback_data)
+        return {"success": True, "summary": body.text.strip(), "avoid_phrases": [], "like_phrases": []}
+
+    # Parse AI response
+    import json as _json
+    try:
+        # Strip markdown code fences if present
+        clean = ai_response.strip()
+        if clean.startswith("```"):
+            clean = clean.split("\n", 1)[1] if "\n" in clean else clean[3:]
+            clean = clean.rsplit("```", 1)[0]
+        parsed = _json.loads(clean.strip())
+    except Exception:
+        parsed = {"summary": body.text.strip(), "avoid_phrases": [], "like_phrases": []}
+
+    summary = parsed.get("summary", body.text.strip())
+    avoid_phrases = parsed.get("avoid_phrases", [])
+    like_phrases = parsed.get("like_phrases", [])
+
+    # Save the structured feedback to user_ai_feedback
+    feedback_data = {
+        "user_id": user_id,
+        "feedback_text": summary,
+        "feedback_type": "cover_letter",
+        "is_active": True,
+        "created_at": datetime.now().isoformat()
+    }
+    await db_request("POST", "user_ai_feedback", data=feedback_data)
+
+    # Also update avoid_phrases and like_phrases in user_cover_letter_preferences
+    if avoid_phrases or like_phrases:
+        try:
+            existing = await db_request("GET", "user_cover_letter_preferences", params={"user_id": f"eq.{user_id}"})
+            current_avoid = []
+            current_phrases = []
+            if existing:
+                current_avoid = existing[0].get("avoid_phrases") or []
+                current_phrases = existing[0].get("always_mention") or []
+
+            new_avoid = list(set(current_avoid + avoid_phrases))
+            new_phrases = list(set(current_phrases + like_phrases))
+
+            pref_data = {
+                "user_id": user_id,
+                "avoid_phrases": new_avoid,
+                "always_mention": new_phrases,
+                "updated_at": datetime.now().isoformat()
+            }
+            async with httpx.AsyncClient() as client:
+                await client.post(
+                    f"{SUPABASE_URL}/rest/v1/user_cover_letter_preferences",
+                    headers={
+                        "apikey": SUPABASE_KEY,
+                        "Authorization": f"Bearer {SUPABASE_KEY}",
+                        "Content-Type": "application/json",
+                        "Prefer": "resolution=merge-duplicates"
+                    },
+                    json=pref_data
+                )
+        except Exception as e:
+            logger.warning(f"Failed to update letter prefs from feedback: {e}")
+
+    return {
+        "success": True,
+        "summary": summary,
+        "avoid_phrases": avoid_phrases,
+        "like_phrases": like_phrases
+    }
 
 
 # ============== GDPR (aliases for /api/auth/ endpoints above) ==============
