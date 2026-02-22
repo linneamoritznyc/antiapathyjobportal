@@ -5593,6 +5593,149 @@ async def get_ai_feedback(request: Request):
         return {"success": True, "feedback": response.json()}
 
 
+@app.delete("/api/user/ai-feedback/{feedback_id}")
+async def delete_ai_feedback(request: Request, feedback_id: str):
+    """Soft-delete a single AI feedback entry."""
+    user_id = await get_user_id_from_request(request, required=True)
+
+    async with httpx.AsyncClient() as client:
+        response = await client.patch(
+            f"{SUPABASE_URL}/rest/v1/user_ai_feedback?id=eq.{feedback_id}&user_id=eq.{user_id}",
+            headers={
+                "apikey": SUPABASE_KEY,
+                "Authorization": f"Bearer {SUPABASE_KEY}",
+                "Content-Type": "application/json",
+                "Prefer": "return=minimal"
+            },
+            json={"is_active": False}
+        )
+        if response.status_code >= 400:
+            return {"success": False, "message": "Kunde inte ta bort feedback"}
+
+    return {"success": True}
+
+
+class SmartFeedbackInput(BaseModel):
+    text: str
+
+
+@app.post("/api/user/ai-feedback/smart")
+async def save_smart_feedback(request: Request, body: SmartFeedbackInput):
+    """User writes free-form text. AI understands it and saves as structured feedback."""
+    user_id = await get_user_id_from_request(request, required=True)
+
+    if not body.text.strip():
+        return {"success": False, "message": "Tom text"}
+
+    # Use Claude to understand what the user wants and create a clean summary
+    prompt = f"""Du hjälper en jobbsökare som ger feedback om hur AI ska skriva deras personliga brev (cover letters).
+
+Användaren skrev:
+"{body.text}"
+
+Analysera vad användaren menar. Det kan vara:
+- Ord eller fraser de INTE vill se (t.ex. "solid butikserfarenhet" låter konstigt)
+- Ton eller stil de vill ha (t.ex. mer avslappnat, kortare meningar)
+- Grammatikfel de vill undvika
+- Saker de VILL att AI nämner
+- Generella tankar om hur brevet ska låta
+
+Svara EXAKT i detta JSON-format (inget annat):
+{{
+  "summary": "Kort sammanfattning på svenska av vad användaren vill (1-2 meningar)",
+  "avoid_phrases": ["fras1", "fras2"],
+  "like_phrases": ["fras1"],
+  "feedback_type": "cover_letter"
+}}
+
+Regler:
+- "summary" ska vara tydlig och kort, på svenska
+- "avoid_phrases" = specifika ord/fraser användaren inte vill ha (kan vara tom lista)
+- "like_phrases" = specifika ord/fraser användaren vill ha (kan vara tom lista)
+- Om användaren bara ger en generell tanke, lägg den i summary och lämna listorna tomma
+- Svara BARA med JSON, ingen annan text"""
+
+    ai_response = await call_claude_api(prompt, max_tokens=400, timeout=15)
+
+    if not ai_response:
+        # Fallback: save raw text as feedback
+        feedback_data = {
+            "user_id": user_id,
+            "feedback_text": body.text.strip(),
+            "feedback_type": "cover_letter",
+            "is_active": True,
+            "created_at": datetime.now().isoformat()
+        }
+        await db_request("POST", "user_ai_feedback", data=feedback_data)
+        return {"success": True, "summary": body.text.strip(), "avoid_phrases": [], "like_phrases": []}
+
+    # Parse AI response
+    import json as _json
+    try:
+        # Strip markdown code fences if present
+        clean = ai_response.strip()
+        if clean.startswith("```"):
+            clean = clean.split("\n", 1)[1] if "\n" in clean else clean[3:]
+            clean = clean.rsplit("```", 1)[0]
+        parsed = _json.loads(clean.strip())
+    except Exception:
+        parsed = {"summary": body.text.strip(), "avoid_phrases": [], "like_phrases": []}
+
+    summary = parsed.get("summary", body.text.strip())
+    avoid_phrases = parsed.get("avoid_phrases", [])
+    like_phrases = parsed.get("like_phrases", [])
+
+    # Save the structured feedback to user_ai_feedback
+    feedback_data = {
+        "user_id": user_id,
+        "feedback_text": summary,
+        "feedback_type": "cover_letter",
+        "is_active": True,
+        "created_at": datetime.now().isoformat()
+    }
+    await db_request("POST", "user_ai_feedback", data=feedback_data)
+
+    # Also update avoid_phrases and like_phrases in user_cover_letter_preferences
+    if avoid_phrases or like_phrases:
+        try:
+            existing = await db_request("GET", "user_cover_letter_preferences", params={"user_id": f"eq.{user_id}"})
+            current_avoid = []
+            current_phrases = []
+            if existing:
+                current_avoid = existing[0].get("avoid_phrases") or []
+                current_phrases = existing[0].get("always_mention") or []
+
+            new_avoid = list(set(current_avoid + avoid_phrases))
+            new_phrases = list(set(current_phrases + like_phrases))
+
+            pref_data = {
+                "user_id": user_id,
+                "avoid_phrases": new_avoid,
+                "always_mention": new_phrases,
+                "updated_at": datetime.now().isoformat()
+            }
+            async with httpx.AsyncClient() as client:
+                await client.post(
+                    f"{SUPABASE_URL}/rest/v1/user_cover_letter_preferences",
+                    headers={
+                        "apikey": SUPABASE_KEY,
+                        "Authorization": f"Bearer {SUPABASE_KEY}",
+                        "Content-Type": "application/json",
+                        "Prefer": "resolution=merge-duplicates"
+                    },
+                    json=pref_data
+                )
+        except Exception as e:
+            logger.warning(f"Failed to update letter prefs from feedback: {e}")
+
+    return {
+        "success": True,
+        "summary": summary,
+        "avoid_phrases": avoid_phrases,
+        "like_phrases": like_phrases
+    }
+
+
 # ============== GDPR (aliases for /api/auth/ endpoints above) ==============
 
 @app.get("/api/user/export-data")
