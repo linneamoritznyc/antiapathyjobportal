@@ -832,7 +832,10 @@ async def generate_cover_letter(job: Dict, user_cv_text: Optional[str] = None, u
 
     own_car = p.get("own_car", False)
 
+    # Defaults — may be overridden by user prefs below
     contact_greeting = f"Hej {job.get('contact_name', '')}!" if job.get('contact_name') else "Hej!"
+    signature_style = "Med vänlig hälsning,"
+    max_words = 200
 
     # Build extra job details for the prompt
     job_extras = []
@@ -916,6 +919,30 @@ async def generate_cover_letter(job: Dict, user_cv_text: Optional[str] = None, u
                 if custom_instr.strip():
                     style_parts.append(f"- Mina egna instruktioner: {custom_instr.strip()}")
 
+                # Override greeting/signature/sign-off from user prefs
+                if sp.get("greeting_style"):
+                    user_greeting_style = sp["greeting_style"]
+                    if job.get("contact_name"):
+                        # Replace [Company] or just use greeting + name
+                        contact_greeting = f"{user_greeting_style.replace('[Company]', '').strip()} {job['contact_name']}!".strip()
+                    else:
+                        contact_greeting = user_greeting_style
+                if sp.get("signature_style"):
+                    signature_style = sp["signature_style"]
+                if sp.get("sign_off_name"):
+                    name = sp["sign_off_name"]
+                if sp.get("sign_off_phone"):
+                    phone = sp["sign_off_phone"]
+                if sp.get("sign_off_email"):
+                    email = sp["sign_off_email"]
+                if sp.get("max_words"):
+                    max_words = sp["max_words"]
+
+                # never_mention list
+                never = sp.get("never_mention", []) or []
+                if isinstance(never, list) and never:
+                    style_parts.append(f"- Ämnen att ALDRIG nämna: {', '.join(never)}")
+
                 if style_parts:
                     style_section = "\n\nMIN SKRIVSTIL (skriv brevet i min stil):\n" + "\n".join(style_parts)
 
@@ -959,7 +986,7 @@ OM MIG:
 
 INSTRUKTIONER:
 1. Börja med: {contact_greeting}
-2. Skriv 150-250 ord på naturlig, varm svenska (längre om det behövs för att nämna alla valda erfarenheter)
+2. Skriv ca {max_words} ord på naturlig, varm svenska (längre om det behövs för att nämna alla valda erfarenheter)
 3. Matcha tonen mot jobbet: fysisk/praktisk tjänst → enkelt och jordnära; kontorsjobb → lite mer formellt
 4. Lyft erfarenheter som passar jobbet. Om inga erfarenheter matchar direkt, fokusera istället på personliga egenskaper som passar (t.ex. noggrannhet, pålitlighet, initiativförmåga, servicekänsla). Försök ALDRIG koppla irrelevant erfarenhet till jobbet på ett konstruerat sätt.
 5. VIKTIGT: Om annonsen nämner specifika krav eller önskemål (t.ex. körkort, bil, fysisk förmåga, kvällar/helger, sommarsäsong, "annan sysselsättning"), bekräfta kortfattat att jag uppfyller/passar dem — utan att överdriva
@@ -969,7 +996,7 @@ INSTRUKTIONER:
 9. Om "MINA PERSONLIGA ANEKDOTER & HOBBYS" finns ovan — väv in EN relevant anekdot eller hobby om den passar jobbet. Tvinga inte in irrelevanta anekdoter.
 10. VIKTIGT om ålder: Om du nämner ålder, använd EXAKT den ålder som står under "OM MIG" ovan. Ignorera eventuell ålder som nämns i bakgrund/erfarenheter — den kan vara gammal.
 11. Avsluta med:
-   Med vänlig hälsning,
+   {signature_style}
    {name}
    {phone}
    {email}
@@ -6520,9 +6547,16 @@ async def get_letter_style(request: Request):
         "structure": p.get("writing_style"),
         "phrases": p.get("liked_phrases") if isinstance(p.get("liked_phrases"), list) else [],
         "avoid": p.get("avoid_phrases") if isinstance(p.get("avoid_phrases"), list) else [],
+        "never_mention": p.get("never_mention") if isinstance(p.get("never_mention"), list) else [],
         "length_preference": p.get("length_preference"),
         "opening_style": p.get("opening_style"),
-        "custom_ai_instructions": p.get("custom_ai_instructions") or ""
+        "custom_ai_instructions": p.get("custom_ai_instructions") or "",
+        "greeting_style": p.get("greeting_style") or "Hej!",
+        "signature_style": p.get("signature_style") or "Med vänliga hälsningar",
+        "sign_off_name": p.get("sign_off_name") or "",
+        "sign_off_phone": p.get("sign_off_phone") or "",
+        "sign_off_email": p.get("sign_off_email") or "",
+        "max_words": p.get("max_words") or 200
     }
     return {"style_summary": style_summary}
 
@@ -7036,7 +7070,13 @@ async def update_letter_style(request: Request):
         "structure": "writing_style",
         "length_preference": "length_preference",
         "opening_style": "opening_style",
-        "custom_ai_instructions": "custom_ai_instructions"
+        "custom_ai_instructions": "custom_ai_instructions",
+        "greeting_style": "greeting_style",
+        "signature_style": "signature_style",
+        "sign_off_name": "sign_off_name",
+        "sign_off_phone": "sign_off_phone",
+        "sign_off_email": "sign_off_email",
+        "max_words": "max_words"
     }
 
     update_data = {}
@@ -7072,13 +7112,14 @@ async def update_letter_style_phrases(request: Request):
     list_name = body.get("list")  # "avoid" or "phrases"
     phrase = body.get("phrase", "").strip()
 
-    if action not in ("add", "remove") or list_name not in ("avoid", "phrases"):
+    if action not in ("add", "remove") or list_name not in ("avoid", "phrases", "never_mention"):
         raise HTTPException(status_code=400, detail="Ogiltig action eller list")
     if not phrase:
         raise HTTPException(status_code=400, detail="Fras krävs")
 
     # Map frontend names to DB column names
-    db_column = "avoid_phrases" if list_name == "avoid" else "liked_phrases"
+    db_column_map = {"avoid": "avoid_phrases", "phrases": "liked_phrases", "never_mention": "never_mention"}
+    db_column = db_column_map[list_name]
 
     # Get current preferences
     prefs = await db_request("GET", "user_cover_letter_preferences",
