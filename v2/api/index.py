@@ -830,6 +830,17 @@ async def generate_cover_letter(job: Dict, user_cv_text: Optional[str] = None, u
     has_license = p.get("drivers_license", True)
     linkedin = p.get("linkedin", "")
 
+    # Get own_car from quiz_answers (stored in user_job_preferences, not user_profiles)
+    own_car = False
+    if user_id:
+        try:
+            prefs = await db_request("GET", "user_job_preferences", params={"user_id": f"eq.{user_id}"})
+            if prefs:
+                qa = prefs[0].get("quiz_answers", {}) or {}
+                own_car = qa.get("own_car") == "yes"
+        except Exception:
+            pass
+
     contact_greeting = f"Hej {job.get('contact_name', '')}!" if job.get('contact_name') else "Hej!"
 
     # Build extra job details for the prompt
@@ -862,10 +873,11 @@ async def generate_cover_letter(job: Dict, user_cv_text: Optional[str] = None, u
     if real_age:
         user_info += f", {real_age} år"
     user_info += f", bor i {location}"
-    if has_license:
-        user_info += f"\n- Har B-körkort, egen bil, flexibel med arbetstider"
-    else:
-        user_info += f"\n- Flexibel med arbetstider"
+    if has_license and own_car:
+        user_info += f"\n- Har B-körkort och egen bil"
+    elif has_license:
+        user_info += f"\n- Har B-körkort (ingen egen bil)"
+    user_info += f"\n- Flexibel med arbetstider"
     user_info += f"\n- Telefon: {phone}"
     user_info += f"\n- Svenska (modersmål), Engelska (flytande)"
     if linkedin:
