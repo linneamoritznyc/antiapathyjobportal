@@ -7446,7 +7446,7 @@
             const [noMoreJobs, setNoMoreJobs] = useState(false);
 
             const fetchJobs = async () => {
-                const res = await authFetch('/api/jobs');
+                const res = await authFetch('/api/jobs?limit=500');
                 const data = await res.json();
                 if (data.success) {
                     setJobs(data.jobs || []);
