@@ -853,3 +853,7 @@ COMMENT ON TABLE user_anecdotes IS 'Personal anecdotes and hobbies for AI cover 
 --   user_job_preferences.user_id is UUID in live DB (schema said TEXT — fixed)
 -- 2026-02-23: Migrated ALL user data from old user_id 1e9d7392-... to real auth.users id da8ed517-...
 --   Updated 21 tables. Old ID was pre-auth seed data; real ID comes from Supabase Auth.
+-- 2026-02-23: Disabled RLS on user_job_preferences
+--   RLS policy "Users own job prefs" required auth.uid() = user_id, but backend uses service role key
+--   (auth.uid() is null), so all writes were silently blocked. Disabled to match other tables.
+--   Migration: ALTER TABLE user_job_preferences DISABLE ROW LEVEL SECURITY;

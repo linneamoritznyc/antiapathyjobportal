@@ -813,9 +813,44 @@ async def generate_cover_letter(job: Dict, user_cv_text: Optional[str] = None, u
         except Exception:
             pass
 
-    # Get relevant experience
+    # Get relevant experience — prefer user's master CV, then vibe CV text, then defaults
     category = detect_job_category(job.get("title", ""), job.get("full_description", job.get("description", "")))
-    experience = user_cv_text or DEFAULT_EXPERIENCE.get(category, DEFAULT_EXPERIENCE["default"])
+    experience = user_cv_text
+
+    # If no vibe CV text, try to fetch master CV experiences for richer content
+    if not experience and user_id:
+        try:
+            master_exps = await db_request("GET", "master_cv_experiences", params={
+                "user_id": f"eq.{user_id}",
+                "order": "start_date.desc",
+                "limit": "10"
+            })
+            if master_exps:
+                exp_lines = []
+                for exp in master_exps:
+                    line = f"- {exp.get('title', '')}"
+                    if exp.get('company'):
+                        line += f", {exp['company']}"
+                    dates = ""
+                    if exp.get('start_date'):
+                        dates = exp['start_date'][:7]
+                    if exp.get('end_date'):
+                        dates += f" – {exp['end_date'][:7]}"
+                    elif exp.get('is_current'):
+                        dates += " – pågående"
+                    if dates:
+                        line += f" ({dates})"
+                    if exp.get('description'):
+                        line += f": {exp['description'][:200]}"
+                    exp_lines.append(line)
+                if exp_lines:
+                    experience = "\n".join(exp_lines)
+                    logger.info(f"Using {len(exp_lines)} master CV experiences for cover letter")
+        except Exception as e:
+            logger.warning(f"Could not fetch master CV experiences: {e}")
+
+    if not experience:
+        experience = DEFAULT_EXPERIENCE.get(category, DEFAULT_EXPERIENCE["default"])
 
     # Append any extra hints the user selected in the UI
     if extra_hints:
@@ -835,7 +870,6 @@ async def generate_cover_letter(job: Dict, user_cv_text: Optional[str] = None, u
     # Defaults — may be overridden by user prefs below
     contact_greeting = f"Hej {job.get('contact_name', '')}!" if job.get('contact_name') else "Hej!"
     signature_style = "Med vänlig hälsning,"
-    max_words = 200
 
     # Build extra job details for the prompt
     job_extras = []
@@ -935,8 +969,6 @@ async def generate_cover_letter(job: Dict, user_cv_text: Optional[str] = None, u
                     phone = sp["sign_off_phone"]
                 if sp.get("sign_off_email"):
                     email = sp["sign_off_email"]
-                if sp.get("max_words"):
-                    max_words = sp["max_words"]
 
                 # never_mention list
                 never = sp.get("never_mention", []) or []
@@ -969,14 +1001,14 @@ async def generate_cover_letter(job: Dict, user_cv_text: Optional[str] = None, u
         except Exception as e:
             logger.error(f"Error fetching style/anecdotes/feedback: {e}")
 
-    prompt = f"""Skriv ett personligt brev på svenska för denna jobbansökan.
+    prompt = f"""Skriv ett riktigt bra personligt brev på svenska för denna jobbansökan. Brevet ska vara så bra att arbetsgivaren vill boka en intervju direkt.
 
 JOBBET:
 - Titel: {job.get('title')}
 - Företag: {job.get('company')}
 - Plats: {job.get('location')}
 {extras_text}
-- Beskrivning: {job.get('full_description', job.get('description', ''))[:2500]}
+- Beskrivning: {job.get('full_description', job.get('description', ''))[:3000]}
 
 MIN BAKGRUND (använd som inspiration — plocka bara det som faktiskt är relevant):
 {experience}
@@ -986,16 +1018,17 @@ OM MIG:
 
 INSTRUKTIONER:
 1. Börja med: {contact_greeting}
-2. Skriv ca {max_words} ord på naturlig, varm svenska (längre om det behövs för att nämna alla valda erfarenheter)
-3. Matcha tonen mot jobbet: fysisk/praktisk tjänst → enkelt och jordnära; kontorsjobb → lite mer formellt
-4. Lyft erfarenheter som passar jobbet. Om inga erfarenheter matchar direkt, fokusera istället på personliga egenskaper som passar (t.ex. noggrannhet, pålitlighet, initiativförmåga, servicekänsla). Försök ALDRIG koppla irrelevant erfarenhet till jobbet på ett konstruerat sätt.
-5. VIKTIGT: Om annonsen nämner specifika krav eller önskemål (t.ex. körkort, bil, fysisk förmåga, kvällar/helger, sommarsäsong, "annan sysselsättning"), bekräfta kortfattat att jag uppfyller/passar dem — utan att överdriva
-6. Nämn var jag bor och att jag är flexibel med arbetstider
-7. KRITISKT: Om "EXTRA ERFARENHETER SOM MÅSTE NÄMNAS I BREVET" finns ovan — du MÅSTE nämna VARJE ENSKILD erfarenhet som listas där i brevet. Hoppa inte över en enda. Nämn alla, även om de inte matchar jobbet perfekt — hitta en naturlig koppling för var och en. Det är helt ok att nämna 2 erfarenheter tillsammans i samma mening eller stycke om de belyser liknande styrkor
-8. Om "MIN SKRIVSTIL" finns ovan — följ den stilen. Undvik ALLA fraser listade under "Fraser jag INTE vill ha". Använd gärna fraser från "Fraser jag gillar".
-9. Om "MINA PERSONLIGA ANEKDOTER & HOBBYS" finns ovan — väv in EN relevant anekdot eller hobby om den passar jobbet. Tvinga inte in irrelevanta anekdoter.
-10. VIKTIGT om ålder: Om du nämner ålder, använd EXAKT den ålder som står under "OM MIG" ovan. Ignorera eventuell ålder som nämns i bakgrund/erfarenheter — den kan vara gammal.
-11. Avsluta med:
+2. Skriv ett FULLSTÄNDIGT personligt brev på naturlig, varm svenska. Brevet ska ha minst 3-4 stycken med riktig substans — INTE bara några generiska meningar. Visa att du har läst annonsen och berätta varför du passar.
+3. KRITISKT: Läs jobbeskrivningen NOGA och referera till SPECIFIKA saker från annonsen. Nämn företagsnamnet, tjänstetiteln, och 2-3 konkreta saker från annonsen som visar att du faktiskt har LÄST den. Skriv ALDRIG ett generiskt brev som kunde skickas till vilket jobb som helst.
+4. Matcha tonen mot jobbet: fysisk/praktisk tjänst → enkelt och jordnära; kontorsjobb → lite mer formellt
+5. Lyft erfarenheter som passar jobbet. Om inga erfarenheter matchar direkt, fokusera istället på personliga egenskaper som passar (t.ex. noggrannhet, pålitlighet, initiativförmåga, servicekänsla). Försök ALDRIG koppla irrelevant erfarenhet till jobbet på ett konstruerat sätt.
+6. VIKTIGT: Om annonsen nämner specifika krav eller önskemål (t.ex. körkort, bil, fysisk förmåga, kvällar/helger, sommarsäsong, "annan sysselsättning"), bekräfta kortfattat att jag uppfyller/passar dem — utan att överdriva
+7. Nämn var jag bor och att jag är flexibel med arbetstider
+8. KRITISKT: Om "EXTRA ERFARENHETER SOM MÅSTE NÄMNAS I BREVET" finns ovan — du MÅSTE nämna VARJE ENSKILD erfarenhet som listas där i brevet. Hoppa inte över en enda. Nämn alla, även om de inte matchar jobbet perfekt — hitta en naturlig koppling för var och en. Det är helt ok att nämna 2 erfarenheter tillsammans i samma mening eller stycke om de belyser liknande styrkor
+9. Om "MIN SKRIVSTIL" finns ovan — följ den stilen. Undvik ALLA fraser listade under "Fraser jag INTE vill ha". Använd gärna fraser från "Fraser jag gillar".
+10. Om "MINA PERSONLIGA ANEKDOTER & HOBBYS" finns ovan — väv in EN relevant anekdot eller hobby om den passar jobbet. Tvinga inte in irrelevanta anekdoter.
+11. VIKTIGT om ålder: Om du nämner ålder, använd EXAKT den ålder som står under "OM MIG" ovan. Ignorera eventuell ålder som nämns i bakgrund/erfarenheter — den kan vara gammal.
+12. Avsluta med:
    {signature_style}
    {name}
    {phone}
@@ -1025,35 +1058,53 @@ Skriv ENDAST det färdiga brevet, inget annat."""
                 },
                 json={
                     "model": "claude-sonnet-4-5-20250929",
-                    "max_tokens": 900,
+                    "max_tokens": 1500,
                     "messages": [{"role": "user", "content": prompt}]
                 },
-                timeout=45
+                timeout=55
             )
 
             if response.status_code == 200:
                 result = response.json()
                 return result["content"][0]["text"].strip()
             else:
-                logger.error(f"Claude API error: {response.status_code} - {response.text}")
+                logger.error(f"Claude API error: {response.status_code} - {response.text[:500]}")
+                # Surface the API error in the fallback so user knows something went wrong
+                error_note = f"[AI-brevet kunde inte genereras (API-fel {response.status_code}). Nedan är en mall — redigera den!]\n\n"
+                return error_note + generate_template_letter(job)
 
+    except httpx.TimeoutException:
+        logger.error("Claude API timeout generating cover letter")
+        return "[AI-brevet tog för lång tid. Nedan är en mall — redigera den!]\n\n" + generate_template_letter(job)
     except Exception as e:
         logger.error(f"Error generating letter: {e}")
-
-    return generate_template_letter(job)
+        return f"[Fel vid brevgenerering: {str(e)[:100]}. Nedan är en mall — redigera den!]\n\n" + generate_template_letter(job)
 
 
 def generate_template_letter(job: Dict) -> str:
-    """Fallback template when API fails"""
+    """Fallback template when API fails — uses job details to be less generic"""
     contact_greeting = f"Hej {job.get('contact_name', '')}!" if job.get('contact_name') else "Hej!"
+    title = job.get('title', 'tjänsten')
+    company = job.get('company', 'er')
+    location = job.get('location', '')
+
+    # Extract a useful snippet from the job description
+    desc = job.get('full_description', job.get('description', ''))
+    desc_hint = ""
+    if desc and len(desc) > 50:
+        # Take first sentence or 150 chars as context
+        first_sentence = desc.split('.')[0][:150]
+        desc_hint = f"\n\nJag läste i annonsen att ni söker någon för {first_sentence.lower().strip()}. Det låter som en roll jag skulle passa bra för."
+
+    location_text = f" i {location}" if location else ""
 
     return f"""{contact_greeting}
 
-Jag söker tjänsten som {job.get('title', 'tjänsten')} hos {job.get('company', 'er')}.
+Jag söker tjänsten som {title} hos {company}{location_text}.
+{desc_hint}
+Jag har bred erfarenhet från service, kundkontakt och praktiskt arbete, och trivs i roller där jag får ta ansvar. Jag är flexibel med arbetstider och kan börja snabbt.
 
-Jag har bred erfarenhet från service och kundkontakt, och trivs i roller där jag får hjälpa människor. Jag bor i Sollentuna, har B-körkort och är flexibel med arbetstider.
-
-Jag ser fram emot att höra från er!
+Jag berättar gärna mer om mig i ett samtal!
 
 Med vänlig hälsning,
 Linnea Moritz
@@ -2226,76 +2277,13 @@ async def apply_with_cv(request: Request, job_id: str):
     extra_hints = body.get("extra_hints")
     cover_letter = await generate_cover_letter(job, cv_text_for_letter, user_profile, extra_hints, user_id=user_id)
 
-    # Try to automatically create a Gmail draft using this user's connected Gmail
+    # No auto-draft: Gmail draft is only created when user clicks "Spara i Gmail med bilagor"
+    # (handled by POST /api/jobs/{job_id}/save-draft)
     contact_email = job.get("contact_email")
     contact_name = job.get("contact_name")
-
-    # Validate email looks real before using it
-    if contact_email and not re.match(r'^[^\s@]+@[^\s@]+\.[^\s@]+$', contact_email):
-        logger.warning(f"Scraped email looks invalid, ignoring: {contact_email}")
-        contact_email = None
-
-    # Build subject line: "Ansökan: Jobbtitel – Linnea Moritz"
-    sender_name = user_profile.get("full_name", "Linnea Moritz") if user_profile else "Linnea Moritz"
     job_title = job.get("title", "Tjänst")
+    sender_name = user_profile.get("full_name", "Linnea Moritz") if user_profile else "Linnea Moritz"
     subject = f"Ansökan: {job_title} – {sender_name}"
-
-    # Short email body — cover letter goes in PDF attachment only
-    email_signature = user_profile.get("email_signature", "") if user_profile else ""
-    company_name = job.get("company", "")
-    job_url = job.get("url", "")
-    greeting = f"Hej {company_name}!" if company_name else "Hej!"
-    job_ref = f"{job_title} - <a href=\"{job_url}\">{job_url}</a>" if job_url else job_title
-    email_body = f"{greeting}<br><br>Jag såg er annons på Platsbanken för {job_ref}<br>"
-    email_body += f"Jag kan börja omgående och är flexibel med tider. Vänligen se bifogat personligt brev och CV för min ansökan."
-    email_body += f"<br><br>Vänliga hälsningar,<br>{sender_name}"
-    if email_signature:
-        email_body += f"<br><br>{email_signature}"
-
-    # Create Gmail draft with PDF attachments if user has connected Gmail
-    draft_id = None
-    if contact_email and user_id:
-        attachments = []
-
-        # 1. Cover letter as PDF (professional Swedish business letter design)
-        sender_phone = user_profile.get("phone", "0761166109") if user_profile else "0761166109"
-        sender_email_addr = user_profile.get("email", "linneamoritzCV@gmail.com") if user_profile else "linneamoritzCV@gmail.com"
-        sender_location = user_profile.get("location", "Sollentuna") if user_profile else "Sollentuna"
-        try:
-            cover_letter_pdf = generate_cover_letter_pdf(
-                cover_letter,
-                sender_name=sender_name,
-                sender_phone=sender_phone,
-                sender_email=sender_email_addr,
-                sender_location=sender_location,
-                job_title=job_title,
-                company=job.get("company", ""),
-            )
-            company_clean = re.sub(r'[^\w\s-]', '', job.get("company", "")).strip().replace(' ', '_')
-            if company_clean:
-                cl_filename = f"Personligt_Brev_{company_clean}_{sender_name.replace(' ', '_')}.pdf"
-            else:
-                cl_filename = f"Personligt_Brev_{sender_name.replace(' ', '_')}.pdf"
-            attachments.append({
-                "filename": cl_filename,
-                "data": cover_letter_pdf
-            })
-        except Exception as e:
-            logger.error(f"Cover letter PDF generation failed: {e}")
-
-        # 2. Matching CV PDF
-        cv_pdf_bytes = get_cv_pdf_bytes(best_vibe)
-        if cv_pdf_bytes:
-            attachments.append({
-                "filename": get_cv_pdf_filename(best_vibe),
-                "data": cv_pdf_bytes
-            })
-
-        draft_id, draft_error = await create_gmail_draft_for_user(
-            user_id, contact_email, subject, email_body, attachments
-        )
-        if draft_error:
-            logger.warning(f"Auto-draft failed for user {user_id}: {draft_error}")
 
     return {
         "success": True,
@@ -2310,8 +2298,8 @@ async def apply_with_cv(request: Request, job_id: str):
         "cv_filename": get_cv_pdf_filename(best_vibe),
         "cv": cv,
         "cover_letter": cover_letter,
-        "draft_created": draft_id is not None,
-        "draft_id": draft_id,
+        "draft_created": False,
+        "draft_id": None,
         "gmail_link": _create_gmail_link(job, cover_letter, subject)
     }
 
@@ -4704,6 +4692,25 @@ async def update_education(request: Request, edu_id: str, edu: EducationData):
     return {"success": False, "error": "Kunde inte uppdatera utbildning"}
 
 
+@app.delete("/api/user/education/{edu_id}")
+async def delete_education(request: Request, edu_id: str):
+    """Delete an education entry."""
+    user_id = await get_user_id_from_request(request, required=True)
+
+    async with httpx.AsyncClient() as client:
+        response = await client.delete(
+            f"{SUPABASE_URL}/rest/v1/user_education?id=eq.{edu_id}&user_id=eq.{user_id}",
+            headers={
+                "apikey": SUPABASE_KEY,
+                "Authorization": f"Bearer {SUPABASE_KEY}"
+            }
+        )
+        if response.status_code in [200, 204]:
+            return {"success": True, "message": "Utbildning borttagen"}
+
+    return {"success": False, "error": "Kunde inte ta bort utbildning"}
+
+
 # ============== SKILLS CRUD ==============
 
 class SkillData(BaseModel):
@@ -4847,6 +4854,228 @@ async def upload_and_analyze_cv(request: Request):
         "recommendations": recommendations,
         "extracted_text": cv_text[:500] + "..." if len(cv_text) > 500 else cv_text,
         "profile_data": profile_data
+    }
+
+
+@app.post("/api/cv/enhance-master")
+async def enhance_master_cv_from_upload(request: Request):
+    """
+    Upload a CV file to ENHANCE the existing Master CV.
+    AI reads the new CV and adds/improves entries without deleting existing ones.
+    """
+    user_id = await get_user_id_from_request(request, required=True)
+
+    content_type = request.headers.get("content-type", "")
+    cv_text = ""
+
+    if "multipart/form-data" in content_type:
+        form = await request.form()
+        file = form.get("file")
+        if file:
+            file_content = await file.read()
+            cv_text = extract_text_from_file(file_content, file.filename)
+            if not cv_text:
+                raise HTTPException(status_code=400, detail="Kunde inte extrahera text från filen")
+    else:
+        body = await request.json()
+        cv_text = body.get("cv_text", "")
+
+    if not cv_text or len(cv_text) < 50:
+        raise HTTPException(status_code=400, detail="CV-text är för kort eller saknas")
+
+    # Fetch existing Master CV data
+    existing_experiences = await db_request("GET", "user_experiences", params={
+        "user_id": f"eq.{user_id}", "order": "sort_order.asc"
+    }) or []
+    existing_education = await db_request("GET", "user_education", params={
+        "user_id": f"eq.{user_id}", "order": "sort_order.asc"
+    }) or []
+
+    # Build context of what already exists
+    existing_summary = "BEFINTLIGA ERFARENHETER I MASTER CV:\n"
+    for exp in existing_experiences:
+        existing_summary += f"- ID:{exp.get('id')} | {exp.get('company')} | {exp.get('title')} | {exp.get('start_date')}-{exp.get('end_date','')} | Beskrivning: {(exp.get('description') or '')[:100]}\n"
+    existing_summary += "\nBEFINTLIG UTBILDNING:\n"
+    for edu in existing_education:
+        existing_summary += f"- ID:{edu.get('id')} | {edu.get('school')} | {edu.get('degree')} | {edu.get('start_date')}-{edu.get('end_date','')}\n"
+
+    if not ANTHROPIC_API_KEY:
+        raise HTTPException(status_code=500, detail="AI ej konfigurerad")
+
+    # Ask Claude to compare and find improvements
+    prompt = f"""Jag har ett Master CV med befintliga erfarenheter och utbildningar. Jag har precis laddat upp ett nytt CV-dokument. Jag vill att du:
+
+1. JÄMFÖR det nya CV-dokumentet med mina befintliga poster
+2. Hitta NYA erfarenheter/utbildningar som INTE redan finns → skapa dem
+3. Hitta befintliga poster som kan FÖRBÄTTRAS med mer detaljer från det nya CVt (t.ex. bättre beskrivning, saknade datum, kategorier) → uppdatera dem
+4. RADERA ALDRIG något. Lägg bara till och förbättra.
+
+{existing_summary}
+
+NYTT CV-DOKUMENT:
+{cv_text[:5000]}
+
+Svara i EXAKT detta JSON-format (inga kommentarer, bara ren JSON):
+{{
+    "new_experiences": [
+        {{"company": "...", "title": "...", "location": "...", "start_date": "...", "end_date": "...", "description": "...", "categories": ["..."]}}
+    ],
+    "updated_experiences": [
+        {{"id": "befintligt-uuid", "description": "ny förbättrad beskrivning", "categories": ["uppdaterade", "kategorier"]}}
+    ],
+    "new_education": [
+        {{"school": "...", "degree": "...", "field_of_study": "...", "location": "...", "start_date": "...", "end_date": ""}}
+    ],
+    "updated_education": [
+        {{"id": "befintligt-uuid", "degree": "förbättrad examen text", "field_of_study": "inriktning"}}
+    ],
+    "summary": "Kort sammanfattning av vad som ändrades"
+}}
+
+VIKTIGT:
+- Bara inkludera poster som verkligen behöver skapas eller uppdateras
+- Om inget behöver ändras, returnera tomma arrayer
+- Kategorier ska vara: restaurant, retail, tech, healthcare, customerservice, contentmoderation, industri, art, marketing, education, reception
+- Datum i format "Aug 2024" eller "2024"
+- Beskrivningar på svenska, korta och informativa"""
+
+    try:
+        async with httpx.AsyncClient() as client:
+            response = await client.post(
+                "https://api.anthropic.com/v1/messages",
+                headers={
+                    "x-api-key": ANTHROPIC_API_KEY,
+                    "anthropic-version": "2023-06-01",
+                    "content-type": "application/json"
+                },
+                json={
+                    "model": "claude-sonnet-4-5-20250929",
+                    "max_tokens": 3000,
+                    "messages": [{"role": "user", "content": prompt}]
+                },
+                timeout=55
+            )
+
+            if response.status_code != 200:
+                logger.error(f"Claude API error in enhance: {response.status_code}")
+                raise HTTPException(status_code=500, detail=f"AI-fel: {response.status_code}")
+
+            result = response.json()
+            ai_text = result["content"][0]["text"].strip()
+
+            # Parse JSON from AI response (handle markdown code blocks)
+            if "```json" in ai_text:
+                ai_text = ai_text.split("```json")[1].split("```")[0].strip()
+            elif "```" in ai_text:
+                ai_text = ai_text.split("```")[1].split("```")[0].strip()
+
+            import json as json_module
+            changes = json_module.loads(ai_text)
+
+    except json_module.JSONDecodeError as e:
+        logger.error(f"Failed to parse AI response: {ai_text[:500]}")
+        raise HTTPException(status_code=500, detail="AI returnerade ogiltigt format")
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error in enhance: {e}")
+        raise HTTPException(status_code=500, detail=f"Fel: {str(e)[:200]}")
+
+    # Apply changes to database
+    added = 0
+    updated = 0
+
+    # Create new experiences
+    for exp in changes.get("new_experiences", []):
+        try:
+            await db_request("POST", "user_experiences", data={
+                "user_id": user_id,
+                "company": exp.get("company", ""),
+                "title": exp.get("title", ""),
+                "location": exp.get("location", ""),
+                "start_date": exp.get("start_date", ""),
+                "end_date": exp.get("end_date", ""),
+                "description": exp.get("description", ""),
+                "categories": exp.get("categories", []),
+                "sort_order": len(existing_experiences) + added
+            })
+            added += 1
+        except Exception as e:
+            logger.warning(f"Failed to add experience: {e}")
+
+    # Update existing experiences (only non-empty fields)
+    for exp in changes.get("updated_experiences", []):
+        exp_id = exp.get("id")
+        if not exp_id:
+            continue
+        update_data = {}
+        for field in ["description", "categories", "title", "location", "start_date", "end_date"]:
+            if exp.get(field):
+                update_data[field] = exp[field]
+        if update_data:
+            try:
+                async with httpx.AsyncClient() as client:
+                    await client.patch(
+                        f"{SUPABASE_URL}/rest/v1/user_experiences?id=eq.{exp_id}&user_id=eq.{user_id}",
+                        headers={
+                            "apikey": SUPABASE_KEY,
+                            "Authorization": f"Bearer {SUPABASE_KEY}",
+                            "Content-Type": "application/json"
+                        },
+                        json=update_data
+                    )
+                updated += 1
+            except Exception as e:
+                logger.warning(f"Failed to update experience {exp_id}: {e}")
+
+    # Create new education
+    for edu in changes.get("new_education", []):
+        try:
+            await db_request("POST", "user_education", data={
+                "user_id": user_id,
+                "school": edu.get("school", ""),
+                "degree": edu.get("degree", ""),
+                "field_of_study": edu.get("field_of_study", ""),
+                "location": edu.get("location", ""),
+                "start_date": edu.get("start_date", ""),
+                "end_date": edu.get("end_date", ""),
+                "sort_order": len(existing_education) + added
+            })
+            added += 1
+        except Exception as e:
+            logger.warning(f"Failed to add education: {e}")
+
+    # Update existing education
+    for edu in changes.get("updated_education", []):
+        edu_id = edu.get("id")
+        if not edu_id:
+            continue
+        update_data = {}
+        for field in ["degree", "field_of_study", "school", "location", "start_date", "end_date"]:
+            if edu.get(field):
+                update_data[field] = edu[field]
+        if update_data:
+            try:
+                async with httpx.AsyncClient() as client:
+                    await client.patch(
+                        f"{SUPABASE_URL}/rest/v1/user_education?id=eq.{edu_id}&user_id=eq.{user_id}",
+                        headers={
+                            "apikey": SUPABASE_KEY,
+                            "Authorization": f"Bearer {SUPABASE_KEY}",
+                            "Content-Type": "application/json"
+                        },
+                        json=update_data
+                    )
+                updated += 1
+            except Exception as e:
+                logger.warning(f"Failed to update education {edu_id}: {e}")
+
+    return {
+        "success": True,
+        "added": added,
+        "updated": updated,
+        "summary": changes.get("summary", f"{added} nya poster, {updated} förbättrade"),
+        "changes": changes
     }
 
 
