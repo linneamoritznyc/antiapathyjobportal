@@ -4388,41 +4388,27 @@ async def save_user_locations(request: Request):
     body = await request.json()
     locations = body.get("locations", [])
 
-    url = f"{SUPABASE_URL}/rest/v1/user_job_preferences"
-    headers = {
-        "apikey": SUPABASE_KEY,
-        "Authorization": f"Bearer {SUPABASE_KEY}",
-        "Content-Type": "application/json",
-        "Prefer": "return=representation"
-    }
-
+    # Use same upsert pattern as save_user_preferences (POST + merge-duplicates)
     async with httpx.AsyncClient() as client:
-        # First try PATCH on existing row
-        patch_resp = await client.patch(
-            f"{url}?user_id=eq.{user_id}",
-            headers=headers,
-            json={"preferred_locations": locations, "updated_at": datetime.now().isoformat()},
+        resp = await client.post(
+            f"{SUPABASE_URL}/rest/v1/user_job_preferences",
+            headers={
+                "apikey": SUPABASE_KEY,
+                "Authorization": f"Bearer {SUPABASE_KEY}",
+                "Content-Type": "application/json",
+                "Prefer": "resolution=merge-duplicates"
+            },
+            json={
+                "user_id": user_id,
+                "preferred_locations": locations,
+                "updated_at": datetime.now().isoformat()
+            },
             timeout=10
         )
-        logger.info(f"PATCH locations: status={patch_resp.status_code} body={patch_resp.text[:200]}")
-
-        if patch_resp.status_code < 400:
-            rows = patch_resp.json() if patch_resp.text else []
-            if len(rows) > 0:
-                return {"success": True, "message": "Platser sparade!"}
-
-        # No row matched — INSERT new row
-        headers["Prefer"] = "return=representation"
-        post_resp = await client.post(
-            url,
-            headers=headers,
-            json={"user_id": user_id, "preferred_locations": locations, "updated_at": datetime.now().isoformat()},
-            timeout=10
-        )
-        logger.info(f"POST locations: status={post_resp.status_code} body={post_resp.text[:200]}")
-
-        if post_resp.status_code >= 400:
-            raise HTTPException(status_code=500, detail=f"Kunde inte spara platser: {post_resp.text[:300]}")
+        logger.info(f"Upsert locations: status={resp.status_code} body={resp.text[:200]}")
+        if resp.status_code >= 400:
+            logger.error(f"Failed to save locations: {resp.text}")
+            raise HTTPException(status_code=500, detail=f"Kunde inte spara platser: {resp.text[:300]}")
 
     return {"success": True, "message": "Platser sparade!"}
 
