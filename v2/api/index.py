@@ -1568,8 +1568,11 @@ async def list_jobs(request: Request, limit: int = 50, offset: int = 0):
     """List all jobs, filtered by user's interaction history if logged in"""
     user_id = await get_user_id_from_request(request)
 
-    # Try database first
-    jobs = await get_jobs_from_db(limit, offset)
+    # When logged in, fetch a bigger batch from DB since filtering
+    # (rejected/applied/skipped) will remove many jobs from the result.
+    # Fetch up to 500 from DB so the user sees enough after filtering.
+    db_limit = 500 if user_id else limit
+    jobs = await get_jobs_from_db(db_limit, offset)
 
     if not jobs:
         # Fallback: scrape live AND save to DB so apply-with-cv can find them

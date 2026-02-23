@@ -2407,7 +2407,7 @@
                                 {exp.start_date} - {exp.end_date || 'Pågående'}
                             </p>
 
-                            <p className="text-sm text-slate-700 line-clamp-2 mb-2">
+                            <p className="text-sm text-slate-700 mb-2">
                                 {exp.description}
                             </p>
 
@@ -2567,7 +2567,7 @@
                                     {item.live_url}
                                 </a>
                             )}
-                            <p className="text-sm text-slate-700 mt-2 line-clamp-2">{item.description}</p>
+                            <p className="text-sm text-slate-700 mt-2">{item.description}</p>
                         </div>
                         <button onClick={handleDel} disabled={deleting}
                             className="p-1.5 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded flex-shrink-0 ml-2" title="Ta bort">
@@ -2599,7 +2599,7 @@
                         <div className="flex-1">
                             <h4 className="font-semibold">{title}</h4>
                             {subtitle && <p className="text-sm text-slate-600">{subtitle}</p>}
-                            {item.description && <p className="text-sm text-slate-700 mt-2 line-clamp-2">{item.description}</p>}
+                            {item.description && <p className="text-sm text-slate-700 mt-2">{item.description}</p>}
                         </div>
                         {deleteEndpoint && (
                             <button onClick={handleDel} disabled={deleting}
@@ -2696,7 +2696,7 @@
                                 {item.title && <p className="text-sm text-indigo-600 font-medium">{item.title}</p>}
                                 {item.dates && <p className="text-xs text-slate-500">{item.dates}</p>}
                                 {item.description ? (
-                                    <p className="text-sm text-slate-700 mt-2 line-clamp-3">{item.description}</p>
+                                    <p className="text-sm text-slate-700 mt-2">{item.description}</p>
                                 ) : (
                                     <p className="text-xs text-amber-500 mt-2 italic">Saknar beskrivning — klicka redigera</p>
                                 )}
@@ -7446,7 +7446,7 @@
             const [noMoreJobs, setNoMoreJobs] = useState(false);
 
             const fetchJobs = async () => {
-                const res = await authFetch('/api/jobs');
+                const res = await authFetch('/api/jobs?limit=500');
                 const data = await res.json();
                 if (data.success) {
                     setJobs(data.jobs || []);
