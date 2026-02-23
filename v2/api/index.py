@@ -1068,9 +1068,31 @@ Skriv ENDAST det färdiga brevet, inget annat."""
                 result = response.json()
                 return result["content"][0]["text"].strip()
             else:
-                logger.error(f"Claude API error: {response.status_code} - {response.text[:500]}")
-                # Surface the API error in the fallback so user knows something went wrong
-                error_note = f"[AI-brevet kunde inte genereras (API-fel {response.status_code}). Nedan är en mall — redigera den!]\n\n"
+                error_body = response.text[:300]
+                logger.error(f"Claude API error: {response.status_code} - {error_body}")
+                # Try fallback to haiku if sonnet fails
+                try:
+                    fallback_resp = await client.post(
+                        "https://api.anthropic.com/v1/messages",
+                        headers={
+                            "x-api-key": ANTHROPIC_API_KEY,
+                            "anthropic-version": "2023-06-01",
+                            "content-type": "application/json"
+                        },
+                        json={
+                            "model": "claude-haiku-4-5-20251001",
+                            "max_tokens": 1500,
+                            "messages": [{"role": "user", "content": prompt}]
+                        },
+                        timeout=55
+                    )
+                    if fallback_resp.status_code == 200:
+                        result = fallback_resp.json()
+                        return result["content"][0]["text"].strip()
+                except Exception as fallback_err:
+                    logger.error(f"Haiku fallback also failed: {fallback_err}")
+                # Both failed — show template with error details
+                error_note = f"[AI-brevet kunde inte genereras (API-fel {response.status_code}: {error_body[:100]}). Nedan är en mall — redigera den!]\n\n"
                 return error_note + generate_template_letter(job)
 
     except httpx.TimeoutException:
@@ -1218,7 +1240,7 @@ Skriv ENDAST CV-texten, inget annat."""
                     "content-type": "application/json"
                 },
                 json={
-                    "model": "claude-sonnet-4-20250514",
+                    "model": "claude-sonnet-4-5-20250929",
                     "max_tokens": 1000,
                     "messages": [{"role": "user", "content": prompt}]
                 },
@@ -5119,7 +5141,7 @@ Svara ENDAST med JSON-arrayen, inget annat."""
                     "content-type": "application/json"
                 },
                 json={
-                    "model": "claude-sonnet-4-20250514",
+                    "model": "claude-sonnet-4-5-20250929",
                     "max_tokens": 1000,
                     "messages": [{"role": "user", "content": prompt}]
                 },
@@ -7214,7 +7236,7 @@ Svara ENDAST med JSON, inget annat."""
                     "content-type": "application/json"
                 },
                 json={
-                    "model": "claude-sonnet-4-20250514",
+                    "model": "claude-sonnet-4-5-20250929",
                     "max_tokens": 500,
                     "messages": [{"role": "user", "content": prompt}]
                 },
