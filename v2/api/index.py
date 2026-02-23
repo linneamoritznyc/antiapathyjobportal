@@ -813,9 +813,44 @@ async def generate_cover_letter(job: Dict, user_cv_text: Optional[str] = None, u
         except Exception:
             pass
 
-    # Get relevant experience
+    # Get relevant experience — prefer user's master CV, then vibe CV text, then defaults
     category = detect_job_category(job.get("title", ""), job.get("full_description", job.get("description", "")))
-    experience = user_cv_text or DEFAULT_EXPERIENCE.get(category, DEFAULT_EXPERIENCE["default"])
+    experience = user_cv_text
+
+    # If no vibe CV text, try to fetch master CV experiences for richer content
+    if not experience and user_id:
+        try:
+            master_exps = await db_request("GET", "master_cv_experiences", params={
+                "user_id": f"eq.{user_id}",
+                "order": "start_date.desc",
+                "limit": "10"
+            })
+            if master_exps:
+                exp_lines = []
+                for exp in master_exps:
+                    line = f"- {exp.get('title', '')}"
+                    if exp.get('company'):
+                        line += f", {exp['company']}"
+                    dates = ""
+                    if exp.get('start_date'):
+                        dates = exp['start_date'][:7]
+                    if exp.get('end_date'):
+                        dates += f" – {exp['end_date'][:7]}"
+                    elif exp.get('is_current'):
+                        dates += " – pågående"
+                    if dates:
+                        line += f" ({dates})"
+                    if exp.get('description'):
+                        line += f": {exp['description'][:200]}"
+                    exp_lines.append(line)
+                if exp_lines:
+                    experience = "\n".join(exp_lines)
+                    logger.info(f"Using {len(exp_lines)} master CV experiences for cover letter")
+        except Exception as e:
+            logger.warning(f"Could not fetch master CV experiences: {e}")
+
+    if not experience:
+        experience = DEFAULT_EXPERIENCE.get(category, DEFAULT_EXPERIENCE["default"])
 
     # Append any extra hints the user selected in the UI
     if extra_hints:
@@ -1025,35 +1060,53 @@ Skriv ENDAST det färdiga brevet, inget annat."""
                 },
                 json={
                     "model": "claude-sonnet-4-5-20250929",
-                    "max_tokens": 900,
+                    "max_tokens": 1500,
                     "messages": [{"role": "user", "content": prompt}]
                 },
-                timeout=45
+                timeout=55
             )
 
             if response.status_code == 200:
                 result = response.json()
                 return result["content"][0]["text"].strip()
             else:
-                logger.error(f"Claude API error: {response.status_code} - {response.text}")
+                logger.error(f"Claude API error: {response.status_code} - {response.text[:500]}")
+                # Surface the API error in the fallback so user knows something went wrong
+                error_note = f"[AI-brevet kunde inte genereras (API-fel {response.status_code}). Nedan är en mall — redigera den!]\n\n"
+                return error_note + generate_template_letter(job)
 
+    except httpx.TimeoutException:
+        logger.error("Claude API timeout generating cover letter")
+        return "[AI-brevet tog för lång tid. Nedan är en mall — redigera den!]\n\n" + generate_template_letter(job)
     except Exception as e:
         logger.error(f"Error generating letter: {e}")
-
-    return generate_template_letter(job)
+        return f"[Fel vid brevgenerering: {str(e)[:100]}. Nedan är en mall — redigera den!]\n\n" + generate_template_letter(job)
 
 
 def generate_template_letter(job: Dict) -> str:
-    """Fallback template when API fails"""
+    """Fallback template when API fails — uses job details to be less generic"""
     contact_greeting = f"Hej {job.get('contact_name', '')}!" if job.get('contact_name') else "Hej!"
+    title = job.get('title', 'tjänsten')
+    company = job.get('company', 'er')
+    location = job.get('location', '')
+
+    # Extract a useful snippet from the job description
+    desc = job.get('full_description', job.get('description', ''))
+    desc_hint = ""
+    if desc and len(desc) > 50:
+        # Take first sentence or 150 chars as context
+        first_sentence = desc.split('.')[0][:150]
+        desc_hint = f"\n\nJag läste i annonsen att ni söker någon för {first_sentence.lower().strip()}. Det låter som en roll jag skulle passa bra för."
+
+    location_text = f" i {location}" if location else ""
 
     return f"""{contact_greeting}
 
-Jag söker tjänsten som {job.get('title', 'tjänsten')} hos {job.get('company', 'er')}.
+Jag söker tjänsten som {title} hos {company}{location_text}.
+{desc_hint}
+Jag har bred erfarenhet från service, kundkontakt och praktiskt arbete, och trivs i roller där jag får ta ansvar. Jag är flexibel med arbetstider och kan börja snabbt.
 
-Jag har bred erfarenhet från service och kundkontakt, och trivs i roller där jag får hjälpa människor. Jag bor i Sollentuna, har B-körkort och är flexibel med arbetstider.
-
-Jag ser fram emot att höra från er!
+Jag berättar gärna mer om mig i ett samtal!
 
 Med vänlig hälsning,
 Linnea Moritz
@@ -2226,76 +2279,13 @@ async def apply_with_cv(request: Request, job_id: str):
     extra_hints = body.get("extra_hints")
     cover_letter = await generate_cover_letter(job, cv_text_for_letter, user_profile, extra_hints, user_id=user_id)
 
-    # Try to automatically create a Gmail draft using this user's connected Gmail
+    # No auto-draft: Gmail draft is only created when user clicks "Spara i Gmail med bilagor"
+    # (handled by POST /api/jobs/{job_id}/save-draft)
     contact_email = job.get("contact_email")
     contact_name = job.get("contact_name")
-
-    # Validate email looks real before using it
-    if contact_email and not re.match(r'^[^\s@]+@[^\s@]+\.[^\s@]+$', contact_email):
-        logger.warning(f"Scraped email looks invalid, ignoring: {contact_email}")
-        contact_email = None
-
-    # Build subject line: "Ansökan: Jobbtitel – Linnea Moritz"
-    sender_name = user_profile.get("full_name", "Linnea Moritz") if user_profile else "Linnea Moritz"
     job_title = job.get("title", "Tjänst")
+    sender_name = user_profile.get("full_name", "Linnea Moritz") if user_profile else "Linnea Moritz"
     subject = f"Ansökan: {job_title} – {sender_name}"
-
-    # Short email body — cover letter goes in PDF attachment only
-    email_signature = user_profile.get("email_signature", "") if user_profile else ""
-    company_name = job.get("company", "")
-    job_url = job.get("url", "")
-    greeting = f"Hej {company_name}!" if company_name else "Hej!"
-    job_ref = f"{job_title} - <a href=\"{job_url}\">{job_url}</a>" if job_url else job_title
-    email_body = f"{greeting}<br><br>Jag såg er annons på Platsbanken för {job_ref}<br>"
-    email_body += f"Jag kan börja omgående och är flexibel med tider. Vänligen se bifogat personligt brev och CV för min ansökan."
-    email_body += f"<br><br>Vänliga hälsningar,<br>{sender_name}"
-    if email_signature:
-        email_body += f"<br><br>{email_signature}"
-
-    # Create Gmail draft with PDF attachments if user has connected Gmail
-    draft_id = None
-    if contact_email and user_id:
-        attachments = []
-
-        # 1. Cover letter as PDF (professional Swedish business letter design)
-        sender_phone = user_profile.get("phone", "0761166109") if user_profile else "0761166109"
-        sender_email_addr = user_profile.get("email", "linneamoritzCV@gmail.com") if user_profile else "linneamoritzCV@gmail.com"
-        sender_location = user_profile.get("location", "Sollentuna") if user_profile else "Sollentuna"
-        try:
-            cover_letter_pdf = generate_cover_letter_pdf(
-                cover_letter,
-                sender_name=sender_name,
-                sender_phone=sender_phone,
-                sender_email=sender_email_addr,
-                sender_location=sender_location,
-                job_title=job_title,
-                company=job.get("company", ""),
-            )
-            company_clean = re.sub(r'[^\w\s-]', '', job.get("company", "")).strip().replace(' ', '_')
-            if company_clean:
-                cl_filename = f"Personligt_Brev_{company_clean}_{sender_name.replace(' ', '_')}.pdf"
-            else:
-                cl_filename = f"Personligt_Brev_{sender_name.replace(' ', '_')}.pdf"
-            attachments.append({
-                "filename": cl_filename,
-                "data": cover_letter_pdf
-            })
-        except Exception as e:
-            logger.error(f"Cover letter PDF generation failed: {e}")
-
-        # 2. Matching CV PDF
-        cv_pdf_bytes = get_cv_pdf_bytes(best_vibe)
-        if cv_pdf_bytes:
-            attachments.append({
-                "filename": get_cv_pdf_filename(best_vibe),
-                "data": cv_pdf_bytes
-            })
-
-        draft_id, draft_error = await create_gmail_draft_for_user(
-            user_id, contact_email, subject, email_body, attachments
-        )
-        if draft_error:
-            logger.warning(f"Auto-draft failed for user {user_id}: {draft_error}")
 
     return {
         "success": True,
@@ -2310,8 +2300,8 @@ async def apply_with_cv(request: Request, job_id: str):
         "cv_filename": get_cv_pdf_filename(best_vibe),
         "cv": cv,
         "cover_letter": cover_letter,
-        "draft_created": draft_id is not None,
-        "draft_id": draft_id,
+        "draft_created": False,
+        "draft_id": None,
         "gmail_link": _create_gmail_link(job, cover_letter, subject)
     }
 
