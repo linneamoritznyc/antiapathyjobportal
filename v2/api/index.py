@@ -4388,20 +4388,41 @@ async def save_user_locations(request: Request):
     body = await request.json()
     locations = body.get("locations", [])
 
-    # Try PATCH first (update existing row)
-    resp = await db_request(
-        "PATCH",
-        f"user_job_preferences?user_id=eq.{user_id}",
-        data={"preferred_locations": locations, "updated_at": datetime.now().isoformat()}
-    )
+    url = f"{SUPABASE_URL}/rest/v1/user_job_preferences"
+    headers = {
+        "apikey": SUPABASE_KEY,
+        "Authorization": f"Bearer {SUPABASE_KEY}",
+        "Content-Type": "application/json",
+        "Prefer": "return=representation"
+    }
 
-    # If no row existed, create one
-    if resp is not None and isinstance(resp, list) and len(resp) == 0:
-        resp = await db_request(
-            "POST",
-            "user_job_preferences",
-            data={"user_id": user_id, "preferred_locations": locations, "updated_at": datetime.now().isoformat()}
+    async with httpx.AsyncClient() as client:
+        # First try PATCH on existing row
+        patch_resp = await client.patch(
+            f"{url}?user_id=eq.{user_id}",
+            headers=headers,
+            json={"preferred_locations": locations, "updated_at": datetime.now().isoformat()},
+            timeout=10
         )
+        logger.info(f"PATCH locations: status={patch_resp.status_code} body={patch_resp.text[:200]}")
+
+        if patch_resp.status_code < 400:
+            rows = patch_resp.json() if patch_resp.text else []
+            if len(rows) > 0:
+                return {"success": True, "message": "Platser sparade!"}
+
+        # No row matched — INSERT new row
+        headers["Prefer"] = "return=representation"
+        post_resp = await client.post(
+            url,
+            headers=headers,
+            json={"user_id": user_id, "preferred_locations": locations, "updated_at": datetime.now().isoformat()},
+            timeout=10
+        )
+        logger.info(f"POST locations: status={post_resp.status_code} body={post_resp.text[:200]}")
+
+        if post_resp.status_code >= 400:
+            raise HTTPException(status_code=500, detail=f"Kunde inte spara platser: {post_resp.text[:300]}")
 
     return {"success": True, "message": "Platser sparade!"}
 
