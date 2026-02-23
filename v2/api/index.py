@@ -1057,7 +1057,7 @@ Skriv ENDAST det färdiga brevet, inget annat."""
                     "content-type": "application/json"
                 },
                 json={
-                    "model": "claude-sonnet-4-20250514",
+                    "model": "claude-3-5-sonnet-20241022",
                     "max_tokens": 1500,
                     "messages": [{"role": "user", "content": prompt}]
                 },
@@ -1240,7 +1240,7 @@ Skriv ENDAST CV-texten, inget annat."""
                     "content-type": "application/json"
                 },
                 json={
-                    "model": "claude-sonnet-4-20250514",
+                    "model": "claude-3-5-sonnet-20241022",
                     "max_tokens": 1000,
                     "messages": [{"role": "user", "content": prompt}]
                 },
@@ -2485,7 +2485,7 @@ INSTRUKTIONER:
                     "content-type": "application/json"
                 },
                 json={
-                    "model": "claude-sonnet-4-20250514",
+                    "model": "claude-3-5-sonnet-20241022",
                     "max_tokens": 500,
                     "messages": [{"role": "user", "content": prompt}]
                 }
@@ -4971,7 +4971,7 @@ VIKTIGT:
                     "content-type": "application/json"
                 },
                 json={
-                    "model": "claude-sonnet-4-20250514",
+                    "model": "claude-3-5-sonnet-20241022",
                     "max_tokens": 3000,
                     "messages": [{"role": "user", "content": prompt}]
                 },
@@ -5141,7 +5141,7 @@ Svara ENDAST med JSON-arrayen, inget annat."""
                     "content-type": "application/json"
                 },
                 json={
-                    "model": "claude-sonnet-4-20250514",
+                    "model": "claude-3-5-sonnet-20241022",
                     "max_tokens": 1000,
                     "messages": [{"role": "user", "content": prompt}]
                 },
@@ -7134,7 +7134,7 @@ Svara ENDAST med JSON."""
                     "content-type": "application/json"
                 },
                 json={
-                    "model": "claude-sonnet-4-20250514",
+                    "model": "claude-3-5-sonnet-20241022",
                     "max_tokens": 700,
                     "messages": [{"role": "user", "content": prompt}]
                 },
@@ -7189,7 +7189,7 @@ Svara ENDAST med JSON."""
                     "content-type": "application/json"
                 },
                 json={
-                    "model": "claude-sonnet-4-20250514",
+                    "model": "claude-3-5-sonnet-20241022",
                     "max_tokens": 1000,
                     "messages": [{"role": "user", "content": prompt}]
                 },
@@ -7236,7 +7236,7 @@ Svara ENDAST med JSON, inget annat."""
                     "content-type": "application/json"
                 },
                 json={
-                    "model": "claude-sonnet-4-20250514",
+                    "model": "claude-3-5-sonnet-20241022",
                     "max_tokens": 500,
                     "messages": [{"role": "user", "content": prompt}]
                 },
