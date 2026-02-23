@@ -1565,11 +1565,11 @@ async def scrape_jobs(request: JobSearchRequest = None):
 
 @app.get("/api/jobs")
 async def list_jobs(request: Request, limit: int = 50, offset: int = 0):
-    """List all jobs, filtered by user's interaction history if logged in"""
+    """List all jobs, filtered by user's location prefs and interaction history if logged in"""
     user_id = await get_user_id_from_request(request)
 
     # When logged in, fetch a bigger batch from DB since filtering
-    # (rejected/applied/skipped) will remove many jobs from the result.
+    # (rejected/applied/skipped/location) will remove many jobs from the result.
     # Fetch up to 500 from DB so the user sees enough after filtering.
     db_limit = 500 if user_id else limit
     jobs = await get_jobs_from_db(db_limit, offset)
@@ -1585,6 +1585,7 @@ async def list_jobs(request: Request, limit: int = 50, offset: int = 0):
 
     # If logged in, load user's interaction history and filter/score jobs
     if user_id and jobs:
+        import asyncio as _asyncio
         interactions_task = db_request("GET", "user_job_interactions", params={
             "user_id": f"eq.{user_id}",
             "select": "job_id,action"
@@ -1596,12 +1597,33 @@ async def list_jobs(request: Request, limit: int = 50, offset: int = 0):
             "status": "in.(sent,draft)",
             "select": "job_id"
         })
-        import asyncio as _asyncio
-        interactions, applied_applications = await _asyncio.gather(
-            interactions_task, applications_task
+        # Fetch user's preferred locations for server-side geo filtering
+        prefs_task = db_request("GET", "user_job_preferences", params={
+            "user_id": f"eq.{user_id}",
+            "select": "preferred_locations"
+        })
+        interactions, applied_applications, user_prefs = await _asyncio.gather(
+            interactions_task, applications_task, prefs_task
         )
         interactions = interactions or []
         applied_applications = applied_applications or []
+
+        # --- SERVER-SIDE LOCATION FILTER ---
+        # Convert user's preferred kommun IDs to labels, then filter jobs
+        preferred_locs = []
+        if user_prefs and len(user_prefs) > 0:
+            preferred_locs = user_prefs[0].get("preferred_locations") or []
+        if preferred_locs and "anywhere" not in preferred_locs:
+            loc_ids = [lid for lid in preferred_locs if lid not in ("remote", "anywhere")]
+            if loc_ids:
+                label_lookup = await fetch_municipality_labels()
+                municipality_labels_lower = [
+                    label_lookup[mid].lower() for mid in loc_ids if mid in label_lookup
+                ]
+                if municipality_labels_lower:
+                    before = len(jobs)
+                    jobs = [j for j in jobs if _job_in_municipalities(j, municipality_labels_lower)]
+                    logger.info(f"Server geo filter: {before} → {len(jobs)} jobs for user {user_id[:8]}")
 
         rejected_ids = {i["job_id"] for i in interactions if i["action"] == "rejected"}
         applied_ids = {i["job_id"] for i in interactions if i["action"] == "applied"}

@@ -7544,13 +7544,19 @@
                 authFetch('/api/user/preferences')
                     .then(r => r.json())
                     .then(data => {
-                        if (data.success && data.preferences && data.preferences.quiz_answers) {
-                            const serverPrefs = data.preferences.quiz_answers;
+                        if (data.success && data.preferences) {
                             const localPrefs = JSON.parse(localStorage.getItem('job_preferences') || '{}');
+                            const serverPrefs = data.preferences.quiz_answers || {};
                             // Server wins — merge server on top of local
                             const merged = { ...localPrefs, ...serverPrefs };
+                            // CRITICAL: also merge preferred_locations → location key
+                            // (preferred_locations is a separate DB column, not inside quiz_answers)
+                            const serverLocs = data.preferences.preferred_locations;
+                            if (Array.isArray(serverLocs) && serverLocs.length > 0) {
+                                merged.location = serverLocs;
+                            }
                             localStorage.setItem('job_preferences', JSON.stringify(merged));
-                            console.log('[Prefs] Synced from Supabase:', Object.keys(serverPrefs));
+                            console.log('[Prefs] Synced from Supabase:', Object.keys(serverPrefs), 'locations:', (serverLocs || []).length);
                             // Notify components to re-read preferences
                             window.dispatchEvent(new Event('prefsUpdated'));
                         }
