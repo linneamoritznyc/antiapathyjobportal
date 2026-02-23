@@ -688,6 +688,7 @@
                             age: merged.age || '',
                             drivers_license: merged.drivers_license || '',
                             own_car: merged.own_car || '',
+                            own_computer: merged.own_computer || '',
                             linkedin: merged.linkedin || '',
                             earliest_start: merged.earliest_start || '',
                             education_level: merged.education_level || '',
@@ -710,6 +711,7 @@
                     age: '',
                     drivers_license: '',
                     own_car: '',
+                    own_computer: '',
                     linkedin: '',
                     earliest_start: '',
                     education_level: '',
@@ -785,6 +787,18 @@
                     type: 'single',
                     options: [
                         { value: 'yes', label: 'Ja' },
+                        { value: 'no', label: 'Nej' }
+                    ]
+                },
+                {
+                    id: 'own_computer',
+                    question: 'Har du en egen dator?',
+                    subtitle: 'Viktigt för remote-jobb och distansarbete',
+                    type: 'single',
+                    options: [
+                        { value: 'yes_desktop', label: 'Ja, stationär dator' },
+                        { value: 'yes_laptop', label: 'Ja, bärbar dator (laptop)' },
+                        { value: 'yes_both', label: 'Ja, både stationär och laptop' },
                         { value: 'no', label: 'Nej' }
                     ]
                 },
@@ -911,8 +925,8 @@
             // Summary view helpers
             const summaryLabels = {
                 full_name: 'Namn', phone: 'Telefon', home_location: 'Bor i', age: 'Ålder',
-                drivers_license: 'Körkort', own_car: 'Egen bil', earliest_start: 'Kan börja',
-                linkedin: 'LinkedIn', education_level: 'Utbildning',
+                drivers_license: 'Körkort', own_car: 'Egen bil', own_computer: 'Egen dator',
+                earliest_start: 'Kan börja', linkedin: 'LinkedIn', education_level: 'Utbildning',
                 search_terms: 'Vill jobba med',
                 working_hours: 'Omfattning', employment_form: 'Anställningsform',
                 duration: 'Varaktighet', salary: 'Lön', dealbreakers: 'Vill inte'
@@ -972,6 +986,7 @@
                         age: answers.age,
                         drivers_license: answers.drivers_license,
                         own_car: answers.own_car,
+                        own_computer: answers.own_computer,
                         linkedin: answers.linkedin,
                         earliest_start: answers.earliest_start,
                         education_level: answers.education_level
@@ -1151,7 +1166,7 @@
                             <div className="mb-6">
                                 <h2 className="text-white/40 text-xs uppercase tracking-wider mb-3 font-medium">Om dig</h2>
                                 <div className="bg-white/5 rounded-xl border border-white/10 divide-y divide-white/10">
-                                    {questions.slice(0, 9).map(renderQuestionRow)}
+                                    {questions.slice(0, 10).map(renderQuestionRow)}
                                 </div>
                             </div>
 
@@ -1159,7 +1174,7 @@
                             <div className="mb-6">
                                 <h2 className="text-white/40 text-xs uppercase tracking-wider mb-3 font-medium">Jobbpreferenser</h2>
                                 <div className="bg-white/5 rounded-xl border border-white/10 divide-y divide-white/10">
-                                    {questions.slice(9).map(renderQuestionRow)}
+                                    {questions.slice(10).map(renderQuestionRow)}
                                 </div>
                             </div>
 
@@ -6821,6 +6836,7 @@
                         age: answers.age,
                         drivers_license: answers.drivers_license,
                         own_car: answers.own_car,
+                        own_computer: answers.own_computer,
                         linkedin: answers.linkedin,
                         earliest_start: answers.earliest_start,
                         education_level: answers.education_level

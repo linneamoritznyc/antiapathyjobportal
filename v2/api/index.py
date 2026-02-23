@@ -4139,6 +4139,7 @@ class QuizProfileData(BaseModel):
     age: Optional[str] = None
     drivers_license: Optional[str] = None
     own_car: Optional[str] = None
+    own_computer: Optional[str] = None
     linkedin: Optional[str] = None
     earliest_start: Optional[str] = None
     education_level: Optional[str] = None
@@ -4208,6 +4209,8 @@ async def save_profile_from_quiz(request: Request, profile: QuizProfileData):
         profile_data["location"] = profile.home_location
     if profile.own_car:
         profile_data["own_car"] = profile.own_car == "yes"
+    if profile.own_computer:
+        profile_data["own_computer"] = profile.own_computer != "no"
     # Note: linkedin is NOT a column in user_profiles — stored in quiz_answers instead
 
     # Upsert to user_profiles
@@ -4243,6 +4246,8 @@ async def save_profile_from_quiz(request: Request, profile: QuizProfileData):
         quiz_personal["drivers_license"] = profile.drivers_license
     if profile.own_car:
         quiz_personal["own_car"] = profile.own_car
+    if profile.own_computer:
+        quiz_personal["own_computer"] = profile.own_computer
     if profile.linkedin:
         quiz_personal["linkedin"] = profile.linkedin
 
