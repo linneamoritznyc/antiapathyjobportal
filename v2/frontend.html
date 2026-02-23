@@ -2699,6 +2699,11 @@
                         const data = await res.json();
                         if (data.success && data.preferences) {
                             const serverPrefs = data.preferences.quiz_answers || {};
+                            // Also merge preferred_locations from server (saved by PlatserPage)
+                            const serverLocs = data.preferences.preferred_locations;
+                            if (Array.isArray(serverLocs) && serverLocs.length > 0) {
+                                serverPrefs.location = serverLocs;
+                            }
                             const merged = { ...loadPrefs(), ...serverPrefs };
                             localStorage.setItem('job_preferences', JSON.stringify(merged));
                             setPrefs(merged);
@@ -3005,6 +3010,21 @@
             const [saved, setSaved] = useState(false);
             const [search, setSearch] = useState('');
 
+            // Fetch preferred_locations from server on mount (source of truth)
+            useEffect(() => {
+                authFetch('/api/user/preferences').then(r => r.json()).then(data => {
+                    if (data.success && data.preferences) {
+                        const serverLocs = data.preferences.preferred_locations;
+                        if (Array.isArray(serverLocs) && serverLocs.length > 0) {
+                            setSelectedKommuner(serverLocs);
+                            const updated = { ...loadPrefs(), location: serverLocs };
+                            localStorage.setItem('job_preferences', JSON.stringify(updated));
+                            setPrefs(updated);
+                        }
+                    }
+                }).catch(() => {});
+            }, []);
+
             useEffect(() => {
                 const handler = () => {
                     const fresh = loadPrefs();
@@ -3032,16 +3052,27 @@
                 });
             };
 
-            const saveLocation = () => {
+            const saveLocation = async () => {
                 const updated = { ...prefs, location: selectedKommuner };
                 localStorage.setItem('job_preferences', JSON.stringify(updated));
                 setPrefs(updated);
-                setSaved(true);
                 window.dispatchEvent(new Event('prefsUpdated'));
-                setTimeout(() => setSaved(false), 2000);
-                authFetch('/api/user/locations', {
-                    method: 'POST', body: JSON.stringify({ locations: selectedKommuner })
-                }).catch(err => console.warn('Failed to sync location:', err));
+                try {
+                    const res = await authFetch('/api/user/locations', {
+                        method: 'POST', body: JSON.stringify({ locations: selectedKommuner })
+                    });
+                    const data = await res.json();
+                    if (data.success) {
+                        setSaved(true);
+                        setTimeout(() => setSaved(false), 2000);
+                    } else {
+                        console.error('Save locations failed:', data);
+                        alert('Kunde inte spara platser till servern: ' + (data.detail || 'okänt fel'));
+                    }
+                } catch (err) {
+                    console.error('Failed to sync locations:', err);
+                    alert('Kunde inte spara platser till servern. Kolla konsolen.');
+                }
             };
 
             const kommunCount = selectedKommuner.filter(k => k !== 'remote' && k !== 'anywhere').length;
