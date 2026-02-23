@@ -732,33 +732,6 @@
             const [savingChanges, setSavingChanges] = useState(false);
             const [saveStatus, setSaveStatus] = useState(null);
 
-            // Reset quiz function
-            const resetQuiz = () => {
-                if (confirm('Är du säker på att du vill börja om från början?')) {
-                    localStorage.removeItem('job_preferences');
-                    setStep(0);
-                    setAnswers({
-                        full_name: '',
-                        phone: '',
-                        home_location: '',
-                        age: '',
-                        drivers_license: '',
-                        own_car: '',
-                        linkedin: '',
-                        earliest_start: '',
-                        education_level: '',
-                        search_terms: [],
-                        custom_search: '',
-                        working_hours: [],
-                        employment_form: [],
-                        duration: '',
-                        salary: '',
-                        dealbreakers: []
-                    });
-                    setCustomSearch('');
-                }
-            };
-
             const questions = [
                 // === PERSONAL INFO (for applications & cover letters) ===
                 {
@@ -774,6 +747,13 @@
                     subtitle: 'Arbetsgivare vill kunna ringa dig',
                     type: 'text',
                     placeholder: '07X XXX XX XX'
+                },
+                {
+                    id: 'home_location',
+                    question: 'Var bor du?',
+                    subtitle: 'Används i personliga brev och för att hitta jobb nära dig',
+                    type: 'text',
+                    placeholder: 'T.ex. Norsborg, Stockholm, Vetlanda'
                 },
                 {
                     id: 'age',
@@ -930,7 +910,7 @@
 
             // Summary view helpers
             const summaryLabels = {
-                full_name: 'Namn', phone: 'Telefon', age: 'Ålder',
+                full_name: 'Namn', phone: 'Telefon', home_location: 'Bor i', age: 'Ålder',
                 drivers_license: 'Körkort', own_car: 'Egen bil', earliest_start: 'Kan börja',
                 linkedin: 'LinkedIn', education_level: 'Utbildning',
                 search_terms: 'Vill jobba med',
@@ -1157,21 +1137,9 @@
                                 </div>
                                 <button
                                     onClick={() => {
-                                        if (confirm('Vill du ta om hela quizzet från början?')) {
-                                            localStorage.removeItem('job_preferences');
-                                            setStep(0);
-                                            setAnswers({
-                                                full_name: '', phone: '', home_location: '', age: '',
-                                                drivers_license: '', own_car: '', linkedin: '',
-                                                earliest_start: '', education_level: '',
-                                                search_terms: [], custom_search: '',
-                                                working_hours: [], employment_form: [], duration: '',
-                                                salary: '', dealbreakers: []
-                                            });
-                                            setCustomSearch('');
-                                            setShowSummary(false);
-                                            setEditingField(null);
-                                        }
+                                        setStep(0);
+                                        setShowSummary(false);
+                                        setEditingField(null);
                                     }}
                                     className="px-4 py-2 bg-white/10 text-white/70 hover:bg-white/20 rounded-lg text-sm transition shrink-0"
                                 >
@@ -1183,7 +1151,7 @@
                             <div className="mb-6">
                                 <h2 className="text-white/40 text-xs uppercase tracking-wider mb-3 font-medium">Om dig</h2>
                                 <div className="bg-white/5 rounded-xl border border-white/10 divide-y divide-white/10">
-                                    {questions.slice(0, 7).map(renderQuestionRow)}
+                                    {questions.slice(0, 9).map(renderQuestionRow)}
                                 </div>
                             </div>
 
@@ -1191,7 +1159,7 @@
                             <div className="mb-6">
                                 <h2 className="text-white/40 text-xs uppercase tracking-wider mb-3 font-medium">Jobbpreferenser</h2>
                                 <div className="bg-white/5 rounded-xl border border-white/10 divide-y divide-white/10">
-                                    {questions.slice(7).map(renderQuestionRow)}
+                                    {questions.slice(9).map(renderQuestionRow)}
                                 </div>
                             </div>
 
@@ -1222,20 +1190,12 @@
                         {/* Header */}
                         <div className="flex justify-between items-center mb-8">
                             <span className="text-white/40 font-mono text-xs tracking-wide">anti-apathy</span>
-                            <div className="flex gap-4">
-                                <button
-                                    onClick={resetQuiz}
-                                    className="text-white/30 hover:text-white/60 text-sm transition"
-                                >
-                                    Gör om quizzet
-                                </button>
-                                <button
-                                    onClick={() => onComplete(answers)}
-                                    className="text-white/30 hover:text-white/60 text-sm transition"
-                                >
-                                    Hoppa över
-                                </button>
-                            </div>
+                            <button
+                                onClick={() => setShowSummary(true)}
+                                className="px-4 py-2 bg-white/10 text-white/70 hover:text-white text-sm transition rounded-lg"
+                            >
+                                Tillbaka till mina svar
+                            </button>
                         </div>
 
                         {/* Progress dots */}
