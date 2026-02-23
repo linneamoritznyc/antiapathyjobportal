@@ -17,6 +17,15 @@
 </head>
 <body class="bg-slate-50 min-h-screen">
     <div id="root"></div>
+    <script>
+        // Temporary error overlay — catches Babel parse errors and runtime crashes
+        window.onerror = function(msg, url, line, col, err) {
+            var el = document.createElement('div');
+            el.style.cssText = 'position:fixed;top:0;left:0;right:0;bottom:0;background:#1e1e2e;color:#f38ba8;padding:40px;font-family:monospace;font-size:14px;z-index:99999;overflow:auto;white-space:pre-wrap';
+            el.textContent = 'JS ERROR\n\n' + msg + '\n\nFile: ' + url + '\nLine: ' + line + ', Col: ' + col + '\n\n' + (err && err.stack ? err.stack : '');
+            document.body.appendChild(el);
+        };
+    </script>
     <script src="/static/lan-data.js"></script>
     <script src="/static/linkedin-parser.js"></script>
     <script type="text/babel">
