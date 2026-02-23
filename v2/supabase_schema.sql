@@ -205,6 +205,7 @@ CREATE TABLE IF NOT EXISTS user_awards (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     user_id TEXT NOT NULL,
     award_text TEXT NOT NULL,  -- Full award line like '1:a pris Stockholms Konstsalong 2024 - ...'
+    description TEXT DEFAULT NULL,  -- Optional backstory/context for the award
     sort_order INT DEFAULT 0,
     created_at TIMESTAMPTZ DEFAULT NOW()
 );
