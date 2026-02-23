@@ -861,11 +861,31 @@ async def generate_cover_letter(job: Dict, user_cv_text: Optional[str] = None, u
     name = p.get("full_name", "Linnea Moritz")
     phone = p.get("phone", "0761166109")
     email = p.get("email", "linneamoritzCV@gmail.com")
-    location = p.get("location", "")
     has_license = p.get("drivers_license", True)
     linkedin = p.get("linkedin", "")
-
     own_car = p.get("own_car", False)
+
+    # Region-based location: pick "bor i X" based on the job's county
+    location = p.get("location", "")
+    region_highlights = []
+    location_by_region = p.get("location_by_region") or {}
+    if location_by_region:
+        job_county = (job.get("county") or "").strip().lower()
+        matched_region = None
+        if job_county:
+            for region_key, region_data in location_by_region.items():
+                if region_key == "default":
+                    continue
+                if isinstance(region_data, dict) and job_county.startswith(region_key.lower()):
+                    matched_region = region_data
+                    break
+        # Fall back to default region
+        if not matched_region and location_by_region.get("default"):
+            default_key = location_by_region["default"]
+            matched_region = location_by_region.get(default_key)
+        if matched_region and isinstance(matched_region, dict):
+            location = matched_region.get("ort", location)
+            region_highlights = matched_region.get("highlights", [])
 
     # Defaults — may be overridden by user prefs below
     contact_greeting = f"Hej {job.get('contact_name', '')}!" if job.get('contact_name') else "Hej!"
@@ -900,16 +920,27 @@ async def generate_cover_letter(job: Dict, user_cv_text: Optional[str] = None, u
     user_info = f"- {name}"
     if real_age:
         user_info += f", {real_age} år"
-    user_info += f", bor i {location}"
-    if has_license and own_car:
+    if location:
+        user_info += f", bor i {location}"
+    # Körkort/bil: always mention if job description asks, otherwise only if region highlights include it
+    job_desc_lower = (job.get("full_description") or job.get("description") or "").lower()
+    job_mentions_license = any(w in job_desc_lower for w in ["körkort", "b-körkort", "körkortskrav"])
+    job_mentions_car = "egen bil" in job_desc_lower
+    show_license = job_mentions_license or "körkort" in [h.lower() for h in region_highlights]
+    show_car = job_mentions_car or "egen bil" in [h.lower() for h in region_highlights]
+    if has_license and own_car and (show_license or show_car):
         user_info += f"\n- Har B-körkort och egen bil"
-    elif has_license:
-        user_info += f"\n- Har B-körkort (ingen egen bil)"
+    elif has_license and show_license:
+        user_info += f"\n- Har B-körkort"
     user_info += f"\n- Flexibel med arbetstider"
     user_info += f"\n- Telefon: {phone}"
     user_info += f"\n- Svenska (modersmål), Engelska (flytande)"
     if linkedin:
         user_info += f"\n- LinkedIn: {linkedin}"
+    # Add any other region-specific highlights
+    for h in region_highlights:
+        if h.lower() not in ("körkort", "egen bil"):
+            user_info += f"\n- {h}"
 
     # Fetch style preferences, anecdotes, and AI feedback if user is logged in
     style_section = ""
@@ -1387,7 +1418,7 @@ async def save_jobs_to_db(jobs: List[Dict]) -> int:
         return 0
 
     # Only send columns that exist in the jobs table
-    db_columns = {"id", "title", "company", "location", "description", "description_summary",
+    db_columns = {"id", "title", "company", "location", "county", "description", "description_summary",
                   "url", "deadline", "priority", "contact_email", "contact_name",
                   "source", "scraped_at", "link_status"}
 
@@ -1631,7 +1662,13 @@ async def create_letter(job_id: str, request: GenerateLetterRequest = None, req:
     job = jobs[0]
     cv_text = request.user_cv_text if request else None
 
-    letter = await generate_cover_letter(job, cv_text, user_id=user_id)
+    # Fetch user profile from DB so cover letter uses correct name/location/etc
+    user_profile = None
+    if user_id:
+        profiles_result = await db_request("GET", "user_profiles", params={"user_id": f"eq.{user_id}"})
+        user_profile = profiles_result[0] if profiles_result else None
+
+    letter = await generate_cover_letter(job, cv_text, user_profile, user_id=user_id)
 
     return {
         "success": True,
@@ -6629,6 +6666,7 @@ async def get_profile(request: Request):
         "email": user_email or profile.get("email", ""),
         "phone": profile.get("phone", ""),
         "location": profile.get("location", ""),
+        "location_by_region": profile.get("location_by_region") or {},
         "email_signature": profile.get("email_signature", ""),
         "birth_date": profile.get("birth_date"),
         "training_letter_analyzed": len(letters) > 0,
@@ -6644,7 +6682,7 @@ async def update_profile_details(request: Request):
     user_id = await get_user_id_from_request(request, required=True)
 
     body = await request.json()
-    allowed_fields = {"full_name", "phone", "email", "location", "drivers_license"}
+    allowed_fields = {"full_name", "phone", "email", "location", "drivers_license", "location_by_region"}
     update_data = {k: v for k, v in body.items() if k in allowed_fields}
     if not update_data:
         raise HTTPException(status_code=400, detail="Inga giltiga fält att uppdatera")

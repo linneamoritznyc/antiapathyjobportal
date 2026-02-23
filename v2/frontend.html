@@ -1597,6 +1597,10 @@
             const [profileDetails, setProfileDetails] = useState({ full_name: '', phone: '', email: '', location: '' });
             const [savingDetails, setSavingDetails] = useState(false);
             const [detailsStatus, setDetailsStatus] = useState(null);
+            const [locationBases, setLocationBases] = useState([]);
+            const [defaultBase, setDefaultBase] = useState('');
+            const [savingBases, setSavingBases] = useState(false);
+            const [basesStatus, setBasesStatus] = useState(null);
 
             const calculateAge = (bd) => {
                 if (!bd) return null;
@@ -1641,6 +1645,19 @@
                         email: data.email || '',
                         location: data.location || ''
                     });
+                    // Load location bases
+                    const lbr = data.location_by_region || {};
+                    const bases = [];
+                    let defKey = '';
+                    Object.entries(lbr).forEach(([key, val]) => {
+                        if (key === 'default') {
+                            defKey = val;
+                        } else if (typeof val === 'object') {
+                            bases.push({ lan: key, ort: val.ort || '', highlights: (val.highlights || []).join(', ') });
+                        }
+                    });
+                    setLocationBases(bases.length > 0 ? bases : []);
+                    setDefaultBase(defKey);
                 } catch (err) {
                     console.error('Error fetching profile:', err);
                 }
@@ -1924,9 +1941,147 @@
                         </div>
                     </div>
 
+                    {/* Location Bases Section */}
+                    <div className="bg-white rounded-xl p-6 border border-slate-200">
+                        <h3 className="text-lg font-semibold mb-1">Mina baser</h3>
+                        <p className="text-sm text-slate-500 mb-4">
+                            Bor du på flera ställen? Lägg till en bas per län så anpassas personliga brev automatiskt.
+                            T.ex. "bor i Norsborg" för Stockholmsjobb, "bor i Vetlanda" för Jönköpingsjobb.
+                        </p>
+
+                        {locationBases.map((base, i) => (
+                            <div key={i} className="flex flex-wrap items-start gap-3 mb-3 p-3 bg-slate-50 rounded-lg border border-slate-100">
+                                <div className="flex-1 min-w-[140px]">
+                                    <label className="block text-xs font-medium text-slate-500 mb-1">Län</label>
+                                    <input
+                                        type="text"
+                                        value={base.lan}
+                                        onChange={e => {
+                                            const updated = [...locationBases];
+                                            updated[i] = {...updated[i], lan: e.target.value};
+                                            setLocationBases(updated);
+                                        }}
+                                        placeholder="t.ex. Stockholms län"
+                                        className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300"
+                                    />
+                                </div>
+                                <div className="flex-1 min-w-[120px]">
+                                    <label className="block text-xs font-medium text-slate-500 mb-1">Jag bor i</label>
+                                    <input
+                                        type="text"
+                                        value={base.ort}
+                                        onChange={e => {
+                                            const updated = [...locationBases];
+                                            updated[i] = {...updated[i], ort: e.target.value};
+                                            setLocationBases(updated);
+                                        }}
+                                        placeholder="t.ex. Norsborg"
+                                        className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300"
+                                    />
+                                </div>
+                                <div className="flex-1 min-w-[160px]">
+                                    <label className="block text-xs font-medium text-slate-500 mb-1">Lyft i brev (valfritt)</label>
+                                    <input
+                                        type="text"
+                                        value={base.highlights}
+                                        onChange={e => {
+                                            const updated = [...locationBases];
+                                            updated[i] = {...updated[i], highlights: e.target.value};
+                                            setLocationBases(updated);
+                                        }}
+                                        placeholder="t.ex. körkort, egen bil"
+                                        className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300"
+                                    />
+                                </div>
+                                <button
+                                    onClick={() => setLocationBases(locationBases.filter((_, j) => j !== i))}
+                                    className="mt-5 text-red-400 hover:text-red-600 text-lg px-2"
+                                    title="Ta bort"
+                                >
+                                    ×
+                                </button>
+                            </div>
+                        ))}
+
+                        <div className="flex flex-wrap items-center gap-3 mt-3">
+                            <button
+                                onClick={() => setLocationBases([...locationBases, { lan: '', ort: '', highlights: '' }])}
+                                className="text-indigo-600 hover:text-indigo-800 text-sm font-medium"
+                            >
+                                + Lägg till bas
+                            </button>
+
+                            {locationBases.length > 1 && (
+                                <div className="flex items-center gap-2 ml-auto">
+                                    <label className="text-xs text-slate-500">Standard:</label>
+                                    <select
+                                        value={defaultBase}
+                                        onChange={e => setDefaultBase(e.target.value)}
+                                        className="text-sm border border-slate-200 rounded-lg px-2 py-1.5 focus:outline-none focus:ring-2 focus:ring-indigo-300"
+                                    >
+                                        <option value="">Välj...</option>
+                                        {locationBases.filter(b => b.lan.trim()).map((b, i) => (
+                                            <option key={i} value={b.lan.trim().toLowerCase()}>{b.lan}</option>
+                                        ))}
+                                    </select>
+                                </div>
+                            )}
+                        </div>
+
+                        {locationBases.length > 0 && (
+                            <div className="flex items-center gap-3 mt-4">
+                                <button
+                                    onClick={async () => {
+                                        setSavingBases(true);
+                                        setBasesStatus(null);
+                                        try {
+                                            const lbr = {};
+                                            locationBases.forEach(b => {
+                                                if (!b.lan.trim()) return;
+                                                const key = b.lan.trim().toLowerCase();
+                                                lbr[key] = {
+                                                    ort: b.ort.trim(),
+                                                    highlights: b.highlights ? b.highlights.split(',').map(h => h.trim()).filter(Boolean) : []
+                                                };
+                                            });
+                                            if (defaultBase) {
+                                                lbr.default = defaultBase;
+                                            } else if (locationBases.length === 1 && locationBases[0].lan.trim()) {
+                                                lbr.default = locationBases[0].lan.trim().toLowerCase();
+                                            }
+                                            const res = await authFetch('/api/profile/details', {
+                                                method: 'PATCH',
+                                                body: JSON.stringify({ location_by_region: lbr })
+                                            });
+                                            if (res.ok) {
+                                                setBasesStatus('Sparat!');
+                                                setTimeout(() => setBasesStatus(null), 3000);
+                                            } else {
+                                                setBasesStatus('Kunde inte spara.');
+                                            }
+                                        } catch(e) {
+                                            setBasesStatus('Fel vid sparande.');
+                                        } finally {
+                                            setSavingBases(false);
+                                        }
+                                    }}
+                                    disabled={savingBases}
+                                    className="bg-indigo-600 text-white px-5 py-2.5 rounded-lg font-medium hover:bg-indigo-700 disabled:opacity-50 transition text-sm"
+                                >
+                                    {savingBases ? 'Sparar...' : 'Spara baser'}
+                                </button>
+                                {basesStatus && (
+                                    <span className={`text-sm ${basesStatus.startsWith('Sparat') ? 'text-green-600' : 'text-red-600'}`}>
+                                        {basesStatus}
+                                    </span>
+                                )}
+                            </div>
+                        )}
+                    </div>
+
                     {/* Birth Date Section */}
                     <div className="bg-white rounded-xl p-6 border border-slate-200">
-                        <h3 className="text-lg font-semibold mb-1">🎂 Födelsedatum</h3>
+                        <h3 className="text-lg font-semibold mb-1">Födelsedatum</h3>
                         <p className="text-sm text-slate-500 mb-4">
                             Används för att beräkna din ålder i personliga brev. Uppdateras automatiskt — du behöver aldrig ändra det!
                         </p>
