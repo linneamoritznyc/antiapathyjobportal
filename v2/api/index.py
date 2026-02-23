@@ -870,7 +870,6 @@ async def generate_cover_letter(job: Dict, user_cv_text: Optional[str] = None, u
     # Defaults — may be overridden by user prefs below
     contact_greeting = f"Hej {job.get('contact_name', '')}!" if job.get('contact_name') else "Hej!"
     signature_style = "Med vänlig hälsning,"
-    max_words = 200
 
     # Build extra job details for the prompt
     job_extras = []
@@ -970,8 +969,6 @@ async def generate_cover_letter(job: Dict, user_cv_text: Optional[str] = None, u
                     phone = sp["sign_off_phone"]
                 if sp.get("sign_off_email"):
                     email = sp["sign_off_email"]
-                if sp.get("max_words"):
-                    max_words = sp["max_words"]
 
                 # never_mention list
                 never = sp.get("never_mention", []) or []
@@ -1004,14 +1001,14 @@ async def generate_cover_letter(job: Dict, user_cv_text: Optional[str] = None, u
         except Exception as e:
             logger.error(f"Error fetching style/anecdotes/feedback: {e}")
 
-    prompt = f"""Skriv ett personligt brev på svenska för denna jobbansökan.
+    prompt = f"""Skriv ett riktigt bra personligt brev på svenska för denna jobbansökan. Brevet ska vara så bra att arbetsgivaren vill boka en intervju direkt.
 
 JOBBET:
 - Titel: {job.get('title')}
 - Företag: {job.get('company')}
 - Plats: {job.get('location')}
 {extras_text}
-- Beskrivning: {job.get('full_description', job.get('description', ''))[:2500]}
+- Beskrivning: {job.get('full_description', job.get('description', ''))[:3000]}
 
 MIN BAKGRUND (använd som inspiration — plocka bara det som faktiskt är relevant):
 {experience}
@@ -1021,16 +1018,17 @@ OM MIG:
 
 INSTRUKTIONER:
 1. Börja med: {contact_greeting}
-2. Skriv ca {max_words} ord på naturlig, varm svenska (längre om det behövs för att nämna alla valda erfarenheter)
-3. Matcha tonen mot jobbet: fysisk/praktisk tjänst → enkelt och jordnära; kontorsjobb → lite mer formellt
-4. Lyft erfarenheter som passar jobbet. Om inga erfarenheter matchar direkt, fokusera istället på personliga egenskaper som passar (t.ex. noggrannhet, pålitlighet, initiativförmåga, servicekänsla). Försök ALDRIG koppla irrelevant erfarenhet till jobbet på ett konstruerat sätt.
-5. VIKTIGT: Om annonsen nämner specifika krav eller önskemål (t.ex. körkort, bil, fysisk förmåga, kvällar/helger, sommarsäsong, "annan sysselsättning"), bekräfta kortfattat att jag uppfyller/passar dem — utan att överdriva
-6. Nämn var jag bor och att jag är flexibel med arbetstider
-7. KRITISKT: Om "EXTRA ERFARENHETER SOM MÅSTE NÄMNAS I BREVET" finns ovan — du MÅSTE nämna VARJE ENSKILD erfarenhet som listas där i brevet. Hoppa inte över en enda. Nämn alla, även om de inte matchar jobbet perfekt — hitta en naturlig koppling för var och en. Det är helt ok att nämna 2 erfarenheter tillsammans i samma mening eller stycke om de belyser liknande styrkor
-8. Om "MIN SKRIVSTIL" finns ovan — följ den stilen. Undvik ALLA fraser listade under "Fraser jag INTE vill ha". Använd gärna fraser från "Fraser jag gillar".
-9. Om "MINA PERSONLIGA ANEKDOTER & HOBBYS" finns ovan — väv in EN relevant anekdot eller hobby om den passar jobbet. Tvinga inte in irrelevanta anekdoter.
-10. VIKTIGT om ålder: Om du nämner ålder, använd EXAKT den ålder som står under "OM MIG" ovan. Ignorera eventuell ålder som nämns i bakgrund/erfarenheter — den kan vara gammal.
-11. Avsluta med:
+2. Skriv ett FULLSTÄNDIGT personligt brev på naturlig, varm svenska. Brevet ska ha minst 3-4 stycken med riktig substans — INTE bara några generiska meningar. Visa att du har läst annonsen och berätta varför du passar.
+3. KRITISKT: Läs jobbeskrivningen NOGA och referera till SPECIFIKA saker från annonsen. Nämn företagsnamnet, tjänstetiteln, och 2-3 konkreta saker från annonsen som visar att du faktiskt har LÄST den. Skriv ALDRIG ett generiskt brev som kunde skickas till vilket jobb som helst.
+4. Matcha tonen mot jobbet: fysisk/praktisk tjänst → enkelt och jordnära; kontorsjobb → lite mer formellt
+5. Lyft erfarenheter som passar jobbet. Om inga erfarenheter matchar direkt, fokusera istället på personliga egenskaper som passar (t.ex. noggrannhet, pålitlighet, initiativförmåga, servicekänsla). Försök ALDRIG koppla irrelevant erfarenhet till jobbet på ett konstruerat sätt.
+6. VIKTIGT: Om annonsen nämner specifika krav eller önskemål (t.ex. körkort, bil, fysisk förmåga, kvällar/helger, sommarsäsong, "annan sysselsättning"), bekräfta kortfattat att jag uppfyller/passar dem — utan att överdriva
+7. Nämn var jag bor och att jag är flexibel med arbetstider
+8. KRITISKT: Om "EXTRA ERFARENHETER SOM MÅSTE NÄMNAS I BREVET" finns ovan — du MÅSTE nämna VARJE ENSKILD erfarenhet som listas där i brevet. Hoppa inte över en enda. Nämn alla, även om de inte matchar jobbet perfekt — hitta en naturlig koppling för var och en. Det är helt ok att nämna 2 erfarenheter tillsammans i samma mening eller stycke om de belyser liknande styrkor
+9. Om "MIN SKRIVSTIL" finns ovan — följ den stilen. Undvik ALLA fraser listade under "Fraser jag INTE vill ha". Använd gärna fraser från "Fraser jag gillar".
+10. Om "MINA PERSONLIGA ANEKDOTER & HOBBYS" finns ovan — väv in EN relevant anekdot eller hobby om den passar jobbet. Tvinga inte in irrelevanta anekdoter.
+11. VIKTIGT om ålder: Om du nämner ålder, använd EXAKT den ålder som står under "OM MIG" ovan. Ignorera eventuell ålder som nämns i bakgrund/erfarenheter — den kan vara gammal.
+12. Avsluta med:
    {signature_style}
    {name}
    {phone}
