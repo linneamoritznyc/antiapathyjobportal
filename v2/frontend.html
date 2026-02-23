@@ -137,13 +137,13 @@
         };
 
         // Navigation tabs
-        const NavTabs = ({ activeTab, setActiveTab, emailJobCount, externalJobCount }) => (
+        const NavTabs = ({ activeTab, setActiveTab, emailJobCount, externalJobCount, savedCount }) => (
             <div className="flex gap-6">
                 {[
                     { id: 'jobs', label: 'Jobb', icon: '📧', count: emailJobCount },
                     { id: 'external', label: 'Extern', icon: '🌐', count: externalJobCount },
                     { id: 'cvs', label: 'Mina CV', icon: '📄' },
-                    { id: 'applications', label: 'Ansökningar', icon: '📬' },
+                    { id: 'applications', label: 'Ansökningar', icon: '📬', count: savedCount },
                     { id: 'metrics', label: 'Statistik', icon: '📊' },
                     { id: 'preferences', label: 'Preferenser', icon: '⚙️' },
                     { id: 'platser', label: 'Platser', icon: '📍' },
@@ -2542,39 +2542,269 @@
         };
 
         // Project Card Component
-        const ProjectCard = ({ item }) => (
-            <div className="bg-slate-50 rounded-lg p-4 border border-slate-200 hover:border-indigo-300 transition">
-                <div className="flex justify-between items-start">
-                    <div className="flex-1">
-                        <div className="flex items-center gap-2 mb-1">
-                            <span className="text-2xl">💻</span>
-                            <h4 className="font-semibold">{item.project_name}</h4>
+        const ProjectCard = ({ item, onDelete }) => {
+            const [deleting, setDeleting] = useState(false);
+            const handleDel = async () => {
+                if (!item.id || !confirm('Ta bort detta projekt?')) return;
+                setDeleting(true);
+                try {
+                    const res = await authFetch(`/api/user/project/${item.id}`, { method: 'DELETE' });
+                    if (res.ok && onDelete) onDelete();
+                } catch (e) { alert('Kunde inte ta bort'); }
+                setDeleting(false);
+            };
+            return (
+                <div className="bg-slate-50 rounded-lg p-4 border border-slate-200 hover:border-indigo-300 transition">
+                    <div className="flex justify-between items-start">
+                        <div className="flex-1">
+                            <div className="flex items-center gap-2 mb-1">
+                                <span className="text-2xl">💻</span>
+                                <h4 className="font-semibold">{item.project_name}</h4>
+                            </div>
+                            <p className="text-sm text-slate-600">{Array.isArray(item.tech_stack) ? item.tech_stack.join(', ') : item.tech_stack}</p>
+                            {item.live_url && (
+                                <a href={item.live_url} target="_blank" rel="noopener noreferrer" className="text-xs text-blue-600 hover:underline">
+                                    {item.live_url}
+                                </a>
+                            )}
+                            <p className="text-sm text-slate-700 mt-2 line-clamp-2">{item.description}</p>
                         </div>
-                        <p className="text-sm text-slate-600">{Array.isArray(item.tech_stack) ? item.tech_stack.join(', ') : item.tech_stack}</p>
-                        {item.live_url && (
-                            <a href={item.live_url} target="_blank" rel="noopener noreferrer" className="text-xs text-blue-600 hover:underline">
-                                {item.live_url}
-                            </a>
-                        )}
-                        <p className="text-sm text-slate-700 mt-2 line-clamp-2">{item.description}</p>
+                        <button onClick={handleDel} disabled={deleting}
+                            className="p-1.5 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded flex-shrink-0 ml-2" title="Ta bort">
+                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                            </svg>
+                        </button>
                     </div>
                 </div>
-            </div>
-        );
+            );
+        };
 
         // Generic Card for other types
-        const GenericCard = ({ item, icon, title, subtitle }) => (
-            <div className="bg-slate-50 rounded-lg p-4 border border-slate-200 hover:border-indigo-300 transition">
-                <div className="flex items-start gap-3">
-                    <span className="text-2xl flex-shrink-0">{icon}</span>
-                    <div className="flex-1">
-                        <h4 className="font-semibold">{title}</h4>
-                        {subtitle && <p className="text-sm text-slate-600">{subtitle}</p>}
-                        {item.description && <p className="text-sm text-slate-700 mt-2 line-clamp-2">{item.description}</p>}
+        const GenericCard = ({ item, icon, title, subtitle, onDelete, deleteEndpoint }) => {
+            const [deleting, setDeleting] = useState(false);
+            const handleDel = async () => {
+                if (!deleteEndpoint || !confirm('Ta bort denna post?')) return;
+                setDeleting(true);
+                try {
+                    const res = await authFetch(deleteEndpoint, { method: 'DELETE' });
+                    if (res.ok && onDelete) onDelete();
+                } catch (e) { alert('Kunde inte ta bort'); }
+                setDeleting(false);
+            };
+            return (
+                <div className="bg-slate-50 rounded-lg p-4 border border-slate-200 hover:border-indigo-300 transition">
+                    <div className="flex items-start gap-3">
+                        <span className="text-2xl flex-shrink-0">{icon}</span>
+                        <div className="flex-1">
+                            <h4 className="font-semibold">{title}</h4>
+                            {subtitle && <p className="text-sm text-slate-600">{subtitle}</p>}
+                            {item.description && <p className="text-sm text-slate-700 mt-2 line-clamp-2">{item.description}</p>}
+                        </div>
+                        {deleteEndpoint && (
+                            <button onClick={handleDel} disabled={deleting}
+                                className="p-1.5 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded flex-shrink-0" title="Ta bort">
+                                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                                </svg>
+                            </button>
+                        )}
                     </div>
                 </div>
-            </div>
-        );
+            );
+        };
+
+        // Volunteer Card with edit/delete and description
+        const VolunteerCard = ({ item, onDelete }) => {
+            const [editing, setEditing] = useState(false);
+            const [form, setForm] = useState({
+                organization: item.organization || '',
+                title: item.title || '',
+                dates: item.dates || '',
+                description: item.description || ''
+            });
+            const [saving, setSaving] = useState(false);
+            const [deleting, setDeleting] = useState(false);
+
+            const handleSave = async () => {
+                setSaving(true);
+                try {
+                    const res = await authFetch(`/api/user/volunteer/${item.id}`, {
+                        method: 'PUT',
+                        body: JSON.stringify(form)
+                    });
+                    if (res.ok) { setEditing(false); if (onDelete) onDelete(); }
+                } catch (e) { alert('Kunde inte spara'); }
+                setSaving(false);
+            };
+
+            const handleDel = async () => {
+                if (!confirm('Ta bort denna volontärerfarenhet?')) return;
+                setDeleting(true);
+                try {
+                    const res = await authFetch(`/api/user/volunteer/${item.id}`, { method: 'DELETE' });
+                    if (res.ok && onDelete) onDelete();
+                } catch (e) { alert('Kunde inte ta bort'); }
+                setDeleting(false);
+            };
+
+            if (editing) {
+                return (
+                    <div className="bg-white rounded-lg p-4 border-2 border-indigo-400 space-y-3">
+                        <div className="grid grid-cols-2 gap-3">
+                            <div>
+                                <label className="text-xs text-slate-500 block mb-1">Organisation</label>
+                                <input className="w-full border rounded px-3 py-2 text-sm"
+                                    value={form.organization} onChange={e => setForm({...form, organization: e.target.value})} />
+                            </div>
+                            <div>
+                                <label className="text-xs text-slate-500 block mb-1">Roll/Titel</label>
+                                <input className="w-full border rounded px-3 py-2 text-sm"
+                                    value={form.title} onChange={e => setForm({...form, title: e.target.value})}
+                                    placeholder="t.ex. Volontär, Projektledare" />
+                            </div>
+                            <div className="col-span-2">
+                                <label className="text-xs text-slate-500 block mb-1">Period</label>
+                                <input className="w-full border rounded px-3 py-2 text-sm"
+                                    value={form.dates} onChange={e => setForm({...form, dates: e.target.value})}
+                                    placeholder="t.ex. 2016 - 2017" />
+                            </div>
+                        </div>
+                        <div>
+                            <label className="text-xs text-slate-500 block mb-1">Beskrivning</label>
+                            <textarea className="w-full border rounded px-3 py-2 text-sm" rows={3}
+                                value={form.description} onChange={e => setForm({...form, description: e.target.value})}
+                                placeholder="Beskriv vad du gjorde, ansvar, resultat..." />
+                        </div>
+                        <div className="flex gap-2 justify-end">
+                            <button onClick={() => setEditing(false)} className="px-4 py-2 text-sm text-slate-600 hover:bg-slate-100 rounded">Avbryt</button>
+                            <button onClick={handleSave} disabled={saving} className="px-4 py-2 text-sm bg-indigo-600 text-white rounded hover:bg-indigo-700 disabled:opacity-50">
+                                {saving ? 'Sparar...' : 'Spara'}
+                            </button>
+                        </div>
+                    </div>
+                );
+            }
+
+            return (
+                <div className="bg-slate-50 rounded-lg p-4 border border-slate-200 hover:border-indigo-300 transition">
+                    <div className="flex justify-between items-start">
+                        <div className="flex items-start gap-3 flex-1">
+                            <span className="text-2xl flex-shrink-0">🤝</span>
+                            <div className="flex-1">
+                                <h4 className="font-semibold">{item.organization}</h4>
+                                {item.title && <p className="text-sm text-indigo-600 font-medium">{item.title}</p>}
+                                {item.dates && <p className="text-xs text-slate-500">{item.dates}</p>}
+                                {item.description ? (
+                                    <p className="text-sm text-slate-700 mt-2 line-clamp-3">{item.description}</p>
+                                ) : (
+                                    <p className="text-xs text-amber-500 mt-2 italic">Saknar beskrivning — klicka redigera</p>
+                                )}
+                            </div>
+                        </div>
+                        <div className="flex gap-1 ml-2 flex-shrink-0">
+                            <button onClick={() => setEditing(true)} className="p-1.5 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded" title="Redigera">
+                                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
+                                </svg>
+                            </button>
+                            <button onClick={handleDel} disabled={deleting} className="p-1.5 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded" title="Ta bort">
+                                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                                </svg>
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            );
+        };
+
+        // Language Card with edit level and delete
+        const LanguageCard = ({ item, onDelete }) => {
+            const [editing, setEditing] = useState(false);
+            const [skillText, setSkillText] = useState(item.skill_text || '');
+            const [saving, setSaving] = useState(false);
+            const [deleting, setDeleting] = useState(false);
+
+            const levels = ['Modersmål', 'Flytande', 'Avancerad', 'Mellan', 'Nybörjare'];
+            const currentLang = skillText.split('(')[0].trim();
+            const currentLevel = skillText.match(/\(([^)]+)\)/)?.[1] || '';
+
+            const handleSave = async (newLevel) => {
+                setSaving(true);
+                const newText = `${currentLang} (${newLevel})`;
+                try {
+                    const res = await authFetch(`/api/user/skill/${item.id}`, {
+                        method: 'PUT',
+                        body: JSON.stringify({
+                            category: item.category || 'language',
+                            skill_type: 'language',
+                            skill_text: newText
+                        })
+                    });
+                    if (res.ok) { setSkillText(newText); setEditing(false); if (onDelete) onDelete(); }
+                } catch (e) { alert('Kunde inte spara'); }
+                setSaving(false);
+            };
+
+            const handleDel = async () => {
+                if (!confirm(`Ta bort ${currentLang}?`)) return;
+                setDeleting(true);
+                try {
+                    const res = await authFetch(`/api/user/skill/${item.id}`, { method: 'DELETE' });
+                    if (res.ok && onDelete) onDelete();
+                } catch (e) { alert('Kunde inte ta bort'); }
+                setDeleting(false);
+            };
+
+            if (editing) {
+                return (
+                    <div className="bg-white rounded-lg p-4 border-2 border-indigo-400">
+                        <p className="text-sm font-semibold mb-2">🗣️ {currentLang}</p>
+                        <p className="text-xs text-slate-500 mb-2">Välj nivå:</p>
+                        <div className="flex flex-wrap gap-2">
+                            {levels.map(level => (
+                                <button key={level} onClick={() => handleSave(level)} disabled={saving}
+                                    className={`px-3 py-1.5 text-sm rounded-full border transition ${
+                                        currentLevel === level
+                                            ? 'bg-indigo-100 border-indigo-400 text-indigo-700 font-medium'
+                                            : 'bg-white border-slate-300 text-slate-600 hover:bg-indigo-50'
+                                    } disabled:opacity-50`}>
+                                    {level}
+                                </button>
+                            ))}
+                        </div>
+                        <button onClick={() => setEditing(false)} className="mt-2 text-xs text-slate-400 hover:text-slate-600">Avbryt</button>
+                    </div>
+                );
+            }
+
+            return (
+                <div className="bg-slate-50 rounded-lg p-4 border border-slate-200 hover:border-indigo-300 transition">
+                    <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-3">
+                            <span className="text-2xl">🗣️</span>
+                            <div>
+                                <h4 className="font-semibold">{currentLang}</h4>
+                                {currentLevel && <span className="text-xs text-indigo-600 bg-indigo-50 px-2 py-0.5 rounded-full">{currentLevel}</span>}
+                            </div>
+                        </div>
+                        <div className="flex gap-1">
+                            <button onClick={() => setEditing(true)} className="p-1.5 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded" title="Ändra nivå">
+                                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
+                                </svg>
+                            </button>
+                            <button onClick={handleDel} disabled={deleting} className="p-1.5 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded" title="Ta bort">
+                                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                                </svg>
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            );
+        };
 
         // CV Block Accordion Component
         const CVBlockAccordion = ({ title, count, icon, items, ItemCard, onAdd, onRefresh }) => {
@@ -2833,6 +3063,10 @@
             // CV upload to enhance Master CV
             const [enhancing, setEnhancing] = useState(false);
             const [enhanceResult, setEnhanceResult] = useState(null);
+            const [enhanceChanges, setEnhanceChanges] = useState(null);
+            const [chatMessages, setChatMessages] = useState([]);
+            const [chatInput, setChatInput] = useState('');
+            const [chatLoading, setChatLoading] = useState(false);
             const fileInputRef = React.useRef(null);
 
             const handleEnhanceMasterCV = async (e) => {
@@ -2840,11 +3074,12 @@
                 if (!file) return;
                 setEnhancing(true);
                 setEnhanceResult(null);
+                setEnhanceChanges(null);
+                setChatMessages([]);
                 try {
                     const formData = new FormData();
                     formData.append('file', file);
                     const token = localStorage.getItem('auth_token');
-                    // Use raw fetch — authFetch forces Content-Type: application/json which breaks FormData
                     const res = await fetch('/api/cv/enhance-master', {
                         method: 'POST',
                         headers: token ? { 'Authorization': `Bearer ${token}` } : {},
@@ -2853,6 +3088,7 @@
                     const data = await res.json();
                     if (data.success) {
                         setEnhanceResult(data.summary);
+                        setEnhanceChanges(JSON.stringify(data.changes || {}, null, 2));
                         fetchMasterCVData();
                     } else {
                         alert(data.detail || 'Kunde inte analysera CV');
@@ -2863,6 +3099,32 @@
                 }
                 setEnhancing(false);
                 if (fileInputRef.current) fileInputRef.current.value = '';
+            };
+
+            const handleChatSend = async () => {
+                if (!chatInput.trim() || chatLoading) return;
+                const q = chatInput.trim();
+                setChatMessages(prev => [...prev, { role: 'user', text: q }]);
+                setChatInput('');
+                setChatLoading(true);
+                try {
+                    const res = await authFetch('/api/cv/enhance-chat', {
+                        method: 'POST',
+                        body: JSON.stringify({
+                            question: q,
+                            changes_context: enhanceChanges || enhanceResult || ''
+                        })
+                    });
+                    const data = await res.json();
+                    if (data.success) {
+                        setChatMessages(prev => [...prev, { role: 'ai', text: data.answer }]);
+                    } else {
+                        setChatMessages(prev => [...prev, { role: 'ai', text: 'Kunde inte svara just nu.' }]);
+                    }
+                } catch (e) {
+                    setChatMessages(prev => [...prev, { role: 'ai', text: 'Fel vid anslutning.' }]);
+                }
+                setChatLoading(false);
             };
 
             // Upload CV PDF for a bransch
@@ -2968,6 +3230,47 @@
                         </button>
                     </div>
 
+                    {/* Chat about CV changes */}
+                    {enhanceResult && (
+                        <div className="bg-white rounded-xl border border-slate-200 p-4">
+                            <p className="text-sm font-semibold text-slate-700 mb-2">💬 Fråga om ändringarna</p>
+                            {chatMessages.length > 0 && (
+                                <div className="space-y-2 mb-3 max-h-60 overflow-y-auto">
+                                    {chatMessages.map((msg, i) => (
+                                        <div key={i} className={`text-sm p-2 rounded-lg ${
+                                            msg.role === 'user'
+                                                ? 'bg-indigo-50 text-indigo-800 ml-8'
+                                                : 'bg-slate-50 text-slate-700 mr-8'
+                                        }`}>
+                                            <span className="font-medium">{msg.role === 'user' ? 'Du: ' : 'AI: '}</span>
+                                            {msg.text}
+                                        </div>
+                                    ))}
+                                    {chatLoading && (
+                                        <div className="text-sm text-slate-400 p-2">Tänker...</div>
+                                    )}
+                                </div>
+                            )}
+                            <div className="flex gap-2">
+                                <input
+                                    type="text"
+                                    value={chatInput}
+                                    onChange={e => setChatInput(e.target.value)}
+                                    onKeyDown={e => e.key === 'Enter' && handleChatSend()}
+                                    placeholder="t.ex. Vilka datum la du till? Vad ändrades i beskrivningen för Volvo?"
+                                    className="flex-1 border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300"
+                                />
+                                <button
+                                    onClick={handleChatSend}
+                                    disabled={chatLoading || !chatInput.trim()}
+                                    className="bg-indigo-600 text-white px-4 py-2 rounded-lg text-sm hover:bg-indigo-700 disabled:opacity-50 transition"
+                                >
+                                    Fråga
+                                </button>
+                            </div>
+                        </div>
+                    )}
+
                     {/* Section 2: Expandable CV Blocks */}
                     <div className="space-y-3">
                         <CVBlockAccordion
@@ -2993,6 +3296,7 @@
                             count={projects.length}
                             icon="💻"
                             items={projects}
+                            onRefresh={fetchMasterCVData}
                             ItemCard={ProjectCard}
                         />
 
@@ -3001,12 +3305,15 @@
                             count={certifications.length}
                             icon="🏅"
                             items={certifications}
-                            ItemCard={({ item }) => (
+                            onRefresh={fetchMasterCVData}
+                            ItemCard={({ item, onDelete }) => (
                                 <GenericCard
                                     item={item}
                                     icon="🏅"
                                     title={item.certification_name}
                                     subtitle={item.issuing_organization || item.issuer}
+                                    onDelete={onDelete}
+                                    deleteEndpoint={item.id ? `/api/user/certification/${item.id}` : null}
                                 />
                             )}
                         />
@@ -3016,12 +3323,15 @@
                             count={awards.length}
                             icon="🏆"
                             items={awards}
-                            ItemCard={({ item }) => (
+                            onRefresh={fetchMasterCVData}
+                            ItemCard={({ item, onDelete }) => (
                                 <GenericCard
                                     item={item}
                                     icon="🏆"
                                     title={item.award_text}
                                     subtitle={null}
+                                    onDelete={onDelete}
+                                    deleteEndpoint={item.id ? `/api/user/award/${item.id}` : null}
                                 />
                             )}
                         />
@@ -3031,13 +3341,9 @@
                             count={volunteer.length}
                             icon="🤝"
                             items={volunteer}
-                            ItemCard={({ item }) => (
-                                <GenericCard
-                                    item={item}
-                                    icon="🤝"
-                                    title={item.organization}
-                                    subtitle={item.dates}
-                                />
+                            onRefresh={fetchMasterCVData}
+                            ItemCard={({ item, onDelete }) => (
+                                <VolunteerCard item={item} onDelete={onDelete} />
                             )}
                         />
 
@@ -3046,13 +3352,9 @@
                             count={skills.filter(s => s.skill_type === 'language').length}
                             icon="🗣️"
                             items={skills.filter(s => s.skill_type === 'language')}
-                            ItemCard={({ item }) => (
-                                <GenericCard
-                                    item={item}
-                                    icon="🗣️"
-                                    title={item.skill_text}
-                                    subtitle={null}
-                                />
+                            onRefresh={fetchMasterCVData}
+                            ItemCard={({ item, onDelete }) => (
+                                <LanguageCard item={item} onDelete={onDelete} />
                             )}
                         />
                     </div>
@@ -7990,6 +8292,7 @@
                                 setActiveTab={setActiveTab}
                                 emailJobCount={jobs.filter(j => j.contact_email && j.contact_email.includes('@')).length}
                                 externalJobCount={jobs.filter(j => !j.contact_email || !j.contact_email.includes('@')).length}
+                                savedCount={(savedJobs || []).length}
                             />
                         </div>
                     </header>

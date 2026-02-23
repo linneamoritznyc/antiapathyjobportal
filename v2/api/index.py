@@ -4883,6 +4883,83 @@ async def delete_skill(request: Request, skill_id: str):
     return {"success": False, "error": "Kunde inte ta bort kompetens"}
 
 
+# --- Volunteer CRUD ---
+
+class VolunteerData(BaseModel):
+    organization: str
+    title: Optional[str] = None
+    dates: Optional[str] = None
+    description: Optional[str] = None
+
+@app.post("/api/user/volunteer")
+async def create_volunteer(request: Request, vol: VolunteerData):
+    """Create a new volunteer entry."""
+    user_id = await get_user_id_from_request(request, required=True)
+    result = await db_request("POST", "user_volunteer", data={
+        "user_id": user_id,
+        "organization": vol.organization,
+        "title": vol.title,
+        "dates": vol.dates,
+        "description": vol.description
+    })
+    if result:
+        return {"success": True, "volunteer": result[0]}
+    return {"success": False, "error": "Kunde inte skapa volontärerfarenhet"}
+
+@app.put("/api/user/volunteer/{vol_id}")
+async def update_volunteer(request: Request, vol_id: str, vol: VolunteerData):
+    """Update an existing volunteer entry."""
+    user_id = await get_user_id_from_request(request, required=True)
+    result = await db_request("PATCH", "user_volunteer", data={
+        "organization": vol.organization,
+        "title": vol.title,
+        "dates": vol.dates,
+        "description": vol.description
+    }, params={"id": f"eq.{vol_id}", "user_id": f"eq.{user_id}"})
+    if result:
+        return {"success": True, "volunteer": result[0]}
+    return {"success": False, "error": "Kunde inte uppdatera"}
+
+@app.delete("/api/user/volunteer/{vol_id}")
+async def delete_volunteer(request: Request, vol_id: str):
+    """Delete a volunteer entry."""
+    user_id = await get_user_id_from_request(request, required=True)
+    result = await db_request("DELETE", "user_volunteer", params={
+        "id": f"eq.{vol_id}", "user_id": f"eq.{user_id}"
+    })
+    return {"success": True, "message": "Volontärerfarenhet borttagen"}
+
+
+# --- Award & Certification DELETE ---
+
+@app.delete("/api/user/award/{award_id}")
+async def delete_award(request: Request, award_id: str):
+    """Delete an award entry."""
+    user_id = await get_user_id_from_request(request, required=True)
+    await db_request("DELETE", "user_awards", params={
+        "id": f"eq.{award_id}", "user_id": f"eq.{user_id}"
+    })
+    return {"success": True, "message": "Pris borttaget"}
+
+@app.delete("/api/user/certification/{cert_id}")
+async def delete_certification(request: Request, cert_id: str):
+    """Delete a certification entry."""
+    user_id = await get_user_id_from_request(request, required=True)
+    await db_request("DELETE", "user_certifications", params={
+        "id": f"eq.{cert_id}", "user_id": f"eq.{user_id}"
+    })
+    return {"success": True, "message": "Certifiering borttagen"}
+
+@app.delete("/api/user/project/{project_id}")
+async def delete_project(request: Request, project_id: str):
+    """Delete a tech project entry."""
+    user_id = await get_user_id_from_request(request, required=True)
+    await db_request("DELETE", "tech_projects", params={
+        "id": f"eq.{project_id}", "user_id": f"eq.{user_id}"
+    })
+    return {"success": True, "message": "Projekt borttaget"}
+
+
 class LinkedInImport(BaseModel):
     linkedin_url: str
 
@@ -5166,6 +5243,57 @@ VIKTIGT:
         "summary": changes.get("summary", f"{added} nya poster, {updated} förbättrade"),
         "changes": changes
     }
+
+
+@app.post("/api/cv/enhance-chat")
+async def enhance_chat(request: Request):
+    """Chat about the last CV enhancement — answer follow-up questions."""
+    user_id = await get_user_id_from_request(request, required=True)
+    body = await request.json()
+    question = body.get("question", "").strip()
+    changes_context = body.get("changes_context", "")
+
+    if not question:
+        raise HTTPException(status_code=400, detail="Ingen fråga angiven")
+    if not ANTHROPIC_API_KEY:
+        raise HTTPException(status_code=500, detail="AI ej konfigurerad")
+
+    prompt = f"""Du är en assistent som hjälper en jobbsökare med sitt Master CV.
+Användaren har precis laddat upp ett CV och systemet gjorde dessa ändringar:
+
+{changes_context}
+
+Användaren frågar nu: "{question}"
+
+Svara kort och hjälpsamt på svenska. Om frågan handlar om vad som ändrades, referera till ändringarna ovan.
+Om frågan handlar om något annat CV-relaterat, svara baserat på din kunskap."""
+
+    try:
+        async with httpx.AsyncClient() as client:
+            response = await client.post(
+                "https://api.anthropic.com/v1/messages",
+                headers={
+                    "x-api-key": ANTHROPIC_API_KEY,
+                    "anthropic-version": "2023-06-01",
+                    "content-type": "application/json"
+                },
+                json={
+                    "model": "claude-sonnet-4-5-20250929",
+                    "max_tokens": 1000,
+                    "messages": [{"role": "user", "content": prompt}]
+                },
+                timeout=30
+            )
+            if response.status_code != 200:
+                raise HTTPException(status_code=500, detail="AI-fel")
+            result = response.json()
+            answer = result["content"][0]["text"].strip()
+            return {"success": True, "answer": answer}
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Enhance chat error: {e}")
+        raise HTTPException(status_code=500, detail=str(e)[:200])
 
 
 async def analyze_cv_with_ai(cv_text: str) -> list:
