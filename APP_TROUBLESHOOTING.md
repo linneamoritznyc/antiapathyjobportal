@@ -18,6 +18,7 @@ Quick reference for recurring issues and their fixes. When something breaks, che
 | 2 | **`catch {}` without binding** — Babel version doesn't support ES2019 optional catch | Change `catch {}` → `catch (e) {}` everywhere | `a2083e1` |
 | 3 | **React hooks after early return** — `useState()` called after a conditional `return` statement | Move ALL `useState`/`useEffect` calls to the TOP of the component, before any `if (...) return` | `0b5c6bd`, `2818ab8` |
 | 4 | **Tailwind CDN broken** — unpinned CDN URL changed/disappeared | Pin Tailwind to specific version: `https://cdn.tailwindcss.com/3.4.16` | `6cf10bf` |
+| 5 | **Duplicate closing tags** (`</p></p>`) — extra closing tag in JSX | Find and remove the duplicate tag. Search for `</p></p>` or `</div></div>` patterns. | `1737f95` |
 
 ### How to debug
 
@@ -168,3 +169,4 @@ When the app breaks, go through this in order:
 | 2026-02 | "Kunde inte skapa ansökan" timeout | Vercel 10s default timeout too short for AI calls | Added `maxDuration: 60` to vercel.json |
 | Earlier | White screen (multiple times) | Babel parse errors from mismatched tags, unsupported syntax, hooks violations | Various JSX fixes (see commits above) |
 | 2026-02-23 | 403 on entire site | Under investigation — likely Vercel Deployment Protection or failed deploy | Check Vercel dashboard settings |
+| 2026-02-23 | White screen — duplicate `</p>` tags | Two spots in the job detail modal had double `</p></p>` closing tags, which Babel couldn't parse → entire app crashed | Removed the extra `</p>` on lines ~5528 and ~5540 in `v2/frontend.html` |
