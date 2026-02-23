@@ -2424,7 +2424,7 @@
         };
 
         // Bransch-CV Card Component
-        const BranschCVCard = ({ cv, onView, onEdit }) => {
+        const BranschCVCard = ({ cv, onView, onUpload, uploading }) => {
             const iconMap = {
                 'Restaurant & Café': '🍽️',
                 'Butik & Kassa': '🛒',
@@ -2448,6 +2448,12 @@
                             </span>
                         </div>
 
+                        {cv.pdf_url && (
+                            <div className="mb-2">
+                                <span className="text-xs text-green-600 bg-green-50 px-2 py-0.5 rounded-full">PDF uppladdad</span>
+                            </div>
+                        )}
+
                         <div className="flex flex-col gap-2">
                             <button
                                 onClick={() => onView(cv)}
@@ -2455,6 +2461,23 @@
                             >
                                 👁️ Visa
                             </button>
+                            <button
+                                onClick={() => onUpload(cv)}
+                                disabled={uploading}
+                                className="text-xs bg-indigo-600 text-white py-2 rounded hover:bg-indigo-700 disabled:opacity-50"
+                            >
+                                {uploading ? 'Laddar upp...' : '📤 Ladda upp CV'}
+                            </button>
+                            {cv.pdf_url && (
+                                <a
+                                    href={cv.pdf_url}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    className="text-xs bg-slate-100 text-slate-700 py-2 rounded hover:bg-slate-200 text-center"
+                                >
+                                    📄 Visa PDF
+                                </a>
+                            )}
                         </div>
                     </div>
                 </div>
@@ -2650,6 +2673,54 @@
                 if (fileInputRef.current) fileInputRef.current.value = '';
             };
 
+            // Upload CV PDF for a bransch
+            const [uploadingBransch, setUploadingBransch] = useState(null);
+
+            const categoryToVibeId = {
+                'Restaurant & Café': 'restaurant',
+                'Butik & Kassa': 'retail',
+                'Tech & Kontor': 'tech',
+                'Vård & Omsorg': 'healthcare',
+                'Content Moderation': 'contentmoderation',
+                'Kundtjänst': 'customerservice',
+                'Industri & Trädgård': 'industri',
+                'Konst & Kultur': 'art'
+            };
+
+            const handleUploadBranschCV = (cv) => {
+                const input = document.createElement('input');
+                input.type = 'file';
+                input.accept = '.pdf,.docx,.doc,.txt,.rtf,.odt';
+                input.onchange = async (e) => {
+                    const file = e.target.files[0];
+                    if (!file) return;
+                    const vibeId = categoryToVibeId[cv.category] || cv.vibe_id || 'customerservice';
+                    setUploadingBransch(cv.id || cv.category);
+                    try {
+                        const token = localStorage.getItem('auth_token');
+                        const formData = new FormData();
+                        formData.append('file', file);
+                        const res = await fetch(`/api/upload/cv/${vibeId}`, {
+                            method: 'POST',
+                            headers: { 'Authorization': `Bearer ${token}` },
+                            body: formData
+                        });
+                        const data = await res.json();
+                        if (data.success) {
+                            alert(`CV för ${cv.category} uppladdad!`);
+                            fetchBranschCVs();
+                        } else {
+                            alert(data.detail || 'Kunde inte ladda upp CV');
+                        }
+                    } catch (err) {
+                        console.error(err);
+                        alert('Fel vid uppladdning');
+                    }
+                    setUploadingBransch(null);
+                };
+                input.click();
+            };
+
             const handleDownloadBranschCV = async (cv) => {
                 if (!localStorage.getItem('auth_token')) return;
 
@@ -2807,6 +2878,8 @@
                                     key={cv.id || idx}
                                     cv={cv}
                                     onView={(cv) => setViewingCV(cv)}
+                                    onUpload={handleUploadBranschCV}
+                                    uploading={uploadingBransch === (cv.id || cv.category)}
                                 />
                             ))}
                         </div>
