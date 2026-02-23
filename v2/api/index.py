@@ -4344,7 +4344,7 @@ async def save_user_preferences(request: Request, prefs: UserPreferences):
 
     async with httpx.AsyncClient() as client:
         resp = await client.post(
-            f"{SUPABASE_URL}/rest/v1/user_job_preferences",
+            f"{SUPABASE_URL}/rest/v1/user_job_preferences?on_conflict=user_id",
             headers={
                 "apikey": SUPABASE_KEY,
                 "Authorization": f"Bearer {SUPABASE_KEY}",
@@ -4391,7 +4391,7 @@ async def save_user_locations(request: Request):
     # Use same upsert pattern as save_user_preferences (POST + merge-duplicates)
     async with httpx.AsyncClient() as client:
         resp = await client.post(
-            f"{SUPABASE_URL}/rest/v1/user_job_preferences",
+            f"{SUPABASE_URL}/rest/v1/user_job_preferences?on_conflict=user_id",
             headers={
                 "apikey": SUPABASE_KEY,
                 "Authorization": f"Bearer {SUPABASE_KEY}",
