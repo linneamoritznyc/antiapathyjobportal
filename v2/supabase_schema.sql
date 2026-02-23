@@ -192,7 +192,9 @@ CREATE TABLE IF NOT EXISTS user_volunteer (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     user_id TEXT NOT NULL,
     organization TEXT NOT NULL,
+    title TEXT,
     dates TEXT,
+    description TEXT,
     bullets TEXT[] DEFAULT ARRAY[]::TEXT[],
     sort_order INT DEFAULT 0,
     created_at TIMESTAMPTZ DEFAULT NOW()
