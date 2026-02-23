@@ -4935,6 +4935,48 @@ async def delete_volunteer(request: Request, vol_id: str):
 
 # --- Award & Certification DELETE ---
 
+@app.post("/api/user/award")
+async def create_award(request: Request):
+    """Create a new award entry with optional description."""
+    user_id = await get_user_id_from_request(request, required=True)
+    body = await request.json()
+    award_text = (body.get("award_text") or "").strip()
+    if not award_text:
+        raise HTTPException(status_code=400, detail="award_text krävs")
+    description = (body.get("description") or "").strip() or None
+    # Get next sort_order
+    existing = await db_request("GET", "user_awards", params={
+        "user_id": f"eq.{user_id}", "select": "sort_order", "order": "sort_order.desc", "limit": "1"
+    }) or []
+    next_order = (existing[0]["sort_order"] + 1) if existing else 0
+    data = {
+        "user_id": user_id,
+        "award_text": award_text,
+        "description": description,
+        "sort_order": next_order
+    }
+    result = await db_request("POST", "user_awards", data=data)
+    return {"success": True, "message": "Pris tillagt", "award": result[0] if result else data}
+
+@app.put("/api/user/award/{award_id}")
+async def update_award(request: Request, award_id: str):
+    """Update an award's text and/or description."""
+    user_id = await get_user_id_from_request(request, required=True)
+    body = await request.json()
+    update = {}
+    if "award_text" in body:
+        award_text = (body["award_text"] or "").strip()
+        if award_text:
+            update["award_text"] = award_text
+    if "description" in body:
+        update["description"] = (body["description"] or "").strip() or None
+    if not update:
+        raise HTTPException(status_code=400, detail="Inget att uppdatera")
+    await db_request("PATCH", "user_awards", data=update, params={
+        "id": f"eq.{award_id}", "user_id": f"eq.{user_id}"
+    })
+    return {"success": True, "message": "Pris uppdaterat"}
+
 @app.delete("/api/user/award/{award_id}")
 async def delete_award(request: Request, award_id: str):
     """Delete an award entry."""
