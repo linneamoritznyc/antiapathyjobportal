@@ -7,6 +7,7 @@ CREATE TABLE IF NOT EXISTS jobs (
     title TEXT NOT NULL,
     company TEXT,
     location TEXT,
+    county TEXT,                     -- Län from Platsbanken (e.g. "Stockholms län", "Jönköpings län")
     description TEXT,                -- Full job description (used by cover letter AI)
     description_summary TEXT,        -- AI-generated 3-4 sentence summary (shown in UI)
     url TEXT,
@@ -30,6 +31,8 @@ CREATE TABLE IF NOT EXISTS user_profiles (
     photo_url TEXT,  -- Supabase Storage URL
     drivers_license BOOLEAN DEFAULT FALSE,
     own_car BOOLEAN DEFAULT FALSE,
+    own_computer BOOLEAN DEFAULT FALSE,
+    location_by_region JSONB DEFAULT '{}'::JSONB,  -- Region→location mapping for cover letters
     languages TEXT[] DEFAULT ARRAY['Svenska (Modersmål)', 'Engelska (flytande)']::TEXT[],
     certificates TEXT[] DEFAULT ARRAY[]::TEXT[],  -- ['B-körkort', 'ICA kassahantering', etc.]
     about_me TEXT,  -- Professional bio/summary
