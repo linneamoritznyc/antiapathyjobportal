@@ -91,7 +91,7 @@ CREATE TABLE IF NOT EXISTS user_cover_letter_preferences (
 -- This is the primary source of truth; other columns are legacy/denormalized.
 CREATE TABLE IF NOT EXISTS user_job_preferences (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    user_id TEXT NOT NULL UNIQUE,
+    user_id UUID NOT NULL UNIQUE,  -- UUID in live DB; FK to auth.users was dropped 2026-02-23
     search_keywords TEXT[] DEFAULT ARRAY[]::TEXT[],
     locations TEXT,  -- legacy column, kept for backwards compat
     excluded_companies TEXT[] DEFAULT ARRAY[]::TEXT[],
@@ -604,7 +604,9 @@ CREATE TABLE IF NOT EXISTS user_cv_creation_conversations (
 -- When inserting data, cast accordingly:
 --   UUID tables: 'da8ed517-...'::UUID
 --   TEXT tables: 'da8ed517-...' (no cast)
--- Linneas user_id: 1e9d7392-b0d6-4f35-b69d-090c2fe2c671
+--
+-- Linneas auth.users id: da8ed517-3b67-4456-8831-6ed3cb7114ad (linneamoritzCV@gmail.com)
+-- OLD user_id (pre-auth, migrated 2026-02-23): 1e9d7392-b0d6-4f35-b69d-090c2fe2c671
 
 -- ============== SUPABASE STORAGE BUCKETS ==============
 -- All 3 buckets are PUBLIC with 4 RLS policies each (SELECT/INSERT/UPDATE/DELETE).
@@ -847,3 +849,7 @@ COMMENT ON TABLE user_anecdotes IS 'Personal anecdotes and hobbies for AI cover 
 --   user_profiles: added certificates, about_me, updated_at; documented legacy cols (linkedin, age, earliest_start, education_level, preferred_locations)
 --     Removed aspirational columns: onboarding_completed, privacy_policy_accepted, data_consent_given_at (never created in live DB)
 --   user_skills: added created_at
+-- 2026-02-23: Dropped FK user_job_preferences_user_id_fkey (pointed to auth.users, blocked inserts)
+--   user_job_preferences.user_id is UUID in live DB (schema said TEXT — fixed)
+-- 2026-02-23: Migrated ALL user data from old user_id 1e9d7392-... to real auth.users id da8ed517-...
+--   Updated 21 tables. Old ID was pre-auth seed data; real ID comes from Supabase Auth.

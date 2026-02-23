@@ -4388,24 +4388,20 @@ async def save_user_locations(request: Request):
     body = await request.json()
     locations = body.get("locations", [])
 
-    async with httpx.AsyncClient() as client:
-        resp = await client.post(
-            f"{SUPABASE_URL}/rest/v1/user_job_preferences",
-            headers={
-                "apikey": SUPABASE_KEY,
-                "Authorization": f"Bearer {SUPABASE_KEY}",
-                "Content-Type": "application/json",
-                "Prefer": "resolution=merge-duplicates"
-            },
-            json={
-                "user_id": user_id,
-                "preferred_locations": locations,
-                "updated_at": datetime.now().isoformat()
-            }
+    # Try PATCH first (update existing row)
+    resp = await db_request(
+        "PATCH",
+        f"user_job_preferences?user_id=eq.{user_id}",
+        data={"preferred_locations": locations, "updated_at": datetime.now().isoformat()}
+    )
+
+    # If no row existed, create one
+    if resp is not None and isinstance(resp, list) and len(resp) == 0:
+        resp = await db_request(
+            "POST",
+            "user_job_preferences",
+            data={"user_id": user_id, "preferred_locations": locations, "updated_at": datetime.now().isoformat()}
         )
-        if resp.status_code >= 400:
-            logger.error(f"Failed to save locations: {resp.status_code} {resp.text}")
-            raise HTTPException(status_code=500, detail=f"Kunde inte spara platser: {resp.text[:200]}")
 
     return {"success": True, "message": "Platser sparade!"}
 
