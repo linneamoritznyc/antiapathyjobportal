@@ -332,6 +332,13 @@
 
             const markAsSent = async () => {
                 await saveApplication('sent');
+                // Also log 'applied' interaction so job is hidden from feed
+                if (localStorage.getItem('auth_token')) {
+                    authFetch(`/api/jobs/${job.id}/interaction`, {
+                        method: 'POST',
+                        body: JSON.stringify({ action: 'applied' })
+                    }).catch(() => {});
+                }
                 onClose();
             };
 
