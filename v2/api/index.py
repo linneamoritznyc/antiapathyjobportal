@@ -1582,13 +1582,28 @@ async def list_jobs(request: Request, limit: int = 50, offset: int = 0):
 
     # If logged in, load user's interaction history and filter/score jobs
     if user_id and jobs:
-        interactions = await db_request("GET", "user_job_interactions", params={
+        interactions_task = db_request("GET", "user_job_interactions", params={
             "user_id": f"eq.{user_id}",
             "select": "job_id,action"
-        }) or []
+        })
+        # Also check applications table — belt-and-suspenders so applied jobs
+        # are hidden even if the interaction log silently failed
+        applications_task = db_request("GET", "applications", params={
+            "user_id": f"eq.{user_id}",
+            "status": "in.(sent,draft)",
+            "select": "job_id"
+        })
+        import asyncio as _asyncio
+        interactions, applied_applications = await _asyncio.gather(
+            interactions_task, applications_task
+        )
+        interactions = interactions or []
+        applied_applications = applied_applications or []
 
         rejected_ids = {i["job_id"] for i in interactions if i["action"] == "rejected"}
         applied_ids = {i["job_id"] for i in interactions if i["action"] == "applied"}
+        # Merge in job IDs from applications table (sent/draft = user already acted on these)
+        applied_ids |= {a["job_id"] for a in applied_applications}
         skipped_ids = {i["job_id"] for i in interactions if i["action"] == "skipped"}
 
         # Hard-filter rejected and applied jobs out of the feed
@@ -2335,6 +2350,16 @@ async def apply_with_cv(request: Request, job_id: str):
     cv_text_for_letter = cv.get("cv_text") if cv else None
     extra_hints = body.get("extra_hints")
     cover_letter = await generate_cover_letter(job, cv_text_for_letter, user_profile, extra_hints, user_id=user_id)
+
+    # Log 'applied' interaction server-side so job is hidden from feed
+    # (don't rely on frontend fire-and-forget which can silently fail)
+    if user_id:
+        await db_request("POST", "user_job_interactions", data={
+            "user_id": user_id,
+            "job_id": job_id,
+            "action": "applied",
+            "context": {"source": "apply_with_cv"}
+        })
 
     # No auto-draft: Gmail draft is only created when user clicks "Spara i Gmail med bilagor"
     # (handled by POST /api/jobs/{job_id}/save-draft)
