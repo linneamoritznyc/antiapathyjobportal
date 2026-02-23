@@ -5556,7 +5556,6 @@
                                             <p className="text-slate-500 text-sm mt-1">
                                                 📍 {currentJob.location || currentJob.municipality || currentJob.county || 'Okänd ort'}
                                             </p>
-                                            </p>
                                             {currentJob.deadline && <DeadlineBadge deadline={currentJob.deadline} />}
                                         </div>
 
@@ -6040,8 +6039,7 @@
                                                         <p className="text-slate-500 text-sm mt-1">
                                                             📍 {currentJob.location || currentJob.municipality || currentJob.county || 'Okänd ort'}
                                                         </p>
-                                                            </p>
-                                                            {currentJob.deadline && <DeadlineBadge deadline={currentJob.deadline} />}
+                                                        {currentJob.deadline && <DeadlineBadge deadline={currentJob.deadline} />}
                                                     </div>
 
                                                     {/* Tags */}
