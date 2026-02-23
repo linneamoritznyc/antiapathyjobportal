@@ -4692,6 +4692,25 @@ async def update_education(request: Request, edu_id: str, edu: EducationData):
     return {"success": False, "error": "Kunde inte uppdatera utbildning"}
 
 
+@app.delete("/api/user/education/{edu_id}")
+async def delete_education(request: Request, edu_id: str):
+    """Delete an education entry."""
+    user_id = await get_user_id_from_request(request, required=True)
+
+    async with httpx.AsyncClient() as client:
+        response = await client.delete(
+            f"{SUPABASE_URL}/rest/v1/user_education?id=eq.{edu_id}&user_id=eq.{user_id}",
+            headers={
+                "apikey": SUPABASE_KEY,
+                "Authorization": f"Bearer {SUPABASE_KEY}"
+            }
+        )
+        if response.status_code in [200, 204]:
+            return {"success": True, "message": "Utbildning borttagen"}
+
+    return {"success": False, "error": "Kunde inte ta bort utbildning"}
+
+
 # ============== SKILLS CRUD ==============
 
 class SkillData(BaseModel):
@@ -4835,6 +4854,228 @@ async def upload_and_analyze_cv(request: Request):
         "recommendations": recommendations,
         "extracted_text": cv_text[:500] + "..." if len(cv_text) > 500 else cv_text,
         "profile_data": profile_data
+    }
+
+
+@app.post("/api/cv/enhance-master")
+async def enhance_master_cv_from_upload(request: Request):
+    """
+    Upload a CV file to ENHANCE the existing Master CV.
+    AI reads the new CV and adds/improves entries without deleting existing ones.
+    """
+    user_id = await get_user_id_from_request(request, required=True)
+
+    content_type = request.headers.get("content-type", "")
+    cv_text = ""
+
+    if "multipart/form-data" in content_type:
+        form = await request.form()
+        file = form.get("file")
+        if file:
+            file_content = await file.read()
+            cv_text = extract_text_from_file(file_content, file.filename)
+            if not cv_text:
+                raise HTTPException(status_code=400, detail="Kunde inte extrahera text från filen")
+    else:
+        body = await request.json()
+        cv_text = body.get("cv_text", "")
+
+    if not cv_text or len(cv_text) < 50:
+        raise HTTPException(status_code=400, detail="CV-text är för kort eller saknas")
+
+    # Fetch existing Master CV data
+    existing_experiences = await db_request("GET", "user_experiences", params={
+        "user_id": f"eq.{user_id}", "order": "sort_order.asc"
+    }) or []
+    existing_education = await db_request("GET", "user_education", params={
+        "user_id": f"eq.{user_id}", "order": "sort_order.asc"
+    }) or []
+
+    # Build context of what already exists
+    existing_summary = "BEFINTLIGA ERFARENHETER I MASTER CV:\n"
+    for exp in existing_experiences:
+        existing_summary += f"- ID:{exp.get('id')} | {exp.get('company')} | {exp.get('title')} | {exp.get('start_date')}-{exp.get('end_date','')} | Beskrivning: {(exp.get('description') or '')[:100]}\n"
+    existing_summary += "\nBEFINTLIG UTBILDNING:\n"
+    for edu in existing_education:
+        existing_summary += f"- ID:{edu.get('id')} | {edu.get('school')} | {edu.get('degree')} | {edu.get('start_date')}-{edu.get('end_date','')}\n"
+
+    if not ANTHROPIC_API_KEY:
+        raise HTTPException(status_code=500, detail="AI ej konfigurerad")
+
+    # Ask Claude to compare and find improvements
+    prompt = f"""Jag har ett Master CV med befintliga erfarenheter och utbildningar. Jag har precis laddat upp ett nytt CV-dokument. Jag vill att du:
+
+1. JÄMFÖR det nya CV-dokumentet med mina befintliga poster
+2. Hitta NYA erfarenheter/utbildningar som INTE redan finns → skapa dem
+3. Hitta befintliga poster som kan FÖRBÄTTRAS med mer detaljer från det nya CVt (t.ex. bättre beskrivning, saknade datum, kategorier) → uppdatera dem
+4. RADERA ALDRIG något. Lägg bara till och förbättra.
+
+{existing_summary}
+
+NYTT CV-DOKUMENT:
+{cv_text[:5000]}
+
+Svara i EXAKT detta JSON-format (inga kommentarer, bara ren JSON):
+{{
+    "new_experiences": [
+        {{"company": "...", "title": "...", "location": "...", "start_date": "...", "end_date": "...", "description": "...", "categories": ["..."]}}
+    ],
+    "updated_experiences": [
+        {{"id": "befintligt-uuid", "description": "ny förbättrad beskrivning", "categories": ["uppdaterade", "kategorier"]}}
+    ],
+    "new_education": [
+        {{"school": "...", "degree": "...", "field_of_study": "...", "location": "...", "start_date": "...", "end_date": ""}}
+    ],
+    "updated_education": [
+        {{"id": "befintligt-uuid", "degree": "förbättrad examen text", "field_of_study": "inriktning"}}
+    ],
+    "summary": "Kort sammanfattning av vad som ändrades"
+}}
+
+VIKTIGT:
+- Bara inkludera poster som verkligen behöver skapas eller uppdateras
+- Om inget behöver ändras, returnera tomma arrayer
+- Kategorier ska vara: restaurant, retail, tech, healthcare, customerservice, contentmoderation, industri, art, marketing, education, reception
+- Datum i format "Aug 2024" eller "2024"
+- Beskrivningar på svenska, korta och informativa"""
+
+    try:
+        async with httpx.AsyncClient() as client:
+            response = await client.post(
+                "https://api.anthropic.com/v1/messages",
+                headers={
+                    "x-api-key": ANTHROPIC_API_KEY,
+                    "anthropic-version": "2023-06-01",
+                    "content-type": "application/json"
+                },
+                json={
+                    "model": "claude-sonnet-4-5-20250929",
+                    "max_tokens": 3000,
+                    "messages": [{"role": "user", "content": prompt}]
+                },
+                timeout=55
+            )
+
+            if response.status_code != 200:
+                logger.error(f"Claude API error in enhance: {response.status_code}")
+                raise HTTPException(status_code=500, detail=f"AI-fel: {response.status_code}")
+
+            result = response.json()
+            ai_text = result["content"][0]["text"].strip()
+
+            # Parse JSON from AI response (handle markdown code blocks)
+            if "```json" in ai_text:
+                ai_text = ai_text.split("```json")[1].split("```")[0].strip()
+            elif "```" in ai_text:
+                ai_text = ai_text.split("```")[1].split("```")[0].strip()
+
+            import json as json_module
+            changes = json_module.loads(ai_text)
+
+    except json_module.JSONDecodeError as e:
+        logger.error(f"Failed to parse AI response: {ai_text[:500]}")
+        raise HTTPException(status_code=500, detail="AI returnerade ogiltigt format")
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error in enhance: {e}")
+        raise HTTPException(status_code=500, detail=f"Fel: {str(e)[:200]}")
+
+    # Apply changes to database
+    added = 0
+    updated = 0
+
+    # Create new experiences
+    for exp in changes.get("new_experiences", []):
+        try:
+            await db_request("POST", "user_experiences", data={
+                "user_id": user_id,
+                "company": exp.get("company", ""),
+                "title": exp.get("title", ""),
+                "location": exp.get("location", ""),
+                "start_date": exp.get("start_date", ""),
+                "end_date": exp.get("end_date", ""),
+                "description": exp.get("description", ""),
+                "categories": exp.get("categories", []),
+                "sort_order": len(existing_experiences) + added
+            })
+            added += 1
+        except Exception as e:
+            logger.warning(f"Failed to add experience: {e}")
+
+    # Update existing experiences (only non-empty fields)
+    for exp in changes.get("updated_experiences", []):
+        exp_id = exp.get("id")
+        if not exp_id:
+            continue
+        update_data = {}
+        for field in ["description", "categories", "title", "location", "start_date", "end_date"]:
+            if exp.get(field):
+                update_data[field] = exp[field]
+        if update_data:
+            try:
+                async with httpx.AsyncClient() as client:
+                    await client.patch(
+                        f"{SUPABASE_URL}/rest/v1/user_experiences?id=eq.{exp_id}&user_id=eq.{user_id}",
+                        headers={
+                            "apikey": SUPABASE_KEY,
+                            "Authorization": f"Bearer {SUPABASE_KEY}",
+                            "Content-Type": "application/json"
+                        },
+                        json=update_data
+                    )
+                updated += 1
+            except Exception as e:
+                logger.warning(f"Failed to update experience {exp_id}: {e}")
+
+    # Create new education
+    for edu in changes.get("new_education", []):
+        try:
+            await db_request("POST", "user_education", data={
+                "user_id": user_id,
+                "school": edu.get("school", ""),
+                "degree": edu.get("degree", ""),
+                "field_of_study": edu.get("field_of_study", ""),
+                "location": edu.get("location", ""),
+                "start_date": edu.get("start_date", ""),
+                "end_date": edu.get("end_date", ""),
+                "sort_order": len(existing_education) + added
+            })
+            added += 1
+        except Exception as e:
+            logger.warning(f"Failed to add education: {e}")
+
+    # Update existing education
+    for edu in changes.get("updated_education", []):
+        edu_id = edu.get("id")
+        if not edu_id:
+            continue
+        update_data = {}
+        for field in ["degree", "field_of_study", "school", "location", "start_date", "end_date"]:
+            if edu.get(field):
+                update_data[field] = edu[field]
+        if update_data:
+            try:
+                async with httpx.AsyncClient() as client:
+                    await client.patch(
+                        f"{SUPABASE_URL}/rest/v1/user_education?id=eq.{edu_id}&user_id=eq.{user_id}",
+                        headers={
+                            "apikey": SUPABASE_KEY,
+                            "Authorization": f"Bearer {SUPABASE_KEY}",
+                            "Content-Type": "application/json"
+                        },
+                        json=update_data
+                    )
+                updated += 1
+            except Exception as e:
+                logger.warning(f"Failed to update education {edu_id}: {e}")
+
+    return {
+        "success": True,
+        "added": added,
+        "updated": updated,
+        "summary": changes.get("summary", f"{added} nya poster, {updated} förbättrade"),
+        "changes": changes
     }
 
 
