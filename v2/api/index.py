@@ -861,7 +861,7 @@ async def generate_cover_letter(job: Dict, user_cv_text: Optional[str] = None, u
     name = p.get("full_name", "Linnea Moritz")
     phone = p.get("phone", "0761166109")
     email = p.get("email", "linneamoritzCV@gmail.com")
-    location = p.get("location", "Sollentuna")
+    location = p.get("location", "")
     has_license = p.get("drivers_license", True)
     linkedin = p.get("linkedin", "")
 
@@ -2548,7 +2548,7 @@ async def save_gmail_draft_with_attachments(request: Request, job_id: str):
     # 1. Cover letter as PDF (professional Swedish business letter design)
     sender_phone = user_profile.get("phone", "0761166109")
     sender_email_addr = user_profile.get("email", "linneamoritzCV@gmail.com")
-    sender_location = user_profile.get("location", "Sollentuna")
+    sender_location = user_profile.get("location", "")
     try:
         cover_letter_pdf = generate_cover_letter_pdf(
             cover_letter_text,
@@ -3007,7 +3007,7 @@ async def migrate_user_data(request: Request):
         "full_name": "Linnea Moritz",
         "email": "linneamoritz1@gmail.com",
         "phone": "0761166109",
-        "location": "Sollentuna",
+        "location": "",
         "drivers_license": True,
         "languages": ["Svenska (Modersmal)", "Engelska (Flytande)", "Tyska (grundlaggande)", "Spanska (grundlaggande)", "Mandarin (HSK niva 3)"],
         "certificates": ["B-korkort (automat)", "ICA kassahantering", "Trygga mat", "Roda Korset forsta hjalpen"],
@@ -5691,7 +5691,7 @@ def generate_cover_letter_pdf(
     sender_name: str = "Linnea Moritz",
     sender_phone: str = "0761166109",
     sender_email: str = "linneamoritzCV@gmail.com",
-    sender_location: str = "Sollentuna",
+    sender_location: str = "",
     job_title: str = "",
     company: str = "",
 ) -> bytes:
