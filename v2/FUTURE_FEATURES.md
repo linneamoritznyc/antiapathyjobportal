@@ -17,9 +17,10 @@
 - **Risk:** If jobs aren't saved to DB (e.g., Supabase is down), the interaction filtering breaks and previously applied-to jobs could reappear
 - **Future fix:** Add local cache (localStorage) of applied job IDs as fallback
 
-### Issue: Re-scraping shows already-applied jobs temporarily
-- **Current behavior:** When user clicks "Sök", `/api/scrape` returns fresh results. These get set as `jobs` state in React. The backend sorts applied jobs out when loading via `GET /api/jobs`, but the scrape response itself doesn't filter by interactions
-- **Needed:** Either (a) filter scraped results against `user_job_interactions` before returning, or (b) frontend should merge scrape results with existing job list instead of replacing it, preserving interaction state
+### Bug: Re-scraping shows already-applied jobs temporarily (FIXED Feb 24 2026)
+- **Status:** Fixed
+- **Root cause:** Frontend used `fetch` instead of `authFetch` for `POST /api/scrape`, so no auth token was sent. Backend had interaction filtering but couldn't identify the user without the token.
+- **Fix:** Changed to `authFetch` so auth token is included → backend filters out applied/rejected/saved jobs from scrape results
 
 ### Bug: Sparade jobb var oanvändbara (FIXED Feb 24 2026)
 - **Status:** Fixed
