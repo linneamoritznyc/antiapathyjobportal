@@ -1565,7 +1565,7 @@ async def get_jobs_from_db(limit: int = 50, offset: int = 0) -> List[Dict]:
 async def get_applications_from_db(user_id: str = None) -> List[Dict]:
     """Get applications with job details, optionally filtered by user_id"""
     # Use Supabase's select to embed job data
-    url = f"{SUPABASE_URL}/rest/v1/applications?select=*,jobs(id,title,company,contact_email,url,deadline)&order=created_at.desc"
+    url = f"{SUPABASE_URL}/rest/v1/applications?select=*,jobs(id,title,company,contact_email,url,deadline,location,working_hours)&order=created_at.desc"
     if user_id:
         url += f"&user_id=eq.{user_id}"
     async with httpx.AsyncClient() as client:
@@ -1586,6 +1586,8 @@ async def get_applications_from_db(user_id: str = None) -> List[Dict]:
                     app["contact_email"] = app["jobs"].get("contact_email")
                     app["job_url"] = app["jobs"].get("url")
                     app["deadline"] = app["jobs"].get("deadline")
+                    app["location"] = app["jobs"].get("location")
+                    app["working_hours"] = app["jobs"].get("working_hours")
                     del app["jobs"]
             return apps
     return []
