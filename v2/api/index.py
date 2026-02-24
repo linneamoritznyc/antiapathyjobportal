@@ -1749,21 +1749,20 @@ async def get_jobs_from_db(limit: int = 50, offset: int = 0) -> List[Dict]:
 
 async def get_applications_from_db(user_id: str = None) -> List[Dict]:
     """Get applications with job details, optionally filtered by user_id"""
-    # Use Supabase's select to embed job data
-    url = f"{SUPABASE_URL}/rest/v1/applications?select=*,jobs(id,title,company,contact_email,url,deadline,location,working_hours)&order=created_at.desc"
-    if user_id:
-        url += f"&user_id=eq.{user_id}"
+    headers = {
+        "apikey": SUPABASE_KEY,
+        "Authorization": f"Bearer {SUPABASE_KEY}"
+    }
+    user_filter = f"&user_id=eq.{user_id}" if user_id else ""
+
     async with httpx.AsyncClient() as client:
-        response = await client.get(
-            url,
-            headers={
-                "apikey": SUPABASE_KEY,
-                "Authorization": f"Bearer {SUPABASE_KEY}"
-            }
-        )
+        # Try embedded query first (joins job data)
+        url = f"{SUPABASE_URL}/rest/v1/applications?select=*,jobs(id,title,company,contact_email,url,deadline,location,working_hours)&order=created_at.desc{user_filter}"
+        response = await client.get(url, headers=headers, timeout=10)
+
         if response.status_code == 200:
             apps = response.json()
-            # Flatten job details into application — custom fields override job data
+            logger.info(f"get_applications_from_db: found {len(apps)} applications for user {user_id[:8] if user_id else 'all'}")
             for app in apps:
                 job = app.get("jobs") or {}
                 app["job_title"] = app.get("custom_title") or job.get("title") or ""
@@ -1776,6 +1775,39 @@ async def get_applications_from_db(user_id: str = None) -> List[Dict]:
                 if "jobs" in app:
                     del app["jobs"]
             return apps
+
+        # Embedded query failed — log error and try simple fallback without join
+        logger.error(f"get_applications_from_db embedded query failed: {response.status_code} — {response.text[:300]}")
+        fallback_url = f"{SUPABASE_URL}/rest/v1/applications?select=*&order=created_at.desc{user_filter}"
+        fallback = await client.get(fallback_url, headers=headers, timeout=10)
+
+        if fallback.status_code == 200:
+            apps = fallback.json()
+            logger.info(f"get_applications_from_db fallback: found {len(apps)} applications")
+            # No embedded job data — fetch job details individually
+            job_ids = list(set(a["job_id"] for a in apps if a.get("job_id")))
+            jobs_map = {}
+            if job_ids:
+                # Batch fetch jobs (up to 100)
+                ids_filter = ",".join(job_ids[:100])
+                jobs_url = f"{SUPABASE_URL}/rest/v1/jobs?select=id,title,company,contact_email,url,deadline,location,working_hours&id=in.({ids_filter})"
+                jobs_resp = await client.get(jobs_url, headers=headers, timeout=10)
+                if jobs_resp.status_code == 200:
+                    for j in jobs_resp.json():
+                        jobs_map[j["id"]] = j
+
+            for app in apps:
+                job = jobs_map.get(app.get("job_id"), {})
+                app["job_title"] = app.get("custom_title") or job.get("title") or ""
+                app["company"] = app.get("custom_company") or job.get("company") or ""
+                app["contact_email"] = job.get("contact_email") or ""
+                app["job_url"] = job.get("url") or ""
+                app["deadline"] = job.get("deadline") or ""
+                app["location"] = app.get("custom_location") or job.get("location") or ""
+                app["working_hours"] = job.get("working_hours") or ""
+            return apps
+
+        logger.error(f"get_applications_from_db fallback also failed: {fallback.status_code} — {fallback.text[:300]}")
     return []
 
 
@@ -2104,7 +2136,7 @@ async def list_applications(request: Request):
     """List applications for the logged-in user"""
     user_id = await get_user_id_from_request(request)
     if not user_id:
-        return {"success": True, "applications": []}
+        raise HTTPException(status_code=401, detail="Du måste vara inloggad")
     apps = await get_applications_from_db(user_id=user_id)
     return {"success": True, "applications": apps}
 
@@ -2358,23 +2390,16 @@ async def save_job(job_id: str, request: Request):
             return {"success": True, "application": existing[0], "note": f"Already has status '{current_status}', not changed to saved"}
 
         # Update existing to saved
-        url = f"{SUPABASE_URL}/rest/v1/applications?id=eq.{existing[0]['id']}"
-        async with httpx.AsyncClient() as client:
-            response = await client.patch(
-                url,
-                json={"status": "saved", "updated_at": datetime.now().isoformat()},
-                headers={
-                    "apikey": SUPABASE_KEY,
-                    "Authorization": f"Bearer {SUPABASE_KEY}",
-                    "Content-Type": "application/json",
-                    "Prefer": "return=representation"
-                }
-            )
-            if response.status_code in [200, 201]:
-                await log_save_interaction()
-                return {"success": True, "application": response.json()[0]}
+        result = await db_request("PATCH", "applications",
+            data={"status": "saved", "updated_at": datetime.now().isoformat()},
+            params={"id": f"eq.{existing[0]['id']}"}
+        )
+        if result:
+            await log_save_interaction()
+            return {"success": True, "application": result[0]}
+        logger.error(f"save_job PATCH failed for app {existing[0]['id']}")
     else:
-        # Create new saved application (plain INSERT, no on_conflict needed)
+        # Create new saved application — use on_conflict to handle race conditions
         data = {
             "job_id": job_id,
             "user_id": user_id,
@@ -2382,11 +2407,12 @@ async def save_job(job_id: str, request: Request):
             "created_at": datetime.now().isoformat()
         }
         logger.info(f"Saving job {job_id} for user {user_id[:8]}...")
-        result = await db_request("POST", "applications", data=data)
+        result = await db_request("POST", "applications", data=data, on_conflict="user_id,job_id")
         logger.info(f"Save result: {bool(result)}, rows: {len(result) if result else 0}")
         if result:
             await log_save_interaction()
             return {"success": True, "application": result[0]}
+        logger.error(f"save_job INSERT failed for job {job_id}, user {user_id[:8]}")
 
     raise HTTPException(status_code=500, detail="Could not save job")
 
@@ -3365,8 +3391,10 @@ async def apply_with_cv(request: Request, job_id: str):
     Smart apply: Auto-selects best CV, generates cover letter, returns both.
     This is the main "one-click apply" endpoint.
     """
-    # Get user_id from auth token (optional - works without login too)
+    # Require auth — without user_id, application can't be saved to DB
     user_id = await get_user_id_from_request(request)
+    if not user_id:
+        raise HTTPException(status_code=401, detail="Du måste vara inloggad för att ansöka")
 
     # Check if user already applied to this job (prevent duplicate applications)
     if user_id:
@@ -3452,7 +3480,7 @@ async def apply_with_cv(request: Request, job_id: str):
                 "status": "sent",
                 "created_at": datetime.now().isoformat(),
                 "sent_at": datetime.now().isoformat()
-            })
+            }, on_conflict="user_id,job_id")
         application_saved = bool(app_result)
         if not app_result:
             logger.warning(f"Failed to save application for job {job_id}, user {user_id[:8]}.")
