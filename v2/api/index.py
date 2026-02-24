@@ -2509,7 +2509,7 @@ async def apply_with_cv(request: Request, job_id: str):
     cover_letter = await generate_cover_letter(job, cv_text_for_letter, user_profile, extra_hints, user_id=user_id)
 
     # Log 'applied' interaction server-side so job is hidden from feed
-    # (don't rely on frontend fire-and-forget which can silently fail)
+    # AND auto-save application so it appears in Ansökningar + Aktivitetsrapport
     if user_id:
         await db_request("POST", "user_job_interactions", data={
             "user_id": user_id,
@@ -2517,6 +2517,14 @@ async def apply_with_cv(request: Request, job_id: str):
             "action": "applied",
             "context": {"source": "apply_with_cv"}
         })
+        await db_request("POST", "applications", data={
+            "job_id": job_id,
+            "user_id": user_id,
+            "cover_letter": cover_letter,
+            "status": "sent",
+            "created_at": datetime.now().isoformat(),
+            "sent_at": datetime.now().isoformat()
+        }, on_conflict="user_id,job_id")
 
     # No auto-draft: Gmail draft is only created when user clicks "Spara i Gmail med bilagor"
     # (handled by POST /api/jobs/{job_id}/save-draft)
