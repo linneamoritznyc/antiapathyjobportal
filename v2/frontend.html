@@ -7182,6 +7182,10 @@
             const [noteText, setNoteText] = useState('');
             const [expandedApp, setExpandedApp] = useState(null);
             const [updating, setUpdating] = useState(null);
+            const [reportMonth, setReportMonth] = useState(() => {
+                const now = new Date();
+                return `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}`;
+            });
 
             const statusOptions = [
                 { value: 'saved', label: '📌 Sparad', color: 'bg-blue-100 text-blue-700' },
@@ -7262,10 +7266,63 @@
                 interview: applications.filter(a => a.status === 'interview').length
             };
 
+            // Group sent/interview apps by date for stats
+            const sentApps = applications.filter(a => ['sent', 'interview', 'offer'].includes(a.status));
+            const appsByDate = {};
+            sentApps.forEach(a => {
+                const d = (a.sent_at || a.created_at || '').slice(0, 10);
+                if (d) {
+                    if (!appsByDate[d]) appsByDate[d] = [];
+                    appsByDate[d].push(a);
+                }
+            });
+            const sortedDates = Object.keys(appsByDate).sort().reverse();
+
+            const generateAktivitetsrapport = () => {
+                const user = JSON.parse(localStorage.getItem('user') || '{}');
+                const namn = user.name || user.email || 'Namn';
+                const monthNames = ['januari','februari','mars','april','maj','juni','juli','augusti','september','oktober','november','december'];
+                const [rYear, rMonth] = reportMonth.split('-');
+                const monthLabel = monthNames[parseInt(rMonth) - 1];
+
+                // Filter to selected month only
+                const monthApps = sentApps.filter(a => {
+                    const d = (a.sent_at || a.created_at || '').slice(0, 7);
+                    return d === reportMonth;
+                }).sort((a, b) => (a.sent_at || a.created_at || '').localeCompare(b.sent_at || b.created_at || ''));
+
+                // Build rows
+                const allRows = monthApps.map(a => ({
+                    datum: new Date((a.sent_at || a.created_at || '').slice(0, 10) + 'T00:00:00').toLocaleDateString('sv-SE'),
+                    yrkesroll: a.job_title || '',
+                    arbetsgivare: a.company || '',
+                    omfattning: a.working_hours || 'Heltid',
+                    ort: a.location || ''
+                }));
+
+                const header = 'Datum\tYrkesroll\tArbetsgivare\tOmfattning\tOrt';
+                const rows = allRows.map(r => `${r.datum}\t${r.yrkesroll}\t${r.arbetsgivare}\t${r.omfattning}\t${r.ort}`);
+
+                let text = `Sökta jobb / Jobb med annons\n`;
+                text += `${namn}\n`;
+                text += `Period: ${monthLabel} ${rYear}\n\n`;
+                text += header + '\n';
+                text += rows.join('\n') + '\n';
+                text += `\nTotalt: ${allRows.length} ansökningar\n`;
+
+                const blob = new Blob([text], { type: 'text/plain;charset=utf-8' });
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = `Aktivitetsrapport_${monthLabel.toUpperCase()}${rYear}.txt`;
+                a.click();
+                URL.revokeObjectURL(url);
+            };
+
             return (
                 <div>
                     <div className="flex justify-between items-center mb-4">
-                        <h2 className="text-lg font-semibold">📬 Mina ansökningar</h2>
+                        <h2 className="text-lg font-semibold">Mina ansökningar</h2>
                         <div className="flex gap-2">
                             {[
                                 { id: 'all', label: `Alla (${counts.all})` },
@@ -7283,6 +7340,41 @@
                             ))}
                         </div>
                     </div>
+
+                    {/* Daily stats + Aktivitetsrapport */}
+                    {sentApps.length > 0 && (
+                        <div className="bg-white rounded-xl shadow-sm p-4 mb-4">
+                            <div className="flex justify-between items-center mb-3">
+                                <h3 className="text-sm font-semibold text-slate-700">Sökta jobb per dag</h3>
+                                <div className="flex items-center gap-2">
+                                    <input
+                                        type="month"
+                                        value={reportMonth}
+                                        onChange={(e) => setReportMonth(e.target.value)}
+                                        className="px-2 py-1 border border-slate-200 rounded-lg text-sm"
+                                    />
+                                    <button
+                                        onClick={generateAktivitetsrapport}
+                                        className="px-3 py-1.5 bg-indigo-600 text-white rounded-lg text-sm hover:bg-indigo-700"
+>
+                                    Ladda ner aktivitetsrapport
+                                </button>
+                                </div>
+                            </div>
+                            <div className="space-y-1">
+                                {sortedDates.slice(0, 7).map(date => (
+                                    <div key={date} className="flex justify-between items-center text-sm">
+                                        <span className="text-slate-600">{new Date(date + 'T00:00:00').toLocaleDateString('sv-SE', { weekday: 'short', month: 'short', day: 'numeric' })}</span>
+                                        <div className="flex items-center gap-2">
+                                            <div className="h-2 bg-indigo-400 rounded-full" style={{width: `${Math.min(appsByDate[date].length * 30, 120)}px`}} />
+                                            <span className="text-slate-800 font-medium w-6 text-right">{appsByDate[date].length}</span>
+                                        </div>
+                                    </div>
+                                ))}
+                            </div>
+                            <p className="text-xs text-slate-400 mt-2">Totalt: {sentApps.length} ansökningar skickade</p>
+                        </div>
+                    )}
 
                     {applications.length === 0 ? (
                         <div className="bg-white rounded-xl p-10 text-center shadow-sm">
@@ -7752,7 +7844,7 @@
             };
 
             const fetchApplications = async () => {
-                const res = await fetch('/api/applications');
+                const res = await authFetch('/api/applications');
                 const data = await res.json();
                 if (data.success) {
                     setApplications(data.applications || []);
@@ -7801,7 +7893,7 @@
             };
 
             const fetchStats = async () => {
-                const res = await fetch('/api/stats');
+                const res = await authFetch('/api/stats');
                 const data = await res.json();
                 if (data.success) {
                     setStats({...data.stats, cv_vibes: userCVs.length});
