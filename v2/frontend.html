@@ -377,16 +377,6 @@
             // Load user's actual experiences + anecdotes + education when modal opens
             useEffect(() => {
                 if (isOpen && localStorage.getItem('auth_token')) {
-                    // Load experiences, education, anecdotes — then auto-select what's mentioned
-                    let loadedExp = [], loadedEdu = [], loadedAnec = [];
-
-                    const tryAutoSelect = () => {
-                        const letterText = result?.cover_letter || '';
-                        if (letterText && (loadedExp.length || loadedAnec.length || loadedEdu.length)) {
-                            autoSelectMentioned(letterText, loadedExp, loadedAnec, loadedEdu);
-                        }
-                    };
-
                     authFetch('/api/master-cv').then(res => res.json()).then(data => {
                         const hints = (data.experiences || []).map(exp => {
                             const dates = [exp.start_date, exp.end_date].filter(Boolean).join('-');
@@ -400,7 +390,6 @@
                         // Add B-körkort as a special non-experience hint
                         hints.push({ id: '_korkort', label: 'B-körkort & bil', hint: '- Har B-körkort och tillgång till bil' });
                         setExperienceHints(hints);
-                        loadedExp = hints;
 
                         // Education
                         const eduHints = (data.education || []).map(edu => ({
@@ -409,9 +398,6 @@
                             hint: `- Utbildning: ${edu.school}${edu.degree ? ', ' + edu.degree : ''}${edu.field_of_study ? ' — ' + edu.field_of_study : ''}`
                         }));
                         setEducationHints(eduHints);
-                        loadedEdu = eduHints;
-
-                        tryAutoSelect();
                     }).catch(() => {});
 
                     // Load anecdotes
@@ -422,17 +408,21 @@
                             hint: `- ${a.type === 'hobby' ? 'Hobby' : 'Anekdot'}: ${a.title} — ${a.content}`
                         }));
                         setAnecdoteHints(anecdotes);
-                        loadedAnec = anecdotes;
-                        tryAutoSelect();
                     }).catch(() => {});
                 }
                 setSwedishReviewed(false);
             }, [isOpen]);
 
             useEffect(() => {
-                if (result?.cover_letter) setLetter(result.cover_letter);
+                if (result?.cover_letter) {
+                    setLetter(result.cover_letter);
+                    // Auto-select when letter arrives and hints are loaded
+                    if (experienceHints.length || anecdoteHints.length || educationHints.length) {
+                        autoSelectMentioned(result.cover_letter, experienceHints, anecdoteHints, educationHints);
+                    }
+                }
                 setApplicationSaved(false);
-            }, [result]);
+            }, [result, experienceHints, anecdoteHints, educationHints]);
 
             if (!isOpen || !job) return null;
 
