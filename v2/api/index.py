@@ -2337,7 +2337,7 @@ async def save_job(job_id: str, request: Request):
                 await log_save_interaction()
                 return {"success": True, "application": response.json()[0]}
     else:
-        # Create new saved application (use on_conflict for belt-and-suspenders)
+        # Create new saved application (plain INSERT, no on_conflict needed)
         data = {
             "job_id": job_id,
             "user_id": user_id,
@@ -2345,7 +2345,7 @@ async def save_job(job_id: str, request: Request):
             "created_at": datetime.now().isoformat()
         }
         logger.info(f"Saving job {job_id} for user {user_id[:8]}...")
-        result = await db_request("POST", "applications", data=data, on_conflict="user_id,job_id")
+        result = await db_request("POST", "applications", data=data)
         logger.info(f"Save result: {bool(result)}, rows: {len(result) if result else 0}")
         if result:
             await log_save_interaction()
@@ -3394,18 +3394,31 @@ async def apply_with_cv(request: Request, job_id: str):
             "action": "applied",
             "context": {"source": "apply_with_cv"}
         })
-        app_result = await db_request("POST", "applications", data={
-            "job_id": job_id,
-            "user_id": user_id,
-            "cover_letter": cover_letter,
-            "status": "sent",
-            "created_at": datetime.now().isoformat(),
-            "sent_at": datetime.now().isoformat()
-        }, on_conflict="user_id,job_id")
+        # Check if application already exists, then PATCH or INSERT
+        existing_app = await db_request("GET", "applications", params={
+            "user_id": f"eq.{user_id}",
+            "job_id": f"eq.{job_id}",
+            "select": "id"
+        })
+        if existing_app:
+            app_result = await db_request("PATCH", "applications", data={
+                "cover_letter": cover_letter,
+                "status": "sent",
+                "sent_at": datetime.now().isoformat(),
+                "updated_at": datetime.now().isoformat()
+            }, params={"id": f"eq.{existing_app[0]['id']}"})
+        else:
+            app_result = await db_request("POST", "applications", data={
+                "job_id": job_id,
+                "user_id": user_id,
+                "cover_letter": cover_letter,
+                "status": "sent",
+                "created_at": datetime.now().isoformat(),
+                "sent_at": datetime.now().isoformat()
+            })
         application_saved = bool(app_result)
         if not app_result:
-            logger.warning(f"Failed to save application for job {job_id}, user {user_id[:8]}. "
-                          "User will need to click 'Markera skickad' manually.")
+            logger.warning(f"Failed to save application for job {job_id}, user {user_id[:8]}.")
 
     # No auto-draft: Gmail draft is only created when user clicks "Spara i Gmail med bilagor"
     # (handled by POST /api/jobs/{job_id}/save-draft)
