@@ -356,8 +356,11 @@
                     // Try full company name first (most reliable)
                     if (company.length >= 4 && body.includes(company.toLowerCase())) return true;
                     // Fall back to significant words (5+ chars, not stop words)
+                    // Require 2+ words to match (prevents "Argentina" country matching "Nestlé Argentina" company)
                     const sigWords = company.split(/[\s,/&]+/).filter(w => w.length >= 5 && !stopWords.has(w.toLowerCase()));
-                    return sigWords.some(w => body.includes(w.toLowerCase()));
+                    if (sigWords.length === 0) return false;
+                    const matchCount = sigWords.filter(w => body.includes(w.toLowerCase())).length;
+                    return matchCount >= Math.min(2, sigWords.length);
                 }).map(e => e.id);
                 setSelectedHints(matchedExp);
 
