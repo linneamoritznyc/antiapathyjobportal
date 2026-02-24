@@ -1,6 +1,6 @@
 # Platsbanken-ai — Funktioner & UX per sida
 
-> Uppdaterad: 24 feb 2026 (v2.1 — bugfixar + nya features)
+> Uppdaterad: 24 feb 2026 (v2.3 — auth-refresh + ansökningar fixade)
 
 AI-driven jobbportal för neurodivergenta jobbsökare i Sverige. Skrapar Platsbanken, genererar personliga brev via Claude, skapar Gmail-utkast med bransch-CV.
 
@@ -300,6 +300,11 @@ Varje ansökan visar:
 - `notes` — fria anteckningar per ansökan
 - `bransch_id` — vilken bransch-CV som användes
 - `gmail_draft_id` — Gmail utkast-ID om det sparades
+- `apply_method` — hur man sökte: platsbanken_email, external_website, linkedin, email_direct, in_person, phone, other
+- `custom_title` — override jobbtitel (för manuella ansökningar eller redigeringar)
+- `custom_company` — override företagsnamn
+- `custom_location` — override ort
+- `apply_date` — när man faktiskt sökte (user-editable, separat från auto-satt sent_at)
 - `UNIQUE(user_id, job_id)` — en ansökan per jobb per användare
 
 ---
@@ -731,3 +736,20 @@ Personuppgifter och kontoinställningar.
 
 **Förbättringar:**
 - **Jobb sorterade efter deadline** — Inom varje bucket (e-post/utan e-post, nya/hoppade) sorteras jobb nu med närmast deadline först.
+
+### v2.3 — 24 feb 2026
+
+**Kritiska bugfixar:**
+- **Ansökningar visades inte (0 överallt)** — Tre samverkande buggar fixade:
+  1. `GET /api/applications` returnerade `200 OK` med tom lista när token var utgången (istället för 401). Frontend trodde det fanns 0 ansökningar.
+  2. `get_applications_from_db` hade noll error-logging och ingen fallback — om PostgREST-frågan misslyckades (t.ex. schema-cache stale efter nya kolumner) returnerades tyst `[]`.
+  3. `authFetch` hade ingen auto-refresh — utgångna tokens orsakade tysta misslyckanden överallt.
+- **apply-with-cv sparade inte ansökan** — `user_id` var valfritt. Om token gått ut blev `user_id = None`, brevgenereringen fungerade men ansökan sparades aldrig i DB. Nu krävs auth (401 om inte inloggad).
+- **"Kunde inte spara jobbet"** — `save_job` INSERT saknade `on_conflict=user_id,job_id`, race conditions kunde orsaka duplicate key violation.
+- **Utbildnings-chips false positive** — "International School of the Stockholm Region" markerades grön för att "Stockholm" förekom i brevet. Nu krävs 2+ signifikanta ord (samma logik som erfarenhets-chips).
+
+**Förbättringar:**
+- **authFetch auto-refresh** — Vid 401 refreshas token automatiskt via `POST /api/auth/refresh` och requesten körs om. Shared promise förhindrar parallella refresh-anrop.
+- **GET /api/applications returnerar 401** — Triggar authFetch auto-refresh istället för att tyst returnera tom lista.
+- **get_applications_from_db fallback** — Om PostgREST embedded query (`select=*,jobs(...)`) misslyckas, körs en enklare query utan join + batch-fetch av jobb separat. Error loggas alltid.
+- **Nya kolumner i applications** — `apply_method`, `custom_title`, `custom_company`, `custom_location`, `apply_date` (tillagda i DB + schema).
