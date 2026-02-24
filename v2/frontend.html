@@ -432,7 +432,7 @@
             const saveApplication = async (status = 'draft') => {
                 if (applicationSaved && status === 'draft') return;
                 try {
-                    await authFetch('/api/applications', {
+                    const res = await authFetch('/api/applications', {
                         method: 'POST',
                         body: JSON.stringify({
                             job_id: job.id,
@@ -440,10 +440,16 @@
                             status: status
                         })
                     });
+                    if (!res.ok) {
+                        console.error('saveApplication failed:', res.status, await res.text().catch(() => ''));
+                        return false;
+                    }
                     setApplicationSaved(true);
                     if (onSaveApplication) onSaveApplication();
+                    return true;
                 } catch (err) {
                     console.error('Error saving application:', err);
+                    return false;
                 }
             };
 
@@ -456,7 +462,12 @@
             };
 
             const markAsSent = async () => {
-                await saveApplication('sent');
+                const saved = await saveApplication('sent');
+                if (saved === false) {
+                    // saveApplication failed — show error but don't close modal
+                    alert('Kunde inte spara ansökan. Försök igen.');
+                    return;
+                }
                 // Also log 'applied' interaction so job is hidden from feed
                 if (localStorage.getItem('auth_token')) {
                     try {
@@ -3239,49 +3250,58 @@
         };
 
         // Bransch-CV Card Component (simple version for MinaCVPage)
-        const BranschCVCardSimple = ({ cv, onView, onUpload, uploading }) => {
-            const iconMap = {
-                'Restaurant & Café': '🍽️',
-                'Butik & Kassa': '🛒',
-                'Tech & Kontor': '💻',
-                'Vård & Omsorg': '🏥',
-                'Content Moderation': '👁️',
-                'Kundtjänst': '📞',
-                'Industri & Trädgård': '🏭',
-                'Konst & Kultur': '🎨'
-            };
+        const BranschCVCardSimple = ({ cv, onView, onUpload, uploading, onGenerate, generating }) => {
+            const name = cv.vibe_name || cv.category || cv.vibe_id || 'CV';
+            const emoji = cv.vibe_emoji || '📄';
+            const hasText = cv.cv_text && cv.cv_text.length > 20 && !cv.cv_text.startsWith('[Kunde inte');
+            const branschId = cv.vibe_id || cv.id;
 
             return (
-                <div className="bg-gradient-to-br from-white to-slate-50 rounded-xl p-4 border-2 border-slate-200 hover:border-indigo-400 transition">
+                <div className={`bg-gradient-to-br from-white to-slate-50 rounded-xl p-4 border-2 transition ${hasText ? 'border-green-200 hover:border-green-400' : 'border-slate-200 hover:border-indigo-400'}`}>
                     <div className="text-center">
-                        <div className="text-4xl mb-2">{iconMap[cv.category] || '📄'}</div>
-                        <h4 className="font-semibold text-sm mb-1">{cv.category}</h4>
+                        <div className="text-4xl mb-2">{emoji}</div>
+                        <h4 className="font-semibold text-sm mb-1">{name}</h4>
 
-                        <div className="bg-indigo-100 rounded-full px-3 py-1 mb-3 inline-block">
-                            <span className="text-indigo-700 text-xs font-medium">
-                                Använd: {cv.times_used || 0}x
-                            </span>
-                        </div>
+                        {hasText ? (
+                            <div className="mb-3">
+                                <span className="text-xs text-green-600 bg-green-50 px-2 py-0.5 rounded-full">✓ Genererad</span>
+                            </div>
+                        ) : (
+                            <div className="mb-3">
+                                <span className="text-xs text-slate-400 bg-slate-50 px-2 py-0.5 rounded-full">Ej genererad</span>
+                            </div>
+                        )}
 
                         {cv.pdf_url && (
                             <div className="mb-2">
-                                <span className="text-xs text-green-600 bg-green-50 px-2 py-0.5 rounded-full">PDF uppladdad</span>
+                                <span className="text-xs text-blue-600 bg-blue-50 px-2 py-0.5 rounded-full">PDF uppladdad</span>
                             </div>
                         )}
 
                         <div className="flex flex-col gap-2">
-                            <button
-                                onClick={() => onView(cv)}
-                                className="text-xs bg-white border border-slate-300 py-2 rounded hover:bg-slate-50"
-                            >
-                                👁️ Visa
-                            </button>
+                            {hasText && (
+                                <button
+                                    onClick={() => onView(cv)}
+                                    className="text-xs bg-white border border-slate-300 py-2 rounded hover:bg-slate-50"
+                                >
+                                    Visa CV
+                                </button>
+                            )}
+                            {onGenerate && (
+                                <button
+                                    onClick={() => onGenerate(branschId)}
+                                    disabled={generating}
+                                    className="text-xs bg-indigo-600 text-white py-2 rounded hover:bg-indigo-700 disabled:opacity-50"
+                                >
+                                    {generating ? '⏳ Genererar...' : hasText ? '✨ Omgenerera' : '✨ Generera CV'}
+                                </button>
+                            )}
                             <button
                                 onClick={() => onUpload(cv)}
                                 disabled={uploading}
-                                className="text-xs bg-indigo-600 text-white py-2 rounded hover:bg-indigo-700 disabled:opacity-50"
+                                className="text-xs bg-slate-100 text-slate-700 py-2 rounded hover:bg-slate-200 disabled:opacity-50"
                             >
-                                {uploading ? 'Laddar upp...' : '📤 Ladda upp CV'}
+                                {uploading ? 'Laddar upp...' : '📤 Ladda upp PDF'}
                             </button>
                             {cv.pdf_url && (
                                 <a
@@ -3290,7 +3310,7 @@
                                     rel="noopener noreferrer"
                                     className="text-xs bg-slate-100 text-slate-700 py-2 rounded hover:bg-slate-200 text-center"
                                 >
-                                    📄 Visa PDF
+                                    Visa PDF
                                 </a>
                             )}
                         </div>
@@ -3320,10 +3340,12 @@
                         {/* Header */}
                         <div className="flex justify-between items-center p-6 border-b">
                             <div className="flex items-center gap-3">
-                                <span className="text-4xl">{iconMap[cv.category] || '📄'}</span>
+                                <span className="text-4xl">{cv.vibe_emoji || iconMap[cv.category] || '📄'}</span>
                                 <div>
-                                    <h2 className="text-2xl font-bold">{cv.category}</h2>
-                                    <p className="text-sm text-slate-500">Använd {cv.times_used || 0} gånger</p>
+                                    <h2 className="text-2xl font-bold">{cv.vibe_name || cv.category}</h2>
+                                    <p className="text-sm text-slate-500">
+                                        {cv.created_at ? `Genererad ${new Date(cv.created_at).toLocaleDateString('sv-SE')}` : ''}
+                                    </p>
                                 </div>
                             </div>
 
@@ -3393,6 +3415,8 @@
             const [skills, setSkills] = useState([]);
             const [branschCVs, setBranschCVs] = useState([]);
             const [viewingCV, setViewingCV] = useState(null);
+            const [generatingAll, setGeneratingAll] = useState(false);
+            const [generatingSingle, setGeneratingSingle] = useState(null);
 
             useEffect(() => {
                 fetchMasterCVData();
@@ -3430,12 +3454,71 @@
                 if (!localStorage.getItem('auth_token')) return;
 
                 try {
-                    const res = await authFetch('/api/bransch-cvs');
-                    const data = await res.json();
-                    setBranschCVs(data.bransch_cvs || []);
+                    // Fetch existing CVs and merge with full bransch list so all 8 cards always show
+                    const [cvsRes, branscherRes] = await Promise.all([
+                        authFetch('/api/cv/all'),
+                        authFetch('/api/cv/branscher')
+                    ]);
+                    const cvsData = await cvsRes.json();
+                    const branscherData = await branscherRes.json();
+                    const existingCVs = cvsData.cvs || [];
+                    const allBranscher = branscherData.branscher || [];
+
+                    // Build full list: existing CVs + empty placeholders for missing branscher
+                    const cvMap = {};
+                    existingCVs.forEach(cv => { cvMap[cv.vibe_id] = cv; });
+                    const merged = allBranscher.map(b => cvMap[b.id] || {
+                        vibe_id: b.id,
+                        vibe_name: b.name,
+                        vibe_emoji: b.emoji,
+                        cv_text: '',
+                        pdf_url: null
+                    });
+                    setBranschCVs(merged);
                 } catch (err) {
                     console.error('Error fetching bransch-CVs:', err);
                 }
+            };
+
+            const handleGenerateAllCVs = async () => {
+                setGeneratingAll(true);
+                try {
+                    const res = await authFetch('/api/cv/generate-branscher', {
+                        method: 'POST',
+                        body: JSON.stringify({})
+                    });
+                    const data = await res.json();
+                    if (data.success) {
+                        await fetchBranschCVs();
+                        alert(data.message || 'Alla bransch-CVs genererade!');
+                    } else {
+                        alert(data.message || data.detail || 'Kunde inte generera CVs. Lägg till erfarenheter i Master CV först.');
+                    }
+                } catch (err) {
+                    console.error('Generate all CVs error:', err);
+                    alert('Något gick fel vid genereringen. Försök igen.');
+                }
+                setGeneratingAll(false);
+            };
+
+            const handleGenerateSingleCV = async (branschId) => {
+                setGeneratingSingle(branschId);
+                try {
+                    const res = await authFetch(`/api/cv/generate-single/${branschId}`, {
+                        method: 'POST',
+                        body: JSON.stringify({})
+                    });
+                    const data = await res.json();
+                    if (data.success) {
+                        await fetchBranschCVs();
+                    } else {
+                        alert(data.message || data.detail || 'Kunde inte generera CV.');
+                    }
+                } catch (err) {
+                    console.error('Generate single CV error:', err);
+                    alert('Något gick fel vid genereringen.');
+                }
+                setGeneratingSingle(null);
             };
 
             const handleDownloadMasterCV = async () => {
@@ -3808,22 +3891,48 @@
 
                     {/* Section 3: Bransch-CVs Grid */}
                     <div className="bg-white rounded-xl p-6 border border-slate-200">
-                        <h3 className="text-xl font-bold mb-2">Bransch-CVs (8 mallar)</h3>
+                        <div className="flex justify-between items-center mb-2">
+                            <h3 className="text-xl font-bold">Bransch-CVs (8 mallar)</h3>
+                            <button
+                                onClick={handleGenerateAllCVs}
+                                disabled={generatingAll}
+                                className="px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 disabled:opacity-50 text-sm font-medium"
+                            >
+                                {generatingAll ? '⏳ Genererar alla...' : '✨ Generera alla CV från Master CV'}
+                            </button>
+                        </div>
                         <p className="text-slate-600 text-sm mb-6">
-                            Återanvändbara CV-mallar för olika branscher
+                            AI genererar branschanpassade versioner av ditt Master CV. Varje version lyfter erfarenheter relevanta för den branschen.
                         </p>
 
-                        <div className="grid grid-cols-4 gap-4">
-                            {branschCVs.map((cv, idx) => (
-                                <BranschCVCardSimple
-                                    key={cv.id || idx}
-                                    cv={cv}
-                                    onView={(cv) => setViewingCV(cv)}
-                                    onUpload={handleUploadBranschCV}
-                                    uploading={uploadingBransch === (cv.id || cv.category)}
-                                />
-                            ))}
-                        </div>
+                        {branschCVs.length > 0 ? (
+                            <div className="grid grid-cols-4 gap-4">
+                                {branschCVs.map((cv, idx) => (
+                                    <BranschCVCardSimple
+                                        key={cv.id || idx}
+                                        cv={cv}
+                                        onView={(cv) => setViewingCV(cv)}
+                                        onUpload={handleUploadBranschCV}
+                                        uploading={uploadingBransch === (cv.id || cv.category)}
+                                        onGenerate={handleGenerateSingleCV}
+                                        generating={generatingSingle === (cv.vibe_id || cv.id)}
+                                    />
+                                ))}
+                            </div>
+                        ) : (
+                            <div className="text-center py-10 text-slate-400">
+                                <div className="text-4xl mb-3">📄</div>
+                                <p className="text-lg font-medium text-slate-500 mb-1">Inga bransch-CVs ännu</p>
+                                <p className="text-sm mb-4">Fyll i ditt Master CV ovan och klicka "Generera alla CV" för att skapa 8 branschanpassade versioner.</p>
+                                <button
+                                    onClick={handleGenerateAllCVs}
+                                    disabled={generatingAll}
+                                    className="px-6 py-3 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 disabled:opacity-50 font-medium"
+                                >
+                                    {generatingAll ? '⏳ Genererar...' : '✨ Generera alla CV från Master CV'}
+                                </button>
+                            </div>
+                        )}
                     </div>
 
                     {/* Bransch-CV Preview Modal */}
@@ -8406,7 +8515,11 @@
                     } else if (data.success) {
                         setApplyResult(data);
                         setShowApplyModal(true);
-                        if (localStorage.getItem('auth_token')) {
+                        // Immediately refresh applications list so it shows up in Ansökningar tab
+                        fetchApplications();
+                        fetchStats();
+                        if (localStorage.getItem('auth_token') && !data.application_saved) {
+                            // Backend failed to save application — interaction still needed
                             try {
                                 await authFetch(`/api/jobs/${job.id}/interaction`, {
                                     method: 'POST',
