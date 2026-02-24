@@ -85,11 +85,13 @@
 
 ## FUTURE FEATURES
 
-### 1. "Extern webbplats" tab (Separat flik från "Jobb")
+### 1. "Extern webbplats" tab — PARTIALLY IMPLEMENTED
+
+**Status:** Grundläggande Extern-flik finns i UI:t (ExternalJobsPage). Jobb utan e-post visas i en separat "Extern"-flik. Användaren kan generera personligt brev och bransch-CV. **Ej implementerat:** URL-inmatning för externa jobbannonser, webbskrapning av extern sida, formulärhjälp.
 
 **Problem:** Många jobb har ingen e-postadress för ansökan — man måste ansöka via deras webbplats/formulär. Appen kan inte skicka Gmail-utkast för dessa, men kan fortfarande hjälpa med personligt brev, CV-val, och formulärsvar.
 
-**Koncept:** En egen flik ("Extern webbplats") där användaren klistrar in en länk till en jobbannons, och appen:
+**Kvarvarande koncept:** Användaren klistrar in en länk till en jobbannons, och appen:
 
 #### Steg 1: Klistra in länk
 - Användaren klistrar in URL till jobbannons (LinkedIn, företagets hemsida, etc.)
@@ -136,10 +138,8 @@
 - Genomsnittlig tid till intervju
 - Vilka sökord ger flest svar
 
-### 5. AI-feedback loop
-- Användaren markerar vilka ansökningar som ledde till intervju
-- AI lär sig vilka brev-stilar som funkar bäst per bransch
-- Automatisk A/B-testning av brev-varianter
+### 5. AI-feedback loop — IMPLEMENTED (Feb 2026)
+~~Moved to FEATURES.md.~~ Users can give free-text feedback to AI via Profil → Personligt Brev. Feedback is stored in `user_ai_feedback` and applied to all future cover letter generations. Endpoints: `POST/GET/DELETE /api/user/ai-feedback`.
 
 ### 6. Master CV editing & upload
 - Redigera befintliga erfarenheter i Master CV direkt i appen (titel, företag, beskrivning, datum)
@@ -148,7 +148,5 @@
 - Redigera personuppgifter (namn, telefon, e-post, adress) i Master CV
 - Möjlighet att importera erfarenheter från uppladdad PDF (AI-parsning)
 
-### 7. Don't re-scrape applied jobs
-- When scraping, check `user_job_interactions` table and exclude applied/rejected jobs from results
-- Or: frontend merges scrape results with existing state instead of replacing
-- Local cache of applied job IDs in localStorage as Supabase fallback
+### 7. Don't re-scrape applied jobs — FIXED (Feb 24 2026)
+~~Fixed: Frontend now uses `authFetch` for scraping, so backend filters out applied/rejected/saved jobs from scrape results. See RECENTLY FIXED section above.~~

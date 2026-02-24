@@ -1418,11 +1418,11 @@ linneamoritzCV@gmail.com"""
 
 # ============== CV GENERATION ==============
 
-async def generate_cv_vibe(master_cv: Dict, vibe: Dict) -> str:
+async def generate_bransch_cv(master_cv: Dict, bransch: Dict) -> str:
     """Generate a CV version optimized for a specific job category"""
 
     if not ANTHROPIC_API_KEY:
-        return f"[CV för {vibe['name']} - API ej konfigurerad]"
+        return f"[CV för {bransch['name']} - API ej konfigurerad]"
 
     # Extract profile data
     profile = master_cv.get('profile', {})
@@ -1462,7 +1462,7 @@ async def generate_cv_vibe(master_cv: Dict, vibe: Dict) -> str:
         elif isinstance(skill, str):
             skills_text += f"\n- {skill}"
 
-    prompt = f"""Skriv ett komplett CV på svenska för {vibe['name']}-jobb.
+    prompt = f"""Skriv ett komplett CV på svenska för {bransch['name']}-jobb.
 
 PERSONINFO:
 - Namn: {profile.get('full_name', '')}
@@ -1481,13 +1481,13 @@ ALL UTBILDNING:
 ALLA FÄRDIGHETER:
 {skills_text or 'Ej angivet'}
 
-DENNA CV-VERSION ÄR FÖR: {vibe['name']}
-Fokus: {vibe['focus']}
+DENNA CV-VERSION ÄR FÖR: {bransch['name']}
+Fokus: {bransch['focus']}
 
 INSTRUKTIONER:
 1. Skriv ett KOMPLETT CV - inkludera ALL erfarenhet, ALL utbildning, ALLA färdigheter
 2. Ordna erfarenheterna kronologiskt (senaste först)
-3. För {vibe['name']}-versionen: skriv en kort profil (2-3 meningar) som lyfter erfarenhet relevant för denna bransch
+3. För {bransch['name']}-versionen: skriv en kort profil (2-3 meningar) som lyfter erfarenhet relevant för denna bransch
 4. Bullet points för varje jobb ska vara korta och konkreta
 5. Inga emojis
 6. Format:
@@ -1540,22 +1540,22 @@ Skriv ENDAST CV-texten, inget annat."""
     except Exception as e:
         logger.error(f"Error generating CV: {e}")
 
-    return f"[Kunde inte generera CV för {vibe['name']}]"
+    return f"[Kunde inte generera CV för {bransch['name']}]"
 
 
-async def generate_all_cv_vibes(master_cv: Dict, user_id: str) -> List[Dict]:
-    """Generate all CV versions for a user"""
+async def generate_all_bransch_cvs(master_cv: Dict, user_id: str) -> List[Dict]:
+    """Generate all bransch-CV versions for a user"""
     generated_cvs = []
 
-    for vibe in CV_BRANSCHER:
-        logger.info(f"Generating CV vibe: {vibe['name']}...")
-        cv_text = await generate_cv_vibe(master_cv, vibe)
+    for bransch in CV_BRANSCHER:
+        logger.info(f"Generating bransch-CV: {bransch['name']}...")
+        cv_text = await generate_bransch_cv(master_cv, bransch)
 
         cv_data = {
             "user_id": user_id,
-            "vibe_id": vibe["id"],
-            "vibe_name": vibe["name"],
-            "vibe_emoji": vibe["emoji"],
+            "vibe_id": bransch["id"],
+            "vibe_name": bransch["name"],
+            "vibe_emoji": bransch["emoji"],
             "cv_text": cv_text,
             "created_at": datetime.now().isoformat()
         }
@@ -1570,15 +1570,15 @@ async def generate_all_cv_vibes(master_cv: Dict, user_id: str) -> List[Dict]:
     return generated_cvs
 
 
-def match_job_to_cv_vibe(job_title: str, job_description: str) -> str:
-    """Match a job to the best CV vibe. Returns vibe_id that maps to a CV PDF."""
+def match_job_to_bransch(job_title: str, job_description: str) -> str:
+    """Match a job to the best bransch. Returns bransch_id that maps to a CV PDF."""
     text = f"{job_title} {job_description}".lower()
 
     # Use whole-word matching via regex to avoid "it" matching inside "arbetstider" etc.
     def word_match(keyword: str, haystack: str) -> bool:
         return bool(re.search(r'\b' + re.escape(keyword) + r'\b', haystack))
 
-    vibe_keywords = {
+    bransch_keywords = {
         "restaurant":        ["servitör", "servitris", "restaurang", "kock", "café", "barista", "kök", "matlagning", "dryck", "bar", "bageri", "konditori"],
         "retail":            ["butik", "kassa", "kassaarbete", "försäljare", "säljare", "retail", "handel", "klädbutik", "ica", "coop", "lidl", "hemköp", "lagerarbete i butik"],
         "customerservice":   ["kundtjänst", "kundservice", "kundmottagning", "support", "helpdesk", "telefonsupport", "chatt", "reception", "receptionist"],
@@ -1590,12 +1590,12 @@ def match_job_to_cv_vibe(job_title: str, job_description: str) -> str:
         "art":               ["konst", "kultur", "galleri", "utställning", "kreativ", "illustration", "foto", "film", "musik", "teater"],
     }
 
-    scores = {vibe: sum(1 for kw in kws if word_match(kw, text)) for vibe, kws in vibe_keywords.items()}
-    best_vibe = max(scores, key=scores.get) if max(scores.values()) > 0 else "customerservice"
-    return best_vibe
+    scores = {bransch: sum(1 for kw in kws if word_match(kw, text)) for bransch, kws in bransch_keywords.items()}
+    best_bransch = max(scores, key=scores.get) if max(scores.values()) > 0 else "customerservice"
+    return best_bransch
 
 
-# Maps vibe_id → actual CV PDF filename in cv_files/
+# Maps bransch_id → actual CV PDF filename in cv_files/
 CV_FILE_MAP = {
     "restaurant":        "CV_Linnea_Moritz_Restaurang_Cafe.pdf",
     "retail":            "CV_Linnea_Moritz_Butik_Kassa.pdf",
@@ -1609,9 +1609,9 @@ CV_FILE_MAP = {
 CV_FILES_DIR = pathlib.Path(__file__).parent / "cv_files"
 
 
-def get_cv_pdf_bytes(vibe_id: str) -> Optional[bytes]:
+def get_cv_pdf_bytes(bransch_id: str) -> Optional[bytes]:
     """Read the matching CV PDF from disk. Returns None if not found."""
-    filename = CV_FILE_MAP.get(vibe_id, CV_FILE_MAP["customerservice"])
+    filename = CV_FILE_MAP.get(bransch_id, CV_FILE_MAP["customerservice"])
     path = CV_FILES_DIR / filename
     try:
         return path.read_bytes()
@@ -1620,9 +1620,9 @@ def get_cv_pdf_bytes(vibe_id: str) -> Optional[bytes]:
         return None
 
 
-def get_cv_pdf_filename(vibe_id: str) -> str:
-    """Return the CV PDF filename for a given vibe."""
-    return CV_FILE_MAP.get(vibe_id, CV_FILE_MAP["customerservice"])
+def get_cv_pdf_filename(bransch_id: str) -> str:
+    """Return the CV PDF filename for a given bransch."""
+    return CV_FILE_MAP.get(bransch_id, CV_FILE_MAP["customerservice"])
 
 
 # ============== SUPABASE DATABASE ==============
@@ -2330,17 +2330,17 @@ async def get_stats(request: Request):
 
 # ============== CV ENDPOINTS ==============
 
-@app.get("/api/cv/vibes")
-async def list_cv_vibes():
-    """List all available CV vibes/categories"""
-    return {"success": True, "vibes": CV_BRANSCHER}
+@app.get("/api/cv/branscher")
+async def list_cv_branscher():
+    """List all available CV branscher/categories"""
+    return {"success": True, "branscher": CV_BRANSCHER}
 
 
 @app.post("/api/cv/master")
 async def save_master_cv(request: Request, master_cv: MasterCV):
     """
     Save complete Master CV with all structured data.
-    This is the source of truth - all CV vibes are generated from this.
+    This is the source of truth - all bransch-CVs are generated from this.
     """
     user_id = await get_user_id_from_request(request, required=True)
 
@@ -2479,10 +2479,10 @@ async def get_master_cv(request: Request):
     }
 
 
-@app.get("/api/cv/export/{vibe_id}")
-async def export_cv_for_vibe(vibe_id: str, user_id: str = "default_user"):
+@app.get("/api/cv/export/{bransch_id}")
+async def export_cv_for_bransch(bransch_id: str, user_id: str = "default_user"):
     """
-    Export CV data filtered for a specific vibe.
+    Export CV data filtered for a specific bransch.
     Returns structured data ready for PDF template.
     """
     # Get master CV
@@ -2493,30 +2493,30 @@ async def export_cv_for_vibe(vibe_id: str, user_id: str = "default_user"):
     master = master_cv_response["master_cv"]
     profile = master["profile"]
 
-    # Filter experiences by vibe category
+    # Filter experiences by bransch category
     all_experiences = master.get("experiences", [])
     filtered_experiences = [
         exp for exp in all_experiences
-        if vibe_id in exp.get("categories", [])
+        if bransch_id in exp.get("categories", [])
     ]
 
-    # Get skills for this vibe (and 'all' skills)
+    # Get skills for this bransch (and 'all' skills)
     all_skills = master.get("skills", [])
-    vibe_skills = [s for s in all_skills if s.get("category") in [vibe_id, "all"]]
+    bransch_skills = [s for s in all_skills if s.get("category") in [bransch_id, "all"]]
 
-    # Build technical skills string if tech vibe
+    # Build technical skills string if tech bransch
     technical_skills = None
-    if vibe_id in ["tech", "content"]:
-        tech_skill_texts = [s.get("skill_text") for s in vibe_skills if s.get("skill_type") == "technical"]
+    if bransch_id in ["tech", "content"]:
+        tech_skill_texts = [s.get("skill_text") for s in bransch_skills if s.get("skill_type") == "technical"]
         if tech_skill_texts:
             technical_skills = ", ".join(tech_skill_texts)
 
-    # Get vibe info
-    vibe_info = next((v for v in CV_BRANSCHER if v["id"] == vibe_id), None)
+    # Get bransch info
+    bransch_info = next((v for v in CV_BRANSCHER if v["id"] == bransch_id), None)
 
     return {
         "success": True,
-        "vibe": vibe_info,
+        "bransch": bransch_info,
         "cv_data": {
             "full_name": profile.get("full_name"),
             "email": profile.get("email"),
@@ -2535,55 +2535,55 @@ async def export_cv_for_vibe(vibe_id: str, user_id: str = "default_user"):
     }
 
 
-@app.post("/api/cv/suggest-vibe")
-async def suggest_new_vibe(job_keywords: List[str], user_id: str = "default_user"):
+@app.post("/api/cv/suggest-bransch")
+async def suggest_new_bransch(job_keywords: List[str], user_id: str = "default_user"):
     """
-    Analyze job search keywords and suggest if user should create a new CV vibe.
-    Returns suggestion if pattern detected and user doesn't have that vibe.
+    Analyze job search keywords and suggest if user should create a new bransch-CV.
+    Returns suggestion if pattern detected and user doesn't have that bransch.
     """
-    # Count keyword matches per vibe
-    vibe_scores = {}
-    for vibe in CV_BRANSCHER:
+    # Count keyword matches per bransch
+    bransch_scores = {}
+    for bransch in CV_BRANSCHER:
         score = 0
         for keyword in job_keywords:
-            if any(vk in keyword.lower() for vk in vibe.get("keywords", [])):
+            if any(vk in keyword.lower() for vk in bransch.get("keywords", [])):
                 score += 1
         if score > 0:
-            vibe_scores[vibe["id"]] = score
+            bransch_scores[bransch["id"]] = score
 
-    if not vibe_scores:
+    if not bransch_scores:
         return {"success": True, "suggestion": None}
 
-    # Find top vibe
-    top_vibe_id = max(vibe_scores, key=vibe_scores.get)
-    top_score = vibe_scores[top_vibe_id]
+    # Find top bransch
+    top_bransch_id = max(bransch_scores, key=bransch_scores.get)
+    top_score = bransch_scores[top_bransch_id]
 
     # Only suggest if significant pattern (3+ matches)
     if top_score < 3:
         return {"success": True, "suggestion": None}
 
-    # Check if user has experiences tagged for this vibe
+    # Check if user has experiences tagged for this bransch
     experiences = await db_request("GET", "user_experiences", params={
         "user_id": f"eq.{user_id}",
-        "categories": f"cs.{{{top_vibe_id}}}"  # contains
+        "categories": f"cs.{{{top_bransch_id}}}"  # contains
     })
 
-    has_vibe_cv = bool(experiences)
+    has_bransch_cv = bool(experiences)
 
-    if has_vibe_cv:
-        return {"success": True, "suggestion": None, "message": f"Du har redan ett {top_vibe_id}-CV!"}
+    if has_bransch_cv:
+        return {"success": True, "suggestion": None, "message": f"Du har redan ett {top_bransch_id}-CV!"}
 
-    # Get vibe info
-    vibe_info = next((v for v in CV_BRANSCHER if v["id"] == top_vibe_id), None)
+    # Get bransch info
+    bransch_info = next((v for v in CV_BRANSCHER if v["id"] == top_bransch_id), None)
 
     return {
         "success": True,
         "suggestion": {
-            "vibe_id": top_vibe_id,
-            "vibe_name": vibe_info["name"],
-            "vibe_emoji": vibe_info["emoji"],
+            "bransch_id": top_bransch_id,
+            "bransch_name": bransch_info["name"],
+            "bransch_emoji": bransch_info["emoji"],
             "match_count": top_score,
-            "message": f"Hej! Jag ser att du söker många jobb inom {vibe_info['name'].lower()}. Vill du skapa ett CV anpassat för den branschen?"
+            "message": f"Hej! Jag ser att du söker många jobb inom {bransch_info['name'].lower()}. Vill du skapa ett CV anpassat för den branschen?"
         }
     }
 
@@ -2612,8 +2612,8 @@ async def generate_cv_branscher(request: Request):
         "skills": skills or []
     }
 
-    # Generate all vibes
-    generated = await generate_all_cv_vibes(master_cv, user_id)
+    # Generate all bransch-CVs
+    generated = await generate_all_bransch_cvs(master_cv, user_id)
 
     return {
         "success": True,
@@ -2637,26 +2637,26 @@ async def get_user_cvs(request: Request):
     return {"success": True, "cvs": cvs or [], "user_id": user_id}
 
 
-@app.get("/api/cv/{vibe_id}")
-async def get_cv_by_vibe(vibe_id: str, user_id: str = "default_user"):
+@app.get("/api/cv/{bransch_id}")
+async def get_cv_by_bransch(bransch_id: str, user_id: str = "default_user"):
     """Get a specific CV version"""
     cvs = await db_request("GET", "user_cvs", params={
         "user_id": f"eq.{user_id}",
-        "vibe_id": f"eq.{vibe_id}"
+        "vibe_id": f"eq.{bransch_id}"
     })
 
     if cvs and len(cvs) > 0:
         return {"success": True, "cv": cvs[0]}
 
-    raise HTTPException(status_code=404, detail=f"Ingen CV för {vibe_id}")
+    raise HTTPException(status_code=404, detail=f"Ingen CV for {bransch_id}")
 
 
-@app.patch("/api/cv/{vibe_id}")
-async def update_cv(vibe_id: str, cv_text: str, user_id: str = "default_user"):
+@app.patch("/api/cv/{bransch_id}")
+async def update_cv(bransch_id: str, cv_text: str, user_id: str = "default_user"):
     """Update a CV version (after user edits)"""
     result = await db_request("PATCH", "user_cvs",
         data={"cv_text": cv_text, "updated_at": datetime.now().isoformat()},
-        params={"user_id": f"eq.{user_id}", "vibe_id": f"eq.{vibe_id}"}
+        params={"user_id": f"eq.{user_id}", "vibe_id": f"eq.{bransch_id}"}
     )
 
     if result:
@@ -3212,9 +3212,9 @@ async def apply_with_cv(request: Request, job_id: str):
     else:
         job = jobs[0]
 
-    # Match job to best CV vibe
-    best_vibe = match_job_to_cv_vibe(job.get("title", ""), job.get("description", ""))
-    logger.info(f"Job '{job.get('title')}' matched to CV vibe: {best_vibe}")
+    # Match job to best bransch
+    best_bransch = match_job_to_bransch(job.get("title", ""), job.get("description", ""))
+    logger.info(f"Job '{job.get('title')}' matched to bransch: {best_bransch}")
 
     # Fetch CV and user profile in parallel to save time
     cv = None
