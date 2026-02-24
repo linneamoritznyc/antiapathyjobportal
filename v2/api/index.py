@@ -1562,10 +1562,12 @@ async def get_jobs_from_db(limit: int = 50, offset: int = 0) -> List[Dict]:
     return jobs or []
 
 
-async def get_applications_from_db() -> List[Dict]:
-    """Get all applications with job details"""
+async def get_applications_from_db(user_id: str = None) -> List[Dict]:
+    """Get applications with job details, optionally filtered by user_id"""
     # Use Supabase's select to embed job data
     url = f"{SUPABASE_URL}/rest/v1/applications?select=*,jobs(id,title,company,contact_email,url,deadline)&order=created_at.desc"
+    if user_id:
+        url += f"&user_id=eq.{user_id}"
     async with httpx.AsyncClient() as client:
         response = await client.get(
             url,
@@ -1867,9 +1869,10 @@ async def save_application(request: SaveApplicationRequest, req: Request):
 
 
 @app.get("/api/applications")
-async def list_applications():
-    """List all applications"""
-    apps = await get_applications_from_db()
+async def list_applications(request: Request):
+    """List applications for the logged-in user"""
+    user_id = await get_user_id_from_request(request)
+    apps = await get_applications_from_db(user_id=user_id)
     return {"success": True, "applications": apps}
 
 
@@ -1992,10 +1995,11 @@ async def unsave_job(job_id: str, request: Request):
 
 
 @app.get("/api/stats")
-async def get_stats():
-    """Get statistics"""
+async def get_stats(request: Request):
+    """Get statistics for the logged-in user"""
+    user_id = await get_user_id_from_request(request)
     jobs = await get_jobs_from_db(1000)
-    apps = await get_applications_from_db()
+    apps = await get_applications_from_db(user_id=user_id)
 
     # Calculate deadline_today - count jobs with deadline today
     today = datetime.now().strftime('%Y-%m-%d')

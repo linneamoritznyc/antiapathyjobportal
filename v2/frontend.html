@@ -7262,10 +7262,62 @@
                 interview: applications.filter(a => a.status === 'interview').length
             };
 
+            // Group sent/interview apps by date for stats
+            const sentApps = applications.filter(a => ['sent', 'interview', 'offer'].includes(a.status));
+            const appsByDate = {};
+            sentApps.forEach(a => {
+                const d = (a.sent_at || a.created_at || '').slice(0, 10);
+                if (d) {
+                    if (!appsByDate[d]) appsByDate[d] = [];
+                    appsByDate[d].push(a);
+                }
+            });
+            const sortedDates = Object.keys(appsByDate).sort().reverse();
+
+            const generateAktivitetsrapport = () => {
+                const user = JSON.parse(localStorage.getItem('user') || '{}');
+                const namn = user.name || user.email || 'Namn';
+                const now = new Date();
+                const monthNames = ['januari','februari','mars','april','maj','juni','juli','augusti','september','oktober','november','december'];
+                const currentMonth = monthNames[now.getMonth()];
+                const currentYear = now.getFullYear();
+
+                let text = `AKTIVITETSRAPPORT — SÖKTA JOBB\n`;
+                text += `${namn}\n`;
+                text += `Period: ${currentMonth} ${currentYear}\n`;
+                text += `Genererad: ${now.toLocaleDateString('sv-SE')}\n`;
+                text += `${'─'.repeat(50)}\n\n`;
+
+                let totalCount = 0;
+                sortedDates.forEach(date => {
+                    const dayApps = appsByDate[date];
+                    const formatted = new Date(date + 'T00:00:00').toLocaleDateString('sv-SE', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
+                    text += `${formatted}\n`;
+                    dayApps.forEach(a => {
+                        totalCount++;
+                        const status = a.status === 'interview' ? ' (Intervju)' : a.status === 'offer' ? ' (Erbjudande)' : '';
+                        text += `  • ${a.job_title || 'Jobb'}${a.company ? ' — ' + a.company : ''}${status}\n`;
+                    });
+                    text += `\n`;
+                });
+
+                text += `${'─'.repeat(50)}\n`;
+                text += `Totalt antal sökta jobb: ${totalCount}\n`;
+                text += `Antal intervjuer: ${sentApps.filter(a => a.status === 'interview').length}\n`;
+
+                const blob = new Blob([text], { type: 'text/plain;charset=utf-8' });
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = `aktivitetsrapport-${currentYear}-${String(now.getMonth()+1).padStart(2,'0')}.txt`;
+                a.click();
+                URL.revokeObjectURL(url);
+            };
+
             return (
                 <div>
                     <div className="flex justify-between items-center mb-4">
-                        <h2 className="text-lg font-semibold">📬 Mina ansökningar</h2>
+                        <h2 className="text-lg font-semibold">Mina ansökningar</h2>
                         <div className="flex gap-2">
                             {[
                                 { id: 'all', label: `Alla (${counts.all})` },
@@ -7283,6 +7335,33 @@
                             ))}
                         </div>
                     </div>
+
+                    {/* Daily stats + Aktivitetsrapport */}
+                    {sentApps.length > 0 && (
+                        <div className="bg-white rounded-xl shadow-sm p-4 mb-4">
+                            <div className="flex justify-between items-center mb-3">
+                                <h3 className="text-sm font-semibold text-slate-700">Sökta jobb per dag</h3>
+                                <button
+                                    onClick={generateAktivitetsrapport}
+                                    className="px-3 py-1.5 bg-indigo-600 text-white rounded-lg text-sm hover:bg-indigo-700"
+                                >
+                                    Ladda ner aktivitetsrapport
+                                </button>
+                            </div>
+                            <div className="space-y-1">
+                                {sortedDates.slice(0, 7).map(date => (
+                                    <div key={date} className="flex justify-between items-center text-sm">
+                                        <span className="text-slate-600">{new Date(date + 'T00:00:00').toLocaleDateString('sv-SE', { weekday: 'short', month: 'short', day: 'numeric' })}</span>
+                                        <div className="flex items-center gap-2">
+                                            <div className="h-2 bg-indigo-400 rounded-full" style={{width: `${Math.min(appsByDate[date].length * 30, 120)}px`}} />
+                                            <span className="text-slate-800 font-medium w-6 text-right">{appsByDate[date].length}</span>
+                                        </div>
+                                    </div>
+                                ))}
+                            </div>
+                            <p className="text-xs text-slate-400 mt-2">Totalt: {sentApps.length} ansökningar skickade</p>
+                        </div>
+                    )}
 
                     {applications.length === 0 ? (
                         <div className="bg-white rounded-xl p-10 text-center shadow-sm">
@@ -7752,7 +7831,7 @@
             };
 
             const fetchApplications = async () => {
-                const res = await fetch('/api/applications');
+                const res = await authFetch('/api/applications');
                 const data = await res.json();
                 if (data.success) {
                     setApplications(data.applications || []);
@@ -7801,7 +7880,7 @@
             };
 
             const fetchStats = async () => {
-                const res = await fetch('/api/stats');
+                const res = await authFetch('/api/stats');
                 const data = await res.json();
                 if (data.success) {
                     setStats({...data.stats, cv_vibes: userCVs.length});
