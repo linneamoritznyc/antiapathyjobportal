@@ -85,14 +85,16 @@ created_at TIMESTAMPTZ
 ```sql
 id UUID PRIMARY KEY
 user_id TEXT
-vibe_id TEXT           -- NOT "bransch"! e.g., 'restaurant', 'tech'
-vibe_name TEXT
-vibe_emoji TEXT
+vibe_id TEXT           -- DB column is "vibe_id" but the app calls these "branscher". e.g., 'restaurant', 'tech'
+vibe_name TEXT         -- DB column is "vibe_name" — display name for the bransch
+vibe_emoji TEXT        -- DB column is "vibe_emoji" — emoji for the bransch
 cv_text TEXT           -- NOT "cv_content"!
 created_at TIMESTAMPTZ
 updated_at TIMESTAMPTZ
 UNIQUE(user_id, vibe_id)
 ```
+
+> **Note on "vibe" vs "bransch":** The DB columns in `user_cvs` still use the legacy naming `vibe_id`, `vibe_name`, `vibe_emoji`. The rest of the app (UI, backend code, docs) calls these "branscher". Do NOT rename the DB columns — just be aware of the mismatch.
 
 ### user_cv_branscher
 ```sql
@@ -121,7 +123,7 @@ sign_off_phone TEXT
 sign_off_email TEXT
 always_mention TEXT[]
 never_mention TEXT[]
-priority_experiences_per_vibe JSONB
+priority_experiences_per_vibe JSONB  -- DB column uses "vibe" but means "bransch"
 custom_ai_instructions TEXT
 created_at TIMESTAMPTZ
 updated_at TIMESTAMPTZ
@@ -149,7 +151,7 @@ updated_at TIMESTAMPTZ
 3. **school** not "institution"
 4. **award_text** is full text, not separate columns
 5. **skill_text** not "skill_name"
-6. **vibe_id** not "bransch" in user_cvs
+6. **vibe_id** is the DB column name in `user_cvs` — the app calls these "branscher" but the column is still `vibe_id`
 7. **cv_text** not "cv_content"
 8. **user_id** is TEXT (not UUID) for all tables
 

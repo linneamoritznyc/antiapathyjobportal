@@ -200,7 +200,7 @@ idx_user_job_interactions_unique  UNIQUE ON (user_id, job_id, action)  -- dedup-
 -- CV och ansökningar
 idx_master_cv_exports_user   ON master_cv_exports(user_id)
 idx_user_cvs_user            ON user_cvs(user_id)
-idx_user_cvs_vibe            ON user_cvs(user_id, vibe_id)
+idx_user_cvs_vibe            ON user_cvs(user_id, vibe_id)  -- DB column is still "vibe_id" but the app calls these "branscher"
 idx_applications_user        ON applications(user_id)
 idx_applications_status      ON applications(status)
 
