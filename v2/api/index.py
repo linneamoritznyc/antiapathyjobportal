@@ -2968,6 +2968,103 @@ async def download_bransch_cv_pdf(cv_id: str, request: Request):
 
 
 
+@app.post("/api/jobs/{job_id}/qualification-check")
+async def qualification_check(job_id: str, request: Request):
+    """
+    Quick pre-check: Does the user seem qualified for this job?
+    Uses Haiku (cheap + fast) to analyze job requirements vs user profile.
+    Returns { qualified: bool, reason: string, suggested_keywords: [] }
+    Called BEFORE generating cover letter to save API credits.
+    """
+    user_id = await get_user_id_from_request(request)
+
+    # Get job
+    jobs = await db_request("GET", "jobs", params={"id": f"eq.{job_id}"})
+    if not jobs:
+        try:
+            body = await request.json()
+            job = body.get("job")
+        except Exception:
+            job = None
+        if not job:
+            raise HTTPException(status_code=404, detail="Jobbet hittades inte")
+    else:
+        job = jobs[0]
+
+    # Get user profile + CV summary
+    user_profile = None
+    cv_summary = ""
+    if user_id:
+        profiles = await db_request("GET", "user_profiles", params={"user_id": f"eq.{user_id}"})
+        user_profile = profiles[0] if profiles else None
+
+        # Get master CV experiences for a quick summary
+        experiences = await db_request("GET", "user_experiences", params={
+            "user_id": f"eq.{user_id}",
+            "select": "title,company,categories",
+            "order": "sort_order.asc",
+            "limit": "8"
+        })
+        if experiences:
+            cv_summary = ", ".join([f"{e.get('title', '')} ({e.get('company', '')})" for e in experiences])
+
+    job_title = job.get("title", "")
+    job_desc = job.get("description", "")[:2000]  # Keep prompt small
+    profile_info = ""
+    if user_profile:
+        profile_info = f"""
+Användarens profil:
+- Namn: {user_profile.get('full_name', 'Okänt')}
+- Utbildning: Gymnasium
+- Körkort: {'Ja' if user_profile.get('drivers_license') else 'Nej'}
+- Erfarenhet: {cv_summary or 'Kundtjänst, butik, restaurang, café'}
+"""
+
+    prompt = f"""Analysera om denna jobbsökare verkar kvalificerad för jobbet nedan.
+Svara BARA med JSON (ingen markdown, inga kodblock):
+{{"qualified": true/false, "reason": "kort förklaring på svenska", "suggested_keywords": ["ord att filtrera bort"]}}
+
+REGLER:
+- qualified=false BARA om jobbet har TYDLIGA formella krav som saknas (doktorsexamen, legitimation, certifiering, 5+ års specifik erfarenhet)
+- Om jobbet är brett/generellt (butik, kundtjänst, servitör, lager, etc) → qualified=true
+- Om osäkert → qualified=true (hellre söka för mycket än för lite)
+- suggested_keywords: bara om qualified=false — föreslå 1-3 sökord som kan filtrera bort liknande jobb
+
+JOBB:
+Titel: {job_title}
+Beskrivning: {job_desc}
+
+{profile_info}"""
+
+    result = await call_claude_api(prompt, model="claude-haiku-4-5-20251001", max_tokens=200, timeout=10)
+
+    if not result:
+        # If API fails, don't block the user — assume qualified
+        return {"success": True, "qualified": True, "reason": "", "suggested_keywords": []}
+
+    # Parse JSON response
+    try:
+        import json
+        # Strip markdown code blocks if present
+        cleaned = result.strip()
+        if cleaned.startswith("```"):
+            cleaned = cleaned.split("\n", 1)[1] if "\n" in cleaned else cleaned[3:]
+        if cleaned.endswith("```"):
+            cleaned = cleaned[:-3]
+        cleaned = cleaned.strip()
+
+        parsed = json.loads(cleaned)
+        return {
+            "success": True,
+            "qualified": parsed.get("qualified", True),
+            "reason": parsed.get("reason", ""),
+            "suggested_keywords": parsed.get("suggested_keywords", [])
+        }
+    except (json.JSONDecodeError, Exception) as e:
+        logger.warning(f"Could not parse qualification check response: {e}, raw: {result[:200]}")
+        return {"success": True, "qualified": True, "reason": "", "suggested_keywords": []}
+
+
 @app.post("/api/jobs/{job_id}/apply-with-cv")
 async def apply_with_cv(request: Request, job_id: str):
     """

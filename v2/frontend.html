@@ -7870,6 +7870,9 @@
             const [showMasterCVModal, setShowMasterCVModal] = useState(false);
             const [selectedJob, setSelectedJob] = useState(null);
             const [applyResult, setApplyResult] = useState(null);
+            const [showQualWarning, setShowQualWarning] = useState(false);
+            const [qualCheckResult, setQualCheckResult] = useState(null);
+            const [qualCheckingJob, setQualCheckingJob] = useState(null);
             const [selectedVibe, setSelectedVibe] = useState(null);
             const [selectedCVText, setSelectedCVText] = useState('');
             const [masterCV, setMasterCV] = useState(null);
@@ -8171,9 +8174,8 @@
                     }
                 }
 
-                const res = await fetch('/api/scrape', {
+                const res = await authFetch('/api/scrape', {
                     method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ keywords: kw, municipality_ids: municipalityIds })
                 });
                 const data = await res.json();
@@ -8184,7 +8186,8 @@
                 setScraping(false);
             };
 
-            const handleApply = async (job) => {
+            // Actually generate cover letter + apply (called after qual check passes)
+            const doApply = async (job) => {
                 setApplyingJob(job.id);
                 setSelectedJob(job);
 
@@ -8198,7 +8201,6 @@
                     if (data.success) {
                         setApplyResult(data);
                         setShowApplyModal(true);
-                        // Log 'applied' interaction so this job is hidden from the feed
                         if (localStorage.getItem('auth_token')) {
                             try {
                                 await authFetch(`/api/jobs/${job.id}/interaction`, {
@@ -8208,7 +8210,6 @@
                             } catch (e) {}
                         }
                     } else {
-                        // Show a helpful error with more context
                         const msg = data.detail || 'Kunde inte generera brev just nu.';
                         alert(`${msg}\n\nTips: Försök igen om en stund, eller kolla att du är inloggad.`);
                     }
@@ -8217,6 +8218,36 @@
                     alert('Kunde inte ansluta till servern. Kontrollera din internetanslutning och försök igen.');
                 }
                 setApplyingJob(null);
+            };
+
+            // Pre-check qualification before generating cover letter
+            const handleApply = async (job) => {
+                setApplyingJob(job.id);
+                setSelectedJob(job);
+
+                // Quick qualification check (uses Haiku — cheap + fast)
+                try {
+                    const res = await authFetch(`/api/jobs/${job.id}/qualification-check`, {
+                        method: 'POST',
+                        body: JSON.stringify({ job })
+                    });
+                    const data = await res.json();
+
+                    if (data.success && data.qualified === false) {
+                        // Show warning modal — let user decide
+                        setQualCheckResult(data);
+                        setQualCheckingJob(job);
+                        setShowQualWarning(true);
+                        setApplyingJob(null);
+                        return;
+                    }
+                } catch (e) {
+                    // If pre-check fails, proceed anyway
+                    console.warn('Qualification check failed, proceeding:', e);
+                }
+
+                // Qualified (or check failed) — proceed to apply
+                await doApply(job);
             };
 
             const handleSelectVibe = (vibe, userCV) => {
@@ -8960,6 +8991,79 @@
                             <ProfilPage />
                         )}
                     </main>
+
+                    {/* Qualification Warning Modal */}
+                    {showQualWarning && qualCheckResult && qualCheckingJob && (
+                        <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4" onClick={() => { setShowQualWarning(false); setApplyingJob(null); }}>
+                            <div className="bg-white rounded-2xl max-w-lg w-full p-6 shadow-xl" onClick={(e) => e.stopPropagation()}>
+                                <div className="text-center mb-4">
+                                    <div className="text-4xl mb-2">&#9888;&#65039;</div>
+                                    <h3 className="text-lg font-bold text-slate-800">Kvalifikationsvarning</h3>
+                                </div>
+
+                                <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 mb-4">
+                                    <p className="text-sm font-medium text-amber-800 mb-1">Det här jobbet verkar kräva kvalifikationer du kanske saknar:</p>
+                                    <p className="text-sm text-amber-700">{qualCheckResult.reason}</p>
+                                </div>
+
+                                <p className="text-sm text-slate-600 mb-1">
+                                    <strong>{qualCheckingJob.title}</strong> hos {qualCheckingJob.company}
+                                </p>
+                                <p className="text-xs text-slate-400 mb-4">Att skapa brev kostar API-credits. Du sparar pengar genom att hoppa över jobb du inte är kvalificerad för.</p>
+
+                                <div className="space-y-2">
+                                    <button
+                                        onClick={async () => {
+                                            setShowQualWarning(false);
+                                            await doApply(qualCheckingJob);
+                                        }}
+                                        className="w-full py-2.5 bg-indigo-600 text-white rounded-xl text-sm font-medium hover:bg-indigo-700"
+                                    >
+                                        Jag vill söka ändå
+                                    </button>
+
+                                    <button
+                                        onClick={() => {
+                                            setShowQualWarning(false);
+                                            setApplyingJob(null);
+                                        }}
+                                        className="w-full py-2.5 border border-slate-200 rounded-xl text-sm font-medium text-slate-600 hover:bg-slate-50"
+                                    >
+                                        Hoppa över
+                                    </button>
+
+                                    {qualCheckResult.suggested_keywords && qualCheckResult.suggested_keywords.length > 0 && (
+                                        <button
+                                            onClick={async () => {
+                                                // Save suggested keywords as negative keywords
+                                                const prefs = JSON.parse(localStorage.getItem('job_preferences') || '{}');
+                                                const existing = prefs.negative_keywords || [];
+                                                const newKw = qualCheckResult.suggested_keywords.filter(k => !existing.includes(k));
+                                                if (newKw.length > 0) {
+                                                    prefs.negative_keywords = [...existing, ...newKw];
+                                                    localStorage.setItem('job_preferences', JSON.stringify(prefs));
+                                                    // Sync to server
+                                                    try {
+                                                        await authFetch('/api/user/preferences', {
+                                                            method: 'POST',
+                                                            body: JSON.stringify(prefs)
+                                                        });
+                                                    } catch (e) {}
+                                                    setToastMsg(`Lade till "${newKw.join('", "')}" som negativa sökord`);
+                                                    setTimeout(() => setToastMsg(null), 4000);
+                                                }
+                                                setShowQualWarning(false);
+                                                setApplyingJob(null);
+                                            }}
+                                            className="w-full py-2.5 border border-amber-300 bg-amber-50 rounded-xl text-sm font-medium text-amber-700 hover:bg-amber-100"
+                                        >
+                                            Hoppa över + filtrera bort liknande ({qualCheckResult.suggested_keywords.join(', ')})
+                                        </button>
+                                    )}
+                                </div>
+                            </div>
+                        </div>
+                    )}
 
                     <ApplyModal
                         isOpen={showApplyModal}
