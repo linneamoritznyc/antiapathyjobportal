@@ -2553,6 +2553,71 @@ def _create_gmail_link(job: Dict, letter: str, subject: str = "") -> str:
     )
 
 
+@app.post("/api/review-swedish")
+async def review_swedish(request: Request):
+    """
+    Final-step Swedish language review. Takes a cover letter and returns
+    a cleaned version with svengelska, anglicisms and unnatural phrasing fixed.
+    Uses Claude as a proofreader — no new content, just better Swedish.
+    """
+    user_id = await get_user_id_from_request(request)
+    body = await request.json()
+    text = body.get("text", "").strip()
+    if not text:
+        raise HTTPException(status_code=400, detail="Ingen text att granska")
+
+    if not ANTHROPIC_API_KEY:
+        return {"success": True, "reviewed_text": text}
+
+    prompt = f"""Du är en svensk språkgranskare. Granska texten nedan och rätta BARA språkfel — ändra INTE innehållet, tonen eller strukturen.
+
+Fixa:
+- Svengelska (engelska ord/fraser som har en vanlig svensk motsvarighet)
+- Anglicismer (engelska meningsbyggnad översatt rakt av till svenska)
+- Onaturliga formuleringar (text som låter som maskinöversättning)
+- Ordpåhitt (ord som inte finns på svenska — ersätt med riktiga svenska ord)
+- Stavfel och grammatikfel
+
+Ändra INTE:
+- Brevets innehåll, fakta eller meningar
+- Tonen (formell/informell)
+- Strukturen eller styckeindelningen
+- Namn, företag, platser, kontaktuppgifter
+
+Returnera BARA den korrigerade texten, inget annat. Om texten redan är bra, returnera den oförändrad.
+
+TEXT ATT GRANSKA:
+{text}"""
+
+    try:
+        async with httpx.AsyncClient() as client:
+            response = await client.post(
+                "https://api.anthropic.com/v1/messages",
+                headers={
+                    "x-api-key": ANTHROPIC_API_KEY,
+                    "anthropic-version": "2023-06-01",
+                    "content-type": "application/json"
+                },
+                json={
+                    "model": "claude-sonnet-4-5-20250929",
+                    "max_tokens": 1500,
+                    "messages": [{"role": "user", "content": prompt}]
+                },
+                timeout=30
+            )
+
+            if response.status_code == 200:
+                data = response.json()
+                reviewed = data.get("content", [{}])[0].get("text", "").strip()
+                if reviewed:
+                    return {"success": True, "reviewed_text": reviewed}
+
+        return {"success": True, "reviewed_text": text}
+    except Exception as e:
+        logger.error(f"Swedish review error: {e}")
+        return {"success": True, "reviewed_text": text}
+
+
 @app.post("/api/jobs/{job_id}/cover-letter-pdf")
 async def download_cover_letter_pdf(request: Request, job_id: str):
     """Generate and return a formatted cover letter PDF for download."""

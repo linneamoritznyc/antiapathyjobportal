@@ -313,6 +313,10 @@
             const [savingAsExample, setSavingAsExample] = useState(false);
             const [savedAsExample, setSavedAsExample] = useState(false);
             const [downloadingPdf, setDownloadingPdf] = useState(false);
+            const [anecdoteHints, setAnecdoteHints] = useState([]);
+            const [selectedAnecdotes, setSelectedAnecdotes] = useState([]);
+            const [reviewingSwedish, setReviewingSwedish] = useState(false);
+            const [swedishReviewed, setSwedishReviewed] = useState(false);
 
             const downloadCoverLetterPdf = async () => {
                 setDownloadingPdf(true);
@@ -339,7 +343,7 @@
                 setDownloadingPdf(false);
             };
 
-            // Load user's actual experiences from Master CV when modal opens
+            // Load user's actual experiences + anecdotes when modal opens
             useEffect(() => {
                 if (isOpen && localStorage.getItem('auth_token')) {
                     authFetch('/api/master-cv').then(res => res.json()).then(data => {
@@ -356,7 +360,17 @@
                         hints.push({ id: '_korkort', label: 'B-körkort & bil', hint: '- Har B-körkort och tillgång till bil' });
                         setExperienceHints(hints);
                     }).catch(() => {});
+                    // Load anecdotes
+                    authFetch('/api/user/anecdotes').then(res => res.json()).then(data => {
+                        const anecdotes = (data.anecdotes || []).map(a => ({
+                            id: a.id,
+                            label: (a.type === 'hobby' ? '🎯 ' : '💬 ') + a.title,
+                            hint: `- ${a.type === 'hobby' ? 'Hobby' : 'Anekdot'}: ${a.title} — ${a.content}`
+                        }));
+                        setAnecdoteHints(anecdotes);
+                    }).catch(() => {});
                 }
+                setSwedishReviewed(false);
             }, [isOpen]);
 
             useEffect(() => {
@@ -436,11 +450,20 @@
 
             const regenerateLetter = async () => {
                 setRegenerating(true);
+                setSwedishReviewed(false);
                 try {
                     let extraHintText = experienceHints
                         .filter(e => selectedHints.includes(e.id))
                         .map(e => e.hint)
                         .join('\n');
+                    // Include selected anecdotes
+                    const anecdoteText = anecdoteHints
+                        .filter(a => selectedAnecdotes.includes(a.id))
+                        .map(a => a.hint)
+                        .join('\n');
+                    if (anecdoteText) {
+                        extraHintText += (extraHintText ? '\n' : '') + anecdoteText;
+                    }
                     if (customHint.trim()) {
                         extraHintText += (extraHintText ? '\n' : '') + '- ' + customHint.trim();
                     }
@@ -609,12 +632,40 @@
                                     placeholder="Skriv egen erfarenhet här, t.ex. 'Jobbade på Volvo som svetsare 2020-2022'"
                                     className="mt-2 w-full p-2 text-xs border border-slate-300 rounded-lg focus:border-indigo-400 focus:outline-none"
                                 />
-                                {(selectedHints.length > 0 || customHint.trim()) && !regenerating && (
+                                {/* Anecdote chips */}
+                                {anecdoteHints.length > 0 && (
+                                    <div className="mt-3">
+                                        <p className="text-xs font-medium text-slate-600 mb-1.5">Anekdoter & hobbys:</p>
+                                        <div className="flex flex-wrap gap-1.5">
+                                            {anecdoteHints.map(a => (
+                                                <button
+                                                    key={a.id}
+                                                    onClick={() => setSelectedAnecdotes(prev =>
+                                                        prev.includes(a.id) ? prev.filter(id => id !== a.id) : [...prev, a.id]
+                                                    )}
+                                                    className={`text-xs px-2.5 py-1 rounded-full border transition-colors ${
+                                                        selectedAnecdotes.includes(a.id)
+                                                            ? 'bg-amber-100 border-amber-400 text-amber-700 font-medium'
+                                                            : 'bg-white border-slate-300 text-slate-600 hover:bg-slate-100'
+                                                    }`}
+                                                >
+                                                    {selectedAnecdotes.includes(a.id) ? '✓ ' : ''}{a.label}
+                                                </button>
+                                            ))}
+                                        </div>
+                                    </div>
+                                )}
+
+                                {(selectedHints.length > 0 || selectedAnecdotes.length > 0 || customHint.trim()) && !regenerating && (
                                     <button
                                         onClick={regenerateLetter}
                                         className="mt-3 w-full bg-indigo-600 text-white py-2 rounded-lg text-sm font-medium hover:bg-indigo-700"
                                     >
-                                        ✨ Generera om med {selectedHints.length > 0 ? `valda erfarenheter (${selectedHints.length} valda)` : 'egen erfarenhet'}
+                                        ✨ Generera om med {
+                                            [selectedHints.length > 0 && `${selectedHints.length} erfarenheter`,
+                                             selectedAnecdotes.length > 0 && `${selectedAnecdotes.length} anekdoter`,
+                                             customHint.trim() && 'egen text'].filter(Boolean).join(' + ') || 'val'
+                                        }
                                     </button>
                                 )}
                                 {regenerating && (
@@ -627,6 +678,43 @@
                             {feedbackSaved && (
                                 <div className="mt-2 text-sm text-green-600">✓ Feedback sparad! AI använder den nästa gång.</div>
                             )}
+
+                            {/* Swedish review — last step before sending */}
+                            <div className="mt-4 p-3 bg-emerald-50 rounded-lg border border-emerald-200">
+                                <div className="flex items-center justify-between">
+                                    <div>
+                                        <p className="text-sm font-medium text-emerald-800">Sista steget: Granska svenskan</p>
+                                        <p className="text-xs text-emerald-600 mt-0.5">AI granskar brevet och fixar svengelska, anglicismer och onaturliga formuleringar.</p>
+                                    </div>
+                                    <button
+                                        onClick={async () => {
+                                            setReviewingSwedish(true);
+                                            try {
+                                                const res = await authFetch('/api/review-swedish', {
+                                                    method: 'POST',
+                                                    body: JSON.stringify({ text: letter })
+                                                });
+                                                const data = await res.json();
+                                                if (data.success && data.reviewed_text) {
+                                                    setLetter(data.reviewed_text);
+                                                    setSwedishReviewed(true);
+                                                }
+                                            } catch (e) {
+                                                console.error('Swedish review error:', e);
+                                            }
+                                            setReviewingSwedish(false);
+                                        }}
+                                        disabled={reviewingSwedish || swedishReviewed}
+                                        className={`px-4 py-2 rounded-lg text-sm font-medium whitespace-nowrap transition-colors ${
+                                            swedishReviewed
+                                                ? 'bg-emerald-200 text-emerald-800'
+                                                : 'bg-emerald-600 text-white hover:bg-emerald-700 disabled:opacity-60'
+                                        }`}
+                                    >
+                                        {reviewingSwedish ? 'Granskar...' : swedishReviewed ? '✓ Granskad' : '🔍 Granska svenska'}
+                                    </button>
+                                </div>
+                            </div>
 
                             <div className="flex gap-3 mt-4 flex-wrap">
                                 {job?.contact_email && (
