@@ -416,7 +416,10 @@ Styr hur AI:n skriver dina personliga brev. **All feedback härifrån påverkar 
 
 ### Träningsbrev
 - Ladda upp (PDF/DOCX) eller klistra in text → `POST /api/user/training-letters`
-- AI analyserar din stil: ton, struktur, favoritfraser
+- AI analyserar din stil: ton, struktur, favoritfraser (Sonnet, 700 tokens)
+- **1 brev räcker** för att starta stilanalys. Fler brev = rikare analys (AI noterar skillnader mellan breven, samlar fler fraser). Max 20 brev.
+- **1 brev**: `analyze_writing_tone_rich()` — extraherar ton, meningsstruktur, 3-6 unika fraser, klichéer du undviker, öppningsstil
+- **2+ brev**: `analyze_writing_tone_multi()` — analyserar alla brev tillsammans, noterar stilskillnader ("Brev 1: Formellt. Brev 2: Personligt")
 - Lista med uppladdade brev + ta bort-knapp
 
 ### Fraser jag gillar (blå chips)
@@ -442,12 +445,14 @@ Styr hur AI:n skriver dina personliga brev. **All feedback härifrån påverkar 
 - **"Skicka feedback"**-knapp → `POST /api/user/ai-feedback/smart`
 - AI (Claude) tolkar feedbacken → extraherar avoid/like-fraser → sparar strukturerat
 - Feedback sparas i `user_ai_feedback` OCH uppdaterar `user_cover_letter_preferences`
+- **`is_active`** — feedback är aktiv tills du manuellt tar bort den (soft-delete via DELETE-endpoint). **Ingen auto-expiry eller åldersbaserad deaktivering.** Senaste 10 aktiva feedback-rader hämtas vid brevgenerering.
+- **`applies_to_branscher`** — kan sättas manuellt vid POST. **AI:n (smart feedback) sätter den INTE automatiskt** — defaultar till `[]` (gäller alla branscher). **Ska byggas ut i framtiden?** Needs a decision: ska smart feedback extrahera bransch från texten?
 - **Historik** — lista med sparad feedback + ta bort-knapp
 
 ### Anekdoter & hobbys
 - Lista med sparade anekdoter/hobbys
 - Varje post: titel, typ (anekdot/hobby), nyckelord
-- **"+ Lägg till anekdot"** → `POST /api/user/anecdotes` (max 30 per användare)
+- **"+ Lägg till anekdot"** → `POST /api/user/anecdotes` (max 30 per användare, godtycklig gräns — inte tokenrelaterad). **Bara MAX 1 anekdot vävas in per brev**, vald via keyword-matchning mot jobbannonsen. De andra 29 ligger redo men används bara om de matchar.
 - **"✎ Redigera"**-knapp per anekdot — inline-redigering av titel, typ, innehåll, nyckelord → `PATCH /api/user/anecdotes/{id}`
 - **"✕ Ta bort"**-knapp → `DELETE /api/user/anecdotes/{id}`
 - **"TXT"**-knapp — exportera alla anekdoter/hobbys som textfil → `GET /api/user/anecdotes/export?format=txt`
@@ -550,14 +555,18 @@ Koppla ditt Gmail-konto för att skapa utkast direkt från appen.
 
 **Gmail-flöde vid "Spara i Gmail med bilagor":**
 ```
-1. Hämta access_token från user_google_credentials
-2. Om expired → refresh med refresh_token → uppdatera i DB
+1. refresh_gmail_token() — hämtar access_token, auto-refreshar om <5 min kvar
+2. Om refresh misslyckas → detaljerat felmeddelande (inte tyst fel):
+   - "Gmail är inte kopplat" / "refresh token saknas" / "token kunde inte förnyas"
 3. Skapa Gmail draft via Gmail API med:
    - Ämne: "Ansökan: [Jobbtitel] – [Namn]"
    - Body: personligt brev
    - Bilaga 1: Personligt_Brev_[Förnamn]_[Efternamn].pdf (genereras on-the-fly)
-   - Bilaga 2: CV_[Förnamn]_[Efternamn]_[Bransch].pdf (från cv_files/ eller Storage)
-4. Spara gmail_draft_id i applications-tabellen
+   - Bilaga 2: CV_[Förnamn]_[Efternamn]_[Bransch].pdf (BARA från lokal disk v2/api/cv_files/)
+     ⚠️ Om PDF saknas på disk → bilagan hoppas över TYST (inget fel, utkastet skapas utan CV).
+     Ingen fallback till Supabase Storage.
+4. Om Gmail API returnerar 401 → "Token har gått ut. Koppla bort och koppla om Gmail."
+5. Spara gmail_draft_id i applications-tabellen
 ```
 
 ---
