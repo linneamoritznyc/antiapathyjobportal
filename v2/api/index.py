@@ -1267,19 +1267,27 @@ async def generate_cover_letter(job: Dict, user_cv_text: Optional[str] = None, u
                 if style_parts:
                     style_section = "\n\nMIN SKRIVSTIL (skriv brevet i min stil):\n" + "\n".join(style_parts)
 
-            # Build anecdotes section — include all, let AI pick relevant ones
+            # Build anecdotes section — only include anecdotes whose keywords match the job
             if anecdotes_result and len(anecdotes_result) > 0:
+                job_text = (job.get('title', '') + ' ' + job.get('description', '') + ' ' + job.get('full_description', '')).lower()
                 anecdote_parts = []
                 for a in anecdotes_result:
                     kw = a.get("keywords", []) or []
-                    kw_text = f" (relevant för: {', '.join(kw)})" if kw else ""
-                    if a.get("type") == "hobby":
-                        anecdote_parts.append(f"- Hobby: {a['title']} — {a['content']}{kw_text}")
+                    # Only include if at least one keyword matches the job description
+                    if kw:
+                        matches = [k for k in kw if k.lower() in job_text]
+                        if not matches:
+                            continue  # Skip — no keyword match, not relevant to this job
                     else:
-                        anecdote_parts.append(f"- Anekdot: {a['title']} — {a['content']}{kw_text}")
+                        continue  # No keywords defined — skip to be safe
+
+                    if a.get("type") == "hobby":
+                        anecdote_parts.append(f"- Hobby: {a['title']} — {a['content']} (matchade nyckelord: {', '.join(matches)})")
+                    else:
+                        anecdote_parts.append(f"- Anekdot: {a['title']} — {a['content']} (matchade nyckelord: {', '.join(matches)})")
 
                 if anecdote_parts:
-                    anecdotes_section = "\n\nMINA PERSONLIGA ANEKDOTER & HOBBYS (använd BARA om de passar jobbet):\n" + "\n".join(anecdote_parts)
+                    anecdotes_section = "\n\nMINA PERSONLIGA ANEKDOTER & HOBBYS (keyword-matchade mot detta jobb):\n" + "\n".join(anecdote_parts)
 
             # Build feedback section from previous user feedback
             if feedback_result and len(feedback_result) > 0:
@@ -1315,7 +1323,7 @@ INSTRUKTIONER:
 7. Nämn var jag bor (EXAKT den ort som anges under "OM MIG" ovan — ignorera eventuell ort/adress i CV-texten) och att jag är flexibel med arbetstider
 8. KRITISKT: Om "EXTRA ERFARENHETER SOM MÅSTE NÄMNAS I BREVET" finns ovan — du MÅSTE nämna VARJE ENSKILD erfarenhet som listas där i brevet. Hoppa inte över en enda. Nämn alla, även om de inte matchar jobbet perfekt — hitta en naturlig koppling för var och en. Det är helt ok att nämna 2 erfarenheter tillsammans i samma mening eller stycke om de belyser liknande styrkor
 9. Om "MIN SKRIVSTIL" finns ovan — följ den stilen. Undvik ALLA fraser listade under "Fraser jag INTE vill ha". Använd gärna fraser från "Fraser jag gillar".
-10. Om "MINA PERSONLIGA ANEKDOTER & HOBBYS" finns ovan — väv in EN relevant anekdot eller hobby om den passar jobbet. Tvinga inte in irrelevanta anekdoter.
+10. Om "MINA PERSONLIGA ANEKDOTER & HOBBYS" finns ovan — dessa har redan keyword-matchats mot jobbet. Väv in MAX EN om den naturligt stärker din ansökan. Men om kopplingen känns konstruerad eller tunn — SKIPPA den helt. Det är ALLTID bättre att INTE nämna en hobby/anekdot än att tvinga in den.
 11. VIKTIGT om ålder: Om du nämner ålder, använd EXAKT den ålder som står under "OM MIG" ovan. Ignorera eventuell ålder som nämns i bakgrund/erfarenheter — den kan vara gammal.
 12. Avsluta med:
    {signature_style}
