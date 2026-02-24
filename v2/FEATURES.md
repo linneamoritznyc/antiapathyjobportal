@@ -84,6 +84,12 @@ Separat HTML-fil (`v2/login.html`). Två flikar: **Logga in** / **Skapa konto**.
 
 Visar jobb som skrapats från Platsbanken och som har **kontakt-e-post** (= kan sökas via Gmail).
 
+### Platsbanken-scraping
+- **Triggas manuellt** — användaren klickar "Sök nya jobb"-knappen (`POST /api/scrape`)
+- **Triggas automatiskt** efter onboarding-quiz (en gång)
+- **Ingen cron/schema** — ingen automatisk scraping i bakgrunden
+- **Volym per scrape**: upp till 5 sökord × 15 jobb + 2 breda sökningar × 20 jobb = ~95 jobb, deduplicerade på jobb-ID
+
 ### Toppsektion
 - **Sökfält** — filtrerar på titel, företag, plats (klientside)
 - **Prioritetsfilter** — dropdown: Alla / Akut / Snart / Normal
@@ -93,7 +99,7 @@ Visar jobb som skrapats från Platsbanken och som har **kontakt-e-post** (= kan 
 ### Jobbkort (12 per sida, grid-layout)
 Varje kort visar:
 - **Prioritetsbadge** — ⚡ Akut (röd) / ⏰ Snart (amber) / ✓ Normal
-- **📌 Spara-knapp** — bokmärker jobbet
+- **📌 Spara-knapp** — sparar jobbet i DB (`POST /api/jobs/{id}/save` → `applications`-tabellen med `status=saved`). Inte localStorage — kräver inloggning. Unsave via `DELETE /api/jobs/{id}/save`.
 - **Deadline** — datum + färgkodad badge
 - **Jobbtitel**, **Företagsnamn**, **Ort**
 - **Kontakt-epost** (grön badge)
@@ -101,8 +107,14 @@ Varje kort visar:
 - **↗ Extern länk** — öppnar originalannonsen på Platsbanken
 
 ### Ansökningsmodal (öppnas vid "✨ Ansök")
-1. AI genererar personligt brev via `POST /api/jobs/{id}/apply-with-cv`
-2. **Kvalifikationsvarning** — om Haiku bedömer att du inte matchar visas varning INNAN credits används
+1. **Kvalifikationsvarning** — Haiku (billig + snabb modell) gör en snabbkontroll mot dina erfarenheter + utbildning. Om `qualified=false` visas varning med tre val:
+   - **"Jag vill söka ändå"** — struntar i varningen, genererar brev som vanligt
+   - **"Hoppa över"** — stänger modalen
+   - **"Hoppa över + filtrera bort liknande"** — lägger till föreslagna negativa sökord
+   - **Varningen är bara rådgivande** — användaren kan ALLTID söka ändå. Om Haiku-API:t misslyckas → `qualified=true` (fail open).
+   - **"Credit"** = en Claude API-anrop. Att generera ett brev kostar ~1 Sonnet-anrop. Kvalifikationskontrollen kostar ~1 Haiku-anrop (mycket billigare). Det finns inget credit-saldo i appen — det är en kostnadssignal till appägaren.
+2. AI genererar personligt brev via `POST /api/jobs/{id}/apply-with-cv`
+   - **Status sätts direkt till `sent`** + `sent_at` sätts till nu. Ansökan syns direkt i Ansökningar-fliken.
 3. Brevet visas i redigerbar textarea
 4. **Erfarenhets-chips** (gröna) — erfarenheter som nämns i brevet. Klicka bort/i och omgenerera
 5. **Utbildnings-chips** (gröna) + **Anekdot-chips** (amber) — samma logik
@@ -118,8 +130,8 @@ Varje kort visar:
       2. Brödtext: personligt brev
       3. Bilaga 1: Personligt brev som PDF
       4. Bilaga 2: Rätt bransch-CV som PDF
-    - **"Markera skickad"** — ändrar status till "sent"
-    - **CV-badge** — visar vilken bransch som matchades
+    - **"Markera skickad"** — sätter `status=sent` + `sent_at`. Redundant om man redan klickat "Ansök" (som redan sätter sent). Finns mest för manuella flöden där man sparar jobb först och ansöker utanför appen.
+    - **CV-badge** — visar vilken bransch som matchades. Om inget bransch-CV matchar jobbet faller det tillbaka till **"customerservice"** (kundtjänst) som default.
 
 **Supabase-koppling:**
 
