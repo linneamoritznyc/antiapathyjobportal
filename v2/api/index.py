@@ -5531,26 +5531,57 @@ VIKTIGT:
 
 @app.post("/api/cv/enhance-chat")
 async def enhance_chat(request: Request):
-    """Chat about the last CV enhancement — answer follow-up questions."""
+    """Chat about the last CV enhancement — answer follow-up questions.
+    Now receives full conversation history so Claude has context of previous Q&A."""
     user_id = await get_user_id_from_request(request, required=True)
     body = await request.json()
     question = body.get("question", "").strip()
     changes_context = body.get("changes_context", "")
+    conversation_history = body.get("conversation_history", [])
 
     if not question:
         raise HTTPException(status_code=400, detail="Ingen fråga angiven")
     if not ANTHROPIC_API_KEY:
         raise HTTPException(status_code=500, detail="AI ej konfigurerad")
 
-    prompt = f"""Du är en assistent som hjälper en jobbsökare med sitt Master CV.
-Användaren har precis laddat upp ett CV och systemet gjorde dessa ändringar:
+    # Also fetch current master CV data so AI can actually make changes
+    master_cv_data = ""
+    try:
+        experiences = await db_request("GET", "master_cv_experiences", params={
+            "user_id": f"eq.{user_id}", "order": "start_date.desc"
+        })
+        if experiences:
+            exp_lines = []
+            for exp in experiences:
+                line = f"- [{exp.get('category', 'work')}] {exp.get('title', '')} @ {exp.get('company', '')} ({exp.get('start_date', '')[:7] if exp.get('start_date') else ''} – {exp.get('end_date', '')[:7] if exp.get('end_date') else 'pågående'})"
+                if exp.get('description'):
+                    line += f": {exp['description'][:300]}"
+                exp_lines.append(line)
+            master_cv_data = "\n\nANVÄNDARENS NUVARANDE MASTER CV:\n" + "\n".join(exp_lines)
+    except Exception as e:
+        logger.warning(f"Could not fetch master CV for chat: {e}")
 
-{changes_context}
+    system_prompt = f"""Du är en assistent som hjälper en jobbsökare med sitt Master CV. Svara ALLTID på svenska.
 
-Användaren frågar nu: "{question}"
+SENASTE ÄNDRINGAR (från CV-uppladdning):
+{changes_context}{master_cv_data}
 
-Svara kort och hjälpsamt på svenska. Om frågan handlar om vad som ändrades, referera till ändringarna ovan.
-Om frågan handlar om något annat CV-relaterat, svara baserat på din kunskap."""
+REGLER:
+- Läs HELA konversationen — upprepa ALDRIG frågor som redan besvarats
+- Om användaren redan gett dig information, ANVÄND den direkt utan att fråga igen
+- Om användaren ber dig uppdatera/lägga till något, bekräfta kort vad du gör och gör det
+- Skriv naturlig svenska, inte svengelska
+- Var kort och konkret — ingen inställsam AI-ton, inga emojis"""
+
+    # Build Claude messages from conversation history
+    messages = []
+    for msg in conversation_history[-20:]:  # Last 20 messages max
+        role = "user" if msg.get("role") == "user" else "assistant"
+        messages.append({"role": role, "content": msg.get("text", "")})
+
+    # If history is empty or doesn't end with user message, add current question
+    if not messages or messages[-1]["role"] != "user":
+        messages.append({"role": "user", "content": question})
 
     try:
         async with httpx.AsyncClient() as client:
@@ -5564,11 +5595,13 @@ Om frågan handlar om något annat CV-relaterat, svara baserat på din kunskap."
                 json={
                     "model": "claude-sonnet-4-5-20250929",
                     "max_tokens": 1000,
-                    "messages": [{"role": "user", "content": prompt}]
+                    "system": system_prompt,
+                    "messages": messages
                 },
                 timeout=30
             )
             if response.status_code != 200:
+                logger.error(f"Enhance chat Claude error: {response.status_code} - {response.text[:200]}")
                 raise HTTPException(status_code=500, detail="AI-fel")
             result = response.json()
             answer = result["content"][0]["text"].strip()
