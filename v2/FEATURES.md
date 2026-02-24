@@ -6,9 +6,9 @@ En AI-driven jobbportal för neurodivergenta jobbsökare i Sverige. Automatisera
 
 ---
 
-## 1. Master CV med 8 branschanpassade versioner
+## 1. Master CV med 9 branschanpassade versioner
 
-**Det som gör oss unika:** Du bygger ETT Master CV — sedan genererar AI:n automatiskt 8 olika branschanpassade versioner. Varje version lyfter just de erfarenheter och skills som är relevanta för den branschen.
+**Det som gör oss unika:** Du bygger ETT Master CV — sedan genererar AI:n automatiskt 9 olika branschanpassade versioner. Varje version lyfter just de erfarenheter och skills som är relevanta för den branschen.
 
 **Branscher:**
 - Restaurang & Cafe
@@ -16,7 +16,8 @@ En AI-driven jobbportal för neurodivergenta jobbsökare i Sverige. Automatisera
 - Kundtjänst & Support
 - Tech & Kontor
 - Vård & Omsorg
-- Trädgård & Industri
+- Industri & Trädgård
+- Hotell & Reception
 - Content & Moderation
 - Konst & Kultur
 
@@ -89,6 +90,14 @@ Tre val:
 - **Hobbies:** intressen som kan vävas in
 - **Fritext-feedback:** "Gör breven kortare", "Nämn mer teamwork" → AI sparar och applicerar
 
+### AI Feedback-system (implementerat)
+
+Ge AI:n fritext-feedback som sparas och appliceras på alla framtida brev:
+- Skriv t.ex. "Gör breven kortare och mer personliga" → sparas i databasen
+- Feedback hämtas automatiskt vid varje brevgenerering och vägs in i prompten
+- Stödjer flera typer: brevstil, jobbfiltrering, nya branscher, generellt
+- Hantera via Profil → Personligt Brev-inställningar
+
 ---
 
 ## 6. Gmail-integration med ett klick
@@ -111,7 +120,7 @@ Appen söker direkt i Arbetsförmedlingens API med dina sökord + valda kommuner
 
 **E-post vs extern ansökan**
 - **Jobb-flik:** Jobb med direkt e-post → kan skicka via Gmail
-- **Extern-flik:** Jobb utan e-post → ansöker via företagets hemsida, appen hjälper med brev + CV
+- **Extern-flik:** Jobb utan e-post → visas i en separat "Extern"-flik. Användaren ansöker via företagets hemsida, men appen hjälper med personligt brev + bransch-CV
 
 **Negativa sökord**
 Filtrera bort jobbtyper du inte vill se. Chips i kategorier (Hälsa & Vård, Utbildning, Teknik, Juridik) + fritext.
@@ -139,7 +148,10 @@ Varje ansökan har status: **Sparad → Utkast → Skickad → Intervju → Erbj
 - Lägg till anteckningar per ansökan
 - Se sökta jobb per dag (stapeldiagram)
 
-**Aktivitetsrapport:** Ladda ner månatlig rapport med alla skickade ansökningar — datum, yrkesroll, arbetsgivare, omfattning, ort. Redo för A-kassan.
+**Aktivitetsrapport (PDF):** Ladda ner månatlig rapport som PDF med alla skickade ansökningar — datum, yrkesroll, arbetsgivare, omfattning, ort. Matchar Arbetsförmedlingens format. Redo för A-kassan. Data hämtas från `applications`-tabellen i Supabase (status = 'sent'), samkört med `jobs`-tabellen för jobbdetaljer.
+
+**Backend:** `GET /api/aktivitetsrapport?month=2026-02` → genererar PDF med fpdf2.
+**Data:** `applications.sent_at` + `jobs.title/company/location/working_hours` från Supabase.
 
 ---
 
@@ -189,9 +201,9 @@ Ladda upp ett befintligt CV (PDF, DOCX, TXT) → AI:n:
 | Frontend | React + Tailwind CSS (single-page app) |
 | Backend | FastAPI (Python, Vercel serverless, 60s timeout) |
 | Databas | Supabase PostgreSQL + Storage |
-| AI Brev | Claude Sonnet 4.5 (fallback: Haiku → mall) |
+| AI Brev | Claude Sonnet (fallback: Haiku → mall) |
 | AI CV-chatt | Claude Haiku (läser + skriver Master CV i DB) |
-| Grammatik | GPT-SW3 via HuggingFace |
+| Grammatik | GPT-SW3 via HuggingFace + LanguageTool API |
 | Jobbkälla | Platsbanken API (Arbetsförmedlingen) |
 | E-post | Gmail API (användarens egna OAuth) |
 | Deploy | Vercel Pro |

@@ -69,7 +69,7 @@ frontend_path = pathlib.Path(__file__).parent.parent / "frontend.html"
 |------|---------|
 | `v2/frontend.html` | React + Tailwind single-file UI |
 | `v2/api/index.py` | FastAPI backend (Vercel serverless) |
-| `v2/api/cv_files/CV_Linnea_Moritz_*.pdf` | 8 industry CVs for Gmail attachments |
+| `v2/api/cv_files/CV_Linnea_Moritz_*.pdf` | 9 bransch-CVer for Gmail attachments |
 | `v2/supabase_schema.sql` | Source-of-truth DB schema (keep updated) |
 | `v2/vercel.json` | Vercel config (root dir for project = v2/) |
 
@@ -102,7 +102,7 @@ Users can log in via **two methods** (both must work):
 Both methods store tokens in localStorage (`auth_token`, `refresh_token`, `user`) and use the same `authFetch()` wrapper for authenticated API calls.
 
 **Login page**: `v2/login.html`
-**Auth endpoints**: `v2/api/index.py` (around line 2573+)
+**Auth endpoints**: `v2/api/index.py` (around line 3700+)
 **Supabase requirement**: Google provider must be enabled in Supabase Dashboard → Authentication → Providers → Google
 
 ---
@@ -111,22 +111,23 @@ Both methods store tokens in localStorage (`auth_token`, `refresh_token`, `user`
 
 - All UI text in Swedish
 - Never mention art, painting, exhibitions, or Shopify in generated content
-- CV category detection must match: `restaurant`, `retail`, `industri`, `healthcare`, `tech`, `customerservice`, `contentmoderation`, `art`
+- CV bransch detection must match: `restaurant`, `retail`, `industry`, `healthcare`, `tech`, `customerservice`, `content`, `hotel`, `art`
 - Gmail OAuth connected via Supabase (user connects Gmail in Profile tab)
 
 ---
 
-## CV branch → filename mapping
+## CV bransch → filename mapping
 
-| Category | Filename |
+| Bransch ID | Filename |
 |----------|---------|
 | restaurant | `CV_Linnea_Moritz_Restaurang_Cafe.pdf` |
 | retail | `CV_Linnea_Moritz_Butik_Kassa.pdf` |
 | customerservice | `CV_Linnea_Moritz_Kundtjanst.pdf` |
 | tech | `CV_Linnea_Moritz_Tech_Kontor.pdf` |
 | healthcare | `CV_Linnea_Moritz_Vard_Omsorg.pdf` |
-| industri | `CV_Linnea_Moritz_Industri_Tradgard.pdf` |
-| contentmoderation | `CV_Linnea_Moritz_Content_Moderation.pdf` |
+| industry | `CV_Linnea_Moritz_Industri_Tradgard.pdf` |
+| hotel | *(no PDF yet — needs to be created)* |
+| content | `CV_Linnea_Moritz_Content_Moderation.pdf` |
 | art | `CV_Linnea_Moritz_Konst_Kultur.pdf` |
 
 ---
@@ -148,6 +149,21 @@ Users can manually add/remove phrases from their "like" and "avoid" lists.
 - **Backend**: `PATCH /api/user/letter-style/phrases` (action: add/remove, list: phrases/avoid)
 - **UI**: Chips with X to remove + input to add new ones
 - **Cover letter integration**: `avoid_phrases` and `liked_phrases` from `user_cover_letter_preferences` are fed into the prompt
+
+## Training Letters
+
+Users can upload 1-20 previously written cover letters. AI analyzes writing style (tone, structure, opening, closing, favorite phrases) and uses this to generate new letters in the user's voice.
+- **Table**: `user_training_letters` (max 20 per user, enforced by trigger)
+- **Storage**: Supabase Storage bucket `training-letters`
+- **Backend**: Upload + list + delete endpoints under `/api/user/training-letters`
+
+## AI Feedback system
+
+Users can give free-text feedback to the AI about how cover letters should be written. Feedback is stored, retrieved during letter generation, and applied to future letters.
+- **Table**: `user_ai_feedback` (feedback_type: `cover_letter`, `new_bransch_request`, `exclude_jobs`, `general`)
+- **Backend**: `POST/GET/DELETE /api/user/ai-feedback`
+- **UI**: Text input in the cover letter preferences section
+- **Cover letter integration**: Active feedback entries are fetched during `generate_cover_letter()` and included in the AI prompt
 
 ---
 
