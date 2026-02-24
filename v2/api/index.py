@@ -3308,14 +3308,25 @@ def _create_gmail_link(job: Dict, letter: str, subject: str = "") -> str:
 @app.post("/api/review-swedish")
 async def review_swedish(request: Request):
     """
-    Final-step Swedish language review using LanguageTool (real grammar checker,
-    not an LLM). Catches spelling errors, made-up words, grammar mistakes,
-    and some style issues. Auto-applies the first suggested fix for each match.
+    Final-step Swedish language review using LanguageTool.
+    Only applies HIGH-CONFIDENCE fixes (spelling, grammar, compounding).
+    Skips style suggestions and uncertain replacements that could make text worse.
+    Returns details of each change so the user can see what happened.
     """
     body = await request.json()
     text = body.get("text", "").strip()
     if not text:
         raise HTTPException(status_code=400, detail="Ingen text att granska")
+
+    # Categories we trust enough to auto-apply
+    SAFE_CATEGORIES = {
+        "TYPOS", "SPELLING", "COMPOUNDING", "GRAMMAR",
+        "PUNCTUATION", "CASING", "CONFUSED_WORDS",
+    }
+    # Categories we skip — style suggestions often make text worse
+    SKIP_CATEGORIES = {
+        "STYLE", "REDUNDANCY", "TYPOGRAPHY", "MISC",
+    }
 
     try:
         async with httpx.AsyncClient() as client:
@@ -3331,35 +3342,73 @@ async def review_swedish(request: Request):
 
             if response.status_code != 200:
                 logger.warning(f"LanguageTool returned {response.status_code}")
-                return {"success": True, "reviewed_text": text, "fixes": 0}
+                return {"success": True, "reviewed_text": text, "fixes": 0, "changes": []}
 
             result = response.json()
             matches = result.get("matches", [])
 
             if not matches:
-                return {"success": True, "reviewed_text": text, "fixes": 0}
+                return {"success": True, "reviewed_text": text, "fixes": 0, "changes": []}
 
-            # Apply fixes in reverse order (so offsets stay valid)
+            # Filter matches — only apply safe, high-confidence fixes
             fixed_text = text
             applied = 0
+            skipped = 0
+            changes = []
+
             for match in sorted(matches, key=lambda m: m["offset"], reverse=True):
                 replacements = match.get("replacements", [])
-                if replacements:
-                    offset = match["offset"]
-                    length = match["length"]
-                    best_fix = replacements[0]["value"]
-                    fixed_text = fixed_text[:offset] + best_fix + fixed_text[offset + length:]
-                    applied += 1
+                if not replacements:
+                    continue
+
+                rule = match.get("rule", {})
+                category = rule.get("category", {}).get("id", "UNKNOWN")
+                issue_type = rule.get("issueType", "")
+                original = text[match["offset"]:match["offset"] + match["length"]]
+                best_fix = replacements[0]["value"]
+
+                # Skip if the replacement is drastically different (likely wrong)
+                if len(best_fix) > len(original) * 3 or len(best_fix) < len(original) * 0.3:
+                    skipped += 1
+                    logger.info(f"LT skip (size mismatch): '{original}' → '{best_fix}' [{category}]")
+                    continue
+
+                # Skip style/misc suggestions — they often make text worse
+                if category in SKIP_CATEGORIES or issue_type == "style":
+                    skipped += 1
+                    logger.info(f"LT skip (style): '{original}' → '{best_fix}' [{category}]")
+                    continue
+
+                # Skip if category is unknown and we're not confident
+                if category not in SAFE_CATEGORIES and category != "UNKNOWN":
+                    skipped += 1
+                    logger.info(f"LT skip (unknown cat): '{original}' → '{best_fix}' [{category}]")
+                    continue
+
+                # Apply the fix
+                offset = match["offset"]
+                length = match["length"]
+                fixed_text = fixed_text[:offset] + best_fix + fixed_text[offset + length:]
+                applied += 1
+                changes.append({
+                    "original": original,
+                    "replacement": best_fix,
+                    "category": category,
+                    "message": match.get("message", ""),
+                })
+                logger.info(f"LT applied: '{original}' → '{best_fix}' [{category}]")
 
             return {
                 "success": True,
                 "reviewed_text": fixed_text,
                 "fixes": applied,
-                "total_issues": len(matches)
+                "skipped": skipped,
+                "total_issues": len(matches),
+                "changes": changes,
             }
     except Exception as e:
         logger.error(f"Swedish review error: {e}")
-        return {"success": True, "reviewed_text": text, "fixes": 0}
+        return {"success": True, "reviewed_text": text, "fixes": 0, "changes": []}
 
 
 @app.post("/api/jobs/{job_id}/cover-letter-pdf")

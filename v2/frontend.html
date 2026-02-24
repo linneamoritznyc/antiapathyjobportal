@@ -320,6 +320,7 @@
             const [reviewingSwedish, setReviewingSwedish] = useState(false);
             const [swedishReviewed, setSwedishReviewed] = useState(false);
             const [reviewFixes, setReviewFixes] = useState(0);
+            const [reviewChanges, setReviewChanges] = useState([]);
 
             // Auto-detect which experiences/anecdotes/education are mentioned in the letter
             const autoSelectMentioned = (letterText, expHints, anecHints, eduHints) => {
@@ -772,7 +773,7 @@
                                         <p className="text-xs text-emerald-600 mt-0.5">
                                             {swedishReviewed
                                                 ? (reviewFixes > 0 ? `Klart! ${reviewFixes} rättningar gjorda.` : 'Inga fel hittades — brevet ser bra ut!')
-                                                : 'LanguageTool granskar stavning, grammatik och ordval.'}
+                                                : 'Kollar stavning och grammatik (bara säkra rättningar).'}
                                         </p>
                                     </div>
                                     <button
@@ -788,6 +789,7 @@
                                                     setLetter(data.reviewed_text);
                                                     setSwedishReviewed(true);
                                                     setReviewFixes(data.fixes || 0);
+                                                    setReviewChanges(data.changes || []);
                                                 }
                                             } catch (e) {
                                                 console.error('Swedish review error:', e);
