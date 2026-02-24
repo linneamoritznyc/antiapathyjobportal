@@ -111,6 +111,18 @@ FÖRBJUDNA AI-KLICHÉER: "passionerad", "brinner för", "gedigen erfarenhet", "u
   "spännande roll", "dynamisk miljö", "starkt driv", "bidra till er resa", "genuint intresserad",
   "värdefull tillgång", "driven och ambitiös", "positiv mindset".
 
+FÖRBJUDNA FORMELLA/STELA UTTRYCK (använd det vardagliga alternativet):
+  "rondera lokaler"→"gå ronder", "rondera"→"gå rond/runda",
+  "tillse att"→"se till att", "ombesörja"→"ordna/fixa/se till",
+  "beivra"→"ta itu med", "emotse"→"ser fram emot", "delge"→"berätta för",
+  "föranstalta"→"ordna", "förhöra sig"→"fråga/kolla",
+  "inneha"→"har", "tillgodose"→"uppfylla/möta",
+  "vidta åtgärder"→"ta tag i/göra något åt", "genomlysa"→"granska/gå igenom",
+  "tillvarata"→"ta vara på", "tillhandahålla"→"erbjuda/ge",
+  "säkerställa"→"se till att" (i vardagliga sammanhang),
+  "beakta"→"tänka på/ha i åtanke", "ansvara för att upprätthålla"→"sköta/hålla koll på".
+  REGEL: Om ett ord inte skulle sägas i ett normalt samtal — byt ut det.
+
 NATURLIGA FORMULERINGAR:
   CV: "Ledde ett team på åtta personer", "Ökade försäljningen med 30 procent"
   Brev: "Det som lockar mig med tjänsten är [specifikt]", "Jag har i tre år arbetat med [specifikt]"
@@ -1317,10 +1329,11 @@ EXTRA REGLER FÖR PERSONLIGT BREV:
 - Börja INTE varje mening med "Jag". Blanda meningslängder. Texten ska ha flyt.
 - INGEN over-explaining: "Jag är noggrann" räcker — behöver INTE tillägga "och det betyder mycket för mig"
 - ALDRIG defensiv: Skriv ALDRIG "Jag inser att er annons efterfrågar..." — kort och rakt istället.
-- KORREKTA vardagliga fraser: "Jobba i kassan" (INTE "på kassavagn"). "Stå i butik" (INTE "arbeta i butiksmiljö").
+- KORREKTA vardagliga fraser: "Jobba i kassan" (INTE "på kassavagn"). "Stå i butik" (INTE "arbeta i butiksmiljö"). "Gå ronder" (INTE "rondera lokaler"). "Sköta om" (INTE "ombesörja").
 - Säg: "trygg i min roll", "van vid att jobba självständigt", "bekväm med kundkontakt".
 - PROPORTIONER: 80% på vad du KAN. Max 20% på saker du inte gjort.
 - Skriv som en RIKTIG person — inte en AI som försöker imponera.
+- TESTFRÅGA: Skulle en 25-åring säga det här högt? Om inte → skriv om.
 
 Skriv ENDAST det färdiga brevet, inget annat."""
 
