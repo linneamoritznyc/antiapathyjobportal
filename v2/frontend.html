@@ -315,9 +315,39 @@
             const [downloadingPdf, setDownloadingPdf] = useState(false);
             const [anecdoteHints, setAnecdoteHints] = useState([]);
             const [selectedAnecdotes, setSelectedAnecdotes] = useState([]);
+            const [educationHints, setEducationHints] = useState([]);
+            const [selectedEducation, setSelectedEducation] = useState([]);
             const [reviewingSwedish, setReviewingSwedish] = useState(false);
             const [swedishReviewed, setSwedishReviewed] = useState(false);
             const [reviewFixes, setReviewFixes] = useState(0);
+
+            // Auto-detect which experiences/anecdotes/education are mentioned in the letter
+            const autoSelectMentioned = (letterText, expHints, anecHints, eduHints) => {
+                if (!letterText) return;
+                const lower = letterText.toLowerCase();
+
+                // Match experiences by company name or title
+                const matchedExp = expHints.filter(exp => {
+                    const parts = exp.label.replace(/[()]/g, '').split(/\s+/).filter(w => w.length > 2);
+                    return parts.some(word => lower.includes(word.toLowerCase()));
+                }).map(e => e.id);
+                setSelectedHints(matchedExp);
+
+                // Match anecdotes by title keywords
+                const matchedAnec = anecHints.filter(a => {
+                    const title = a.label.replace(/^[🎯💬]\s*/, '');
+                    const words = title.split(/\s+/).filter(w => w.length > 2);
+                    return words.some(word => lower.includes(word.toLowerCase()));
+                }).map(a => a.id);
+                setSelectedAnecdotes(matchedAnec);
+
+                // Match education by school name
+                const matchedEdu = eduHints.filter(edu => {
+                    const parts = edu.label.split(/\s+/).filter(w => w.length > 2);
+                    return parts.some(word => lower.includes(word.toLowerCase()));
+                }).map(e => e.id);
+                setSelectedEducation(matchedEdu);
+            };
 
             const downloadCoverLetterPdf = async () => {
                 setDownloadingPdf(true);
@@ -344,7 +374,7 @@
                 setDownloadingPdf(false);
             };
 
-            // Load user's actual experiences + anecdotes when modal opens
+            // Load user's actual experiences + anecdotes + education when modal opens
             useEffect(() => {
                 if (isOpen && localStorage.getItem('auth_token')) {
                     authFetch('/api/master-cv').then(res => res.json()).then(data => {
@@ -360,7 +390,16 @@
                         // Add B-körkort as a special non-experience hint
                         hints.push({ id: '_korkort', label: 'B-körkort & bil', hint: '- Har B-körkort och tillgång till bil' });
                         setExperienceHints(hints);
+
+                        // Education
+                        const eduHints = (data.education || []).map(edu => ({
+                            id: edu.id || edu.school,
+                            label: edu.school + (edu.degree ? ` (${edu.degree})` : ''),
+                            hint: `- Utbildning: ${edu.school}${edu.degree ? ', ' + edu.degree : ''}${edu.field_of_study ? ' — ' + edu.field_of_study : ''}`
+                        }));
+                        setEducationHints(eduHints);
                     }).catch(() => {});
+
                     // Load anecdotes
                     authFetch('/api/user/anecdotes').then(res => res.json()).then(data => {
                         const anecdotes = (data.anecdotes || []).map(a => ({
@@ -375,9 +414,15 @@
             }, [isOpen]);
 
             useEffect(() => {
-                if (result?.cover_letter) setLetter(result.cover_letter);
+                if (result?.cover_letter) {
+                    setLetter(result.cover_letter);
+                    // Auto-select when letter arrives and hints are loaded
+                    if (experienceHints.length || anecdoteHints.length || educationHints.length) {
+                        autoSelectMentioned(result.cover_letter, experienceHints, anecdoteHints, educationHints);
+                    }
+                }
                 setApplicationSaved(false);
-            }, [result]);
+            }, [result, experienceHints, anecdoteHints, educationHints]);
 
             if (!isOpen || !job) return null;
 
@@ -457,6 +502,14 @@
                         .filter(e => selectedHints.includes(e.id))
                         .map(e => e.hint)
                         .join('\n');
+                    // Include selected education
+                    const eduText = educationHints
+                        .filter(e => selectedEducation.includes(e.id))
+                        .map(e => e.hint)
+                        .join('\n');
+                    if (eduText) {
+                        extraHintText += (extraHintText ? '\n' : '') + eduText;
+                    }
                     // Include selected anecdotes
                     const anecdoteText = anecdoteHints
                         .filter(a => selectedAnecdotes.includes(a.id))
@@ -475,7 +528,8 @@
                     const data = await res.json();
                     if (data.success) {
                         setLetter(data.cover_letter);
-                        setSelectedHints([]);
+                        // Re-detect what the new letter mentions and pre-select those
+                        autoSelectMentioned(data.cover_letter, experienceHints, anecdoteHints, educationHints);
                         setDraftSaved(false);
                     }
                 } catch (err) {
@@ -603,40 +657,66 @@
                                 </span>
                             </div>
 
-                            {/* Experience picker */}
+                            {/* Experience/Education/Anecdote picker — pre-selected based on letter content */}
                             <div className="mt-4 p-3 bg-slate-50 rounded-lg border border-slate-200">
-                                <p className="text-xs font-medium text-slate-600 mb-2">Välj erfarenheter från ditt Master CV att lyfta i brevet:</p>
-                                {experienceHints.length === 0 && (
-                                    <p className="text-xs text-slate-400 mb-2">Inga erfarenheter hittades. Lägg till i Mina CV → Master CV.</p>
+                                <p className="text-xs font-medium text-slate-600 mb-1">Nämns i brevet (klicka bort/i och omgenerera):</p>
+                                <p className="text-[10px] text-slate-400 mb-2">Ibockade = nämns i brevet. Klicka bort det du inte vill ha, klicka i det du vill lägga till.</p>
+
+                                {/* Experience chips */}
+                                {experienceHints.length > 0 && (
+                                    <div className="mb-2">
+                                        <p className="text-[10px] font-medium text-slate-500 mb-1 uppercase tracking-wide">Erfarenheter</p>
+                                        <div className="flex flex-wrap gap-1.5">
+                                            {experienceHints.map(exp => (
+                                                <button
+                                                    key={exp.id}
+                                                    onClick={() => setSelectedHints(prev =>
+                                                        prev.includes(exp.id) ? prev.filter(h => h !== exp.id) : [...prev, exp.id]
+                                                    )}
+                                                    className={`text-xs px-2.5 py-1 rounded-full border transition-colors ${
+                                                        selectedHints.includes(exp.id)
+                                                            ? 'bg-indigo-100 border-indigo-400 text-indigo-700 font-medium'
+                                                            : 'bg-white border-slate-300 text-slate-600 hover:bg-slate-100'
+                                                    }`}
+                                                >
+                                                    {selectedHints.includes(exp.id) ? '✓ ' : ''}{exp.label}
+                                                </button>
+                                            ))}
+                                        </div>
+                                    </div>
                                 )}
-                                <div className="flex flex-wrap gap-1.5">
-                                    {experienceHints.map(exp => (
-                                        <button
-                                            key={exp.id}
-                                            onClick={() => setSelectedHints(prev =>
-                                                prev.includes(exp.id) ? prev.filter(h => h !== exp.id) : [...prev, exp.id]
-                                            )}
-                                            className={`text-xs px-2.5 py-1 rounded-full border transition-colors ${
-                                                selectedHints.includes(exp.id)
-                                                    ? 'bg-indigo-100 border-indigo-400 text-indigo-700 font-medium'
-                                                    : 'bg-white border-slate-300 text-slate-600 hover:bg-slate-100'
-                                            }`}
-                                        >
-                                            {selectedHints.includes(exp.id) ? '✓ ' : ''}{exp.label}
-                                        </button>
-                                    ))}
-                                </div>
-                                <input
-                                    type="text"
-                                    value={customHint}
-                                    onChange={(e) => setCustomHint(e.target.value)}
-                                    placeholder="Skriv egen erfarenhet här, t.ex. 'Jobbade på Volvo som svetsare 2020-2022'"
-                                    className="mt-2 w-full p-2 text-xs border border-slate-300 rounded-lg focus:border-indigo-400 focus:outline-none"
-                                />
+                                {experienceHints.length === 0 && (
+                                    <p className="text-xs text-slate-400 mb-2">Inga erfarenheter hittades. Lägg till i Mina CV.</p>
+                                )}
+
+                                {/* Education chips */}
+                                {educationHints.length > 0 && (
+                                    <div className="mb-2">
+                                        <p className="text-[10px] font-medium text-slate-500 mb-1 uppercase tracking-wide">Utbildning</p>
+                                        <div className="flex flex-wrap gap-1.5">
+                                            {educationHints.map(edu => (
+                                                <button
+                                                    key={edu.id}
+                                                    onClick={() => setSelectedEducation(prev =>
+                                                        prev.includes(edu.id) ? prev.filter(id => id !== edu.id) : [...prev, edu.id]
+                                                    )}
+                                                    className={`text-xs px-2.5 py-1 rounded-full border transition-colors ${
+                                                        selectedEducation.includes(edu.id)
+                                                            ? 'bg-emerald-100 border-emerald-400 text-emerald-700 font-medium'
+                                                            : 'bg-white border-slate-300 text-slate-600 hover:bg-slate-100'
+                                                    }`}
+                                                >
+                                                    {selectedEducation.includes(edu.id) ? '✓ ' : ''}{edu.label}
+                                                </button>
+                                            ))}
+                                        </div>
+                                    </div>
+                                )}
+
                                 {/* Anecdote chips */}
                                 {anecdoteHints.length > 0 && (
-                                    <div className="mt-3">
-                                        <p className="text-xs font-medium text-slate-600 mb-1.5">Anekdoter & hobbys:</p>
+                                    <div className="mb-2">
+                                        <p className="text-[10px] font-medium text-slate-500 mb-1 uppercase tracking-wide">Anekdoter & hobbys</p>
                                         <div className="flex flex-wrap gap-1.5">
                                             {anecdoteHints.map(a => (
                                                 <button
@@ -657,16 +737,20 @@
                                     </div>
                                 )}
 
-                                {(selectedHints.length > 0 || selectedAnecdotes.length > 0 || customHint.trim()) && !regenerating && (
+                                <input
+                                    type="text"
+                                    value={customHint}
+                                    onChange={(e) => setCustomHint(e.target.value)}
+                                    placeholder="Skriv egen erfarenhet, t.ex. 'Jobbade på Volvo som svetsare 2020-2022'"
+                                    className="mt-1 w-full p-2 text-xs border border-slate-300 rounded-lg focus:border-indigo-400 focus:outline-none"
+                                />
+
+                                {!regenerating && (
                                     <button
                                         onClick={regenerateLetter}
                                         className="mt-3 w-full bg-indigo-600 text-white py-2 rounded-lg text-sm font-medium hover:bg-indigo-700"
                                     >
-                                        ✨ Generera om med {
-                                            [selectedHints.length > 0 && `${selectedHints.length} erfarenheter`,
-                                             selectedAnecdotes.length > 0 && `${selectedAnecdotes.length} anekdoter`,
-                                             customHint.trim() && 'egen text'].filter(Boolean).join(' + ') || 'val'
-                                        }
+                                        ✨ Omgenerera brev
                                     </button>
                                 )}
                                 {regenerating && (
@@ -857,6 +941,7 @@
                             own_car: merged.own_car || '',
                             own_computer: merged.own_computer || '',
                             linkedin: merged.linkedin || '',
+                            portfolio_url: merged.portfolio_url || '',
                             earliest_start: merged.earliest_start || '',
                             education_level: merged.education_level || '',
                             search_terms: merged.search_terms || [],
@@ -880,6 +965,7 @@
                     own_car: '',
                     own_computer: '',
                     linkedin: '',
+                    portfolio_url: '',
                     earliest_start: '',
                     education_level: '',
                     search_terms: [],
@@ -990,6 +1076,14 @@
                     allowEmpty: true
                 },
                 {
+                    id: 'portfolio_url',
+                    question: 'Har du en personlig portfolio eller webbplats?',
+                    subtitle: 'Valfritt - din portfolio, blogg eller GitHub visas i ansökningar',
+                    type: 'text',
+                    placeholder: 'T.ex. mittnamn.se, github.com/dittnamn',
+                    allowEmpty: true
+                },
+                {
                     id: 'education_level',
                     question: 'Vilken utbildning har du?',
                     subtitle: 'Hjälper oss visa rätt jobb - t.ex. läkare kräver läkarexamen',
@@ -1093,7 +1187,8 @@
             const summaryLabels = {
                 full_name: 'Namn', phone: 'Telefon', home_location: 'Bor i', age: 'Ålder',
                 drivers_license: 'Körkort', own_car: 'Egen bil', own_computer: 'Egen dator',
-                earliest_start: 'Kan börja', linkedin: 'LinkedIn', education_level: 'Utbildning',
+                earliest_start: 'Kan börja', linkedin: 'LinkedIn', portfolio_url: 'Portfolio/Webbplats',
+                education_level: 'Utbildning',
                 search_terms: 'Vill jobba med',
                 working_hours: 'Omfattning', employment_form: 'Anställningsform',
                 duration: 'Varaktighet', salary: 'Lön', dealbreakers: 'Vill inte'
@@ -1155,6 +1250,7 @@
                         own_car: answers.own_car,
                         own_computer: answers.own_computer,
                         linkedin: answers.linkedin,
+                        portfolio_url: answers.portfolio_url,
                         earliest_start: answers.earliest_start,
                         education_level: answers.education_level
                     };
@@ -3242,16 +3338,25 @@
 
                 try {
                     const res = await authFetch('/api/master-cv/download-pdf');
+                    if (!res.ok) {
+                        const errData = await res.json().catch(() => ({}));
+                        throw new Error(errData.detail || 'Servern returnerade ett fel');
+                    }
                     const blob = await res.blob();
+                    if (blob.type && !blob.type.includes('pdf')) {
+                        throw new Error('Svaret var inte en PDF');
+                    }
                     const url = window.URL.createObjectURL(blob);
                     const a = document.createElement('a');
                     a.href = url;
-                    a.download = 'Master_CV_Linnea_Moritz.pdf';
+                    const disposition = res.headers.get('Content-Disposition') || '';
+                    const match = disposition.match(/filename="?([^"]+)"?/);
+                    a.download = match ? match[1] : 'Master_CV.pdf';
                     a.click();
                     window.URL.revokeObjectURL(url);
                 } catch (err) {
                     console.error('Error downloading Master CV:', err);
-                    alert('Kunde inte ladda ner Master CV');
+                    alert(err.message || 'Kunde inte ladda ner Master CV');
                 }
             };
 
@@ -3377,16 +3482,22 @@
 
                 try {
                     const res = await authFetch(`/api/bransch-cvs/${cv.id}/download-pdf`);
+                    if (!res.ok) {
+                        const errData = await res.json().catch(() => ({}));
+                        throw new Error(errData.detail || 'Servern returnerade ett fel');
+                    }
                     const blob = await res.blob();
                     const url = window.URL.createObjectURL(blob);
                     const a = document.createElement('a');
                     a.href = url;
-                    a.download = `CV_${cv.category.replace(/\s+/g, '_')}.pdf`;
+                    const disposition = res.headers.get('Content-Disposition') || '';
+                    const match = disposition.match(/filename="?([^"]+)"?/);
+                    a.download = match ? match[1] : `CV_${cv.category.replace(/\s+/g, '_')}.pdf`;
                     a.click();
                     window.URL.revokeObjectURL(url);
                 } catch (err) {
                     console.error('Error downloading Bransch-CV:', err);
-                    alert('Kunde inte ladda ner Bransch-CV');
+                    alert(err.message || 'Kunde inte ladda ner Bransch-CV');
                 }
             };
 
@@ -7176,7 +7287,7 @@
         );
 
         // Applications page with status management
-        const ApplicationsPage = ({ applications, onUpdateApplication, onDeleteApplication, onRefresh }) => {
+        const ApplicationsPage = ({ applications, onUpdateApplication, onDeleteApplication, onRefresh, onApplySaved, setActiveTab }) => {
             const [filter, setFilter] = useState('all');
             const [editingNotes, setEditingNotes] = useState(null);
             const [noteText, setNoteText] = useState('');
@@ -7402,8 +7513,18 @@
                                                     <p className="font-medium text-slate-800">{app.job_title || 'Jobb'}</p>
                                                     <p className="text-sm text-indigo-600">{app.company || ''}</p>
                                                     <p className="text-xs text-slate-400 mt-1">
+                                                        {app.location && <span>{app.location} &bull; </span>}
                                                         {new Date(app.created_at).toLocaleDateString('sv-SE')}
                                                         {app.sent_at && ` • Skickad ${new Date(app.sent_at).toLocaleDateString('sv-SE')}`}
+                                                        {app.status === 'saved' && app.deadline && (() => {
+                                                            const dl = new Date(app.deadline);
+                                                            const now = new Date();
+                                                            const daysLeft = Math.ceil((dl - now) / (1000*60*60*24));
+                                                            if (daysLeft < 0) return <span className="text-red-500"> &bull; Deadline passerad</span>;
+                                                            if (daysLeft === 0) return <span className="text-red-500"> &bull; Deadline idag!</span>;
+                                                            if (daysLeft <= 3) return <span className="text-amber-500"> &bull; {daysLeft} dagar kvar</span>;
+                                                            return ` • Deadline ${dl.toLocaleDateString('sv-SE')}`;
+                                                        })()}
                                                     </p>
                                                 </div>
                                                 <div className="flex items-center gap-2">
@@ -7483,6 +7604,25 @@
 
                                                 {/* Actions */}
                                                 <div className="flex gap-2 flex-wrap">
+                                                    {/* Saved job actions: Apply + View original */}
+                                                    {app.status === 'saved' && onApplySaved && (
+                                                        <button
+                                                            onClick={() => onApplySaved(app.job_id)}
+                                                            className="px-3 py-1.5 bg-indigo-600 text-white rounded-lg text-sm hover:bg-indigo-700"
+                                                        >
+                                                            ✍️ Skapa ansökan
+                                                        </button>
+                                                    )}
+                                                    {app.job_url && (
+                                                        <a
+                                                            href={app.job_url}
+                                                            target="_blank"
+                                                            rel="noopener noreferrer"
+                                                            className="px-3 py-1.5 border border-slate-200 rounded-lg text-sm hover:bg-slate-100"
+                                                        >
+                                                            🔗 Visa annons
+                                                        </a>
+                                                    )}
                                                     {app.contact_email && (
                                                         <a
                                                             href={`mailto:${app.contact_email}?subject=Angående min ansökan: ${app.job_title || 'Jobb'}`}
@@ -7665,6 +7805,7 @@
                         own_car: answers.own_car,
                         own_computer: answers.own_computer,
                         linkedin: answers.linkedin,
+                        portfolio_url: answers.portfolio_url,
                         earliest_start: answers.earliest_start,
                         education_level: answers.education_level
                     };
@@ -8694,6 +8835,29 @@
                             <ApplicationsPage
                                 applications={applications}
                                 onRefresh={fetchApplications}
+                                onApplySaved={(jobId) => {
+                                    const job = jobs.find(j => j.id === jobId);
+                                    if (job) {
+                                        handleApply(job);
+                                    } else {
+                                        // Job not in current list — fetch it
+                                        authFetch(`/api/jobs/${jobId}`)
+                                            .then(r => r.json())
+                                            .then(data => {
+                                                if (data.success && data.job) {
+                                                    handleApply(data.job);
+                                                } else {
+                                                    setToastMsg('Kunde inte hitta jobbet. Prova att söka nya jobb först.');
+                                                    setTimeout(() => setToastMsg(null), 3000);
+                                                }
+                                            })
+                                            .catch(() => {
+                                                setToastMsg('Kunde inte hämta jobbet.');
+                                                setTimeout(() => setToastMsg(null), 3000);
+                                            });
+                                    }
+                                }}
+                                setActiveTab={setActiveTab}
                             />
                         )}
 
@@ -8747,6 +8911,7 @@
                                                 drivers_license: answers.drivers_license,
                                                 own_car: answers.own_car,
                                                 linkedin: answers.linkedin,
+                                                portfolio_url: answers.portfolio_url,
                                                 earliest_start: answers.earliest_start,
                                                 education_level: answers.education_level
                                             };

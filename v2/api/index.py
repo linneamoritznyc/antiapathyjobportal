@@ -90,7 +90,13 @@ meeting→möte, deadline→tidsgräns, feedback→återkoppling, track record�
 leverage→dra nytta av, key account→nyckelkund, update→uppdatering, skills→kompetenser,
 mindset→tankesätt, achievements→meriter, stakeholder→intressent, onboarding→introduktion,
 output→resultat, challenge→utmaning, hands-on→praktisk, high-level→övergripande,
-scope→omfattning, impact→påverkan, rollout→lansering, setup→upplägg, know-how→kunnande.
+scope→omfattning, impact→påverkan, rollout→lansering, setup→upplägg, know-how→kunnande,
+mentored/mentorerade→handledde, NGO→ideell organisation, NGO:er→ideella organisationer,
+NGO-partnerskap→samarbeten med ideella organisationer, policy→regel/riktlinje,
+policyförbättringar→regelförbättringar, policyriktlinjer→riktlinjer,
+teamarbete→lagarbete, team→lag/grupp (i sammansättningar), nätverksevenemang→nätverksträff,
+validated/validerade→bekräftade (t.ex. "bekräftade konceptets bärkraft"),
+servicenivå→tjänstenivå, servicenivåmål→tjänstenivåmål.
 
 Accepterade lånord (OK att använda): proaktiv, strategi, digital, analys, process, projekt,
 kompetens, effektiv, relevant, professionell, innovation, kommunikation, koordinera, implementera.
@@ -2094,6 +2100,18 @@ async def save_job(job_id: str, request: Request):
     """Save/bookmark a job for later"""
     user_id = await get_user_id_from_request(request) or "default_user"
 
+    # Helper: log interaction (non-blocking)
+    async def log_save_interaction():
+        try:
+            await db_request("POST", "user_job_interactions", data={
+                "user_id": user_id,
+                "job_id": job_id,
+                "action": "saved",
+                "created_at": datetime.now().isoformat()
+            })
+        except Exception:
+            pass
+
     # Check if application already exists
     existing = await db_request("GET", "applications", params={
         "job_id": f"eq.{job_id}",
@@ -2101,6 +2119,12 @@ async def save_job(job_id: str, request: Request):
     })
 
     if existing and len(existing) > 0:
+        current_status = existing[0].get("status", "")
+        # Don't downgrade important statuses — sent/interview/offer should not revert to saved
+        protected_statuses = ["sent", "interview", "offer"]
+        if current_status in protected_statuses:
+            return {"success": True, "application": existing[0], "note": f"Already has status '{current_status}', not changed to saved"}
+
         # Update existing to saved
         url = f"{SUPABASE_URL}/rest/v1/applications?id=eq.{existing[0]['id']}"
         async with httpx.AsyncClient() as client:
@@ -2115,6 +2139,7 @@ async def save_job(job_id: str, request: Request):
                 }
             )
             if response.status_code in [200, 201]:
+                await log_save_interaction()
                 return {"success": True, "application": response.json()[0]}
     else:
         # Create new saved application
@@ -2126,6 +2151,7 @@ async def save_job(job_id: str, request: Request):
         }
         result = await db_request("POST", "applications", data=data)
         if result:
+            await log_save_interaction()
             return {"success": True, "application": result[0]}
 
     raise HTTPException(status_code=500, detail="Could not save job")
@@ -2173,6 +2199,7 @@ async def get_stats(request: Request):
         "stats": {
             "total_jobs": len(jobs) if jobs else 0,
             "total_applications": len(apps) if apps else 0,
+            "saved": len([a for a in (apps or []) if a.get("status") == "saved"]),
             "drafts": len([a for a in (apps or []) if a.get("status") == "draft"]),
             "sent": len([a for a in (apps or []) if a.get("status") == "sent"]),
             "interviews": len([a for a in (apps or []) if a.get("status") == "interview"]),
@@ -2586,19 +2613,273 @@ async def get_bransch_cvs(request: Request):
     return {"bransch_cvs": bransch_cvs}
 
 
+def _build_master_cv_pdf(profile: Dict, experiences: list, education: list, volunteer: list, awards: list, skills: list, projects: list = None, certifications: list = None) -> bytes:
+    """Build a Master CV PDF using fpdf2 and return raw bytes."""
+    from fpdf import FPDF
+
+    class CVPDF(FPDF):
+        def header(self):
+            pass
+        def footer(self):
+            self.set_y(-15)
+            self.set_font("Helvetica", "I", 8)
+            self.set_text_color(150, 150, 150)
+            self.cell(0, 10, f"Sida {self.page_no()}/{{nb}}", align="C")
+
+    pdf = CVPDF()
+    pdf.alias_nb_pages()
+    pdf.set_auto_page_break(auto=True, margin=20)
+    pdf.add_page()
+
+    # -- Header: Name --
+    name = profile.get("full_name") or "Namn saknas"
+    pdf.set_font("Helvetica", "B", 22)
+    pdf.set_text_color(30, 30, 30)
+    pdf.cell(0, 12, name, new_x="LMARGIN", new_y="NEXT")
+
+    # -- Contact line --
+    contact_parts = []
+    if profile.get("email"):
+        contact_parts.append(profile["email"])
+    if profile.get("phone"):
+        contact_parts.append(profile["phone"])
+    if profile.get("location"):
+        contact_parts.append(profile["location"])
+    if contact_parts:
+        pdf.set_font("Helvetica", "", 10)
+        pdf.set_text_color(80, 80, 80)
+        pdf.cell(0, 6, "  |  ".join(contact_parts), new_x="LMARGIN", new_y="NEXT")
+
+    # Links line (LinkedIn, portfolio)
+    links = []
+    if profile.get("linkedin"):
+        links.append(profile["linkedin"])
+    if profile.get("portfolio_url"):
+        links.append(profile["portfolio_url"])
+    if links:
+        pdf.set_font("Helvetica", "", 9)
+        pdf.set_text_color(60, 130, 200)
+        pdf.cell(0, 5, "  |  ".join(links), new_x="LMARGIN", new_y="NEXT")
+
+    # Drivers license & languages
+    extras = []
+    if profile.get("drivers_license"):
+        extras.append("Korkort: Ja")
+    langs = profile.get("languages") or []
+    if langs:
+        extras.append("Sprak: " + ", ".join(langs))
+    if extras:
+        pdf.set_font("Helvetica", "", 9)
+        pdf.set_text_color(100, 100, 100)
+        pdf.cell(0, 5, "  |  ".join(extras), new_x="LMARGIN", new_y="NEXT")
+
+    pdf.ln(4)
+
+    # Divider line
+    pdf.set_draw_color(200, 200, 200)
+    pdf.line(10, pdf.get_y(), 200, pdf.get_y())
+    pdf.ln(6)
+
+    def section_heading(title: str):
+        pdf.set_font("Helvetica", "B", 13)
+        pdf.set_text_color(40, 40, 40)
+        pdf.cell(0, 8, title, new_x="LMARGIN", new_y="NEXT")
+        pdf.set_draw_color(60, 130, 200)
+        pdf.line(10, pdf.get_y(), 70, pdf.get_y())
+        pdf.ln(3)
+
+    def safe_text(text):
+        """Clean text for PDF output."""
+        if not text:
+            return ""
+        return str(text)
+
+    # -- Experiences --
+    if experiences:
+        section_heading("Erfarenhet")
+        for exp in experiences:
+            pdf.set_font("Helvetica", "B", 11)
+            pdf.set_text_color(30, 30, 30)
+            title = safe_text(exp.get("title", ""))
+            company = safe_text(exp.get("company", ""))
+            pdf.cell(0, 6, f"{title} — {company}", new_x="LMARGIN", new_y="NEXT")
+
+            meta_parts = []
+            if exp.get("location"):
+                meta_parts.append(safe_text(exp["location"]))
+            if exp.get("dates"):
+                meta_parts.append(safe_text(exp["dates"]))
+            if meta_parts:
+                pdf.set_font("Helvetica", "I", 9)
+                pdf.set_text_color(100, 100, 100)
+                pdf.cell(0, 5, "  |  ".join(meta_parts), new_x="LMARGIN", new_y="NEXT")
+
+            bullets = exp.get("bullets") or []
+            if bullets:
+                pdf.set_font("Helvetica", "", 9)
+                pdf.set_text_color(60, 60, 60)
+                for b in bullets:
+                    bt = safe_text(b).strip()
+                    if bt:
+                        pdf.cell(5)
+                        pdf.multi_cell(0, 4.5, f"• {bt}")
+            pdf.ln(3)
+
+    # -- Education --
+    if education:
+        section_heading("Utbildning")
+        for edu in education:
+            pdf.set_font("Helvetica", "B", 11)
+            pdf.set_text_color(30, 30, 30)
+            degree = safe_text(edu.get("degree", ""))
+            school = safe_text(edu.get("school", ""))
+            pdf.cell(0, 6, f"{degree} — {school}", new_x="LMARGIN", new_y="NEXT")
+
+            meta_parts = []
+            if edu.get("location"):
+                meta_parts.append(safe_text(edu["location"]))
+            if edu.get("dates"):
+                meta_parts.append(safe_text(edu["dates"]))
+            if meta_parts:
+                pdf.set_font("Helvetica", "I", 9)
+                pdf.set_text_color(100, 100, 100)
+                pdf.cell(0, 5, "  |  ".join(meta_parts), new_x="LMARGIN", new_y="NEXT")
+
+            bullets = edu.get("bullets") or []
+            if bullets:
+                pdf.set_font("Helvetica", "", 9)
+                pdf.set_text_color(60, 60, 60)
+                for b in bullets:
+                    bt = safe_text(b).strip()
+                    if bt:
+                        pdf.cell(5)
+                        pdf.multi_cell(0, 4.5, f"• {bt}")
+            pdf.ln(3)
+
+    # -- Projects --
+    if projects:
+        section_heading("Projekt")
+        for proj in projects:
+            pdf.set_font("Helvetica", "B", 11)
+            pdf.set_text_color(30, 30, 30)
+            pname = safe_text(proj.get("name") or proj.get("title", ""))
+            pdf.cell(0, 6, pname, new_x="LMARGIN", new_y="NEXT")
+            desc = safe_text(proj.get("description", ""))
+            if desc:
+                pdf.set_font("Helvetica", "", 9)
+                pdf.set_text_color(60, 60, 60)
+                pdf.multi_cell(0, 4.5, desc)
+            pdf.ln(2)
+
+    # -- Volunteer --
+    if volunteer:
+        section_heading("Ideellt arbete")
+        for vol in volunteer:
+            pdf.set_font("Helvetica", "B", 11)
+            pdf.set_text_color(30, 30, 30)
+            org = safe_text(vol.get("organization", ""))
+            dates = safe_text(vol.get("dates", ""))
+            pdf.cell(0, 6, f"{org}" + (f" ({dates})" if dates else ""), new_x="LMARGIN", new_y="NEXT")
+
+            bullets = vol.get("bullets") or []
+            if bullets:
+                pdf.set_font("Helvetica", "", 9)
+                pdf.set_text_color(60, 60, 60)
+                for b in bullets:
+                    bt = safe_text(b).strip()
+                    if bt:
+                        pdf.cell(5)
+                        pdf.multi_cell(0, 4.5, f"• {bt}")
+            pdf.ln(2)
+
+    # -- Certifications --
+    if certifications:
+        section_heading("Certifieringar")
+        pdf.set_font("Helvetica", "", 10)
+        pdf.set_text_color(60, 60, 60)
+        for cert in certifications:
+            cname = safe_text(cert.get("name") or cert.get("cert_name") or cert.get("title", ""))
+            if cname:
+                pdf.cell(5)
+                pdf.cell(0, 5, f"• {cname}", new_x="LMARGIN", new_y="NEXT")
+        pdf.ln(2)
+
+    # -- Awards --
+    if awards:
+        section_heading("Utmarkelser")
+        pdf.set_font("Helvetica", "", 10)
+        pdf.set_text_color(60, 60, 60)
+        for a in awards:
+            award_text = safe_text(a.get("award_text") if isinstance(a, dict) else a)
+            if award_text:
+                pdf.cell(5)
+                pdf.cell(0, 5, f"• {award_text}", new_x="LMARGIN", new_y="NEXT")
+        pdf.ln(2)
+
+    # -- Skills --
+    if skills:
+        section_heading("Kompetenser")
+        pdf.set_font("Helvetica", "", 10)
+        pdf.set_text_color(60, 60, 60)
+        skill_texts = [safe_text(s.get("skill_text", "")) for s in skills if s.get("skill_text")]
+        if skill_texts:
+            pdf.multi_cell(0, 5, "  •  ".join(skill_texts))
+        pdf.ln(2)
+
+    return pdf.output()
+
+
 @app.get("/api/master-cv/download-pdf")
 async def download_master_cv_pdf(request: Request):
     """Generate and download Master CV as PDF"""
+    from fastapi.responses import Response
     user_id = await get_user_id_from_request(request, required=True)
 
-    # For now, return a simple text response indicating this feature is coming soon
-    # In production, this would generate a formatted PDF using a library like ReportLab or WeasyPrint
-    raise HTTPException(status_code=501, detail="PDF-generering kommer snart. Använd Bransch-CVs för nu.")
+    # Fetch profile
+    profiles = await db_request("GET", "user_profiles", params={"user_id": f"eq.{user_id}"})
+    profile = profiles[0] if profiles else {"full_name": "", "email": "", "phone": "", "location": ""}
+
+    # Fetch all sections
+    experiences = await db_request("GET", "user_experiences", params={
+        "user_id": f"eq.{user_id}", "order": "sort_order.asc"
+    }) or []
+    education = await db_request("GET", "user_education", params={
+        "user_id": f"eq.{user_id}", "order": "sort_order.asc"
+    }) or []
+    volunteer = await db_request("GET", "user_volunteer", params={
+        "user_id": f"eq.{user_id}", "order": "sort_order.asc"
+    }) or []
+    awards = await db_request("GET", "user_awards", params={
+        "user_id": f"eq.{user_id}", "order": "sort_order.asc"
+    }) or []
+    skills = await db_request("GET", "user_skills", params={
+        "user_id": f"eq.{user_id}"
+    }) or []
+    projects = await db_request("GET", "tech_projects", params={
+        "user_id": f"eq.{user_id}", "order": "sort_order.asc"
+    }) or []
+    certifications = await db_request("GET", "user_certifications", params={
+        "user_id": f"eq.{user_id}", "order": "sort_order.asc"
+    }) or []
+
+    pdf_bytes = _build_master_cv_pdf(profile, experiences, education, volunteer, awards, skills, projects, certifications)
+
+    # Build filename from user's name
+    name = (profile.get("full_name") or "CV").replace(" ", "_")
+    filename = f"Master_CV_{name}.pdf"
+
+    return Response(
+        content=pdf_bytes,
+        media_type="application/pdf",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'}
+    )
 
 
 @app.get("/api/bransch-cvs/{cv_id}/download-pdf")
 async def download_bransch_cv_pdf(cv_id: str, request: Request):
     """Generate and download a specific Bransch-CV as PDF"""
+    from fastapi.responses import Response
+    from fpdf import FPDF
     user_id = await get_user_id_from_request(request, required=True)
 
     # Fetch the specific Bransch-CV
@@ -2610,9 +2891,80 @@ async def download_bransch_cv_pdf(cv_id: str, request: Request):
     if not cv_result or len(cv_result) == 0:
         raise HTTPException(status_code=404, detail="Bransch-CV hittades inte")
 
-    # For now, return a simple text response indicating this feature is coming soon
-    # In production, this would generate a formatted PDF
-    raise HTTPException(status_code=501, detail="PDF-generering kommer snart. CV-text finns i bransch-CV databasen.")
+    cv = cv_result[0]
+    cv_text = cv.get("cv_text", "")
+    category = cv.get("category", "CV")
+
+    # Fetch profile for header
+    profiles = await db_request("GET", "user_profiles", params={"user_id": f"eq.{user_id}"})
+    profile = profiles[0] if profiles else {}
+    name = profile.get("full_name") or "Namn"
+
+    # Build PDF from CV text
+    pdf = FPDF()
+    pdf.set_auto_page_break(auto=True, margin=20)
+    pdf.add_page()
+
+    # Header
+    pdf.set_font("Helvetica", "B", 18)
+    pdf.set_text_color(30, 30, 30)
+    pdf.cell(0, 10, name, new_x="LMARGIN", new_y="NEXT")
+
+    # Contact line
+    contact_parts = []
+    if profile.get("email"):
+        contact_parts.append(profile["email"])
+    if profile.get("phone"):
+        contact_parts.append(profile["phone"])
+    if profile.get("location"):
+        contact_parts.append(profile["location"])
+    if contact_parts:
+        pdf.set_font("Helvetica", "", 10)
+        pdf.set_text_color(80, 80, 80)
+        pdf.cell(0, 6, "  |  ".join(contact_parts), new_x="LMARGIN", new_y="NEXT")
+
+    pdf.ln(2)
+    pdf.set_font("Helvetica", "I", 10)
+    pdf.set_text_color(60, 130, 200)
+    pdf.cell(0, 6, f"CV — {category}", new_x="LMARGIN", new_y="NEXT")
+
+    pdf.ln(2)
+    pdf.set_draw_color(200, 200, 200)
+    pdf.line(10, pdf.get_y(), 200, pdf.get_y())
+    pdf.ln(6)
+
+    # CV body text
+    pdf.set_font("Helvetica", "", 10)
+    pdf.set_text_color(40, 40, 40)
+    for line in cv_text.split("\n"):
+        line = line.strip()
+        if not line:
+            pdf.ln(3)
+        elif line.startswith("##") or line.startswith("**") or line.isupper():
+            # Section heading
+            clean = line.replace("##", "").replace("**", "").strip()
+            pdf.set_font("Helvetica", "B", 12)
+            pdf.set_text_color(40, 40, 40)
+            pdf.cell(0, 7, clean, new_x="LMARGIN", new_y="NEXT")
+            pdf.set_font("Helvetica", "", 10)
+            pdf.set_text_color(40, 40, 40)
+        elif line.startswith("- ") or line.startswith("• "):
+            bullet_text = line.lstrip("-• ").strip()
+            pdf.cell(5)
+            pdf.multi_cell(0, 5, f"• {bullet_text}")
+        else:
+            pdf.multi_cell(0, 5, line)
+
+    pdf_bytes = pdf.output()
+    safe_name = name.replace(" ", "_")
+    safe_cat = category.replace(" ", "_").replace("&", "")
+    filename = f"CV_{safe_name}_{safe_cat}.pdf"
+
+    return Response(
+        content=pdf_bytes,
+        media_type="application/pdf",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'}
+    )
 
 
 
@@ -4583,6 +4935,7 @@ class QuizProfileData(BaseModel):
     own_car: Optional[str] = None
     own_computer: Optional[str] = None
     linkedin: Optional[str] = None
+    portfolio_url: Optional[str] = None
     earliest_start: Optional[str] = None
     education_level: Optional[str] = None
 
@@ -4653,6 +5006,8 @@ async def save_profile_from_quiz(request: Request, profile: QuizProfileData):
         profile_data["own_car"] = profile.own_car == "yes"
     if profile.own_computer:
         profile_data["own_computer"] = profile.own_computer != "no"
+    if profile.portfolio_url:
+        profile_data["portfolio_url"] = profile.portfolio_url
     # Note: linkedin is NOT a column in user_profiles — stored in quiz_answers instead
 
     # Upsert to user_profiles — on_conflict=user_id is REQUIRED because
@@ -4726,6 +5081,8 @@ async def save_profile_from_quiz(request: Request, profile: QuizProfileData):
         quiz_personal["own_computer"] = profile.own_computer
     if profile.linkedin:
         quiz_personal["linkedin"] = profile.linkedin
+    if profile.portfolio_url:
+        quiz_personal["portfolio_url"] = profile.portfolio_url
 
     if quiz_personal:
         # Merge into existing quiz_answers (don't overwrite job preference fields)
@@ -5512,6 +5869,18 @@ async def enhance_master_cv_from_upload(request: Request):
     existing_education = await db_request("GET", "user_education", params={
         "user_id": f"eq.{user_id}", "order": "sort_order.asc"
     }) or []
+    existing_volunteer = await db_request("GET", "user_volunteer", params={
+        "user_id": f"eq.{user_id}", "order": "sort_order.asc"
+    }) or []
+    existing_projects = await db_request("GET", "tech_projects", params={
+        "user_id": f"eq.{user_id}", "order": "sort_order.asc"
+    }) or []
+    existing_skills = await db_request("GET", "user_skills", params={
+        "user_id": f"eq.{user_id}"
+    }) or []
+    existing_certifications = await db_request("GET", "user_certifications", params={
+        "user_id": f"eq.{user_id}", "order": "sort_order.asc"
+    }) or []
 
     # Build context of what already exists
     existing_summary = "BEFINTLIGA ERFARENHETER I MASTER CV:\n"
@@ -5520,17 +5889,43 @@ async def enhance_master_cv_from_upload(request: Request):
     existing_summary += "\nBEFINTLIG UTBILDNING:\n"
     for edu in existing_education:
         existing_summary += f"- ID:{edu.get('id')} | {edu.get('school')} | {edu.get('degree')} | {edu.get('start_date')}-{edu.get('end_date','')}\n"
+    existing_summary += "\nBEFINTLIGT VOLONTÄRARBETE:\n"
+    for vol in existing_volunteer:
+        existing_summary += f"- ID:{vol.get('id')} | {vol.get('organization')} | {vol.get('dates','')} | {(vol.get('description') or '')[:80]}\n"
+    if not existing_volunteer:
+        existing_summary += "- (inga poster)\n"
+    existing_summary += "\nBEFINTLIGA PROJEKT:\n"
+    for proj in existing_projects:
+        existing_summary += f"- ID:{proj.get('id')} | {proj.get('name') or proj.get('title','')} | {(proj.get('description') or '')[:80]}\n"
+    if not existing_projects:
+        existing_summary += "- (inga poster)\n"
+    existing_summary += "\nBEFINTLIGA KOMPETENSER:\n"
+    skill_texts = [s.get('skill_text','') for s in existing_skills]
+    existing_summary += ", ".join(skill_texts) if skill_texts else "(inga)"
+    existing_summary += "\n\nBEFINTLIGA CERTIFIERINGAR:\n"
+    for cert in existing_certifications:
+        existing_summary += f"- ID:{cert.get('id')} | {cert.get('name') or cert.get('cert_name','')}\n"
+    if not existing_certifications:
+        existing_summary += "- (inga poster)\n"
 
     if not ANTHROPIC_API_KEY:
         raise HTTPException(status_code=500, detail="AI ej konfigurerad")
 
     # Ask Claude to compare and find improvements
-    prompt = f"""Jag har ett Master CV med befintliga erfarenheter och utbildningar. Jag har precis laddat upp ett nytt CV-dokument. Jag vill att du:
+    prompt = f"""Jag har ett Master CV med befintliga poster. Jag har precis laddat upp ett nytt CV-dokument.
 
-1. JÄMFÖR det nya CV-dokumentet med mina befintliga poster
-2. Hitta NYA erfarenheter/utbildningar som INTE redan finns → skapa dem
-3. Hitta befintliga poster som kan FÖRBÄTTRAS med mer detaljer från det nya CVt (t.ex. bättre beskrivning, saknade datum, kategorier) → uppdatera dem
-4. RADERA ALDRIG något. Lägg bara till och förbättra.
+UPPGIFT: Analysera ALLA sektioner i det nya dokumentet och jämför med mina befintliga poster. Det nya CVt kan innehålla:
+- Arbetslivserfarenheter (jobb, praktik, anställningar)
+- Utbildningar (skola, kurser, program)
+- Volontärarbete / ideellt arbete
+- Projekt (tech-projekt, sidoprojekt, portföljprojekt)
+- Kompetenser / skills (tekniska, språk, certifikat)
+- Certifieringar
+
+FÖR VARJE SEKTION:
+1. Hitta NYA poster som INTE redan finns → skapa dem
+2. Hitta befintliga poster som kan FÖRBÄTTRAS med mer detaljer → uppdatera dem
+3. RADERA ALDRIG något. Lägg bara till och förbättra.
 
 {existing_summary}
 
@@ -5551,15 +5946,30 @@ Svara i EXAKT detta JSON-format (inga kommentarer, bara ren JSON):
     "updated_education": [
         {{"id": "befintligt-uuid", "degree": "förbättrad examen text", "field_of_study": "inriktning"}}
     ],
+    "new_volunteer": [
+        {{"organization": "...", "dates": "...", "description": "..."}}
+    ],
+    "new_projects": [
+        {{"name": "...", "description": "...", "tech_stack": "...", "url": ""}}
+    ],
+    "new_skills": [
+        {{"skill_text": "...", "skill_type": "technical|language|certificate", "category": "all"}}
+    ],
+    "new_certifications": [
+        {{"name": "...", "issuer": "...", "date": ""}}
+    ],
     "summary": "Kort sammanfattning av vad som ändrades"
 }}
 
 VIKTIGT:
+- Analysera HELA dokumentet — missa inte volontärarbete, projekt, kompetenser eller certifieringar
 - Bara inkludera poster som verkligen behöver skapas eller uppdateras
-- Om inget behöver ändras, returnera tomma arrayer
-- Kategorier ska vara: restaurant, retail, tech, healthcare, customerservice, contentmoderation, industri, art, marketing, education, reception
+- Om inget behöver ändras i en sektion, returnera tom array för den
+- Kategorier för erfarenheter: restaurant, retail, tech, healthcare, customerservice, contentmoderation, industri, art, marketing, education, reception
+- skill_type: "technical" (programmeringsspråk, verktyg), "language" (svenska, engelska), "certificate" (körkort, etc.)
 - Datum i format "Aug 2024" eller "2024"
-- Beskrivningar på svenska, korta och informativa"""
+- Beskrivningar på svenska, korta och informativa
+- Dubblera INTE kompetenser som redan finns i listan"""
 
     try:
         async with httpx.AsyncClient() as client:
@@ -5692,6 +6102,72 @@ VIKTIGT:
             except Exception as e:
                 logger.warning(f"Failed to update education {edu_id}: {e}")
 
+    # Create new volunteer entries
+    for vol in changes.get("new_volunteer", []):
+        try:
+            bullets = []
+            desc = vol.get("description", "")
+            if desc:
+                bullets = [s.strip() for s in desc.split(".") if s.strip()]
+            await db_request("POST", "user_volunteer", data={
+                "user_id": user_id,
+                "organization": vol.get("organization", ""),
+                "dates": vol.get("dates", ""),
+                "bullets": bullets,
+                "sort_order": len(existing_volunteer) + added
+            })
+            added += 1
+        except Exception as e:
+            logger.warning(f"Failed to add volunteer: {e}")
+
+    # Create new projects
+    for proj in changes.get("new_projects", []):
+        try:
+            await db_request("POST", "tech_projects", data={
+                "user_id": user_id,
+                "name": proj.get("name", ""),
+                "description": proj.get("description", ""),
+                "tech_stack": proj.get("tech_stack", ""),
+                "url": proj.get("url", ""),
+                "sort_order": len(existing_projects) + added
+            })
+            added += 1
+        except Exception as e:
+            logger.warning(f"Failed to add project: {e}")
+
+    # Create new skills (skip duplicates)
+    existing_skill_texts = {s.get("skill_text", "").lower() for s in existing_skills}
+    for skill in changes.get("new_skills", []):
+        try:
+            skill_text = skill.get("skill_text", "").strip()
+            if skill_text and skill_text.lower() not in existing_skill_texts:
+                await db_request("POST", "user_skills", data={
+                    "user_id": user_id,
+                    "skill_text": skill_text,
+                    "skill_type": skill.get("skill_type", "technical"),
+                    "category": skill.get("category", "all")
+                })
+                existing_skill_texts.add(skill_text.lower())
+                added += 1
+        except Exception as e:
+            logger.warning(f"Failed to add skill: {e}")
+
+    # Create new certifications
+    for cert in changes.get("new_certifications", []):
+        try:
+            cert_name = cert.get("name", "").strip()
+            if cert_name:
+                await db_request("POST", "user_certifications", data={
+                    "user_id": user_id,
+                    "name": cert_name,
+                    "issuer": cert.get("issuer", ""),
+                    "date": cert.get("date", ""),
+                    "sort_order": len(existing_certifications) + added
+                })
+                added += 1
+        except Exception as e:
+            logger.warning(f"Failed to add certification: {e}")
+
     return {
         "success": True,
         "added": added,
@@ -5703,8 +6179,9 @@ VIKTIGT:
 
 @app.post("/api/cv/enhance-chat")
 async def enhance_chat(request: Request):
-    """Chat about the last CV enhancement — answer follow-up questions.
-    Now receives full conversation history so Claude has context of previous Q&A."""
+    """Chat about the last CV enhancement — AI can actually read AND write Master CV data.
+    Returns both a text response and executes any requested DB changes."""
+    import json as json_module
     user_id = await get_user_id_from_request(request, required=True)
     body = await request.json()
     question = body.get("question", "").strip()
@@ -5716,42 +6193,126 @@ async def enhance_chat(request: Request):
     if not ANTHROPIC_API_KEY:
         raise HTTPException(status_code=500, detail="AI ej konfigurerad")
 
-    # Also fetch current master CV data so AI can actually make changes
-    master_cv_data = ""
+    # Fetch ALL Master CV data so AI has full picture
+    master_cv_sections = {}
     try:
-        experiences = await db_request("GET", "master_cv_experiences", params={
-            "user_id": f"eq.{user_id}", "order": "start_date.desc"
-        })
-        if experiences:
-            exp_lines = []
-            for exp in experiences:
-                line = f"- [{exp.get('category', 'work')}] {exp.get('title', '')} @ {exp.get('company', '')} ({exp.get('start_date', '')[:7] if exp.get('start_date') else ''} – {exp.get('end_date', '')[:7] if exp.get('end_date') else 'pågående'})"
-                if exp.get('description'):
-                    line += f": {exp['description'][:300]}"
-                exp_lines.append(line)
-            master_cv_data = "\n\nANVÄNDARENS NUVARANDE MASTER CV:\n" + "\n".join(exp_lines)
+        experiences = await db_request("GET", "user_experiences", params={
+            "user_id": f"eq.{user_id}", "order": "sort_order.asc"
+        }) or []
+        education = await db_request("GET", "user_education", params={
+            "user_id": f"eq.{user_id}", "order": "sort_order.asc"
+        }) or []
+        volunteer = await db_request("GET", "user_volunteer", params={
+            "user_id": f"eq.{user_id}", "order": "sort_order.asc"
+        }) or []
+        projects = await db_request("GET", "tech_projects", params={
+            "user_id": f"eq.{user_id}", "order": "sort_order.asc"
+        }) or []
+        skills = await db_request("GET", "user_skills", params={
+            "user_id": f"eq.{user_id}"
+        }) or []
+        awards = await db_request("GET", "user_awards", params={
+            "user_id": f"eq.{user_id}", "order": "sort_order.asc"
+        }) or []
+        certifications = await db_request("GET", "user_certifications", params={
+            "user_id": f"eq.{user_id}", "order": "sort_order.asc"
+        }) or []
+
+        # Build readable summary with IDs so AI can reference specific entries
+        lines = []
+        lines.append("=== ERFARENHETER ===")
+        for exp in experiences:
+            lines.append(f"[ID:{exp.get('id')}] {exp.get('title','')} @ {exp.get('company','')} | {exp.get('location','')} | {exp.get('start_date','')}-{exp.get('end_date','')} | Kategorier: {exp.get('categories',[])} | Beskrivning: {exp.get('description','')}")
+        if not experiences:
+            lines.append("(inga)")
+
+        lines.append("\n=== UTBILDNING ===")
+        for edu in education:
+            lines.append(f"[ID:{edu.get('id')}] {edu.get('degree','')} @ {edu.get('school','')} | {edu.get('location','')} | {edu.get('start_date','')}-{edu.get('end_date','')} | Inriktning: {edu.get('field_of_study','')}")
+        if not education:
+            lines.append("(inga)")
+
+        lines.append("\n=== PROJEKT ===")
+        for proj in projects:
+            lines.append(f"[ID:{proj.get('id')}] {proj.get('name', proj.get('title',''))} | {proj.get('description','')} | Tech: {proj.get('tech_stack','')}")
+        if not projects:
+            lines.append("(inga)")
+
+        lines.append("\n=== VOLONTÄRARBETE ===")
+        for vol in volunteer:
+            lines.append(f"[ID:{vol.get('id')}] {vol.get('organization','')} | {vol.get('dates','')} | {vol.get('bullets',[])}")
+        if not volunteer:
+            lines.append("(inga)")
+
+        lines.append("\n=== KOMPETENSER ===")
+        for s in skills:
+            lines.append(f"[ID:{s.get('id')}] {s.get('skill_text','')} ({s.get('skill_type','')}, {s.get('category','')})")
+        if not skills:
+            lines.append("(inga)")
+
+        lines.append("\n=== UTMÄRKELSER ===")
+        for a in awards:
+            lines.append(f"[ID:{a.get('id')}] {a.get('award_text','')}")
+        if not awards:
+            lines.append("(inga)")
+
+        lines.append("\n=== CERTIFIERINGAR ===")
+        for c in certifications:
+            lines.append(f"[ID:{c.get('id')}] {c.get('name', c.get('cert_name',''))}")
+        if not certifications:
+            lines.append("(inga)")
+
+        master_cv_data = "\n".join(lines)
     except Exception as e:
         logger.warning(f"Could not fetch master CV for chat: {e}")
+        master_cv_data = "(kunde inte hämta data)"
 
-    system_prompt = f"""Du är en assistent som hjälper en jobbsökare med sitt Master CV. Svara ALLTID på svenska.
+    system_prompt = f"""Du är en assistent som hjälper en jobbsökare redigera sitt Master CV. Svara ALLTID på svenska.
+
+ANVÄNDARENS KOMPLETTA MASTER CV (allt som finns i databasen):
+{master_cv_data}
 
 SENASTE ÄNDRINGAR (från CV-uppladdning):
-{changes_context}{master_cv_data}
+{changes_context}
+
+DU KAN GÖRA ÄNDRINGAR. När användaren ber dig uppdatera, lägga till, ta bort eller ändra något i Master CV:t, svara med BÅDE:
+1. En kort bekräftelse till användaren (vad du ändrade)
+2. Ett JSON-block med databasoperationer som backend ska utföra
+
+FORMAT FÖR ÄNDRINGAR — lägg JSON-blocket i slutet av ditt svar, inuti ```actions``` taggar:
+
+```actions
+[
+  {{"action": "update", "table": "user_experiences", "id": "uuid-här", "data": {{"description": "ny text", "categories": ["tech", "customerservice"]}}}},
+  {{"action": "update", "table": "tech_projects", "id": "uuid-här", "data": {{"name": "nytt namn", "description": "ny beskrivning"}}}},
+  {{"action": "create", "table": "user_volunteer", "data": {{"organization": "...", "dates": "...", "bullets": ["..."]}}}},
+  {{"action": "create", "table": "user_skills", "data": {{"skill_text": "Python", "skill_type": "technical", "category": "tech"}}}},
+  {{"action": "delete", "table": "user_skills", "id": "uuid-här"}}
+]
+```
+
+TABELLER DU KAN ÄNDRA:
+- user_experiences: company, title, location, start_date, end_date, description, categories (array)
+- user_education: school, degree, field_of_study, location, start_date, end_date
+- tech_projects: name, description, tech_stack, url
+- user_volunteer: organization, dates, bullets (array)
+- user_skills: skill_text, skill_type (technical/language/certificate), category
+- user_awards: award_text
+- user_certifications: name, issuer, date
 
 REGLER:
-- Läs HELA konversationen — upprepa ALDRIG frågor som redan besvarats
-- Om användaren redan gett dig information, ANVÄND den direkt utan att fråga igen
-- Om användaren ber dig uppdatera/lägga till något, bekräfta kort vad du gör och gör det
-- Skriv naturlig svenska, inte svengelska. Sammansatta ord ihop (projektledare, arbetsuppgifter). Ingen apostrof vid genitiv. Liten bokstav på månader/dagar/titlar
-- Var kort och konkret — ingen inställsam AI-ton, inga emojis"""
+- Om användaren ber dig ändra något — GÖR DET DIREKT. Inkludera actions-blocket i ditt svar.
+- Fråga ALDRIG om saker som redan framgår av konversationen eller det uppladdade CVt
+- Om användaren säger "läs CVt jag laddade upp" — informationen finns redan i SENASTE ÄNDRINGAR ovan
+- Var kort och konkret — ingen inställsam AI-ton, inga emojis
+- Skriv naturlig svenska"""
 
     # Build Claude messages from conversation history
     messages = []
-    for msg in conversation_history[-20:]:  # Last 20 messages max
+    for msg in conversation_history[-20:]:
         role = "user" if msg.get("role") == "user" else "assistant"
         messages.append({"role": role, "content": msg.get("text", "")})
 
-    # If history is empty or doesn't end with user message, add current question
     if not messages or messages[-1]["role"] != "user":
         messages.append({"role": "user", "content": question})
 
@@ -5766,23 +6327,76 @@ REGLER:
                 },
                 json={
                     "model": "claude-sonnet-4-5-20250929",
-                    "max_tokens": 1000,
+                    "max_tokens": 2000,
                     "system": system_prompt,
                     "messages": messages
                 },
-                timeout=30
+                timeout=45
             )
             if response.status_code != 200:
                 logger.error(f"Enhance chat Claude error: {response.status_code} - {response.text[:200]}")
                 raise HTTPException(status_code=500, detail="AI-fel")
             result = response.json()
             answer = result["content"][0]["text"].strip()
-            return {"success": True, "answer": answer}
     except HTTPException:
         raise
     except Exception as e:
         logger.error(f"Enhance chat error: {e}")
         raise HTTPException(status_code=500, detail=str(e)[:200])
+
+    # Parse and execute any DB actions from the AI response
+    actions_executed = 0
+    actions_failed = 0
+    allowed_tables = {"user_experiences", "user_education", "tech_projects", "user_volunteer", "user_skills", "user_awards", "user_certifications"}
+
+    if "```actions" in answer:
+        try:
+            actions_json = answer.split("```actions")[1].split("```")[0].strip()
+            actions = json_module.loads(actions_json)
+
+            for act in actions:
+                table = act.get("table", "")
+                action_type = act.get("action", "")
+                entry_id = act.get("id", "")
+                data = act.get("data", {})
+
+                if table not in allowed_tables:
+                    logger.warning(f"Chat tried to modify disallowed table: {table}")
+                    actions_failed += 1
+                    continue
+
+                try:
+                    if action_type == "update" and entry_id:
+                        await db_request("PATCH", f"{table}?id=eq.{entry_id}&user_id=eq.{user_id}", data=data)
+                        actions_executed += 1
+                    elif action_type == "create":
+                        data["user_id"] = user_id
+                        await db_request("POST", table, data=data)
+                        actions_executed += 1
+                    elif action_type == "delete" and entry_id:
+                        await db_request("DELETE", f"{table}?id=eq.{entry_id}&user_id=eq.{user_id}")
+                        actions_executed += 1
+                    else:
+                        logger.warning(f"Unknown action: {action_type}")
+                        actions_failed += 1
+                except Exception as e:
+                    logger.warning(f"Failed to execute action {action_type} on {table}: {e}")
+                    actions_failed += 1
+
+        except (json_module.JSONDecodeError, IndexError) as e:
+            logger.warning(f"Failed to parse actions from AI response: {e}")
+
+        # Remove the actions block from the visible answer
+        answer = answer.split("```actions")[0].strip()
+        if answer.endswith("```"):
+            answer = answer[:-3].strip()
+
+    return {
+        "success": True,
+        "answer": answer,
+        "actions_executed": actions_executed,
+        "actions_failed": actions_failed
+    }
 
 
 async def analyze_cv_with_ai(cv_text: str) -> list:

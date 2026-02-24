@@ -21,6 +21,22 @@
 - **Current behavior:** When user clicks "Sök", `/api/scrape` returns fresh results. These get set as `jobs` state in React. The backend sorts applied jobs out when loading via `GET /api/jobs`, but the scrape response itself doesn't filter by interactions
 - **Needed:** Either (a) filter scraped results against `user_job_interactions` before returning, or (b) frontend should merge scrape results with existing job list instead of replacing it, preserving interaction state
 
+### Bug: Sparade jobb var oanvändbara (FIXED Feb 24 2026)
+- **Status:** Fixed
+- **What happened:** Saved jobs disappeared from the feed (by design) but the "Ansökningar → Sparade" tab had no useful actions — no "Ansök" button, no "Visa annons" link, no deadline info. Saving a job was essentially a dead end.
+- **Additional issues fixed:**
+  - Saving a job that already had status `sent`/`interview`/`offer` would **overwrite** it to `saved` (destructive!)
+  - `/api/stats` endpoint was missing `saved` count
+  - Save action wasn't logged in `user_job_interactions` table
+- **Fixes applied:**
+  - Added "Skapa ansökan" button for saved jobs → opens apply modal
+  - Added "Visa annons" link → opens original Platsbanken ad
+  - Added deadline info with color coding (red = urgent, amber = soon)
+  - Added location display on all application cards
+  - Backend now protects `sent`/`interview`/`offer` statuses from being overwritten
+  - Added `saved` count to `/api/stats`
+  - Added interaction logging when saving jobs
+
 ---
 
 ## ARCHITECTURE DEBT: Geography/Kommune data
