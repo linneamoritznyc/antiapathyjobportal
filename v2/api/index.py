@@ -6432,6 +6432,9 @@ async def enhance_master_cv_from_upload(request: Request):
     existing_certifications = await db_request("GET", "user_certifications", params={
         "user_id": f"eq.{user_id}", "order": "sort_order.asc"
     }) or []
+    existing_awards = await db_request("GET", "user_awards", params={
+        "user_id": f"eq.{user_id}", "order": "sort_order.asc"
+    }) or []
 
     # Build context of what already exists
     existing_summary = "BEFINTLIGA ERFARENHETER I MASTER CV:\n"
@@ -6455,8 +6458,13 @@ async def enhance_master_cv_from_upload(request: Request):
     existing_summary += ", ".join(skill_texts) if skill_texts else "(inga)"
     existing_summary += "\n\nBEFINTLIGA CERTIFIERINGAR:\n"
     for cert in existing_certifications:
-        existing_summary += f"- ID:{cert.get('id')} | {cert.get('name') or cert.get('cert_name','')}\n"
+        existing_summary += f"- ID:{cert.get('id')} | {cert.get('certification_name', '')} | Utfärdare: {cert.get('issuing_organization', '')} | {(cert.get('description') or '')[:80]}\n"
     if not existing_certifications:
+        existing_summary += "- (inga poster)\n"
+    existing_summary += "\nBEFINTLIGA UTMÄRKELSER/AWARDS:\n"
+    for award in existing_awards:
+        existing_summary += f"- ID:{award.get('id')} | {award.get('award_text', '')} | {(award.get('description') or '')[:80]}\n"
+    if not existing_awards:
         existing_summary += "- (inga poster)\n"
 
     if not ANTHROPIC_API_KEY:
@@ -6471,7 +6479,8 @@ UPPGIFT: Analysera ALLA sektioner i det nya dokumentet och jämför med mina bef
 - Volontärarbete / ideellt arbete
 - Projekt (tech-projekt, sidoprojekt, portföljprojekt)
 - Kompetenser / skills (tekniska, språk, certifikat)
-- Certifieringar
+- Certifieringar (körkort, kassahantering, första hjälpen, etc.)
+- Utmärkelser / Awards (priser, stipendier, utmärkelser)
 
 FÖR VARJE SEKTION:
 1. Hitta NYA poster som INTE redan finns → skapa dem
@@ -6500,27 +6509,44 @@ Svara i EXAKT detta JSON-format (inga kommentarer, bara ren JSON):
     "new_volunteer": [
         {{"organization": "...", "dates": "...", "description": "..."}}
     ],
+    "updated_volunteer": [
+        {{"id": "befintligt-uuid", "description": "förbättrad beskrivning"}}
+    ],
     "new_projects": [
         {{"name": "...", "description": "...", "tech_stack": "...", "url": ""}}
+    ],
+    "updated_projects": [
+        {{"id": "befintligt-uuid", "description": "förbättrad beskrivning", "tech_stack": "uppdaterad"}}
     ],
     "new_skills": [
         {{"skill_text": "...", "skill_type": "technical|language|certificate", "category": "all"}}
     ],
     "new_certifications": [
-        {{"name": "...", "issuer": "...", "date": ""}}
+        {{"certification_name": "...", "issuing_organization": "...", "issue_date": "", "description": ""}}
+    ],
+    "updated_certifications": [
+        {{"id": "befintligt-uuid", "description": "förbättrad beskrivning"}}
+    ],
+    "new_awards": [
+        {{"award_text": "...", "description": ""}}
+    ],
+    "updated_awards": [
+        {{"id": "befintligt-uuid", "award_text": "förbättrad text", "description": "förbättrad beskrivning"}}
     ],
     "summary": "Kort sammanfattning av vad som ändrades"
 }}
 
 VIKTIGT:
-- Analysera HELA dokumentet — missa inte volontärarbete, projekt, kompetenser eller certifieringar
+- Analysera HELA dokumentet — missa inte volontärarbete, projekt, kompetenser, certifieringar eller utmärkelser/awards
 - Bara inkludera poster som verkligen behöver skapas eller uppdateras
 - Om inget behöver ändras i en sektion, returnera tom array för den
-- Kategorier för erfarenheter: restaurant, retail, tech, healthcare, customerservice, contentmoderation, industri, art, marketing, education, reception
+- Kategorier för erfarenheter: restaurant, retail, tech, healthcare, customerservice, content, industry, art, hotel
 - skill_type: "technical" (programmeringsspråk, verktyg), "language" (svenska, engelska), "certificate" (körkort, etc.)
 - Datum i format "Aug 2024" eller "2024"
 - Beskrivningar på svenska, korta och informativa
-- Dubblera INTE kompetenser som redan finns i listan"""
+- Dubblera INTE kompetenser som redan finns i listan
+- Certifieringar: använd certification_name (inte name), issuing_organization (inte issuer), issue_date (inte date)
+- Awards/utmärkelser: award_text = hela texten (t.ex. "1:a pris Stockholms Konstsalong 2024"), description = valfri bakgrund"""
 
     try:
         async with httpx.AsyncClient() as client:
@@ -6671,6 +6697,34 @@ VIKTIGT:
         except Exception as e:
             logger.warning(f"Failed to add volunteer: {e}")
 
+    # Update existing volunteer entries
+    for vol in changes.get("updated_volunteer", []):
+        vol_id = vol.get("id")
+        if not vol_id:
+            continue
+        update_data = {}
+        desc = vol.get("description")
+        if desc:
+            update_data["bullets"] = [s.strip() for s in desc.split(".") if s.strip()]
+        for field in ["organization", "dates"]:
+            if vol.get(field):
+                update_data[field] = vol[field]
+        if update_data:
+            try:
+                async with httpx.AsyncClient() as client:
+                    await client.patch(
+                        f"{SUPABASE_URL}/rest/v1/user_volunteer?id=eq.{vol_id}&user_id=eq.{user_id}",
+                        headers={
+                            "apikey": SUPABASE_KEY,
+                            "Authorization": f"Bearer {SUPABASE_KEY}",
+                            "Content-Type": "application/json"
+                        },
+                        json=update_data
+                    )
+                updated += 1
+            except Exception as e:
+                logger.warning(f"Failed to update volunteer {vol_id}: {e}")
+
     # Create new projects
     for proj in changes.get("new_projects", []):
         try:
@@ -6685,6 +6739,31 @@ VIKTIGT:
             added += 1
         except Exception as e:
             logger.warning(f"Failed to add project: {e}")
+
+    # Update existing projects
+    for proj in changes.get("updated_projects", []):
+        proj_id = proj.get("id")
+        if not proj_id:
+            continue
+        update_data = {}
+        for field in ["name", "description", "tech_stack", "url"]:
+            if proj.get(field):
+                update_data[field] = proj[field]
+        if update_data:
+            try:
+                async with httpx.AsyncClient() as client:
+                    await client.patch(
+                        f"{SUPABASE_URL}/rest/v1/tech_projects?id=eq.{proj_id}&user_id=eq.{user_id}",
+                        headers={
+                            "apikey": SUPABASE_KEY,
+                            "Authorization": f"Bearer {SUPABASE_KEY}",
+                            "Content-Type": "application/json"
+                        },
+                        json=update_data
+                    )
+                updated += 1
+            except Exception as e:
+                logger.warning(f"Failed to update project {proj_id}: {e}")
 
     # Create new skills (skip duplicates)
     existing_skill_texts = {s.get("skill_text", "").lower() for s in existing_skills}
@@ -6706,18 +6785,84 @@ VIKTIGT:
     # Create new certifications
     for cert in changes.get("new_certifications", []):
         try:
-            cert_name = cert.get("name", "").strip()
+            cert_name = (cert.get("certification_name") or cert.get("name", "")).strip()
             if cert_name:
                 await db_request("POST", "user_certifications", data={
                     "user_id": user_id,
-                    "name": cert_name,
-                    "issuer": cert.get("issuer", ""),
-                    "date": cert.get("date", ""),
+                    "certification_name": cert_name,
+                    "issuing_organization": cert.get("issuing_organization") or cert.get("issuer", ""),
+                    "description": cert.get("description", ""),
+                    "issue_date": cert.get("issue_date") or cert.get("date", ""),
                     "sort_order": len(existing_certifications) + added
                 })
                 added += 1
         except Exception as e:
             logger.warning(f"Failed to add certification: {e}")
+
+    # Update existing certifications
+    for cert in changes.get("updated_certifications", []):
+        cert_id = cert.get("id")
+        if not cert_id:
+            continue
+        update_data = {}
+        for field in ["certification_name", "issuing_organization", "description", "issue_date", "expiry_date"]:
+            if cert.get(field):
+                update_data[field] = cert[field]
+        if update_data:
+            try:
+                async with httpx.AsyncClient() as client:
+                    await client.patch(
+                        f"{SUPABASE_URL}/rest/v1/user_certifications?id=eq.{cert_id}&user_id=eq.{user_id}",
+                        headers={
+                            "apikey": SUPABASE_KEY,
+                            "Authorization": f"Bearer {SUPABASE_KEY}",
+                            "Content-Type": "application/json"
+                        },
+                        json=update_data
+                    )
+                updated += 1
+            except Exception as e:
+                logger.warning(f"Failed to update certification {cert_id}: {e}")
+
+    # Create new awards
+    for award in changes.get("new_awards", []):
+        try:
+            award_text = (award.get("award_text", "")).strip()
+            if award_text:
+                await db_request("POST", "user_awards", data={
+                    "user_id": user_id,
+                    "award_text": award_text,
+                    "description": award.get("description", ""),
+                    "sort_order": len(existing_awards) + added
+                })
+                added += 1
+        except Exception as e:
+            logger.warning(f"Failed to add award: {e}")
+
+    # Update existing awards
+    for award in changes.get("updated_awards", []):
+        award_id = award.get("id")
+        if not award_id:
+            continue
+        update_data = {}
+        for field in ["award_text", "description"]:
+            if award.get(field):
+                update_data[field] = award[field]
+        if update_data:
+            try:
+                async with httpx.AsyncClient() as client:
+                    await client.patch(
+                        f"{SUPABASE_URL}/rest/v1/user_awards?id=eq.{award_id}&user_id=eq.{user_id}",
+                        headers={
+                            "apikey": SUPABASE_KEY,
+                            "Authorization": f"Bearer {SUPABASE_KEY}",
+                            "Content-Type": "application/json"
+                        },
+                        json=update_data
+                    )
+                updated += 1
+            except Exception as e:
+                logger.warning(f"Failed to update award {award_id}: {e}")
 
     return {
         "success": True,
