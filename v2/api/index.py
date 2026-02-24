@@ -398,6 +398,49 @@ def calculate_priority(deadline: Optional[str]) -> str:
 _muni_label_cache: Dict[str, str] = {}
 _muni_cache_fetched_at: float = 0
 
+# Kommun ID → county (län) name mapping, built from lan-data.js
+_kommun_to_county: Dict[str, str] = {}
+
+def _build_kommun_to_county() -> Dict[str, str]:
+    """Parse lan-data.js to build a kommun_id → county_name mapping."""
+    global _kommun_to_county
+    if _kommun_to_county:
+        return _kommun_to_county
+    try:
+        lan_data_path = pathlib.Path(__file__).parent.parent / "lan-data.js"
+        js_text = lan_data_path.read_text(encoding='utf-8')
+        # Extract the array content from "const LAN_DATA = [...]"
+        start = js_text.index('[')
+        end = js_text.rindex(']') + 1
+        # Convert JS object syntax to valid JSON (add quotes to keys)
+        import re as _re
+        json_text = js_text[start:end]
+        json_text = _re.sub(r'(\w+):', r'"\1":', json_text)  # {id: → {"id":
+        json_text = json_text.replace("'", '"')  # single quotes → double quotes
+        import json as _json
+        data = _json.loads(json_text)
+        mapping = {}
+        for lan in data:
+            county_name = lan.get("label", "")
+            for kommun in lan.get("kommuner", []):
+                mapping[kommun["id"]] = county_name
+        _kommun_to_county = mapping
+        logger.info(f"Built kommun→county mapping: {len(mapping)} entries")
+    except Exception as e:
+        logger.error(f"Failed to build kommun→county mapping: {e}")
+    return _kommun_to_county
+
+
+def _get_county_labels_for_kommun_ids(kommun_ids: List[str]) -> List[str]:
+    """Given a list of kommun IDs, return the unique county (län) names they belong to."""
+    mapping = _build_kommun_to_county()
+    counties = set()
+    for kid in kommun_ids:
+        county = mapping.get(kid)
+        if county:
+            counties.add(county.lower())
+    return list(counties)
+
 async def fetch_municipality_labels() -> Dict[str, str]:
     """Fetch municipality ID → label mapping from JobTech Taxonomy API.
     Used by the scraper to post-filter jobs by municipality name.
@@ -431,18 +474,26 @@ async def fetch_municipality_labels() -> Dict[str, str]:
         return _muni_label_cache
 
 
-def _job_in_municipalities(job: Dict, municipality_labels_lower: List[str]) -> bool:
-    """Post-filter safety net: check if job location matches any municipality label."""
+def _job_in_municipalities(job: Dict, municipality_labels_lower: List[str],
+                           county_labels_lower: List[str] = None) -> bool:
+    """Post-filter: check if job location matches any selected municipality or county.
+    Checks municipality, location, AND county fields for robust matching."""
     if not municipality_labels_lower:
         return True
     job_muni = (job.get("municipality") or "").lower()
     job_loc = (job.get("location") or "").lower()
-    # If job has no location data, let it through
-    if not job_muni and not job_loc:
-        return True
+    job_county = (job.get("county") or "").lower()
+    # Check municipality labels against municipality, location, and county fields
     for label in municipality_labels_lower:
         if label in job_muni or label in job_loc:
             return True
+    # Also check county (län) — if user selected kommuner in Stockholms län,
+    # a job with county="Stockholms län" should pass
+    if county_labels_lower and job_county:
+        for county in county_labels_lower:
+            if county in job_county:
+                return True
+    # No location match at all — filter it out (don't let unknown-location jobs leak through)
     return False
 
 
@@ -533,15 +584,17 @@ async def scrape_platsbanken(keyword: str, max_jobs: int = 15, municipality_ids:
     jobs = []
     max_records = 50
 
-    # Look up municipality labels for post-filtering
+    # Look up municipality labels + county names for post-filtering
     municipality_labels_lower = []
+    county_labels_lower = []
     if municipality_ids:
         label_lookup = await fetch_municipality_labels()
         municipality_labels_lower = [
             label_lookup[mid].lower() for mid in municipality_ids if mid in label_lookup
         ]
+        county_labels_lower = _get_county_labels_for_kommun_ids(municipality_ids)
         if municipality_labels_lower:
-            logger.info(f"Geography filter active: {municipality_labels_lower}")
+            logger.info(f"Geography filter active: {municipality_labels_lower}, counties: {county_labels_lower}")
 
     try:
         async with httpx.AsyncClient() as client:
@@ -731,10 +784,10 @@ async def scrape_platsbanken(keyword: str, max_jobs: int = 15, municipality_ids:
     except Exception as e:
         logger.error(f"Error scraping Platsbanken: {e}")
 
-    # Post-filter by municipality name as safety net
+    # Post-filter by municipality + county name as safety net
     if municipality_labels_lower and jobs:
         before = len(jobs)
-        jobs = [j for j in jobs if _job_in_municipalities(j, municipality_labels_lower)]
+        jobs = [j for j in jobs if _job_in_municipalities(j, municipality_labels_lower, county_labels_lower)]
         logger.info(f"Geography post-filter: {before} → {len(jobs)} jobs")
 
     # AI-summarize descriptions for display (keeps full_description for cover letters)
@@ -1418,7 +1471,7 @@ async def save_jobs_to_db(jobs: List[Dict]) -> int:
         return 0
 
     # Only send columns that exist in the jobs table
-    db_columns = {"id", "title", "company", "location", "county", "description", "description_summary",
+    db_columns = {"id", "title", "company", "location", "municipality", "county", "description", "description_summary",
                   "url", "deadline", "priority", "contact_email", "contact_name",
                   "source", "scraped_at", "link_status"}
 
@@ -1576,7 +1629,7 @@ async def list_jobs(request: Request, limit: int = 50, offset: int = 0):
 
     if not jobs:
         # Fallback: scrape live AND save to DB so apply-with-cv can find them
-        jobs = await scrape_platsbanken("jobb", "Stockholm", max_jobs=limit)
+        jobs = await scrape_platsbanken("jobb", max_jobs=limit)
         if jobs:
             await save_jobs_to_db(jobs)
 
@@ -1609,7 +1662,7 @@ async def list_jobs(request: Request, limit: int = 50, offset: int = 0):
         applied_applications = applied_applications or []
 
         # --- SERVER-SIDE LOCATION FILTER ---
-        # Convert user's preferred kommun IDs to labels, then filter jobs
+        # Convert user's preferred kommun IDs to labels + county names, then filter jobs
         preferred_locs = []
         if user_prefs and len(user_prefs) > 0:
             preferred_locs = user_prefs[0].get("preferred_locations") or []
@@ -1620,9 +1673,10 @@ async def list_jobs(request: Request, limit: int = 50, offset: int = 0):
                 municipality_labels_lower = [
                     label_lookup[mid].lower() for mid in loc_ids if mid in label_lookup
                 ]
+                county_labels_lower = _get_county_labels_for_kommun_ids(loc_ids)
                 if municipality_labels_lower:
                     before = len(jobs)
-                    jobs = [j for j in jobs if _job_in_municipalities(j, municipality_labels_lower)]
+                    jobs = [j for j in jobs if _job_in_municipalities(j, municipality_labels_lower, county_labels_lower)]
                     logger.info(f"Server geo filter: {before} → {len(jobs)} jobs for user {user_id[:8]}")
 
         rejected_ids = {i["job_id"] for i in interactions if i["action"] == "rejected"}

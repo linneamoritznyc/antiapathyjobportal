@@ -5372,20 +5372,25 @@
                         if (negKw.some(kw => titleLow.includes(kw.toLowerCase()) || descLow.includes(kw.toLowerCase()))) return false;
                     }
 
-                    // Geography filter
+                    // Geography filter — check kommun labels against location, municipality, AND county
                     const locPrefs = quizPrefs.location || [];
                     if (locPrefs.length > 0 && !locPrefs.includes('anywhere')) {
-                        const kommunLabels = locPrefs
-                            .filter(k => k !== 'remote' && k !== 'anywhere')
+                        const locIds = locPrefs.filter(k => k !== 'remote' && k !== 'anywhere');
+                        const kommunLabels = locIds
                             .map(id => { for (const lan of LAN_DATA) { const f = lan.kommuner.find(k => k.id === id); if (f) return f.label.toLowerCase(); } return id.toLowerCase(); });
+                        // Also build county (län) names from selected kommun IDs
+                        const countyLabels = [...new Set(locIds.map(id => {
+                            for (const lan of LAN_DATA) { if (lan.kommuner.some(k => k.id === id)) return lan.label.toLowerCase(); }
+                            return null;
+                        }).filter(Boolean))];
                         if (kommunLabels.length > 0) {
                             const jobLoc = (job.location || '').toLowerCase();
                             const jobMuni = (job.municipality || '').toLowerCase();
-                            if (jobLoc || jobMuni) {
-                                const matchesLoc = kommunLabels.some(k => jobLoc.includes(k) || jobMuni.includes(k));
-                                const isRemote = locPrefs.includes('remote') && (jobLoc.includes('remote') || jobLoc.includes('distans') || jobLoc.includes('hemma'));
-                                if (!matchesLoc && !isRemote) return false;
-                            }
+                            const jobCounty = (job.county || '').toLowerCase();
+                            const matchesKommun = kommunLabels.some(k => jobLoc.includes(k) || jobMuni.includes(k));
+                            const matchesCounty = countyLabels.some(c => jobCounty.includes(c));
+                            const isRemote = locPrefs.includes('remote') && (jobLoc.includes('remote') || jobLoc.includes('distans') || jobLoc.includes('hemma'));
+                            if (!matchesKommun && !matchesCounty && !isRemote) return false;
                         }
                     }
 
@@ -5948,34 +5953,32 @@
                         if (hasNegative) return false;
                     }
 
-                    // Geography filter: only show jobs in selected kommuner
+                    // Geography filter: check kommun labels against location, municipality, AND county
                     const locPrefs = quizPrefs.location || [];
                     if (locPrefs.length > 0 && !locPrefs.includes('anywhere')) {
-                        const kommunLabels = locPrefs
-                            .filter(k => k !== 'remote' && k !== 'anywhere')
-                            .map(id => {
-                                for (const lan of LAN_DATA) {
-                                    const found = lan.kommuner.find(k => k.id === id);
-                                    if (found) return found.label.toLowerCase();
-                                }
-                                return id.toLowerCase();
-                            });
+                        const locIds = locPrefs.filter(k => k !== 'remote' && k !== 'anywhere');
+                        const kommunLabels = locIds.map(id => {
+                            for (const lan of LAN_DATA) {
+                                const found = lan.kommuner.find(k => k.id === id);
+                                if (found) return found.label.toLowerCase();
+                            }
+                            return id.toLowerCase();
+                        });
+                        // Build county (län) names from selected kommun IDs
+                        const countyLabels = [...new Set(locIds.map(id => {
+                            for (const lan of LAN_DATA) { if (lan.kommuner.some(k => k.id === id)) return lan.label.toLowerCase(); }
+                            return null;
+                        }).filter(Boolean))];
 
                         if (kommunLabels.length > 0) {
                             const jobLoc = (job.location || '').toLowerCase();
                             const jobMuni = (job.municipality || '').toLowerCase();
-                            const hasLocation = jobLoc || jobMuni;
-
-                            if (hasLocation) {
-                                const matchesLoc = kommunLabels.some(k =>
-                                    jobLoc.includes(k) || jobMuni.includes(k)
-                                );
-                                // Also allow remote jobs if user selected remote
-                                const isRemote = locPrefs.includes('remote') &&
-                                    (jobLoc.includes('remote') || jobLoc.includes('distans') || jobLoc.includes('hemma'));
-                                if (!matchesLoc && !isRemote) return false;
-                            }
-                            // Jobs with no location data pass through — we can't filter what we don't know
+                            const jobCounty = (job.county || '').toLowerCase();
+                            const matchesKommun = kommunLabels.some(k => jobLoc.includes(k) || jobMuni.includes(k));
+                            const matchesCounty = countyLabels.some(c => jobCounty.includes(c));
+                            const isRemote = locPrefs.includes('remote') &&
+                                (jobLoc.includes('remote') || jobLoc.includes('distans') || jobLoc.includes('hemma'));
+                            if (!matchesKommun && !matchesCounty && !isRemote) return false;
                         }
                     }
 
