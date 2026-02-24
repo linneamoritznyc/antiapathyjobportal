@@ -39,6 +39,7 @@ CREATE TABLE IF NOT EXISTS user_profiles (
     about_me TEXT,  -- Professional bio/summary
     birth_date DATE,  -- For accurate age calculation in cover letters (added 2026-02-18)
     email_signature TEXT DEFAULT '',  -- Custom email signature for Gmail drafts
+    portfolio_url TEXT,  -- Personal portfolio/website URL (from quiz)
     -- Legacy columns (exist in live DB, used by quiz flow — stored here + in quiz_answers JSONB)
     linkedin TEXT,
     age TEXT,

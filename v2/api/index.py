@@ -2592,19 +2592,273 @@ async def get_bransch_cvs(request: Request):
     return {"bransch_cvs": bransch_cvs}
 
 
+def _build_master_cv_pdf(profile: Dict, experiences: list, education: list, volunteer: list, awards: list, skills: list, projects: list = None, certifications: list = None) -> bytes:
+    """Build a Master CV PDF using fpdf2 and return raw bytes."""
+    from fpdf import FPDF
+
+    class CVPDF(FPDF):
+        def header(self):
+            pass
+        def footer(self):
+            self.set_y(-15)
+            self.set_font("Helvetica", "I", 8)
+            self.set_text_color(150, 150, 150)
+            self.cell(0, 10, f"Sida {self.page_no()}/{{nb}}", align="C")
+
+    pdf = CVPDF()
+    pdf.alias_nb_pages()
+    pdf.set_auto_page_break(auto=True, margin=20)
+    pdf.add_page()
+
+    # -- Header: Name --
+    name = profile.get("full_name") or "Namn saknas"
+    pdf.set_font("Helvetica", "B", 22)
+    pdf.set_text_color(30, 30, 30)
+    pdf.cell(0, 12, name, new_x="LMARGIN", new_y="NEXT")
+
+    # -- Contact line --
+    contact_parts = []
+    if profile.get("email"):
+        contact_parts.append(profile["email"])
+    if profile.get("phone"):
+        contact_parts.append(profile["phone"])
+    if profile.get("location"):
+        contact_parts.append(profile["location"])
+    if contact_parts:
+        pdf.set_font("Helvetica", "", 10)
+        pdf.set_text_color(80, 80, 80)
+        pdf.cell(0, 6, "  |  ".join(contact_parts), new_x="LMARGIN", new_y="NEXT")
+
+    # Links line (LinkedIn, portfolio)
+    links = []
+    if profile.get("linkedin"):
+        links.append(profile["linkedin"])
+    if profile.get("portfolio_url"):
+        links.append(profile["portfolio_url"])
+    if links:
+        pdf.set_font("Helvetica", "", 9)
+        pdf.set_text_color(60, 130, 200)
+        pdf.cell(0, 5, "  |  ".join(links), new_x="LMARGIN", new_y="NEXT")
+
+    # Drivers license & languages
+    extras = []
+    if profile.get("drivers_license"):
+        extras.append("Korkort: Ja")
+    langs = profile.get("languages") or []
+    if langs:
+        extras.append("Sprak: " + ", ".join(langs))
+    if extras:
+        pdf.set_font("Helvetica", "", 9)
+        pdf.set_text_color(100, 100, 100)
+        pdf.cell(0, 5, "  |  ".join(extras), new_x="LMARGIN", new_y="NEXT")
+
+    pdf.ln(4)
+
+    # Divider line
+    pdf.set_draw_color(200, 200, 200)
+    pdf.line(10, pdf.get_y(), 200, pdf.get_y())
+    pdf.ln(6)
+
+    def section_heading(title: str):
+        pdf.set_font("Helvetica", "B", 13)
+        pdf.set_text_color(40, 40, 40)
+        pdf.cell(0, 8, title, new_x="LMARGIN", new_y="NEXT")
+        pdf.set_draw_color(60, 130, 200)
+        pdf.line(10, pdf.get_y(), 70, pdf.get_y())
+        pdf.ln(3)
+
+    def safe_text(text):
+        """Clean text for PDF output."""
+        if not text:
+            return ""
+        return str(text)
+
+    # -- Experiences --
+    if experiences:
+        section_heading("Erfarenhet")
+        for exp in experiences:
+            pdf.set_font("Helvetica", "B", 11)
+            pdf.set_text_color(30, 30, 30)
+            title = safe_text(exp.get("title", ""))
+            company = safe_text(exp.get("company", ""))
+            pdf.cell(0, 6, f"{title} — {company}", new_x="LMARGIN", new_y="NEXT")
+
+            meta_parts = []
+            if exp.get("location"):
+                meta_parts.append(safe_text(exp["location"]))
+            if exp.get("dates"):
+                meta_parts.append(safe_text(exp["dates"]))
+            if meta_parts:
+                pdf.set_font("Helvetica", "I", 9)
+                pdf.set_text_color(100, 100, 100)
+                pdf.cell(0, 5, "  |  ".join(meta_parts), new_x="LMARGIN", new_y="NEXT")
+
+            bullets = exp.get("bullets") or []
+            if bullets:
+                pdf.set_font("Helvetica", "", 9)
+                pdf.set_text_color(60, 60, 60)
+                for b in bullets:
+                    bt = safe_text(b).strip()
+                    if bt:
+                        pdf.cell(5)
+                        pdf.multi_cell(0, 4.5, f"• {bt}")
+            pdf.ln(3)
+
+    # -- Education --
+    if education:
+        section_heading("Utbildning")
+        for edu in education:
+            pdf.set_font("Helvetica", "B", 11)
+            pdf.set_text_color(30, 30, 30)
+            degree = safe_text(edu.get("degree", ""))
+            school = safe_text(edu.get("school", ""))
+            pdf.cell(0, 6, f"{degree} — {school}", new_x="LMARGIN", new_y="NEXT")
+
+            meta_parts = []
+            if edu.get("location"):
+                meta_parts.append(safe_text(edu["location"]))
+            if edu.get("dates"):
+                meta_parts.append(safe_text(edu["dates"]))
+            if meta_parts:
+                pdf.set_font("Helvetica", "I", 9)
+                pdf.set_text_color(100, 100, 100)
+                pdf.cell(0, 5, "  |  ".join(meta_parts), new_x="LMARGIN", new_y="NEXT")
+
+            bullets = edu.get("bullets") or []
+            if bullets:
+                pdf.set_font("Helvetica", "", 9)
+                pdf.set_text_color(60, 60, 60)
+                for b in bullets:
+                    bt = safe_text(b).strip()
+                    if bt:
+                        pdf.cell(5)
+                        pdf.multi_cell(0, 4.5, f"• {bt}")
+            pdf.ln(3)
+
+    # -- Projects --
+    if projects:
+        section_heading("Projekt")
+        for proj in projects:
+            pdf.set_font("Helvetica", "B", 11)
+            pdf.set_text_color(30, 30, 30)
+            pname = safe_text(proj.get("name") or proj.get("title", ""))
+            pdf.cell(0, 6, pname, new_x="LMARGIN", new_y="NEXT")
+            desc = safe_text(proj.get("description", ""))
+            if desc:
+                pdf.set_font("Helvetica", "", 9)
+                pdf.set_text_color(60, 60, 60)
+                pdf.multi_cell(0, 4.5, desc)
+            pdf.ln(2)
+
+    # -- Volunteer --
+    if volunteer:
+        section_heading("Ideellt arbete")
+        for vol in volunteer:
+            pdf.set_font("Helvetica", "B", 11)
+            pdf.set_text_color(30, 30, 30)
+            org = safe_text(vol.get("organization", ""))
+            dates = safe_text(vol.get("dates", ""))
+            pdf.cell(0, 6, f"{org}" + (f" ({dates})" if dates else ""), new_x="LMARGIN", new_y="NEXT")
+
+            bullets = vol.get("bullets") or []
+            if bullets:
+                pdf.set_font("Helvetica", "", 9)
+                pdf.set_text_color(60, 60, 60)
+                for b in bullets:
+                    bt = safe_text(b).strip()
+                    if bt:
+                        pdf.cell(5)
+                        pdf.multi_cell(0, 4.5, f"• {bt}")
+            pdf.ln(2)
+
+    # -- Certifications --
+    if certifications:
+        section_heading("Certifieringar")
+        pdf.set_font("Helvetica", "", 10)
+        pdf.set_text_color(60, 60, 60)
+        for cert in certifications:
+            cname = safe_text(cert.get("name") or cert.get("cert_name") or cert.get("title", ""))
+            if cname:
+                pdf.cell(5)
+                pdf.cell(0, 5, f"• {cname}", new_x="LMARGIN", new_y="NEXT")
+        pdf.ln(2)
+
+    # -- Awards --
+    if awards:
+        section_heading("Utmarkelser")
+        pdf.set_font("Helvetica", "", 10)
+        pdf.set_text_color(60, 60, 60)
+        for a in awards:
+            award_text = safe_text(a.get("award_text") if isinstance(a, dict) else a)
+            if award_text:
+                pdf.cell(5)
+                pdf.cell(0, 5, f"• {award_text}", new_x="LMARGIN", new_y="NEXT")
+        pdf.ln(2)
+
+    # -- Skills --
+    if skills:
+        section_heading("Kompetenser")
+        pdf.set_font("Helvetica", "", 10)
+        pdf.set_text_color(60, 60, 60)
+        skill_texts = [safe_text(s.get("skill_text", "")) for s in skills if s.get("skill_text")]
+        if skill_texts:
+            pdf.multi_cell(0, 5, "  •  ".join(skill_texts))
+        pdf.ln(2)
+
+    return pdf.output()
+
+
 @app.get("/api/master-cv/download-pdf")
 async def download_master_cv_pdf(request: Request):
     """Generate and download Master CV as PDF"""
+    from fastapi.responses import Response
     user_id = await get_user_id_from_request(request, required=True)
 
-    # For now, return a simple text response indicating this feature is coming soon
-    # In production, this would generate a formatted PDF using a library like ReportLab or WeasyPrint
-    raise HTTPException(status_code=501, detail="PDF-generering kommer snart. Använd Bransch-CVs för nu.")
+    # Fetch profile
+    profiles = await db_request("GET", "user_profiles", params={"user_id": f"eq.{user_id}"})
+    profile = profiles[0] if profiles else {"full_name": "", "email": "", "phone": "", "location": ""}
+
+    # Fetch all sections
+    experiences = await db_request("GET", "user_experiences", params={
+        "user_id": f"eq.{user_id}", "order": "sort_order.asc"
+    }) or []
+    education = await db_request("GET", "user_education", params={
+        "user_id": f"eq.{user_id}", "order": "sort_order.asc"
+    }) or []
+    volunteer = await db_request("GET", "user_volunteer", params={
+        "user_id": f"eq.{user_id}", "order": "sort_order.asc"
+    }) or []
+    awards = await db_request("GET", "user_awards", params={
+        "user_id": f"eq.{user_id}", "order": "sort_order.asc"
+    }) or []
+    skills = await db_request("GET", "user_skills", params={
+        "user_id": f"eq.{user_id}"
+    }) or []
+    projects = await db_request("GET", "tech_projects", params={
+        "user_id": f"eq.{user_id}", "order": "sort_order.asc"
+    }) or []
+    certifications = await db_request("GET", "user_certifications", params={
+        "user_id": f"eq.{user_id}", "order": "sort_order.asc"
+    }) or []
+
+    pdf_bytes = _build_master_cv_pdf(profile, experiences, education, volunteer, awards, skills, projects, certifications)
+
+    # Build filename from user's name
+    name = (profile.get("full_name") or "CV").replace(" ", "_")
+    filename = f"Master_CV_{name}.pdf"
+
+    return Response(
+        content=pdf_bytes,
+        media_type="application/pdf",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'}
+    )
 
 
 @app.get("/api/bransch-cvs/{cv_id}/download-pdf")
 async def download_bransch_cv_pdf(cv_id: str, request: Request):
     """Generate and download a specific Bransch-CV as PDF"""
+    from fastapi.responses import Response
+    from fpdf import FPDF
     user_id = await get_user_id_from_request(request, required=True)
 
     # Fetch the specific Bransch-CV
@@ -2616,9 +2870,80 @@ async def download_bransch_cv_pdf(cv_id: str, request: Request):
     if not cv_result or len(cv_result) == 0:
         raise HTTPException(status_code=404, detail="Bransch-CV hittades inte")
 
-    # For now, return a simple text response indicating this feature is coming soon
-    # In production, this would generate a formatted PDF
-    raise HTTPException(status_code=501, detail="PDF-generering kommer snart. CV-text finns i bransch-CV databasen.")
+    cv = cv_result[0]
+    cv_text = cv.get("cv_text", "")
+    category = cv.get("category", "CV")
+
+    # Fetch profile for header
+    profiles = await db_request("GET", "user_profiles", params={"user_id": f"eq.{user_id}"})
+    profile = profiles[0] if profiles else {}
+    name = profile.get("full_name") or "Namn"
+
+    # Build PDF from CV text
+    pdf = FPDF()
+    pdf.set_auto_page_break(auto=True, margin=20)
+    pdf.add_page()
+
+    # Header
+    pdf.set_font("Helvetica", "B", 18)
+    pdf.set_text_color(30, 30, 30)
+    pdf.cell(0, 10, name, new_x="LMARGIN", new_y="NEXT")
+
+    # Contact line
+    contact_parts = []
+    if profile.get("email"):
+        contact_parts.append(profile["email"])
+    if profile.get("phone"):
+        contact_parts.append(profile["phone"])
+    if profile.get("location"):
+        contact_parts.append(profile["location"])
+    if contact_parts:
+        pdf.set_font("Helvetica", "", 10)
+        pdf.set_text_color(80, 80, 80)
+        pdf.cell(0, 6, "  |  ".join(contact_parts), new_x="LMARGIN", new_y="NEXT")
+
+    pdf.ln(2)
+    pdf.set_font("Helvetica", "I", 10)
+    pdf.set_text_color(60, 130, 200)
+    pdf.cell(0, 6, f"CV — {category}", new_x="LMARGIN", new_y="NEXT")
+
+    pdf.ln(2)
+    pdf.set_draw_color(200, 200, 200)
+    pdf.line(10, pdf.get_y(), 200, pdf.get_y())
+    pdf.ln(6)
+
+    # CV body text
+    pdf.set_font("Helvetica", "", 10)
+    pdf.set_text_color(40, 40, 40)
+    for line in cv_text.split("\n"):
+        line = line.strip()
+        if not line:
+            pdf.ln(3)
+        elif line.startswith("##") or line.startswith("**") or line.isupper():
+            # Section heading
+            clean = line.replace("##", "").replace("**", "").strip()
+            pdf.set_font("Helvetica", "B", 12)
+            pdf.set_text_color(40, 40, 40)
+            pdf.cell(0, 7, clean, new_x="LMARGIN", new_y="NEXT")
+            pdf.set_font("Helvetica", "", 10)
+            pdf.set_text_color(40, 40, 40)
+        elif line.startswith("- ") or line.startswith("• "):
+            bullet_text = line.lstrip("-• ").strip()
+            pdf.cell(5)
+            pdf.multi_cell(0, 5, f"• {bullet_text}")
+        else:
+            pdf.multi_cell(0, 5, line)
+
+    pdf_bytes = pdf.output()
+    safe_name = name.replace(" ", "_")
+    safe_cat = category.replace(" ", "_").replace("&", "")
+    filename = f"CV_{safe_name}_{safe_cat}.pdf"
+
+    return Response(
+        content=pdf_bytes,
+        media_type="application/pdf",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'}
+    )
 
 
 
@@ -4589,6 +4914,7 @@ class QuizProfileData(BaseModel):
     own_car: Optional[str] = None
     own_computer: Optional[str] = None
     linkedin: Optional[str] = None
+    portfolio_url: Optional[str] = None
     earliest_start: Optional[str] = None
     education_level: Optional[str] = None
 
@@ -4659,6 +4985,8 @@ async def save_profile_from_quiz(request: Request, profile: QuizProfileData):
         profile_data["own_car"] = profile.own_car == "yes"
     if profile.own_computer:
         profile_data["own_computer"] = profile.own_computer != "no"
+    if profile.portfolio_url:
+        profile_data["portfolio_url"] = profile.portfolio_url
     # Note: linkedin is NOT a column in user_profiles — stored in quiz_answers instead
 
     # Upsert to user_profiles — on_conflict=user_id is REQUIRED because
@@ -4732,6 +5060,8 @@ async def save_profile_from_quiz(request: Request, profile: QuizProfileData):
         quiz_personal["own_computer"] = profile.own_computer
     if profile.linkedin:
         quiz_personal["linkedin"] = profile.linkedin
+    if profile.portfolio_url:
+        quiz_personal["portfolio_url"] = profile.portfolio_url
 
     if quiz_personal:
         # Merge into existing quiz_answers (don't overwrite job preference fields)

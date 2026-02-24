@@ -941,6 +941,7 @@
                             own_car: merged.own_car || '',
                             own_computer: merged.own_computer || '',
                             linkedin: merged.linkedin || '',
+                            portfolio_url: merged.portfolio_url || '',
                             earliest_start: merged.earliest_start || '',
                             education_level: merged.education_level || '',
                             search_terms: merged.search_terms || [],
@@ -964,6 +965,7 @@
                     own_car: '',
                     own_computer: '',
                     linkedin: '',
+                    portfolio_url: '',
                     earliest_start: '',
                     education_level: '',
                     search_terms: [],
@@ -1074,6 +1076,14 @@
                     allowEmpty: true
                 },
                 {
+                    id: 'portfolio_url',
+                    question: 'Har du en personlig portfolio eller webbplats?',
+                    subtitle: 'Valfritt - din portfolio, blogg eller GitHub visas i ansökningar',
+                    type: 'text',
+                    placeholder: 'T.ex. mittnamn.se, github.com/dittnamn',
+                    allowEmpty: true
+                },
+                {
                     id: 'education_level',
                     question: 'Vilken utbildning har du?',
                     subtitle: 'Hjälper oss visa rätt jobb - t.ex. läkare kräver läkarexamen',
@@ -1177,7 +1187,8 @@
             const summaryLabels = {
                 full_name: 'Namn', phone: 'Telefon', home_location: 'Bor i', age: 'Ålder',
                 drivers_license: 'Körkort', own_car: 'Egen bil', own_computer: 'Egen dator',
-                earliest_start: 'Kan börja', linkedin: 'LinkedIn', education_level: 'Utbildning',
+                earliest_start: 'Kan börja', linkedin: 'LinkedIn', portfolio_url: 'Portfolio/Webbplats',
+                education_level: 'Utbildning',
                 search_terms: 'Vill jobba med',
                 working_hours: 'Omfattning', employment_form: 'Anställningsform',
                 duration: 'Varaktighet', salary: 'Lön', dealbreakers: 'Vill inte'
@@ -1239,6 +1250,7 @@
                         own_car: answers.own_car,
                         own_computer: answers.own_computer,
                         linkedin: answers.linkedin,
+                        portfolio_url: answers.portfolio_url,
                         earliest_start: answers.earliest_start,
                         education_level: answers.education_level
                     };
@@ -3326,16 +3338,25 @@
 
                 try {
                     const res = await authFetch('/api/master-cv/download-pdf');
+                    if (!res.ok) {
+                        const errData = await res.json().catch(() => ({}));
+                        throw new Error(errData.detail || 'Servern returnerade ett fel');
+                    }
                     const blob = await res.blob();
+                    if (blob.type && !blob.type.includes('pdf')) {
+                        throw new Error('Svaret var inte en PDF');
+                    }
                     const url = window.URL.createObjectURL(blob);
                     const a = document.createElement('a');
                     a.href = url;
-                    a.download = 'Master_CV_Linnea_Moritz.pdf';
+                    const disposition = res.headers.get('Content-Disposition') || '';
+                    const match = disposition.match(/filename="?([^"]+)"?/);
+                    a.download = match ? match[1] : 'Master_CV.pdf';
                     a.click();
                     window.URL.revokeObjectURL(url);
                 } catch (err) {
                     console.error('Error downloading Master CV:', err);
-                    alert('Kunde inte ladda ner Master CV');
+                    alert(err.message || 'Kunde inte ladda ner Master CV');
                 }
             };
 
@@ -3461,16 +3482,22 @@
 
                 try {
                     const res = await authFetch(`/api/bransch-cvs/${cv.id}/download-pdf`);
+                    if (!res.ok) {
+                        const errData = await res.json().catch(() => ({}));
+                        throw new Error(errData.detail || 'Servern returnerade ett fel');
+                    }
                     const blob = await res.blob();
                     const url = window.URL.createObjectURL(blob);
                     const a = document.createElement('a');
                     a.href = url;
-                    a.download = `CV_${cv.category.replace(/\s+/g, '_')}.pdf`;
+                    const disposition = res.headers.get('Content-Disposition') || '';
+                    const match = disposition.match(/filename="?([^"]+)"?/);
+                    a.download = match ? match[1] : `CV_${cv.category.replace(/\s+/g, '_')}.pdf`;
                     a.click();
                     window.URL.revokeObjectURL(url);
                 } catch (err) {
                     console.error('Error downloading Bransch-CV:', err);
-                    alert('Kunde inte ladda ner Bransch-CV');
+                    alert(err.message || 'Kunde inte ladda ner Bransch-CV');
                 }
             };
 
@@ -7749,6 +7776,7 @@
                         own_car: answers.own_car,
                         own_computer: answers.own_computer,
                         linkedin: answers.linkedin,
+                        portfolio_url: answers.portfolio_url,
                         earliest_start: answers.earliest_start,
                         education_level: answers.education_level
                     };
@@ -8831,6 +8859,7 @@
                                                 drivers_license: answers.drivers_license,
                                                 own_car: answers.own_car,
                                                 linkedin: answers.linkedin,
+                                                portfolio_url: answers.portfolio_url,
                                                 earliest_start: answers.earliest_start,
                                                 education_level: answers.education_level
                                             };
