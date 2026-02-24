@@ -6158,8 +6158,9 @@ VIKTIGT:
 
 @app.post("/api/cv/enhance-chat")
 async def enhance_chat(request: Request):
-    """Chat about the last CV enhancement — answer follow-up questions.
-    Now receives full conversation history so Claude has context of previous Q&A."""
+    """Chat about the last CV enhancement — AI can actually read AND write Master CV data.
+    Returns both a text response and executes any requested DB changes."""
+    import json as json_module
     user_id = await get_user_id_from_request(request, required=True)
     body = await request.json()
     question = body.get("question", "").strip()
@@ -6171,42 +6172,126 @@ async def enhance_chat(request: Request):
     if not ANTHROPIC_API_KEY:
         raise HTTPException(status_code=500, detail="AI ej konfigurerad")
 
-    # Also fetch current master CV data so AI can actually make changes
-    master_cv_data = ""
+    # Fetch ALL Master CV data so AI has full picture
+    master_cv_sections = {}
     try:
-        experiences = await db_request("GET", "master_cv_experiences", params={
-            "user_id": f"eq.{user_id}", "order": "start_date.desc"
-        })
-        if experiences:
-            exp_lines = []
-            for exp in experiences:
-                line = f"- [{exp.get('category', 'work')}] {exp.get('title', '')} @ {exp.get('company', '')} ({exp.get('start_date', '')[:7] if exp.get('start_date') else ''} – {exp.get('end_date', '')[:7] if exp.get('end_date') else 'pågående'})"
-                if exp.get('description'):
-                    line += f": {exp['description'][:300]}"
-                exp_lines.append(line)
-            master_cv_data = "\n\nANVÄNDARENS NUVARANDE MASTER CV:\n" + "\n".join(exp_lines)
+        experiences = await db_request("GET", "user_experiences", params={
+            "user_id": f"eq.{user_id}", "order": "sort_order.asc"
+        }) or []
+        education = await db_request("GET", "user_education", params={
+            "user_id": f"eq.{user_id}", "order": "sort_order.asc"
+        }) or []
+        volunteer = await db_request("GET", "user_volunteer", params={
+            "user_id": f"eq.{user_id}", "order": "sort_order.asc"
+        }) or []
+        projects = await db_request("GET", "tech_projects", params={
+            "user_id": f"eq.{user_id}", "order": "sort_order.asc"
+        }) or []
+        skills = await db_request("GET", "user_skills", params={
+            "user_id": f"eq.{user_id}"
+        }) or []
+        awards = await db_request("GET", "user_awards", params={
+            "user_id": f"eq.{user_id}", "order": "sort_order.asc"
+        }) or []
+        certifications = await db_request("GET", "user_certifications", params={
+            "user_id": f"eq.{user_id}", "order": "sort_order.asc"
+        }) or []
+
+        # Build readable summary with IDs so AI can reference specific entries
+        lines = []
+        lines.append("=== ERFARENHETER ===")
+        for exp in experiences:
+            lines.append(f"[ID:{exp.get('id')}] {exp.get('title','')} @ {exp.get('company','')} | {exp.get('location','')} | {exp.get('start_date','')}-{exp.get('end_date','')} | Kategorier: {exp.get('categories',[])} | Beskrivning: {exp.get('description','')}")
+        if not experiences:
+            lines.append("(inga)")
+
+        lines.append("\n=== UTBILDNING ===")
+        for edu in education:
+            lines.append(f"[ID:{edu.get('id')}] {edu.get('degree','')} @ {edu.get('school','')} | {edu.get('location','')} | {edu.get('start_date','')}-{edu.get('end_date','')} | Inriktning: {edu.get('field_of_study','')}")
+        if not education:
+            lines.append("(inga)")
+
+        lines.append("\n=== PROJEKT ===")
+        for proj in projects:
+            lines.append(f"[ID:{proj.get('id')}] {proj.get('name', proj.get('title',''))} | {proj.get('description','')} | Tech: {proj.get('tech_stack','')}")
+        if not projects:
+            lines.append("(inga)")
+
+        lines.append("\n=== VOLONTÄRARBETE ===")
+        for vol in volunteer:
+            lines.append(f"[ID:{vol.get('id')}] {vol.get('organization','')} | {vol.get('dates','')} | {vol.get('bullets',[])}")
+        if not volunteer:
+            lines.append("(inga)")
+
+        lines.append("\n=== KOMPETENSER ===")
+        for s in skills:
+            lines.append(f"[ID:{s.get('id')}] {s.get('skill_text','')} ({s.get('skill_type','')}, {s.get('category','')})")
+        if not skills:
+            lines.append("(inga)")
+
+        lines.append("\n=== UTMÄRKELSER ===")
+        for a in awards:
+            lines.append(f"[ID:{a.get('id')}] {a.get('award_text','')}")
+        if not awards:
+            lines.append("(inga)")
+
+        lines.append("\n=== CERTIFIERINGAR ===")
+        for c in certifications:
+            lines.append(f"[ID:{c.get('id')}] {c.get('name', c.get('cert_name',''))}")
+        if not certifications:
+            lines.append("(inga)")
+
+        master_cv_data = "\n".join(lines)
     except Exception as e:
         logger.warning(f"Could not fetch master CV for chat: {e}")
+        master_cv_data = "(kunde inte hämta data)"
 
-    system_prompt = f"""Du är en assistent som hjälper en jobbsökare med sitt Master CV. Svara ALLTID på svenska.
+    system_prompt = f"""Du är en assistent som hjälper en jobbsökare redigera sitt Master CV. Svara ALLTID på svenska.
+
+ANVÄNDARENS KOMPLETTA MASTER CV (allt som finns i databasen):
+{master_cv_data}
 
 SENASTE ÄNDRINGAR (från CV-uppladdning):
-{changes_context}{master_cv_data}
+{changes_context}
+
+DU KAN GÖRA ÄNDRINGAR. När användaren ber dig uppdatera, lägga till, ta bort eller ändra något i Master CV:t, svara med BÅDE:
+1. En kort bekräftelse till användaren (vad du ändrade)
+2. Ett JSON-block med databasoperationer som backend ska utföra
+
+FORMAT FÖR ÄNDRINGAR — lägg JSON-blocket i slutet av ditt svar, inuti ```actions``` taggar:
+
+```actions
+[
+  {{"action": "update", "table": "user_experiences", "id": "uuid-här", "data": {{"description": "ny text", "categories": ["tech", "customerservice"]}}}},
+  {{"action": "update", "table": "tech_projects", "id": "uuid-här", "data": {{"name": "nytt namn", "description": "ny beskrivning"}}}},
+  {{"action": "create", "table": "user_volunteer", "data": {{"organization": "...", "dates": "...", "bullets": ["..."]}}}},
+  {{"action": "create", "table": "user_skills", "data": {{"skill_text": "Python", "skill_type": "technical", "category": "tech"}}}},
+  {{"action": "delete", "table": "user_skills", "id": "uuid-här"}}
+]
+```
+
+TABELLER DU KAN ÄNDRA:
+- user_experiences: company, title, location, start_date, end_date, description, categories (array)
+- user_education: school, degree, field_of_study, location, start_date, end_date
+- tech_projects: name, description, tech_stack, url
+- user_volunteer: organization, dates, bullets (array)
+- user_skills: skill_text, skill_type (technical/language/certificate), category
+- user_awards: award_text
+- user_certifications: name, issuer, date
 
 REGLER:
-- Läs HELA konversationen — upprepa ALDRIG frågor som redan besvarats
-- Om användaren redan gett dig information, ANVÄND den direkt utan att fråga igen
-- Om användaren ber dig uppdatera/lägga till något, bekräfta kort vad du gör och gör det
-- Skriv naturlig svenska, inte svengelska. Sammansatta ord ihop (projektledare, arbetsuppgifter). Ingen apostrof vid genitiv. Liten bokstav på månader/dagar/titlar
-- Var kort och konkret — ingen inställsam AI-ton, inga emojis"""
+- Om användaren ber dig ändra något — GÖR DET DIREKT. Inkludera actions-blocket i ditt svar.
+- Fråga ALDRIG om saker som redan framgår av konversationen eller det uppladdade CVt
+- Om användaren säger "läs CVt jag laddade upp" — informationen finns redan i SENASTE ÄNDRINGAR ovan
+- Var kort och konkret — ingen inställsam AI-ton, inga emojis
+- Skriv naturlig svenska"""
 
     # Build Claude messages from conversation history
     messages = []
-    for msg in conversation_history[-20:]:  # Last 20 messages max
+    for msg in conversation_history[-20:]:
         role = "user" if msg.get("role") == "user" else "assistant"
         messages.append({"role": role, "content": msg.get("text", "")})
 
-    # If history is empty or doesn't end with user message, add current question
     if not messages or messages[-1]["role"] != "user":
         messages.append({"role": "user", "content": question})
 
@@ -6221,23 +6306,76 @@ REGLER:
                 },
                 json={
                     "model": "claude-sonnet-4-5-20250929",
-                    "max_tokens": 1000,
+                    "max_tokens": 2000,
                     "system": system_prompt,
                     "messages": messages
                 },
-                timeout=30
+                timeout=45
             )
             if response.status_code != 200:
                 logger.error(f"Enhance chat Claude error: {response.status_code} - {response.text[:200]}")
                 raise HTTPException(status_code=500, detail="AI-fel")
             result = response.json()
             answer = result["content"][0]["text"].strip()
-            return {"success": True, "answer": answer}
     except HTTPException:
         raise
     except Exception as e:
         logger.error(f"Enhance chat error: {e}")
         raise HTTPException(status_code=500, detail=str(e)[:200])
+
+    # Parse and execute any DB actions from the AI response
+    actions_executed = 0
+    actions_failed = 0
+    allowed_tables = {"user_experiences", "user_education", "tech_projects", "user_volunteer", "user_skills", "user_awards", "user_certifications"}
+
+    if "```actions" in answer:
+        try:
+            actions_json = answer.split("```actions")[1].split("```")[0].strip()
+            actions = json_module.loads(actions_json)
+
+            for act in actions:
+                table = act.get("table", "")
+                action_type = act.get("action", "")
+                entry_id = act.get("id", "")
+                data = act.get("data", {})
+
+                if table not in allowed_tables:
+                    logger.warning(f"Chat tried to modify disallowed table: {table}")
+                    actions_failed += 1
+                    continue
+
+                try:
+                    if action_type == "update" and entry_id:
+                        await db_request("PATCH", f"{table}?id=eq.{entry_id}&user_id=eq.{user_id}", data=data)
+                        actions_executed += 1
+                    elif action_type == "create":
+                        data["user_id"] = user_id
+                        await db_request("POST", table, data=data)
+                        actions_executed += 1
+                    elif action_type == "delete" and entry_id:
+                        await db_request("DELETE", f"{table}?id=eq.{entry_id}&user_id=eq.{user_id}")
+                        actions_executed += 1
+                    else:
+                        logger.warning(f"Unknown action: {action_type}")
+                        actions_failed += 1
+                except Exception as e:
+                    logger.warning(f"Failed to execute action {action_type} on {table}: {e}")
+                    actions_failed += 1
+
+        except (json_module.JSONDecodeError, IndexError) as e:
+            logger.warning(f"Failed to parse actions from AI response: {e}")
+
+        # Remove the actions block from the visible answer
+        answer = answer.split("```actions")[0].strip()
+        if answer.endswith("```"):
+            answer = answer[:-3].strip()
+
+    return {
+        "success": True,
+        "answer": answer,
+        "actions_executed": actions_executed,
+        "actions_failed": actions_failed
+    }
 
 
 async def analyze_cv_with_ai(cv_text: str) -> list:
