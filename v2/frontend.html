@@ -3884,18 +3884,18 @@
 
             const addCustomNegKw = () => {
                 if (!customNegKw.trim()) return;
-                const kw = customNegKw.trim().toLowerCase();
-                if (!negKeywords.includes(kw)) {
-                    setNegKeywords(prev => [...prev, kw]);
+                const newKws = customNegKw.split(',').map(k => k.trim().toLowerCase()).filter(k => k && !negKeywords.includes(k));
+                if (newKws.length) {
+                    setNegKeywords(prev => [...prev, ...newKws]);
                 }
                 setCustomNegKw('');
             };
 
             const addPosKeyword = () => {
                 if (!newPosKw.trim()) return;
-                const kw = newPosKw.trim();
-                if (!posKeywords.includes(kw)) {
-                    setPosKeywords(prev => [...prev, kw]);
+                const newKws = newPosKw.split(',').map(k => k.trim()).filter(k => k && !posKeywords.includes(k));
+                if (newKws.length) {
+                    setPosKeywords(prev => [...prev, ...newKws]);
                 }
                 setNewPosKw('');
             };
