@@ -601,13 +601,18 @@ Steg-för-steg-guide för nya användare.
 
 ### Dataflöde
 ```
-Quiz svar sparas i localStorage som job_preferences
+Quiz svar sparas i React state (EJ localStorage under pågående quiz!)
   ↓ vid slutförande ↓
+localStorage.setItem('job_preferences', ...) + localStorage.setItem('user_profile', ...)
 POST /api/user/profile-from-quiz → user_profiles (namn, telefon, ort, körkort, etc.)
 POST /api/user/preferences → user_job_preferences (sökord, dealbreakers, quiz_answers JSONB)
   ↓
 Automatisk scrape av jobb triggas
 ```
+
+**Byta enhet mitt i quiz?** Svar i React state går **förlorade** — ingen auto-save under pågående quiz. Först efter slutförande sparas till localStorage + Supabase. Om inloggad på ny enhet hämtas quiz-status från DB (skippar quiz om redan gjord).
+
+**Köra quiz igen?** Backend **MERGAR** (inte skriver över). UPSERT med `on_conflict=user_id` och `quiz_answers` JSONB mergas: befintliga fält behålls om frontend inte skickar nytt värde.
 
 **Supabase-koppling:**
 
@@ -640,10 +645,14 @@ Personuppgifter och kontoinställningar.
 
 ### Platsbaser (per region)
 - Regionala adresser — om jobbet är i Stockholm, använd Stockholmsadress i brevet
+- **Manuell input** — användaren anger ort i quiz (`home_location`) + väljer kommuner i Platser-sidan
+- Kommun-ID:n hämtas från JobTech Taxonomy API (290 svenska kommuner)
+- **Ingen geocoding/GPS** — all platsdata manuell
 
 ### GDPR
 - **Exportera all data** — JSON
-- **Radera konto** — `SELECT delete_user_data('user_id')` (raderar ALLT i 21 tabeller)
+- **Radera konto** — `delete_account()` raderar 14 DB-tabeller + Supabase Auth-användaren
+- **⚠️ BUG: Storage-filer raderas INTE** — filer i `training-letters/{user_id}/*`, `profile-photos/{user_id}/*` och eventuella `cv-files/{user_id}/*` blir kvar som orphans efter kontoborttagning. Behöver fixas för full GDPR-compliance.
 
 **Supabase-koppling:**
 
