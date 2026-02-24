@@ -913,6 +913,36 @@ async def generate_cover_letter(job: Dict, user_cv_text: Optional[str] = None, u
     if not experience:
         experience = DEFAULT_EXPERIENCE.get(category, DEFAULT_EXPERIENCE["default"])
 
+    # Strip personal info header from CV text (name, location, phone, email)
+    # so the AI only sees this info from the OM MIG section (which has the correct,
+    # up-to-date values from the user's profile — not stale data baked into CV text).
+    if experience and user_cv_text:
+        lines = experience.split("\n")
+        cleaned = []
+        in_header = True
+        for line in lines:
+            stripped = line.strip()
+            if in_header:
+                # Skip blank lines and personal info lines at the top
+                if not stripped:
+                    continue
+                # Detect personal info lines: contain phone pattern, email, or pipe-separated header
+                is_personal = (
+                    re.search(r'\d{3,4}[\s-]?\d{2,3}[\s-]?\d{2,4}', stripped) or  # phone
+                    re.search(r'[\w.+-]+@[\w-]+\.[\w.]+', stripped) or  # email
+                    ("|" in stripped and len(stripped.split("|")) >= 3)  # pipe-separated header
+                )
+                # Also skip if it's just a name (short line, no section keywords)
+                is_just_name = len(stripped.split()) <= 3 and not any(
+                    kw in stripped.upper() for kw in ["UTBILDNING", "ERFARENHET", "KOMPETENS", "PROFIL", "SAMMANFATTNING"]
+                )
+                if is_personal or is_just_name:
+                    continue
+                in_header = False
+            cleaned.append(line)
+        if cleaned:
+            experience = "\n".join(cleaned)
+
     # Append any extra hints the user selected in the UI
     if extra_hints:
         experience += f"\n\nEXTRA ERFARENHETER SOM MÅSTE NÄMNAS I BREVET:\n{extra_hints}"
@@ -1435,12 +1465,17 @@ def get_cv_pdf_filename(vibe_id: str) -> str:
 
 # ============== SUPABASE DATABASE ==============
 
-async def db_request(method: str, table: str, data: dict = None, params: dict = None) -> Optional[List]:
-    """Make request to Supabase"""
+async def db_request(method: str, table: str, data: dict = None, params: dict = None, on_conflict: str = None) -> Optional[List]:
+    """Make request to Supabase.
+    For upserts (POST) on tables where the primary key is a UUID (not the business key),
+    pass on_conflict='user_id' (or whichever column is the UNIQUE business key) so
+    PostgREST resolves conflicts on the right column instead of the UUID primary key."""
     if not SUPABASE_URL or not SUPABASE_KEY:
         return None
 
     url = f"{SUPABASE_URL}/rest/v1/{table}"
+    if on_conflict:
+        url += f"?on_conflict={on_conflict}"
     headers = {
         "apikey": SUPABASE_KEY,
         "Authorization": f"Bearer {SUPABASE_KEY}",
@@ -1984,7 +2019,7 @@ async def save_master_cv(request: Request, master_cv: MasterCV):
         "certificates": master_cv.profile.certificates,
         "updated_at": datetime.now().isoformat()
     }
-    await db_request("POST", "user_profiles", data=profile_data)
+    await db_request("POST", "user_profiles", data=profile_data, on_conflict="user_id")
 
     # Save education entries
     for i, edu in enumerate(master_cv.education):
@@ -4362,10 +4397,13 @@ async def save_profile_from_quiz(request: Request, profile: QuizProfileData):
         profile_data["own_computer"] = profile.own_computer != "no"
     # Note: linkedin is NOT a column in user_profiles — stored in quiz_answers instead
 
-    # Upsert to user_profiles
+    # Upsert to user_profiles — on_conflict=user_id is REQUIRED because
+    # the primary key is `id UUID` (auto-generated), not `user_id`.
+    # Without it, PostgREST resolves conflicts on `id`, finds none, and
+    # the INSERT fails on the user_id UNIQUE constraint → updates never persist.
     async with httpx.AsyncClient() as client:
         res = await client.post(
-            f"{SUPABASE_URL}/rest/v1/user_profiles",
+            f"{SUPABASE_URL}/rest/v1/user_profiles?on_conflict=user_id",
             headers={
                 "apikey": SUPABASE_KEY,
                 "Authorization": f"Bearer {SUPABASE_KEY}",
@@ -4375,6 +4413,37 @@ async def save_profile_from_quiz(request: Request, profile: QuizProfileData):
             json=profile_data
         )
         logger.info(f"Profile save: {res.status_code} - {res.text[:200] if res.status_code >= 400 else 'OK'}")
+
+    # When location changes, update the header line in all user's bransch_cvs
+    # so the CV text stays in sync with the profile.
+    if profile.home_location and res.status_code < 400:
+        try:
+            cvs = await db_request("GET", "bransch_cvs", params={
+                "user_id": f"eq.{user_id}", "select": "id,cv_text"
+            })
+            if cvs:
+                new_loc = profile.home_location.strip()
+                for cv in cvs:
+                    cv_text = cv.get("cv_text", "")
+                    if not cv_text:
+                        continue
+                    lines = cv_text.split("\n")
+                    updated = False
+                    for i, line in enumerate(lines[:5]):  # Header is in first 5 lines
+                        parts = line.split("|")
+                        if len(parts) >= 3:
+                            # Pipe-separated header: "X | Location | Phone | Email"
+                            # Replace the location part (typically index 1)
+                            parts[1] = f" {new_loc} "
+                            lines[i] = "|".join(parts)
+                            updated = True
+                            break
+                    if updated:
+                        await db_request("PATCH", f"bransch_cvs?id=eq.{cv['id']}",
+                            data={"cv_text": "\n".join(lines)})
+                logger.info(f"Updated {len(cvs)} bransch_cv headers with location '{new_loc}'")
+        except Exception as e:
+            logger.warning(f"Failed to update bransch_cv headers: {e}")
 
     # Save all personal quiz fields into user_job_preferences.quiz_answers
     # This ensures age, education, earliest_start, own_car, linkedin persist in Supabase
@@ -4414,7 +4483,7 @@ async def save_profile_from_quiz(request: Request, profile: QuizProfileData):
             }
             async with httpx.AsyncClient() as client:
                 await client.post(
-                    f"{SUPABASE_URL}/rest/v1/user_job_preferences",
+                    f"{SUPABASE_URL}/rest/v1/user_job_preferences?on_conflict=user_id",
                     headers={
                         "apikey": SUPABASE_KEY,
                         "Authorization": f"Bearer {SUPABASE_KEY}",
@@ -4625,7 +4694,7 @@ async def save_user_profile(request: Request, profile: UserProfile):
 
     async with httpx.AsyncClient() as client:
         await client.post(
-            f"{SUPABASE_URL}/rest/v1/user_profiles",
+            f"{SUPABASE_URL}/rest/v1/user_profiles?on_conflict=user_id",
             headers={
                 "apikey": SUPABASE_KEY,
                 "Authorization": f"Bearer {SUPABASE_KEY}",
