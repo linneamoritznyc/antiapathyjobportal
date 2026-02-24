@@ -1158,6 +1158,23 @@ INSTRUKTIONER:
 
 SPRÅKREGLER — KRITISKT (brevet MÅSTE låta som riktig svenska, inte översatt engelska):
 - INGA anglicismer: Skriv aldrig "solid grund" (säg "bra grund"), "omfattar" (säg "inkluderar" eller skriv om), "leverera resultat", "spännande möjlighet", "säkerställa". Tänk: hur skulle en svensk 25-åring formulera detta?
+- SVENGELSKA — FÖRBJUDET. Översätt INTE engelska fraser rakt av. Vanliga misstag:
+  * "standardrutiner" → skriv "rutiner och arbetssätt"
+  * "driva policyförbättringar" → skriv "förbättra riktlinjer och processer"
+  * "communityregler" → skriv "gemenskapsriktlinjer" eller "regler för gemenskapen"
+  * "servicenivåavtal" → skriv "tjänstenivåavtal" eller undvik helt
+  * "Ed-tech-produkt" → skriv "utbildningsteknologisk produkt" eller bara "digital utbildningsprodukt"
+  * "tackla" (som i "tackle") → skriv "ta sig an", "hantera", "jobba mot"
+  * "matchade donationer" → skriv "fick donationer matchade av" eller formulera om
+  * "implementera" → skriv "införa" eller "genomföra"
+  * "deadline" → skriv "sista ansökningsdag" eller "tidsfrist"
+  * "feedback" → skriv "återkoppling" eller "synpunkter"
+  * "managera" → skriv "hantera", "leda", "sköta"
+  * "prioritera tasks" → skriv "prioritera uppgifter"
+  * "performance" → skriv "prestation" eller "resultat"
+  * "team" → skriv "lag" eller "arbetslag" (om det passar kontexten)
+  * "content" → skriv "innehåll"
+  Om ett engelskt ord inte har en naturlig svensk motsvarighet — formulera om hela meningen istället.
 - KORREKTA svenska fraser: "Flera års erfarenhet" (INTE "erfarenhet från flera år"). "Jobba i kassan" (INTE "på kassavagn"). "Stå i butik" (INTE "arbeta i butiksmiljö"). "Packa paket" (INTE "hantera paketdistribution"). Använd vardagliga svenska ord, inte byråkratiska.
 - INGEN over-explaining: Förklara inte självklara saker. "Jag är noggrann" räcker — du behöver INTE lägga till "och det betyder mycket för mig att få arbetet gjort rätt". Skriv inte som en reklamtext.
 - VARIERA meningsbyggnaden: Börja INTE varje mening med "Jag". Blanda meningslängder. Använd bisatser och naturliga övergångar. Texten ska ha flyt, inte låta som en punktlista.
