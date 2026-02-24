@@ -219,6 +219,7 @@ CREATE TABLE IF NOT EXISTS user_certifications (
     user_id TEXT NOT NULL,
     certification_name TEXT NOT NULL,
     issuing_organization TEXT,
+    description TEXT,                -- Context/details about the certification
     issue_date TEXT,
     expiry_date TEXT,
     sort_order INT DEFAULT 0,
@@ -876,3 +877,6 @@ COMMENT ON TABLE user_anecdotes IS 'Personal anecdotes and hobbies for AI cover 
 --   Heltid/Deltid was being scraped from Platsbanken but missing from schema.
 --   Needed for Aktivitetsrapport PDF generation (Omfattning column).
 --   Migration: ALTER TABLE jobs ADD COLUMN IF NOT EXISTS working_hours TEXT;
+-- 2026-02-24: Added description TEXT column to user_certifications
+--   Allows users to add context/details to their certifications (like awards already has).
+--   Migration: ALTER TABLE user_certifications ADD COLUMN IF NOT EXISTS description TEXT;

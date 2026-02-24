@@ -6033,6 +6033,23 @@ async def delete_award(request: Request, award_id: str):
     })
     return {"success": True, "message": "Pris borttaget"}
 
+@app.put("/api/user/certification/{cert_id}")
+async def update_certification(request: Request, cert_id: str):
+    """Update a certification entry."""
+    user_id = await get_user_id_from_request(request, required=True)
+    body = await request.json()
+    update_data = {}
+    for field in ["certification_name", "issuing_organization", "issue_date", "expiry_date", "description"]:
+        if field in body:
+            update_data[field] = body[field]
+    if not update_data:
+        raise HTTPException(status_code=400, detail="Inget att uppdatera")
+    result = await db_request("PATCH", "user_certifications", data=update_data, params={
+        "id": f"eq.{cert_id}", "user_id": f"eq.{user_id}"
+    })
+    return {"success": True, "certification": result[0] if result else None}
+
+
 @app.delete("/api/user/certification/{cert_id}")
 async def delete_certification(request: Request, cert_id: str):
     """Delete a certification entry."""
