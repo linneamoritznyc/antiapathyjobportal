@@ -1,6 +1,6 @@
 # Platsbanken-ai — Funktioner & UX per sida
 
-> Uppdaterad: 24 feb 2026 (v2.3 — auth-refresh + ansökningar fixade)
+> Uppdaterad: 24 feb 2026 (v2.5 — kvalifikationskontroll fixad)
 
 AI-driven jobbportal för neurodivergenta jobbsökare i Sverige. Skrapar Platsbanken, genererar personliga brev via Claude, skapar Gmail-utkast med bransch-CV.
 
@@ -761,3 +761,10 @@ Personuppgifter och kontoinställningar.
 - **Aktivitetsrapport kraschade** — Ingen auth-kontroll (user_id=None → frågade alla ansökningar), plus Unicode-tecken i jobbtitlar/företagsnamn orsakade Latin-1 encoding-fel i PDF. Nu krävs auth + `_safe_pdf_text()` sanerar all text.
 - **Master CV PDF kraschade** — Samma Unicode-problem: em-dash, typografiska citattecken, m.m. från DB-data kraschade fpdf2. `safe_text()` delegerar nu till `_safe_pdf_text()` som ersätter/filtrerar non-Latin-1 tecken.
 - **Projekt/certifieringar saknades i Master CV PDF** — `project_name` och `certification_name` matchar nu DB-kolumnnamn (inte bara generiska `name`/`title`).
+
+### v2.5 — 24 feb 2026
+
+**Bugfixar:**
+- **Kvalifikationskontroll använde hårdkodad "Gymnasium"** — `qualification-check` endpointen skickade alltid `Utbildning: Gymnasium` till Haiku oavsett användarens faktiska utbildning. Nu hämtas riktig utbildning från `user_education`.
+- **Kvalifikationskontroll missade erfarenheter** — Bara 8 erfarenheter hämtades (limit=8). Om vårderfarenhet låg som nr 9+ sågs den aldrig. Limit borttagen — alla erfarenheter skickas nu.
+- **Falskt "saknar kvalifikationer"-varning** — Kombination av hårdkodad utbildning + trunkerade erfarenheter gjorde att Haiku felaktigt sa att användaren saknade relevant erfarenhet (t.ex. äldrevård).

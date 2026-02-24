@@ -3330,22 +3330,34 @@ async def qualification_check(job_id: str, request: Request):
     else:
         job = jobs[0]
 
-    # Get user profile + CV summary
+    # Get user profile + CV summary + education
     user_profile = None
     cv_summary = ""
+    edu_summary = ""
     if user_id:
         profiles = await db_request("GET", "user_profiles", params={"user_id": f"eq.{user_id}"})
         user_profile = profiles[0] if profiles else None
 
-        # Get master CV experiences for a quick summary
+        # Get ALL master CV experiences (not just 8 — user might have care experience further down)
         experiences = await db_request("GET", "user_experiences", params={
             "user_id": f"eq.{user_id}",
             "select": "title,company,categories",
-            "order": "sort_order.asc",
-            "limit": "8"
+            "order": "sort_order.asc"
         })
         if experiences:
             cv_summary = ", ".join([f"{e.get('title', '')} ({e.get('company', '')})" for e in experiences])
+
+        # Get actual education (not hardcoded "Gymnasium")
+        education = await db_request("GET", "user_education", params={
+            "user_id": f"eq.{user_id}",
+            "select": "school_name,degree,field_of_study",
+            "order": "start_date.desc"
+        })
+        if education:
+            edu_summary = ", ".join([
+                f"{e.get('degree', '')} {e.get('field_of_study', '')} ({e.get('school_name', '')})"
+                for e in education
+            ])
 
     job_title = job.get("title", "")
     job_desc = job.get("description", "")[:2000]  # Keep prompt small
@@ -3354,9 +3366,9 @@ async def qualification_check(job_id: str, request: Request):
         profile_info = f"""
 Användarens profil:
 - Namn: {user_profile.get('full_name', 'Okänt')}
-- Utbildning: Gymnasium
+- Utbildning: {edu_summary or 'Ej angivet'}
 - Körkort: {'Ja' if user_profile.get('drivers_license') else 'Nej'}
-- Erfarenhet: {cv_summary or 'Kundtjänst, butik, restaurang, café'}
+- Erfarenhet: {cv_summary or 'Ej angivet'}
 """
 
     prompt = f"""Analysera om denna jobbsökare verkar kvalificerad för jobbet nedan.
