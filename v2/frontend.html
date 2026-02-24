@@ -477,14 +477,12 @@
                 if (!feedback.trim()) return;
                 setSavingFeedback(true);
                 try {
-                    await authFetch('/api/user/ai-feedback', {
+                    // Use smart endpoint so feedback also updates preferences (avoid/like phrases)
+                    const res = await authFetch('/api/user/ai-feedback/smart', {
                         method: 'POST',
-                        body: JSON.stringify({
-                            feedback_text: feedback,
-                            feedback_type: 'cover_letter',
-                            applies_to_branscher: result?.matched_bransch ? [result.matched_bransch] : null
-                        })
+                        body: JSON.stringify({ text: feedback })
                     });
+                    const data = await res.json();
                     setFeedback('');
                     setShowFeedback(false);
                     setFeedbackSaved(true);
