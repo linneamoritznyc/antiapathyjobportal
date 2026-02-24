@@ -4633,6 +4633,9 @@
             const [anecdotes, setAnecdotes] = useState([]);
             const [showAnecdoteForm, setShowAnecdoteForm] = useState(false);
             const [newAnecdote, setNewAnecdote] = useState({ title: '', type: 'anecdote', content: '', keywords: '' });
+            const [editingAnecdoteId, setEditingAnecdoteId] = useState(null);
+            const [editAnecdoteData, setEditAnecdoteData] = useState({ title: '', type: 'anecdote', content: '', keywords: '' });
+            const [savingAnecdoteEdit, setSavingAnecdoteEdit] = useState(false);
 
             // AI feedback state
             const [feedbackItems, setFeedbackItems] = useState([]);
@@ -4756,6 +4759,41 @@
                         setAnecdotes(prev => prev.filter(a => a.id !== id));
                     }
                 } catch(e) {}
+            };
+
+            const startEditAnecdote = (a) => {
+                setEditingAnecdoteId(a.id);
+                setEditAnecdoteData({
+                    title: a.title || '',
+                    type: a.type || 'anecdote',
+                    content: a.content || '',
+                    keywords: (a.keywords || []).join(', ')
+                });
+            };
+
+            const saveAnecdoteEdit = async () => {
+                if (!editAnecdoteData.title.trim() || !editAnecdoteData.content.trim()) return;
+                setSavingAnecdoteEdit(true);
+                try {
+                    const keywords = editAnecdoteData.keywords
+                        ? editAnecdoteData.keywords.split(',').map(k => k.trim()).filter(Boolean)
+                        : [];
+                    const res = await authFetch(`/api/user/anecdotes/${editingAnecdoteId}`, {
+                        method: 'PATCH',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ ...editAnecdoteData, keywords })
+                    });
+                    if (res.ok) {
+                        setEditingAnecdoteId(null);
+                        await fetchAnecdotes();
+                    } else {
+                        const err = await res.json().catch(() => ({}));
+                        alert(err.detail || 'Kunde inte uppdatera. Försök igen.');
+                    }
+                } catch(e) {
+                    alert('Nätverksfel — kunde inte uppdatera.');
+                }
+                setSavingAnecdoteEdit(false);
             };
 
             // ---- AI Feedback (free-form) ----
@@ -5284,12 +5322,42 @@
                     <div className="bg-white rounded-xl p-6 border border-slate-200">
                         <div className="flex items-center justify-between mb-1">
                             <h3 className="text-lg font-semibold">Mina anekdoter & hobbys</h3>
-                            <button
-                                onClick={() => setShowAnecdoteForm(!showAnecdoteForm)}
-                                className="px-3 py-1.5 bg-indigo-600 text-white text-xs rounded-lg hover:bg-indigo-700"
-                            >
-                                {showAnecdoteForm ? 'Avbryt' : '+ Lägg till'}
-                            </button>
+                            <div className="flex items-center gap-2">
+                                {anecdotes.length > 0 && (
+                                    <>
+                                        <button
+                                            onClick={async () => {
+                                                const res = await authFetch('/api/user/anecdotes/export?format=txt');
+                                                const blob = await res.blob();
+                                                const url = URL.createObjectURL(blob);
+                                                const a = document.createElement('a');
+                                                a.href = url; a.download = 'Anekdoter_Hobbys.txt'; a.click();
+                                                URL.revokeObjectURL(url);
+                                            }}
+                                            className="px-2 py-1.5 bg-slate-100 text-slate-600 text-xs rounded-lg hover:bg-slate-200"
+                                            title="Ladda ner som TXT"
+                                        >TXT</button>
+                                        <button
+                                            onClick={async () => {
+                                                const res = await authFetch('/api/user/anecdotes/export?format=pdf');
+                                                const blob = await res.blob();
+                                                const url = URL.createObjectURL(blob);
+                                                const a = document.createElement('a');
+                                                a.href = url; a.download = 'Anekdoter_Hobbys.pdf'; a.click();
+                                                URL.revokeObjectURL(url);
+                                            }}
+                                            className="px-2 py-1.5 bg-slate-100 text-slate-600 text-xs rounded-lg hover:bg-slate-200"
+                                            title="Ladda ner som PDF"
+                                        >PDF</button>
+                                    </>
+                                )}
+                                <button
+                                    onClick={() => setShowAnecdoteForm(!showAnecdoteForm)}
+                                    className="px-3 py-1.5 bg-indigo-600 text-white text-xs rounded-lg hover:bg-indigo-700"
+                                >
+                                    {showAnecdoteForm ? 'Avbryt' : '+ Lägg till'}
+                                </button>
+                            </div>
                         </div>
                         <p className="text-sm text-slate-500 mb-4">
                             Personliga historier och hobbys som AI kan väva in i dina personliga brev när de är relevanta.
@@ -5360,29 +5428,78 @@
                             <div className="space-y-3">
                                 {anecdotes.map(a => (
                                     <div key={a.id} className="bg-slate-50 rounded-lg p-4 border border-slate-100">
-                                        <div className="flex items-start justify-between">
-                                            <div className="flex-1 min-w-0">
-                                                <div className="flex items-center gap-2 mb-1">
-                                                    <span className="text-sm">{a.type === 'hobby' ? '🏋️' : '📖'}</span>
-                                                    <span className="text-sm font-semibold text-slate-700">{a.title}</span>
-                                                    <span className="px-1.5 py-0.5 text-[10px] rounded-full bg-slate-200 text-slate-500 uppercase">
-                                                        {a.type === 'hobby' ? 'Hobby' : 'Anekdot'}
-                                                    </span>
-                                                </div>
-                                                <p className="text-sm text-slate-600 mb-2">{a.content}</p>
-                                                {a.keywords && a.keywords.length > 0 && (
-                                                    <div className="flex flex-wrap gap-1">
-                                                        {a.keywords.map((kw, ki) => (
-                                                            <span key={ki} className="px-1.5 py-0.5 bg-indigo-50 text-indigo-600 text-[10px] rounded-full">{kw}</span>
-                                                        ))}
+                                        {editingAnecdoteId === a.id ? (
+                                            /* --- EDIT MODE --- */
+                                            <div className="space-y-3">
+                                                <div className="flex gap-3">
+                                                    <div className="flex-1">
+                                                        <label className="text-xs font-medium text-slate-600 block mb-1">Titel</label>
+                                                        <input type="text" value={editAnecdoteData.title}
+                                                            onChange={e => setEditAnecdoteData(prev => ({...prev, title: e.target.value}))}
+                                                            className="w-full text-sm px-3 py-2 border border-slate-200 rounded-lg focus:ring-2 focus:ring-indigo-500" />
                                                     </div>
-                                                )}
+                                                    <div>
+                                                        <label className="text-xs font-medium text-slate-600 block mb-1">Typ</label>
+                                                        <select value={editAnecdoteData.type}
+                                                            onChange={e => setEditAnecdoteData(prev => ({...prev, type: e.target.value}))}
+                                                            className="text-sm px-3 py-2 border border-slate-200 rounded-lg focus:ring-2 focus:ring-indigo-500">
+                                                            <option value="anecdote">Anekdot</option>
+                                                            <option value="hobby">Hobby</option>
+                                                        </select>
+                                                    </div>
+                                                </div>
+                                                <div>
+                                                    <label className="text-xs font-medium text-slate-600 block mb-1">Innehåll</label>
+                                                    <textarea value={editAnecdoteData.content}
+                                                        onChange={e => setEditAnecdoteData(prev => ({...prev, content: e.target.value}))}
+                                                        rows={3}
+                                                        className="w-full text-sm px-3 py-2 border border-slate-200 rounded-lg focus:ring-2 focus:ring-indigo-500" />
+                                                </div>
+                                                <div>
+                                                    <label className="text-xs font-medium text-slate-600 block mb-1">Nyckelord (kommaseparerade)</label>
+                                                    <input type="text" value={editAnecdoteData.keywords}
+                                                        onChange={e => setEditAnecdoteData(prev => ({...prev, keywords: e.target.value}))}
+                                                        className="w-full text-sm px-3 py-2 border border-slate-200 rounded-lg focus:ring-2 focus:ring-indigo-500" />
+                                                </div>
+                                                <div className="flex gap-2">
+                                                    <button onClick={saveAnecdoteEdit} disabled={savingAnecdoteEdit || !editAnecdoteData.title.trim() || !editAnecdoteData.content.trim()}
+                                                        className="px-4 py-2 bg-indigo-600 text-white text-sm rounded-lg hover:bg-indigo-700 disabled:opacity-40">
+                                                        {savingAnecdoteEdit ? 'Sparar...' : 'Spara'}
+                                                    </button>
+                                                    <button onClick={() => setEditingAnecdoteId(null)}
+                                                        className="px-4 py-2 bg-slate-200 text-slate-600 text-sm rounded-lg hover:bg-slate-300">
+                                                        Avbryt
+                                                    </button>
+                                                </div>
                                             </div>
-                                            <button
-                                                onClick={() => deleteAnecdote(a.id)}
-                                                className="text-red-400 hover:text-red-600 text-sm ml-3 flex-shrink-0"
-                                            >✕</button>
-                                        </div>
+                                        ) : (
+                                            /* --- VIEW MODE --- */
+                                            <div className="flex items-start justify-between">
+                                                <div className="flex-1 min-w-0">
+                                                    <div className="flex items-center gap-2 mb-1">
+                                                        <span className="text-sm">{a.type === 'hobby' ? '🏋️' : '📖'}</span>
+                                                        <span className="text-sm font-semibold text-slate-700">{a.title}</span>
+                                                        <span className="px-1.5 py-0.5 text-[10px] rounded-full bg-slate-200 text-slate-500 uppercase">
+                                                            {a.type === 'hobby' ? 'Hobby' : 'Anekdot'}
+                                                        </span>
+                                                    </div>
+                                                    <p className="text-sm text-slate-600 mb-2">{a.content}</p>
+                                                    {a.keywords && a.keywords.length > 0 && (
+                                                        <div className="flex flex-wrap gap-1">
+                                                            {a.keywords.map((kw, ki) => (
+                                                                <span key={ki} className="px-1.5 py-0.5 bg-indigo-50 text-indigo-600 text-[10px] rounded-full">{kw}</span>
+                                                            ))}
+                                                        </div>
+                                                    )}
+                                                </div>
+                                                <div className="flex items-center gap-1 ml-3 flex-shrink-0">
+                                                    <button onClick={() => startEditAnecdote(a)}
+                                                        className="text-slate-400 hover:text-indigo-600 text-sm" title="Redigera">✎</button>
+                                                    <button onClick={() => deleteAnecdote(a.id)}
+                                                        className="text-red-400 hover:text-red-600 text-sm">✕</button>
+                                                </div>
+                                            </div>
+                                        )}
                                     </div>
                                 ))}
                             </div>
@@ -8283,7 +8400,10 @@
                     });
                     const data = await res.json();
 
-                    if (data.success) {
+                    if (res.status === 409) {
+                        // Already applied — show friendly message instead of cryptic error
+                        alert(`Du har redan sökt detta jobb! Kolla fliken Ansökningar för att se status.`);
+                    } else if (data.success) {
                         setApplyResult(data);
                         setShowApplyModal(true);
                         if (localStorage.getItem('auth_token')) {

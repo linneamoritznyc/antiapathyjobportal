@@ -1838,8 +1838,9 @@ async def scrape_jobs(request: JobSearchRequest = None, req: Request = None):
     # Save to database if configured
     saved_count = await save_jobs_to_db(unique_jobs)
 
-    # Filter out jobs the user already acted on (applied, rejected, saved)
-    # so they don't reappear in fresh scrape results — Tinder-style: once acted on, it's gone.
+    # Filter out jobs the user already acted on (applied, rejected, etc.)
+    # so they don't reappear in fresh scrape results. Saved jobs are NOT hidden
+    # — they stay discoverable until the user actually applies or rejects them.
     user_id = await get_user_id_from_request(req) if req else None
     if user_id and unique_jobs:
         try:
@@ -1850,8 +1851,10 @@ async def scrape_jobs(request: JobSearchRequest = None, req: Request = None):
                     "action": "in.(applied,rejected)",
                     "select": "job_id"
                 }),
+                # Only hide jobs with terminal statuses — NOT 'saved' (user may want to rediscover)
                 db_request("GET", "applications", params={
                     "user_id": f"eq.{user_id}",
+                    "status": "in.(sent,draft,interview,offer,rejected,skipped)",
                     "select": "job_id"
                 })
             )
@@ -1902,11 +1905,11 @@ async def list_jobs(request: Request, limit: int = 50, offset: int = 0):
             "user_id": f"eq.{user_id}",
             "select": "job_id,action"
         })
-        # Also check applications table — belt-and-suspenders so applied jobs
+        # Also check applications table — belt-and-suspenders so applied/saved jobs
         # are hidden even if the interaction log silently failed
         applications_task = db_request("GET", "applications", params={
             "user_id": f"eq.{user_id}",
-            "status": "in.(sent,draft)",
+            "status": "in.(sent,draft,saved)",
             "select": "job_id"
         })
         # Fetch user's preferred locations for server-side geo filtering
@@ -3214,6 +3217,20 @@ async def apply_with_cv(request: Request, job_id: str):
     """
     # Get user_id from auth token (optional - works without login too)
     user_id = await get_user_id_from_request(request)
+
+    # Check if user already applied to this job (prevent duplicate applications)
+    if user_id:
+        existing = await db_request("GET", "applications", params={
+            "user_id": f"eq.{user_id}",
+            "job_id": f"eq.{job_id}",
+            "status": "in.(sent,draft,interview,offer)",
+            "select": "id,status"
+        })
+        if existing:
+            raise HTTPException(
+                status_code=409,
+                detail=f"Du har redan sökt detta jobb (status: {existing[0].get('status', 'okänd')})"
+            )
 
     # Parse request body (may contain job data as fallback)
     try:
@@ -8924,6 +8941,13 @@ async def create_user_anecdote(request: Request):
     if anecdote_type not in ("anecdote", "hobby"):
         raise HTTPException(status_code=400, detail="Typ måste vara 'anecdote' eller 'hobby'")
 
+    # Enforce max 30 anecdotes+hobbies per user
+    existing = await db_request("GET", "user_anecdotes", params={
+        "user_id": f"eq.{user_id}", "select": "id"
+    })
+    if existing and len(existing) >= 30:
+        raise HTTPException(status_code=400, detail="Max 30 anekdoter och hobbys tillåtna. Ta bort en innan du lägger till fler.")
+
     result = await db_request("POST", "user_anecdotes", data={
         "user_id": user_id,
         "title": title,
@@ -8938,6 +8962,32 @@ async def create_user_anecdote(request: Request):
     return {"success": True, "anecdote": result[0] if result else None}
 
 
+@app.patch("/api/user/anecdotes/{anecdote_id}")
+async def update_user_anecdote(anecdote_id: str, request: Request):
+    """Update an existing anecdote or hobby"""
+    user_id = await get_user_id_from_request(request, required=True)
+    body = await request.json()
+
+    update_data = {}
+    if "title" in body:
+        update_data["title"] = body["title"].strip()
+    if "type" in body:
+        if body["type"] not in ("anecdote", "hobby"):
+            raise HTTPException(status_code=400, detail="Typ måste vara 'anecdote' eller 'hobby'")
+        update_data["type"] = body["type"]
+    if "content" in body:
+        update_data["content"] = body["content"].strip()
+    if "keywords" in body:
+        update_data["keywords"] = body["keywords"]
+
+    if not update_data:
+        raise HTTPException(status_code=400, detail="Inga fält att uppdatera")
+
+    result = await db_request("PATCH", "user_anecdotes", data=update_data,
+        params={"id": f"eq.{anecdote_id}", "user_id": f"eq.{user_id}"})
+    return {"success": True, "anecdote": result[0] if result else None}
+
+
 @app.delete("/api/user/anecdotes/{anecdote_id}")
 async def delete_user_anecdote(anecdote_id: str, request: Request):
     """Delete an anecdote or hobby"""
@@ -8945,6 +8995,96 @@ async def delete_user_anecdote(anecdote_id: str, request: Request):
     await db_request("DELETE", "user_anecdotes",
         params={"id": f"eq.{anecdote_id}", "user_id": f"eq.{user_id}"})
     return {"success": True}
+
+
+@app.get("/api/user/anecdotes/export")
+async def export_user_anecdotes(request: Request, format: str = "txt"):
+    """Export anecdotes and hobbies as TXT or PDF"""
+    user_id = await get_user_id_from_request(request, required=True)
+    anecdotes = await db_request("GET", "user_anecdotes",
+        params={"user_id": f"eq.{user_id}", "order": "type.asc,created_at.desc"})
+    anecdotes = anecdotes or []
+
+    # Fetch user name for the header
+    profiles = await db_request("GET", "user_profiles", params={
+        "user_id": f"eq.{user_id}", "select": "full_name"
+    })
+    user_name = profiles[0].get("full_name", "Användare") if profiles else "Användare"
+
+    hobbies = [a for a in anecdotes if a.get("type") == "hobby"]
+    stories = [a for a in anecdotes if a.get("type") == "anecdote"]
+
+    if format == "pdf":
+        from fpdf import FPDF
+        pdf = FPDF()
+        pdf.add_page()
+
+        # Use built-in fonts with latin-1 fallback for Swedish chars
+        pdf.set_auto_page_break(auto=True, margin=20)
+
+        pdf.set_font("Helvetica", "B", 18)
+        pdf.cell(0, 12, f"Anekdoter & Hobbys", new_x="LMARGIN", new_y="NEXT")
+        pdf.set_font("Helvetica", "", 11)
+        pdf.cell(0, 8, user_name, new_x="LMARGIN", new_y="NEXT")
+        pdf.ln(6)
+
+        def write_section(title, items):
+            if not items:
+                return
+            pdf.set_font("Helvetica", "B", 14)
+            pdf.cell(0, 10, title, new_x="LMARGIN", new_y="NEXT")
+            pdf.line(10, pdf.get_y(), 200, pdf.get_y())
+            pdf.ln(4)
+            for item in items:
+                pdf.set_font("Helvetica", "B", 11)
+                pdf.cell(0, 7, item.get("title", ""), new_x="LMARGIN", new_y="NEXT")
+                pdf.set_font("Helvetica", "", 10)
+                pdf.multi_cell(0, 5, item.get("content", ""))
+                kws = item.get("keywords") or []
+                if kws:
+                    pdf.set_font("Helvetica", "I", 9)
+                    pdf.cell(0, 6, f"Nyckelord: {', '.join(kws)}", new_x="LMARGIN", new_y="NEXT")
+                pdf.ln(4)
+
+        write_section("Hobbys", hobbies)
+        write_section("Anekdoter", stories)
+
+        pdf_bytes = pdf.output()
+        return Response(
+            content=bytes(pdf_bytes),
+            media_type="application/pdf",
+            headers={"Content-Disposition": f'attachment; filename="Anekdoter_Hobbys_{user_name.replace(" ", "_")}.pdf"'}
+        )
+    else:
+        # TXT format
+        lines = [f"ANEKDOTER & HOBBYS — {user_name}", "=" * 40, ""]
+        if hobbies:
+            lines.append("HOBBYS")
+            lines.append("-" * 20)
+            for h in hobbies:
+                lines.append(f"  {h.get('title', '')}")
+                lines.append(f"  {h.get('content', '')}")
+                kws = h.get("keywords") or []
+                if kws:
+                    lines.append(f"  Nyckelord: {', '.join(kws)}")
+                lines.append("")
+        if stories:
+            lines.append("ANEKDOTER")
+            lines.append("-" * 20)
+            for s in stories:
+                lines.append(f"  {s.get('title', '')}")
+                lines.append(f"  {s.get('content', '')}")
+                kws = s.get("keywords") or []
+                if kws:
+                    lines.append(f"  Nyckelord: {', '.join(kws)}")
+                lines.append("")
+
+        txt_content = "\n".join(lines)
+        return Response(
+            content=txt_content.encode("utf-8"),
+            media_type="text/plain; charset=utf-8",
+            headers={"Content-Disposition": f'attachment; filename="Anekdoter_Hobbys_{user_name.replace(" ", "_")}.txt"'}
+        )
 
 
 # ============== STYLE FIELD EDITING ==============
