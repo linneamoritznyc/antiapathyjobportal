@@ -2063,6 +2063,9 @@ async def save_application(request: SaveApplicationRequest, req: Request):
         "status": request.status,
         "created_at": datetime.now().isoformat()
     }
+    # Set sent_at when marking as sent
+    if request.status == "sent":
+        data["sent_at"] = datetime.now().isoformat()
 
     result = await db_request("POST", "applications", data=data, on_conflict="user_id,job_id")
     if result:
