@@ -1029,11 +1029,11 @@ async def generate_cover_letter(job: Dict, user_cv_text: Optional[str] = None, u
         except Exception:
             pass
 
-    # Get relevant experience — prefer user's master CV, then vibe CV text, then defaults
+    # Get relevant experience — prefer user's master CV, then bransch-CV text, then defaults
     category = detect_job_category(job.get("title", ""), job.get("full_description", job.get("description", "")))
     experience = user_cv_text
 
-    # If no vibe CV text, try to fetch master CV experiences for richer content
+    # If no bransch-CV text, try to fetch master CV experiences for richer content
     if not experience and user_id:
         try:
             master_exps = await db_request("GET", "master_cv_experiences", params={
@@ -3222,7 +3222,7 @@ async def apply_with_cv(request: Request, job_id: str):
     if user_id:
         import asyncio as _asyncio
         cvs_result, profiles_result = await _asyncio.gather(
-            db_request("GET", "user_cvs", params={"user_id": f"eq.{user_id}", "vibe_id": f"eq.{best_vibe}"}),
+            db_request("GET", "user_cvs", params={"user_id": f"eq.{user_id}", "vibe_id": f"eq.{best_bransch}"}),
             db_request("GET", "user_profiles", params={"user_id": f"eq.{user_id}"})
         )
         cv = cvs_result[0] if cvs_result else None
@@ -3268,8 +3268,8 @@ async def apply_with_cv(request: Request, job_id: str):
             "contact_email": contact_email,
             "contact_name": contact_name
         },
-        "matched_vibe": best_vibe,
-        "cv_filename": get_cv_pdf_filename(best_vibe),
+        "matched_bransch": best_bransch,
+        "cv_filename": get_cv_pdf_filename(best_bransch),
         "cv": cv,
         "cover_letter": cover_letter,
         "draft_created": False,
@@ -3524,7 +3524,7 @@ async def save_gmail_draft_with_attachments(request: Request, job_id: str):
         body = {}
 
     cover_letter_text = body.get("cover_letter", "")
-    vibe = body.get("vibe", "customerservice")
+    bransch = body.get("bransch", "customerservice")
     job = body.get("job", {})
 
     if not cover_letter_text:
@@ -3583,10 +3583,10 @@ async def save_gmail_draft_with_attachments(request: Request, job_id: str):
         logger.error(f"Cover letter PDF generation failed: {e}")
 
     # 2. Matching CV PDF
-    cv_pdf_bytes = get_cv_pdf_bytes(vibe)
+    cv_pdf_bytes = get_cv_pdf_bytes(bransch)
     if cv_pdf_bytes:
         attachments.append({
-            "filename": get_cv_pdf_filename(vibe),
+            "filename": get_cv_pdf_filename(bransch),
             "data": cv_pdf_bytes
         })
 
@@ -3600,7 +3600,7 @@ async def save_gmail_draft_with_attachments(request: Request, job_id: str):
     return {
         "success": True,
         "draft_id": draft_id,
-        "cv_filename": get_cv_pdf_filename(vibe),
+        "cv_filename": get_cv_pdf_filename(bransch),
         "attachments_count": len(attachments)
     }
 
@@ -7462,8 +7462,8 @@ async def privacy_policy_page():
 
 class AIFeedback(BaseModel):
     feedback_text: str
-    feedback_type: str = "cover_letter"  # cover_letter, new_vibe_request, exclude_jobs, general
-    applies_to_vibes: Optional[List[str]] = None
+    feedback_type: str = "cover_letter"  # cover_letter, new_bransch_request, exclude_jobs, general
+    applies_to_branscher: Optional[List[str]] = None
 
 
 @app.post("/api/user/ai-feedback")
@@ -7475,7 +7475,7 @@ async def save_ai_feedback(request: Request, feedback: AIFeedback):
         "user_id": user_id,
         "feedback_text": feedback.feedback_text,
         "feedback_type": feedback.feedback_type,
-        "applies_to_branscher": feedback.applies_to_vibes or [],
+        "applies_to_branscher": feedback.applies_to_branscher or [],
         "is_active": True,
         "created_at": datetime.now().isoformat()
     }
@@ -7786,7 +7786,7 @@ async def admin_user_data(email: str):
             "education": len(education),
             "skills": len(skills),
             "cvs": len(cvs),
-            "cv_vibes": [cv.get("vibe_id") for cv in cvs],
+            "cv_branscher": [cv.get("vibe_id") for cv in cvs],
             "branscher": len(branscher),
             "cover_letter_prefs": len(cover_prefs),
             "job_prefs": len(job_prefs),
@@ -7849,7 +7849,7 @@ async def admin_migration_status():
         "skills": {"count": len(skills)},
         "cvs": {
             "count": len(cvs),
-            "vibes": sorted(actual_cvs),
+            "branscher": sorted(actual_cvs),
             "missing": sorted(missing_cvs) if missing_cvs else "ALL 8 PRESENT"
         },
         "volunteer": {"count": len(volunteer)},
@@ -7920,8 +7920,8 @@ def extract_text_from_file(file_content: bytes, filename: str) -> str:
 
 # ============== FILE UPLOAD ENDPOINTS ==============
 
-@app.post("/api/upload/cv/{vibe_id}")
-async def upload_cv(vibe_id: str, request: Request):
+@app.post("/api/upload/cv/{bransch_id}")
+async def upload_cv(bransch_id: str, request: Request):
     """Upload CV in various formats (PDF, DOCX, DOC, TXT, RTF, ODT)"""
     user_id = await get_user_id_from_request(request, required=True)
 
@@ -7956,7 +7956,7 @@ async def upload_cv(vibe_id: str, request: Request):
     file_content = await file.read()
 
     # Upload to Supabase Storage
-    file_path = f"{user_id}/{vibe_id}_cv.{ext}"
+    file_path = f"{user_id}/{bransch_id}_cv.{ext}"
 
     async with httpx.AsyncClient() as client:
         upload_response = await client.post(
@@ -7987,7 +7987,7 @@ async def upload_cv(vibe_id: str, request: Request):
     update_result = await db_request(
         "PATCH",
         "user_cvs",
-        params={"user_id": f"eq.{user_id}", "vibe_id": f"eq.{vibe_id}"},
+        params={"user_id": f"eq.{user_id}", "vibe_id": f"eq.{bransch_id}"},
         data={
             "pdf_url": pdf_url,
             "cv_text": cv_text[:50000] if cv_text else None  # Limit text size
@@ -7996,13 +7996,13 @@ async def upload_cv(vibe_id: str, request: Request):
 
     if not update_result or len(update_result) == 0:
         # If no existing record, create one
-        vibe_names = {
-            "restaurant": "Restaurang & Café",
+        bransch_names = {
+            "restaurant": "Restaurang & Cafe",
             "retail": "Butik & Kassa",
-            "customerservice": "Kundtjänst & Support",
+            "customerservice": "Kundtjanst & Support",
             "tech": "Tech & Kontor",
-            "healthcare": "Vård & Omsorg",
-            "industry": "Trädgård & Industri",
+            "healthcare": "Vard & Omsorg",
+            "industry": "Tradgard & Industri",
             "reception": "Hotell & Reception",
             "contentmoderation": "Content & Moderation"
         }
@@ -8012,8 +8012,8 @@ async def upload_cv(vibe_id: str, request: Request):
             "user_cvs",
             data={
                 "user_id": user_id,
-                "vibe_id": vibe_id,
-                "vibe_name": vibe_names.get(vibe_id, vibe_id),
+                "vibe_id": bransch_id,
+                "vibe_name": bransch_names.get(bransch_id, bransch_id),
                 "pdf_url": pdf_url,
                 "cv_text": cv_text[:50000] if cv_text else None
             }
@@ -8022,7 +8022,7 @@ async def upload_cv(vibe_id: str, request: Request):
     return {
         "success": True,
         "pdf_url": pdf_url,
-        "vibe_id": vibe_id
+        "bransch_id": bransch_id
     }
 
 

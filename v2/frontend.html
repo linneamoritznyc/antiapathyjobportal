@@ -7836,7 +7836,7 @@
         const App = () => {
             const [activeTab, setActiveTab] = useState('jobs');
             const [jobs, setJobs] = useState([]);
-            const [vibes, setVibes] = useState([]);
+            const [branscher, setBranscher] = useState([]);
             const [userCVs, setUserCVs] = useState([]);
             const [applications, setApplications] = useState([]);
             const [stats, setStats] = useState({});
@@ -7855,7 +7855,7 @@
             const [showQualWarning, setShowQualWarning] = useState(false);
             const [qualCheckResult, setQualCheckResult] = useState(null);
             const [qualCheckingJob, setQualCheckingJob] = useState(null);
-            const [selectedVibe, setSelectedVibe] = useState(null);
+            const [selectedBransch, setSelectedBransch] = useState(null);
             const [selectedCVText, setSelectedCVText] = useState('');
             const [masterCV, setMasterCV] = useState(null);
             const [savingMasterCV, setSavingMasterCV] = useState(false);
@@ -7864,7 +7864,7 @@
             // Fetch initial data
             useEffect(() => {
                 fetchJobs();
-                fetchVibes();
+                fetchBranscher();
                 fetchUserCVs();
                 fetchApplications();
                 fetchStats();
@@ -7947,14 +7947,14 @@
                 setLoadingMore(false);
             };
 
-            const fetchVibes = async () => {
-                console.log('[DEBUG] Fetching CV vibes...');
-                const res = await fetch('/api/cv/vibes');
+            const fetchBranscher = async () => {
+                console.log('[DEBUG] Fetching CV branscher...');
+                const res = await fetch('/api/cv/branscher');
                 const data = await res.json();
-                console.log('[DEBUG] CV vibes response:', data);
+                console.log('[DEBUG] CV branscher response:', data);
                 if (data.success) {
-                    setVibes(data.vibes || []);
-                    console.log('[DEBUG] Vibes set:', data.vibes?.length || 0, 'vibes');
+                    setBranscher(data.branscher || []);
+                    console.log('[DEBUG] Branscher set:', data.branscher?.length || 0, 'branscher');
                 }
             };
 
@@ -8022,7 +8022,7 @@
                 const res = await authFetch('/api/stats');
                 const data = await res.json();
                 if (data.success) {
-                    setStats({...data.stats, cv_vibes: userCVs.length});
+                    setStats({...data.stats, bransch_cvs: userCVs.length});
                 }
             };
 
@@ -8232,29 +8232,29 @@
                 await doApply(job);
             };
 
-            const handleSelectVibe = (vibe, userCV) => {
-                setSelectedVibe(vibe);
+            const handleSelectBransch = (bransch, userCV) => {
+                setSelectedBransch(bransch);
                 setSelectedCVText(userCV?.cv_text || '');
                 setShowCVModal(true);
             };
 
-            const handleSaveCV = async (vibeId, text) => {
+            const handleSaveCV = async (branschId, text) => {
                 // Save or update CV
-                const existingCV = userCVs.find(cv => cv.vibe_id === vibeId);
+                const existingCV = userCVs.find(cv => cv.vibe_id === branschId);
 
                 if (existingCV) {
                     // Update
-                    await fetch(`/api/cv/${vibeId}?cv_text=${encodeURIComponent(text)}`, { method: 'PATCH' });
+                    await fetch(`/api/cv/${branschId}?cv_text=${encodeURIComponent(text)}`, { method: 'PATCH' });
                 } else {
                     // Create (simplified - in real app, would need full data)
-                    const vibe = vibes.find(v => v.id === vibeId);
+                    const bransch = branscher.find(v => v.id === branschId);
                     await fetch('/api/cv/all', {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
                         body: JSON.stringify({
-                            vibe_id: vibeId,
-                            vibe_name: vibe?.name,
-                            vibe_emoji: vibe?.emoji,
+                            vibe_id: branschId,
+                            vibe_name: bransch?.name,
+                            vibe_emoji: bransch?.emoji,
                             cv_text: text
                         })
                     });
@@ -8264,7 +8264,7 @@
                 setShowCVModal(false);
             };
 
-            const handleGenerateVibes = async () => {
+            const handleGenerateBranscher = async () => {
                 setGenerating(true);
                 try {
                     const res = await authFetch('/api/cv/generate-branscher', {
@@ -8312,9 +8312,9 @@
 
             // Upload CV PDF
             const [uploadingCV, setUploadingCV] = useState(false);
-            const [uploadVibeId, setUploadVibeId] = useState(null);
+            const [uploadBranschId, setUploadBranschId] = useState(null);
 
-            const handleUploadCV = async (vibe) => {
+            const handleUploadCV = async (bransch) => {
                 const input = document.createElement('input');
                 input.type = 'file';
                 input.accept = '.pdf,.docx,.doc,.txt,.rtf,.odt';
@@ -8331,14 +8331,14 @@
                     }
 
                     setUploadingCV(true);
-                    setUploadVibeId(vibe.id);
+                    setUploadBranschId(bransch.id);
 
                     try {
                         const token = localStorage.getItem('auth_token');
                         const formData = new FormData();
                         formData.append('file', file);
 
-                        const res = await fetch(`/api/upload/cv/${vibe.id}`, {
+                        const res = await fetch(`/api/upload/cv/${bransch.id}`, {
                             method: 'POST',
                             headers: {
                                 'Authorization': `Bearer ${token}`
@@ -8348,7 +8348,7 @@
 
                         const data = await res.json();
                         if (data.success) {
-                            alert(`✓ CV för ${vibe.name} uppladdad!`);
+                            alert(`✓ CV för ${bransch.name} uppladdad!`);
                             await fetchUserCVs();
                         } else {
                             alert(data.detail || 'Kunde inte ladda upp CV. Försök igen.');
@@ -8359,7 +8359,7 @@
                     }
 
                     setUploadingCV(false);
-                    setUploadVibeId(null);
+                    setUploadBranschId(null);
                 };
                 input.click();
             };
@@ -9057,7 +9057,7 @@
 
                     <CVModal
                         isOpen={showCVModal}
-                        vibe={selectedVibe}
+                        bransch={selectedBransch}
                         cvText={selectedCVText}
                         onClose={() => setShowCVModal(false)}
                         onSave={handleSaveCV}

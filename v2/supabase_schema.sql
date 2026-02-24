@@ -53,7 +53,7 @@ CREATE TABLE IF NOT EXISTS user_profiles (
 
 -- ============== NEW MULTI-USER PREFERENCE TABLES ==============
 
--- User-defined CV branscher/industries (replaces hard-coded CV_VIBES)
+-- User-defined CV branscher/industries (replaces hard-coded CV_BRANSCHER)
 CREATE TABLE IF NOT EXISTS user_cv_branscher (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     user_id TEXT NOT NULL,
@@ -82,7 +82,7 @@ CREATE TABLE IF NOT EXISTS user_cover_letter_preferences (
     sign_off_name TEXT,
     sign_off_phone TEXT,
     sign_off_email TEXT,
-    priority_experiences_per_vibe JSONB,  -- {"restaurant": ["Max Hamburgare"], "tech": ["Clubhouse"]}
+    priority_experiences_per_vibe JSONB,  -- {"restaurant": ["Max Hamburgare"], "tech": ["Clubhouse"]} (column uses "vibe" but means "bransch")
     custom_ai_instructions TEXT,  -- Free-form additional rules
     writing_style TEXT,             -- How the letter is structured (from AI analysis)
     avoid_phrases JSONB DEFAULT '[]'::jsonb,  -- Phrases/clichés the user never uses
@@ -130,7 +130,7 @@ CREATE TABLE IF NOT EXISTS user_ai_feedback (
     created_at TIMESTAMPTZ DEFAULT NOW()
 );
 
--- Education entries (same for all CV vibes)
+-- Education entries (same for all bransch-CVer)
 CREATE TABLE IF NOT EXISTS user_education (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     user_id TEXT NOT NULL,
@@ -190,7 +190,7 @@ CREATE TABLE IF NOT EXISTS user_experience_tags (
     UNIQUE(experience_id, bransch_id)
 );
 
--- Volunteer work (same for all CV vibes)
+-- Volunteer work (same for all bransch-CVer)
 CREATE TABLE IF NOT EXISTS user_volunteer (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     user_id TEXT NOT NULL,
@@ -203,7 +203,7 @@ CREATE TABLE IF NOT EXISTS user_volunteer (
     created_at TIMESTAMPTZ DEFAULT NOW()
 );
 
--- Awards (same for all CV vibes)
+-- Awards (same for all bransch-CVer)
 CREATE TABLE IF NOT EXISTS user_awards (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     user_id TEXT NOT NULL,
@@ -225,7 +225,7 @@ CREATE TABLE IF NOT EXISTS user_certifications (
     created_at TIMESTAMPTZ DEFAULT NOW()
 );
 
--- Skills per category (different vibes show different skills)
+-- Skills per category (different branscher show different skills)
 CREATE TABLE IF NOT EXISTS user_skills (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     user_id TEXT NOT NULL,
@@ -419,13 +419,15 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql;
 
--- Generated CV versions (different "vibes") — one per industry per user
+-- Generated CV versions (different branscher) — one per industry per user
+-- NOTE: DB columns still use "vibe_id"/"vibe_name"/"vibe_emoji" (legacy naming).
+-- The app calls these "branscher". Do NOT rename DB columns.
 CREATE TABLE IF NOT EXISTS user_cvs (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     user_id TEXT NOT NULL,
-    vibe_id TEXT NOT NULL,  -- 'restaurant', 'tech', 'retail', etc.
-    vibe_name TEXT,
-    vibe_emoji TEXT,
+    vibe_id TEXT NOT NULL,  -- bransch ID: 'restaurant', 'tech', 'retail', etc. (column named "vibe_id" for legacy reasons)
+    vibe_name TEXT,         -- bransch display name (legacy column name)
+    vibe_emoji TEXT,        -- bransch emoji (legacy column name)
     cv_text TEXT NOT NULL,
     pdf_url TEXT,           -- Added 2026-02-17: Supabase Storage URL for uploaded/generated PDF
     -- Extra columns in live DB (not used by backend code, but exist)
@@ -441,12 +443,13 @@ CREATE TABLE IF NOT EXISTS user_cvs (
 
 -- Industry-specific CV variants (read by /api/bransch-cvs, shown in MinaCVPage)
 -- Added 2026-02-17: table was referenced in code but never created
+-- NOTE: DB columns use "vibe_id"/"vibe_name"/"vibe_emoji" (legacy naming). App calls these "branscher".
 CREATE TABLE IF NOT EXISTS bransch_cvs (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     user_id TEXT NOT NULL,
-    vibe_id TEXT NOT NULL,   -- 'restaurant', 'tech', 'retail', etc.
-    vibe_name TEXT,
-    vibe_emoji TEXT,
+    vibe_id TEXT NOT NULL,   -- bransch ID: 'restaurant', 'tech', 'retail', etc. (legacy column name)
+    vibe_name TEXT,          -- bransch display name (legacy column name)
+    vibe_emoji TEXT,         -- bransch emoji (legacy column name)
     cv_text TEXT,
     pdf_url TEXT,            -- Supabase Storage URL for downloadable PDF
     created_at TIMESTAMPTZ DEFAULT NOW(),
@@ -565,9 +568,9 @@ CREATE INDEX IF NOT EXISTS idx_user_certifications_user ON user_certifications(u
 
 COMMENT ON TABLE jobs IS 'Jobs scraped from Platsbanken (only email-application jobs)';
 COMMENT ON TABLE user_profiles IS 'User profile with personal info and photo';
-COMMENT ON TABLE user_cvs IS 'Generated CV versions for different job categories';
+COMMENT ON TABLE user_cvs IS 'Generated CV versions for different branscher (DB columns use legacy "vibe_id" naming)';
 COMMENT ON TABLE applications IS 'Job applications with status tracking';
-COMMENT ON TABLE user_cv_branscher IS 'User-defined CV branscher/industries (replaces hard-coded CV_VIBES)';
+COMMENT ON TABLE user_cv_branscher IS 'User-defined CV branscher/industries (replaces hard-coded CV_BRANSCHER)';
 COMMENT ON TABLE user_cover_letter_preferences IS 'Per-user cover letter style and content preferences';
 COMMENT ON TABLE user_job_preferences IS 'Per-user job search filters and preferences';
 COMMENT ON TABLE user_ai_feedback IS 'User feedback to AI for personalized cover letter generation';
@@ -575,7 +578,7 @@ COMMENT ON TABLE user_experience_tags IS 'Links experiences to branscher with pr
 COMMENT ON TABLE user_certifications IS 'General certifications (körkort, kassahantering, första hjälpen, etc.)';
 COMMENT ON TABLE user_training_letters IS 'User-uploaded training letters for AI style analysis (max 20 per user)';
 COMMENT ON TABLE user_cv_uploads IS 'User-uploaded CVs as PDFs (max 20 per user)';
-COMMENT ON TABLE bransch_cvs IS 'Industry-specific CV variants shown in MinaCVPage';
+COMMENT ON TABLE bransch_cvs IS 'Industry-specific bransch-CV variants shown in MinaCVPage (DB columns use legacy "vibe_id" naming)';
 
 -- CV version history per CV — added from actual DB state (Feb 18 2026)
 CREATE TABLE IF NOT EXISTS user_cv_versions (
