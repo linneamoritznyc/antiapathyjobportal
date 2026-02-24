@@ -315,9 +315,39 @@
             const [downloadingPdf, setDownloadingPdf] = useState(false);
             const [anecdoteHints, setAnecdoteHints] = useState([]);
             const [selectedAnecdotes, setSelectedAnecdotes] = useState([]);
+            const [educationHints, setEducationHints] = useState([]);
+            const [selectedEducation, setSelectedEducation] = useState([]);
             const [reviewingSwedish, setReviewingSwedish] = useState(false);
             const [swedishReviewed, setSwedishReviewed] = useState(false);
             const [reviewFixes, setReviewFixes] = useState(0);
+
+            // Auto-detect which experiences/anecdotes/education are mentioned in the letter
+            const autoSelectMentioned = (letterText, expHints, anecHints, eduHints) => {
+                if (!letterText) return;
+                const lower = letterText.toLowerCase();
+
+                // Match experiences by company name or title
+                const matchedExp = expHints.filter(exp => {
+                    const parts = exp.label.replace(/[()]/g, '').split(/\s+/).filter(w => w.length > 2);
+                    return parts.some(word => lower.includes(word.toLowerCase()));
+                }).map(e => e.id);
+                setSelectedHints(matchedExp);
+
+                // Match anecdotes by title keywords
+                const matchedAnec = anecHints.filter(a => {
+                    const title = a.label.replace(/^[🎯💬]\s*/, '');
+                    const words = title.split(/\s+/).filter(w => w.length > 2);
+                    return words.some(word => lower.includes(word.toLowerCase()));
+                }).map(a => a.id);
+                setSelectedAnecdotes(matchedAnec);
+
+                // Match education by school name
+                const matchedEdu = eduHints.filter(edu => {
+                    const parts = edu.label.split(/\s+/).filter(w => w.length > 2);
+                    return parts.some(word => lower.includes(word.toLowerCase()));
+                }).map(e => e.id);
+                setSelectedEducation(matchedEdu);
+            };
 
             const downloadCoverLetterPdf = async () => {
                 setDownloadingPdf(true);
@@ -344,9 +374,19 @@
                 setDownloadingPdf(false);
             };
 
-            // Load user's actual experiences + anecdotes when modal opens
+            // Load user's actual experiences + anecdotes + education when modal opens
             useEffect(() => {
                 if (isOpen && localStorage.getItem('auth_token')) {
+                    // Load experiences, education, anecdotes — then auto-select what's mentioned
+                    let loadedExp = [], loadedEdu = [], loadedAnec = [];
+
+                    const tryAutoSelect = () => {
+                        const letterText = result?.cover_letter || '';
+                        if (letterText && (loadedExp.length || loadedAnec.length || loadedEdu.length)) {
+                            autoSelectMentioned(letterText, loadedExp, loadedAnec, loadedEdu);
+                        }
+                    };
+
                     authFetch('/api/master-cv').then(res => res.json()).then(data => {
                         const hints = (data.experiences || []).map(exp => {
                             const dates = [exp.start_date, exp.end_date].filter(Boolean).join('-');
@@ -360,7 +400,20 @@
                         // Add B-körkort as a special non-experience hint
                         hints.push({ id: '_korkort', label: 'B-körkort & bil', hint: '- Har B-körkort och tillgång till bil' });
                         setExperienceHints(hints);
+                        loadedExp = hints;
+
+                        // Education
+                        const eduHints = (data.education || []).map(edu => ({
+                            id: edu.id || edu.school,
+                            label: edu.school + (edu.degree ? ` (${edu.degree})` : ''),
+                            hint: `- Utbildning: ${edu.school}${edu.degree ? ', ' + edu.degree : ''}${edu.field_of_study ? ' — ' + edu.field_of_study : ''}`
+                        }));
+                        setEducationHints(eduHints);
+                        loadedEdu = eduHints;
+
+                        tryAutoSelect();
                     }).catch(() => {});
+
                     // Load anecdotes
                     authFetch('/api/user/anecdotes').then(res => res.json()).then(data => {
                         const anecdotes = (data.anecdotes || []).map(a => ({
@@ -369,6 +422,8 @@
                             hint: `- ${a.type === 'hobby' ? 'Hobby' : 'Anekdot'}: ${a.title} — ${a.content}`
                         }));
                         setAnecdoteHints(anecdotes);
+                        loadedAnec = anecdotes;
+                        tryAutoSelect();
                     }).catch(() => {});
                 }
                 setSwedishReviewed(false);
@@ -457,6 +512,14 @@
                         .filter(e => selectedHints.includes(e.id))
                         .map(e => e.hint)
                         .join('\n');
+                    // Include selected education
+                    const eduText = educationHints
+                        .filter(e => selectedEducation.includes(e.id))
+                        .map(e => e.hint)
+                        .join('\n');
+                    if (eduText) {
+                        extraHintText += (extraHintText ? '\n' : '') + eduText;
+                    }
                     // Include selected anecdotes
                     const anecdoteText = anecdoteHints
                         .filter(a => selectedAnecdotes.includes(a.id))
@@ -475,7 +538,8 @@
                     const data = await res.json();
                     if (data.success) {
                         setLetter(data.cover_letter);
-                        setSelectedHints([]);
+                        // Re-detect what the new letter mentions and pre-select those
+                        autoSelectMentioned(data.cover_letter, experienceHints, anecdoteHints, educationHints);
                         setDraftSaved(false);
                     }
                 } catch (err) {
@@ -603,40 +667,66 @@
                                 </span>
                             </div>
 
-                            {/* Experience picker */}
+                            {/* Experience/Education/Anecdote picker — pre-selected based on letter content */}
                             <div className="mt-4 p-3 bg-slate-50 rounded-lg border border-slate-200">
-                                <p className="text-xs font-medium text-slate-600 mb-2">Välj erfarenheter från ditt Master CV att lyfta i brevet:</p>
-                                {experienceHints.length === 0 && (
-                                    <p className="text-xs text-slate-400 mb-2">Inga erfarenheter hittades. Lägg till i Mina CV → Master CV.</p>
+                                <p className="text-xs font-medium text-slate-600 mb-1">Nämns i brevet (klicka bort/i och omgenerera):</p>
+                                <p className="text-[10px] text-slate-400 mb-2">Ibockade = nämns i brevet. Klicka bort det du inte vill ha, klicka i det du vill lägga till.</p>
+
+                                {/* Experience chips */}
+                                {experienceHints.length > 0 && (
+                                    <div className="mb-2">
+                                        <p className="text-[10px] font-medium text-slate-500 mb-1 uppercase tracking-wide">Erfarenheter</p>
+                                        <div className="flex flex-wrap gap-1.5">
+                                            {experienceHints.map(exp => (
+                                                <button
+                                                    key={exp.id}
+                                                    onClick={() => setSelectedHints(prev =>
+                                                        prev.includes(exp.id) ? prev.filter(h => h !== exp.id) : [...prev, exp.id]
+                                                    )}
+                                                    className={`text-xs px-2.5 py-1 rounded-full border transition-colors ${
+                                                        selectedHints.includes(exp.id)
+                                                            ? 'bg-indigo-100 border-indigo-400 text-indigo-700 font-medium'
+                                                            : 'bg-white border-slate-300 text-slate-600 hover:bg-slate-100'
+                                                    }`}
+                                                >
+                                                    {selectedHints.includes(exp.id) ? '✓ ' : ''}{exp.label}
+                                                </button>
+                                            ))}
+                                        </div>
+                                    </div>
                                 )}
-                                <div className="flex flex-wrap gap-1.5">
-                                    {experienceHints.map(exp => (
-                                        <button
-                                            key={exp.id}
-                                            onClick={() => setSelectedHints(prev =>
-                                                prev.includes(exp.id) ? prev.filter(h => h !== exp.id) : [...prev, exp.id]
-                                            )}
-                                            className={`text-xs px-2.5 py-1 rounded-full border transition-colors ${
-                                                selectedHints.includes(exp.id)
-                                                    ? 'bg-indigo-100 border-indigo-400 text-indigo-700 font-medium'
-                                                    : 'bg-white border-slate-300 text-slate-600 hover:bg-slate-100'
-                                            }`}
-                                        >
-                                            {selectedHints.includes(exp.id) ? '✓ ' : ''}{exp.label}
-                                        </button>
-                                    ))}
-                                </div>
-                                <input
-                                    type="text"
-                                    value={customHint}
-                                    onChange={(e) => setCustomHint(e.target.value)}
-                                    placeholder="Skriv egen erfarenhet här, t.ex. 'Jobbade på Volvo som svetsare 2020-2022'"
-                                    className="mt-2 w-full p-2 text-xs border border-slate-300 rounded-lg focus:border-indigo-400 focus:outline-none"
-                                />
+                                {experienceHints.length === 0 && (
+                                    <p className="text-xs text-slate-400 mb-2">Inga erfarenheter hittades. Lägg till i Mina CV.</p>
+                                )}
+
+                                {/* Education chips */}
+                                {educationHints.length > 0 && (
+                                    <div className="mb-2">
+                                        <p className="text-[10px] font-medium text-slate-500 mb-1 uppercase tracking-wide">Utbildning</p>
+                                        <div className="flex flex-wrap gap-1.5">
+                                            {educationHints.map(edu => (
+                                                <button
+                                                    key={edu.id}
+                                                    onClick={() => setSelectedEducation(prev =>
+                                                        prev.includes(edu.id) ? prev.filter(id => id !== edu.id) : [...prev, edu.id]
+                                                    )}
+                                                    className={`text-xs px-2.5 py-1 rounded-full border transition-colors ${
+                                                        selectedEducation.includes(edu.id)
+                                                            ? 'bg-emerald-100 border-emerald-400 text-emerald-700 font-medium'
+                                                            : 'bg-white border-slate-300 text-slate-600 hover:bg-slate-100'
+                                                    }`}
+                                                >
+                                                    {selectedEducation.includes(edu.id) ? '✓ ' : ''}{edu.label}
+                                                </button>
+                                            ))}
+                                        </div>
+                                    </div>
+                                )}
+
                                 {/* Anecdote chips */}
                                 {anecdoteHints.length > 0 && (
-                                    <div className="mt-3">
-                                        <p className="text-xs font-medium text-slate-600 mb-1.5">Anekdoter & hobbys:</p>
+                                    <div className="mb-2">
+                                        <p className="text-[10px] font-medium text-slate-500 mb-1 uppercase tracking-wide">Anekdoter & hobbys</p>
                                         <div className="flex flex-wrap gap-1.5">
                                             {anecdoteHints.map(a => (
                                                 <button
@@ -657,16 +747,20 @@
                                     </div>
                                 )}
 
-                                {(selectedHints.length > 0 || selectedAnecdotes.length > 0 || customHint.trim()) && !regenerating && (
+                                <input
+                                    type="text"
+                                    value={customHint}
+                                    onChange={(e) => setCustomHint(e.target.value)}
+                                    placeholder="Skriv egen erfarenhet, t.ex. 'Jobbade på Volvo som svetsare 2020-2022'"
+                                    className="mt-1 w-full p-2 text-xs border border-slate-300 rounded-lg focus:border-indigo-400 focus:outline-none"
+                                />
+
+                                {!regenerating && (
                                     <button
                                         onClick={regenerateLetter}
                                         className="mt-3 w-full bg-indigo-600 text-white py-2 rounded-lg text-sm font-medium hover:bg-indigo-700"
                                     >
-                                        ✨ Generera om med {
-                                            [selectedHints.length > 0 && `${selectedHints.length} erfarenheter`,
-                                             selectedAnecdotes.length > 0 && `${selectedAnecdotes.length} anekdoter`,
-                                             customHint.trim() && 'egen text'].filter(Boolean).join(' + ') || 'val'
-                                        }
+                                        ✨ Omgenerera brev
                                     </button>
                                 )}
                                 {regenerating && (
