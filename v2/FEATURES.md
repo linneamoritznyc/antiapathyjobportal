@@ -1,6 +1,6 @@
 # Platsbanken-ai — Funktioner & UX per sida
 
-> Uppdaterad: 24 feb 2026 (v2.5 — kvalifikationskontroll fixad)
+> Uppdaterad: 24 feb 2026 (v2.5 — kvalifikationskontroll fixad, Q&A-dokumentation, statusmarkeringar för halvbyggda features)
 
 AI-driven jobbportal för neurodivergenta jobbsökare i Sverige. Skrapar Platsbanken, genererar personliga brev via Claude, skapar Gmail-utkast med bransch-CV.
 
@@ -26,6 +26,7 @@ Besökare som inte är inloggade ser en marknadsföringssida med tre flikar:
 ### Priser
 - Prisnivåer och planer
 - FAQ-sektion
+- **⚠️ PLACEHOLDER** — ingen riktig prismodell eller betalningssystem finns. Needs a decision: freemium, subscription, pay-per-use?
 
 **Supabase-koppling:** Ingen — statisk sida.
 
@@ -87,7 +88,7 @@ Visar jobb som skrapats från Platsbanken och som har **kontakt-e-post** (= kan 
 ### Platsbanken-scraping
 - **Triggas manuellt** — användaren klickar "Sök nya jobb"-knappen (`POST /api/scrape`)
 - **Triggas automatiskt** efter onboarding-quiz (en gång)
-- **Ingen cron/schema** — ingen automatisk scraping i bakgrunden
+- **Ingen cron/schema** — ingen automatisk scraping i bakgrunden. **Ska byggas ut i framtiden?** Needs a decision: daglig cron, scrape vid login, eller manuellt för alltid?
 - **Volym per scrape**: upp till 5 sökord × 15 jobb + 2 breda sökningar × 20 jobb = ~95 jobb, deduplicerade på jobb-ID
 
 ### Toppsektion
@@ -112,7 +113,7 @@ Varje kort visar:
    - **"Hoppa över"** — stänger modalen
    - **"Hoppa över + filtrera bort liknande"** — lägger till föreslagna negativa sökord
    - **Varningen är bara rådgivande** — användaren kan ALLTID söka ändå. Om Haiku-API:t misslyckas → `qualified=true` (fail open).
-   - **"Credit"** = en Claude API-anrop. Att generera ett brev kostar ~1 Sonnet-anrop. Kvalifikationskontrollen kostar ~1 Haiku-anrop (mycket billigare). Det finns inget credit-saldo i appen — det är en kostnadssignal till appägaren.
+   - **"Credit"** = en Claude API-anrop. Att generera ett brev kostar ~1 Sonnet-anrop. Kvalifikationskontrollen kostar ~1 Haiku-anrop (mycket billigare). Det finns inget credit-saldo i appen — det är en kostnadssignal till appägaren. **Ska byggas ut i framtiden?** Needs a decision: per-user credit-system, flat monthly fee, eller obegränsat?
 2. AI genererar personligt brev via `POST /api/jobs/{id}/apply-with-cv`
    - **Status sätts direkt till `sent`** + `sent_at` sätts till nu. Ansökan syns direkt i Ansökningar-fliken.
 3. Brevet visas i redigerbar textarea
@@ -131,7 +132,7 @@ Varje kort visar:
       3. Bilaga 1: Personligt brev som PDF
       4. Bilaga 2: Rätt bransch-CV som PDF
     - **"Markera skickad"** — sätter `status=sent` + `sent_at`. Redundant om man redan klickat "Ansök" (som redan sätter sent). Finns mest för manuella flöden där man sparar jobb först och ansöker utanför appen.
-    - **CV-badge** — visar vilken bransch som matchades. Om inget bransch-CV matchar jobbet faller det tillbaka till **"customerservice"** (kundtjänst) som default.
+    - **CV-badge** — visar vilken bransch som matchades. Om inget bransch-CV matchar jobbet faller det tillbaka till **"customerservice"** (kundtjänst) som default. **Needs a decision:** är customerservice rätt fallback för alla användare, eller borde det vara konfigurerbart?
 
 **Supabase-koppling:**
 
@@ -223,7 +224,7 @@ Hantera Master CV + 9 branschanpassade versioner.
 | Tech & Kontor | 💻 | Tekniska projekt, struktur |
 | Vård & Omsorg | 🏥 | Omtanke, patientsäkerhet |
 | Industri & Trädgård | 🔧 | Fysiskt arbete, maskiner |
-| Hotell & Reception | 🏨 | Gästservice, bokning |
+| Hotell & Reception | 🏨 | Gästservice, bokning | **⚠️ PDF saknas** — ingen `CV_Linnea_Moritz_Hotell_Reception.pdf` finns i cv_files/. Faller tillbaka till kundtjänst-CV. |
 | Content & Moderation | 🛡️ | Digitalt innehåll, riktlinjer |
 | Konst & Kultur | 🎨 | Kreativitet, evenemang |
 
@@ -245,7 +246,7 @@ Hantera Master CV + 9 branschanpassade versioner.
 | `user_cv_branscher` | ✅ | ✅ | Användarens branschdefinitioner |
 | `user_cv_uploads` | ✅ | ✅ | Uppladdade CV-filer (max 20) |
 | `user_cv_creation_conversations` | ✅ | ✅ | AI-chatt historik per CV |
-| `user_cv_versions` | ✅ | ✅ | Versionshistorik per CV. **OBS: tabellen finns men populeras aldrig och har ingen restore-funktion.** CV:n skrivs över direkt vid omgenerering — ingen historik sparas i praktiken. |
+| `user_cv_versions` | ✅ | ✅ | Versionshistorik per CV. **⚠️ Ska byggas ut i framtiden** — tabellen finns men populeras aldrig och har ingen restore-funktion. CV:n skrivs över direkt vid omgenerering. |
 | `master_cv_exports` | | ✅ | Snapshot av hela Master CV som JSON |
 | **Storage: `cv-files`** | ✅ | ✅ | PDF-filer för bransch-CVer |
 | **Storage: `profile-photos`** | ✅ | | Profilbild på CV |
@@ -267,7 +268,7 @@ Spåra alla ansökningar och generera aktivitetsrapport för A-kassan.
 - **Månadsväljare** — välj månad (YYYY-MM)
 - **"Ladda ner aktivitetsrapport"**-knapp → `GET /api/aktivitetsrapport?month=YYYY-MM`
   - Genererar PDF med tabell: Datum | Yrkesroll | Arbetsgivare | Omfattning | Ort
-  - Matchar Arbetsförmedlingens format — redo för A-kassan
+  - **⚠️ EJ VERIFIERAD med Arbetsförmedlingen/A-kassan.** Formatet är egendesignat med FPDF — ser rimligt ut men baseras inte på en officiell mall. Användaren ansvarar för att kolla med sin handläggare om det accepteras.
   - Filnamn: `Aktivitetsrapport_MÅNAD_ÅR.pdf`
   - Visar användarens namn, period, totalt antal ansökningar
 
@@ -275,11 +276,11 @@ Spåra alla ansökningar och generera aktivitetsrapport för A-kassan.
 Varje ansökan visar:
 - Jobbtitel + företag
 - **Statusbadge** med färgkodning
-- **Status-dropdown** — ändra status: 📌 Sparad → 📝 Utkast → ✓ Skickad → 🎉 Intervju → 🎊 Erbjudande / ✗ Avslag
+- **Status-dropdown** — ändra status: 📌 Sparad → 📝 Utkast → ✓ Skickad → 🎉 Intervju → 🎊 Erbjudande / ✗ Avslag. **"Erbjudande" har ingen speciallogik** — det är bara en etikett/badge som alla andra statusar. Skyddad från nedgradering (kan inte gå tillbaka till "Sparad"). Ingen notifikation eller firande triggas.
 
 **Expanderad vy:**
 - Plats + deadline (med tidsvarnig: "3 dagar kvar", "Deadline passerad")
-- **Anteckningar** — redigera och spara per ansökan
+- **Anteckningar** — redigera och spara per ansökan. **Manuell sparning** — klicka "Spara"-knappen efter redigering. Ingen auto-save/realtids-sync.
 - **Personligt brev** — visa/ladda ner sparat brev
 - **"✍️ Skapa ansökan"** — för sparade jobb, öppnar ansökningsmodalen
 - **"🔗 Visa annons"** — öppnar original-annonsen
@@ -356,12 +357,14 @@ Styr vilka jobb som skrapas och visas.
 ### Negativa sökord (röda chips)
 - Kategorifilter: Hälsa & Vård, Utbildning, Teknik, Juridik, etc
 - Sökfilter + inmatningsfält (kommaseparerat)
+- **⚠️ Filtrering sker CLIENT-SIDE** — Platsbanken-API:t tar inte emot negativa sökord. Jobben skrapas först, sedan filtreras de bort i frontend via `String.includes()` mot titel + företag + beskrivning. Det betyder att jobb fortfarande laddas ner men aldrig visas.
 
 ### Arbetstid (multi-select toggles)
 - Heltid / Deltid / Extra/Timanställning
 
 ### Dealbreakers (multi-select toggles)
 - Nattarbete / Helgarbete / Telefonarbete / Tunga lyft / Utomhusarbete / Ingen
+- **⚠️ Enkel keyword-match, ingen NLP.** Frontend gör `String.includes()` mot jobbets titel + beskrivning med hårdkodad mappning: `natt` → "natt", `helg` → "helg", `telefon` → "telefon", `tunga_lyft` → "tunga lyft", `utomhus` → "utomhus". Kan ge false positives (t.ex. "Nattavdelningen" filtreras bort) och false negatives (t.ex. "kvällsarbete" fångas inte).
 
 **"Spara preferenser"**-knapp → `POST /api/user/preferences`
 
@@ -678,7 +681,7 @@ Personuppgifter och kontoinställningar.
 | `user_cvs` | Genererade bransch-CV texter | Mina CV, Jobb (bilaga) |
 | `bransch_cvs` | Bransch-CV varianter med PDF | Mina CV, Jobb (bilaga) |
 | `user_cv_branscher` | Branschdefinitioner per user | Mina CV |
-| `user_experience_tags` | Erfarenhet→bransch koppling | Mina CV |
+| `user_experience_tags` | Erfarenhet→bransch koppling — **⚠️ Ska byggas ut i framtiden** (tabell finns, inget UI/API) | Mina CV |
 | `user_cover_letter_preferences` | Brevstil och preferenser | Personligt brev, Brevformat, Jobb, Extern |
 | `user_ai_feedback` | AI-feedback från användaren | Personligt brev, Jobb |
 | `user_anecdotes` | Anekdoter/hobbys | Personligt brev, Jobb (brevgenerering) |
@@ -693,15 +696,15 @@ Personuppgifter och kontoinställningar.
 | Tabell | Syfte |
 |--------|-------|
 | `master_cv_exports` | Snapshot av Master CV som JSON |
-| `user_cv_versions` | Versionshistorik per CV |
+| `user_cv_versions` | Versionshistorik per CV — **⚠️ Ska byggas ut i framtiden** (tabell finns, aldrig populerad) |
 | `user_cv_creation_conversations` | AI-chatt historik |
-| `cv_industry_templates` | Mallar: traditional, artist, tech, academic |
+| `cv_industry_templates` | Mallar: traditional, artist, tech, academic — **⚠️ Ska byggas ut i framtiden** (4 mallar seedade, appen hårdkodar "traditional") |
 | `tech_projects` | Projekt (tech-CV) |
-| `tech_certifications` | Certifieringar (tech-CV) |
-| `artist_exhibitions` | Utställningar (konstnärs-CV) |
-| `artist_residencies` | Residencies (konstnärs-CV) |
-| `artist_collections` | Samlingar (konstnärs-CV) |
-| `academic_publications` | Publikationer (akademiskt CV) |
+| `tech_certifications` | Certifieringar (tech-CV) — **⚠️ Ska byggas ut i framtiden** (separat från generella certifieringar, inget UI) |
+| `artist_exhibitions` | Utställningar (konstnärs-CV) — **⚠️ Ska byggas ut i framtiden** (tabell finns, inget UI) |
+| `artist_residencies` | Residencies (konstnärs-CV) — **⚠️ Ska byggas ut i framtiden** (tabell finns, inget UI) |
+| `artist_collections` | Samlingar (konstnärs-CV) — **⚠️ Ska byggas ut i framtiden** (tabell finns, inget UI) |
+| `academic_publications` | Publikationer (akademiskt CV) — **⚠️ Ska byggas ut i framtiden** (tabell finns, inget UI) |
 
 ### Storage-buckets (3 st)
 
