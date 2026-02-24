@@ -170,3 +170,4 @@ When the app breaks, go through this in order:
 | Earlier | White screen (multiple times) | Babel parse errors from mismatched tags, unsupported syntax, hooks violations | Various JSX fixes (see commits above) |
 | 2026-02-23 | 403 on entire site | Under investigation — likely Vercel Deployment Protection or failed deploy | Check Vercel dashboard settings |
 | 2026-02-23 | White screen — duplicate `</p>` tags | Two spots in the job detail modal had double `</p></p>` closing tags, which Babel couldn't parse → entire app crashed | Removed the extra `</p>` on lines ~5528 and ~5540 in `v2/frontend.html` |
+| 2026-02-24 | Saved jobs unusable — no action buttons | Saved jobs disappeared from feed but Sparade tab had no Apply/View buttons; save overwrote sent/interview status | Added Apply + View buttons, protected statuses, added saved count to stats, added interaction logging |

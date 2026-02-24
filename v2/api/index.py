@@ -2100,6 +2100,18 @@ async def save_job(job_id: str, request: Request):
     """Save/bookmark a job for later"""
     user_id = await get_user_id_from_request(request) or "default_user"
 
+    # Helper: log interaction (non-blocking)
+    async def log_save_interaction():
+        try:
+            await db_request("POST", "user_job_interactions", data={
+                "user_id": user_id,
+                "job_id": job_id,
+                "action": "saved",
+                "created_at": datetime.now().isoformat()
+            })
+        except Exception:
+            pass
+
     # Check if application already exists
     existing = await db_request("GET", "applications", params={
         "job_id": f"eq.{job_id}",
@@ -2107,6 +2119,12 @@ async def save_job(job_id: str, request: Request):
     })
 
     if existing and len(existing) > 0:
+        current_status = existing[0].get("status", "")
+        # Don't downgrade important statuses — sent/interview/offer should not revert to saved
+        protected_statuses = ["sent", "interview", "offer"]
+        if current_status in protected_statuses:
+            return {"success": True, "application": existing[0], "note": f"Already has status '{current_status}', not changed to saved"}
+
         # Update existing to saved
         url = f"{SUPABASE_URL}/rest/v1/applications?id=eq.{existing[0]['id']}"
         async with httpx.AsyncClient() as client:
@@ -2121,6 +2139,7 @@ async def save_job(job_id: str, request: Request):
                 }
             )
             if response.status_code in [200, 201]:
+                await log_save_interaction()
                 return {"success": True, "application": response.json()[0]}
     else:
         # Create new saved application
@@ -2132,6 +2151,7 @@ async def save_job(job_id: str, request: Request):
         }
         result = await db_request("POST", "applications", data=data)
         if result:
+            await log_save_interaction()
             return {"success": True, "application": result[0]}
 
     raise HTTPException(status_code=500, detail="Could not save job")
@@ -2179,6 +2199,7 @@ async def get_stats(request: Request):
         "stats": {
             "total_jobs": len(jobs) if jobs else 0,
             "total_applications": len(apps) if apps else 0,
+            "saved": len([a for a in (apps or []) if a.get("status") == "saved"]),
             "drafts": len([a for a in (apps or []) if a.get("status") == "draft"]),
             "sent": len([a for a in (apps or []) if a.get("status") == "sent"]),
             "interviews": len([a for a in (apps or []) if a.get("status") == "interview"]),
