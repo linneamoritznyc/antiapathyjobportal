@@ -398,6 +398,49 @@ def calculate_priority(deadline: Optional[str]) -> str:
 _muni_label_cache: Dict[str, str] = {}
 _muni_cache_fetched_at: float = 0
 
+# Kommun ID → county (län) name mapping, built from lan-data.js
+_kommun_to_county: Dict[str, str] = {}
+
+def _build_kommun_to_county() -> Dict[str, str]:
+    """Parse lan-data.js to build a kommun_id → county_name mapping."""
+    global _kommun_to_county
+    if _kommun_to_county:
+        return _kommun_to_county
+    try:
+        lan_data_path = pathlib.Path(__file__).parent.parent / "lan-data.js"
+        js_text = lan_data_path.read_text(encoding='utf-8')
+        # Extract the array content from "const LAN_DATA = [...]"
+        start = js_text.index('[')
+        end = js_text.rindex(']') + 1
+        # Convert JS object syntax to valid JSON (add quotes to keys)
+        import re as _re
+        json_text = js_text[start:end]
+        json_text = _re.sub(r'(\w+):', r'"\1":', json_text)  # {id: → {"id":
+        json_text = json_text.replace("'", '"')  # single quotes → double quotes
+        import json as _json
+        data = _json.loads(json_text)
+        mapping = {}
+        for lan in data:
+            county_name = lan.get("label", "")
+            for kommun in lan.get("kommuner", []):
+                mapping[kommun["id"]] = county_name
+        _kommun_to_county = mapping
+        logger.info(f"Built kommun→county mapping: {len(mapping)} entries")
+    except Exception as e:
+        logger.error(f"Failed to build kommun→county mapping: {e}")
+    return _kommun_to_county
+
+
+def _get_county_labels_for_kommun_ids(kommun_ids: List[str]) -> List[str]:
+    """Given a list of kommun IDs, return the unique county (län) names they belong to."""
+    mapping = _build_kommun_to_county()
+    counties = set()
+    for kid in kommun_ids:
+        county = mapping.get(kid)
+        if county:
+            counties.add(county.lower())
+    return list(counties)
+
 async def fetch_municipality_labels() -> Dict[str, str]:
     """Fetch municipality ID → label mapping from JobTech Taxonomy API.
     Used by the scraper to post-filter jobs by municipality name.
@@ -431,18 +474,34 @@ async def fetch_municipality_labels() -> Dict[str, str]:
         return _muni_label_cache
 
 
-def _job_in_municipalities(job: Dict, municipality_labels_lower: List[str]) -> bool:
-    """Post-filter safety net: check if job location matches any municipality label."""
+def _job_in_municipalities(job: Dict, municipality_labels_lower: List[str],
+                           county_labels_lower: List[str] = None) -> bool:
+    """Post-filter: check if job location matches any selected municipality or county.
+    Uses EXACT match on municipality field (most reliable), falls back to
+    substring on location only when municipality is empty, and county as last resort."""
     if not municipality_labels_lower:
         return True
-    job_muni = (job.get("municipality") or "").lower()
+    job_muni = (job.get("municipality") or "").lower().strip()
     job_loc = (job.get("location") or "").lower()
-    # If job has no location data, let it through
-    if not job_muni and not job_loc:
-        return True
-    for label in municipality_labels_lower:
-        if label in job_muni or label in job_loc:
-            return True
+    job_county = (job.get("county") or "").lower()
+    # 1. Exact match on municipality field (clean data from Platsbanken)
+    if job_muni:
+        for label in municipality_labels_lower:
+            if label == job_muni:
+                return True
+        # Municipality exists but doesn't match any selected kommun → skip location fallback
+        # (municipality is the authoritative field when present)
+    else:
+        # 2. Fallback: substring match on location ONLY when municipality field is empty
+        if job_loc:
+            for label in municipality_labels_lower:
+                if label in job_loc:
+                    return True
+    # 3. County (län) match as last resort
+    if county_labels_lower and job_county:
+        for county in county_labels_lower:
+            if county in job_county:
+                return True
     return False
 
 
@@ -533,15 +592,17 @@ async def scrape_platsbanken(keyword: str, max_jobs: int = 15, municipality_ids:
     jobs = []
     max_records = 50
 
-    # Look up municipality labels for post-filtering
+    # Look up municipality labels + county names for post-filtering
     municipality_labels_lower = []
+    county_labels_lower = []
     if municipality_ids:
         label_lookup = await fetch_municipality_labels()
         municipality_labels_lower = [
             label_lookup[mid].lower() for mid in municipality_ids if mid in label_lookup
         ]
+        county_labels_lower = _get_county_labels_for_kommun_ids(municipality_ids)
         if municipality_labels_lower:
-            logger.info(f"Geography filter active: {municipality_labels_lower}")
+            logger.info(f"Geography filter active: {municipality_labels_lower}, counties: {county_labels_lower}")
 
     try:
         async with httpx.AsyncClient() as client:
@@ -731,10 +792,10 @@ async def scrape_platsbanken(keyword: str, max_jobs: int = 15, municipality_ids:
     except Exception as e:
         logger.error(f"Error scraping Platsbanken: {e}")
 
-    # Post-filter by municipality name as safety net
+    # Post-filter by municipality + county name as safety net
     if municipality_labels_lower and jobs:
         before = len(jobs)
-        jobs = [j for j in jobs if _job_in_municipalities(j, municipality_labels_lower)]
+        jobs = [j for j in jobs if _job_in_municipalities(j, municipality_labels_lower, county_labels_lower)]
         logger.info(f"Geography post-filter: {before} → {len(jobs)} jobs")
 
     # AI-summarize descriptions for display (keeps full_description for cover letters)
@@ -851,6 +912,36 @@ async def generate_cover_letter(job: Dict, user_cv_text: Optional[str] = None, u
 
     if not experience:
         experience = DEFAULT_EXPERIENCE.get(category, DEFAULT_EXPERIENCE["default"])
+
+    # Strip personal info header from CV text (name, location, phone, email)
+    # so the AI only sees this info from the OM MIG section (which has the correct,
+    # up-to-date values from the user's profile — not stale data baked into CV text).
+    if experience and user_cv_text:
+        lines = experience.split("\n")
+        cleaned = []
+        in_header = True
+        for line in lines:
+            stripped = line.strip()
+            if in_header:
+                # Skip blank lines and personal info lines at the top
+                if not stripped:
+                    continue
+                # Detect personal info lines: contain phone pattern, email, or pipe-separated header
+                is_personal = (
+                    re.search(r'\d{3,4}[\s-]?\d{2,3}[\s-]?\d{2,4}', stripped) or  # phone
+                    re.search(r'[\w.+-]+@[\w-]+\.[\w.]+', stripped) or  # email
+                    ("|" in stripped and len(stripped.split("|")) >= 3)  # pipe-separated header
+                )
+                # Also skip if it's just a name (short line, no section keywords)
+                is_just_name = len(stripped.split()) <= 3 and not any(
+                    kw in stripped.upper() for kw in ["UTBILDNING", "ERFARENHET", "KOMPETENS", "PROFIL", "SAMMANFATTNING"]
+                )
+                if is_personal or is_just_name:
+                    continue
+                in_header = False
+            cleaned.append(line)
+        if cleaned:
+            experience = "\n".join(cleaned)
 
     # Append any extra hints the user selected in the UI
     if extra_hints:
@@ -1054,7 +1145,7 @@ INSTRUKTIONER:
 4. Matcha tonen mot jobbet: fysisk/praktisk tjänst → enkelt och jordnära; kontorsjobb → lite mer formellt
 5. Lyft erfarenheter som passar jobbet. Om inga erfarenheter matchar direkt, fokusera istället på personliga egenskaper som passar (t.ex. noggrannhet, pålitlighet, initiativförmåga, servicekänsla). Försök ALDRIG koppla irrelevant erfarenhet till jobbet på ett konstruerat sätt.
 6. VIKTIGT: Om annonsen nämner specifika krav eller önskemål (t.ex. körkort, bil, fysisk förmåga, kvällar/helger, sommarsäsong, "annan sysselsättning"), bekräfta kortfattat att jag uppfyller/passar dem — utan att överdriva
-7. Nämn var jag bor och att jag är flexibel med arbetstider
+7. Nämn var jag bor (EXAKT den ort som anges under "OM MIG" ovan — ignorera eventuell ort/adress i CV-texten) och att jag är flexibel med arbetstider
 8. KRITISKT: Om "EXTRA ERFARENHETER SOM MÅSTE NÄMNAS I BREVET" finns ovan — du MÅSTE nämna VARJE ENSKILD erfarenhet som listas där i brevet. Hoppa inte över en enda. Nämn alla, även om de inte matchar jobbet perfekt — hitta en naturlig koppling för var och en. Det är helt ok att nämna 2 erfarenheter tillsammans i samma mening eller stycke om de belyser liknande styrkor
 9. Om "MIN SKRIVSTIL" finns ovan — följ den stilen. Undvik ALLA fraser listade under "Fraser jag INTE vill ha". Använd gärna fraser från "Fraser jag gillar".
 10. Om "MINA PERSONLIGA ANEKDOTER & HOBBYS" finns ovan — väv in EN relevant anekdot eller hobby om den passar jobbet. Tvinga inte in irrelevanta anekdoter.
@@ -1066,7 +1157,7 @@ INSTRUKTIONER:
    {email}
 
 SPRÅKREGLER — KRITISKT (brevet MÅSTE låta som riktig svenska, inte översatt engelska):
-- INGA anglicismer: Skriv aldrig "solid grund" (säg "bra grund"), "omfattar" (säg "inkluderar" eller skriv om), "leverera resultat", "spännande möjlighet", "säkerställa". Tänk: hur skulle en svensk 25-åring formulera detta?
+- INGEN SVENGELSKA. Skriv naturlig svenska — inte engelska fraser översatta rakt av. Undvik engelska lånord när det finns ett vanligt svenskt ord (t.ex. "hantera" istället för "managera", "återkoppling" istället för "feedback"). Om CV-texten innehåller svengelska, rätta det i brevet. Tänk: hur skulle en svensk 25-åring formulera detta muntligt?
 - KORREKTA svenska fraser: "Flera års erfarenhet" (INTE "erfarenhet från flera år"). "Jobba i kassan" (INTE "på kassavagn"). "Stå i butik" (INTE "arbeta i butiksmiljö"). "Packa paket" (INTE "hantera paketdistribution"). Använd vardagliga svenska ord, inte byråkratiska.
 - INGEN over-explaining: Förklara inte självklara saker. "Jag är noggrann" räcker — du behöver INTE lägga till "och det betyder mycket för mig att få arbetet gjort rätt". Skriv inte som en reklamtext.
 - VARIERA meningsbyggnaden: Börja INTE varje mening med "Jag". Blanda meningslängder. Använd bisatser och naturliga övergångar. Texten ska ha flyt, inte låta som en punktlista.
@@ -1374,12 +1465,17 @@ def get_cv_pdf_filename(vibe_id: str) -> str:
 
 # ============== SUPABASE DATABASE ==============
 
-async def db_request(method: str, table: str, data: dict = None, params: dict = None) -> Optional[List]:
-    """Make request to Supabase"""
+async def db_request(method: str, table: str, data: dict = None, params: dict = None, on_conflict: str = None) -> Optional[List]:
+    """Make request to Supabase.
+    For upserts (POST) on tables where the primary key is a UUID (not the business key),
+    pass on_conflict='user_id' (or whichever column is the UNIQUE business key) so
+    PostgREST resolves conflicts on the right column instead of the UUID primary key."""
     if not SUPABASE_URL or not SUPABASE_KEY:
         return None
 
     url = f"{SUPABASE_URL}/rest/v1/{table}"
+    if on_conflict:
+        url += f"?on_conflict={on_conflict}"
     headers = {
         "apikey": SUPABASE_KEY,
         "Authorization": f"Bearer {SUPABASE_KEY}",
@@ -1418,7 +1514,7 @@ async def save_jobs_to_db(jobs: List[Dict]) -> int:
         return 0
 
     # Only send columns that exist in the jobs table
-    db_columns = {"id", "title", "company", "location", "county", "description", "description_summary",
+    db_columns = {"id", "title", "company", "location", "municipality", "county", "description", "description_summary",
                   "url", "deadline", "priority", "contact_email", "contact_name",
                   "source", "scraped_at", "link_status"}
 
@@ -1507,7 +1603,7 @@ async def health():
 
 
 @app.post("/api/scrape")
-async def scrape_jobs(request: JobSearchRequest = None):
+async def scrape_jobs(request: JobSearchRequest = None, req: Request = None):
     """Scrape jobs from Platsbanken.
     Searches user's positive keywords PLUS a broad catch-all search.
     When municipality_ids are provided, geographic filters are applied at the API level.
@@ -1555,6 +1651,35 @@ async def scrape_jobs(request: JobSearchRequest = None):
     # Save to database if configured
     saved_count = await save_jobs_to_db(unique_jobs)
 
+    # Filter out jobs the user already acted on (applied, rejected, saved)
+    # so they don't reappear in fresh scrape results — Tinder-style: once acted on, it's gone.
+    user_id = await get_user_id_from_request(req) if req else None
+    if user_id and unique_jobs:
+        try:
+            import asyncio as _asyncio
+            interactions, applications = await _asyncio.gather(
+                db_request("GET", "user_job_interactions", params={
+                    "user_id": f"eq.{user_id}",
+                    "action": "in.(applied,rejected)",
+                    "select": "job_id"
+                }),
+                db_request("GET", "applications", params={
+                    "user_id": f"eq.{user_id}",
+                    "select": "job_id"
+                })
+            )
+            hidden_ids = set()
+            if interactions:
+                hidden_ids |= {i["job_id"] for i in interactions}
+            if applications:
+                hidden_ids |= {a["job_id"] for a in applications}
+            if hidden_ids:
+                before = len(unique_jobs)
+                unique_jobs = [j for j in unique_jobs if j["id"] not in hidden_ids]
+                logger.info(f"Scrape interaction filter: {before} → {len(unique_jobs)} jobs for user {user_id[:8]}")
+        except Exception as e:
+            logger.warning(f"Could not filter scrape results by interactions: {e}")
+
     return {
         "success": True,
         "jobs_found": len(unique_jobs),
@@ -1576,7 +1701,7 @@ async def list_jobs(request: Request, limit: int = 50, offset: int = 0):
 
     if not jobs:
         # Fallback: scrape live AND save to DB so apply-with-cv can find them
-        jobs = await scrape_platsbanken("jobb", "Stockholm", max_jobs=limit)
+        jobs = await scrape_platsbanken("jobb", max_jobs=limit)
         if jobs:
             await save_jobs_to_db(jobs)
 
@@ -1609,7 +1734,7 @@ async def list_jobs(request: Request, limit: int = 50, offset: int = 0):
         applied_applications = applied_applications or []
 
         # --- SERVER-SIDE LOCATION FILTER ---
-        # Convert user's preferred kommun IDs to labels, then filter jobs
+        # Convert user's preferred kommun IDs to labels + county names, then filter jobs
         preferred_locs = []
         if user_prefs and len(user_prefs) > 0:
             preferred_locs = user_prefs[0].get("preferred_locations") or []
@@ -1620,9 +1745,10 @@ async def list_jobs(request: Request, limit: int = 50, offset: int = 0):
                 municipality_labels_lower = [
                     label_lookup[mid].lower() for mid in loc_ids if mid in label_lookup
                 ]
+                county_labels_lower = _get_county_labels_for_kommun_ids(loc_ids)
                 if municipality_labels_lower:
                     before = len(jobs)
-                    jobs = [j for j in jobs if _job_in_municipalities(j, municipality_labels_lower)]
+                    jobs = [j for j in jobs if _job_in_municipalities(j, municipality_labels_lower, county_labels_lower)]
                     logger.info(f"Server geo filter: {before} → {len(jobs)} jobs for user {user_id[:8]}")
 
         rejected_ids = {i["job_id"] for i in interactions if i["action"] == "rejected"}
@@ -1684,7 +1810,7 @@ async def log_job_interaction(job_id: str, request: Request):
         "job_id": job_id,
         "action": action,
         "context": context
-    })
+    }, on_conflict="user_id,job_id,action")
 
     return {"success": True, "job_id": job_id, "action": action}
 
@@ -1734,7 +1860,7 @@ async def save_application(request: SaveApplicationRequest, req: Request):
         "created_at": datetime.now().isoformat()
     }
 
-    result = await db_request("POST", "applications", data=data)
+    result = await db_request("POST", "applications", data=data, on_conflict="user_id,job_id")
     if result:
         return {"success": True, "application": result[0]}
     raise HTTPException(status_code=500, detail="Could not save application")
@@ -1922,7 +2048,7 @@ async def save_master_cv(request: Request, master_cv: MasterCV):
         "certificates": master_cv.profile.certificates,
         "updated_at": datetime.now().isoformat()
     }
-    await db_request("POST", "user_profiles", data=profile_data)
+    await db_request("POST", "user_profiles", data=profile_data, on_conflict="user_id")
 
     # Save education entries
     for i, edu in enumerate(master_cv.education):
@@ -2425,6 +2551,63 @@ def _create_gmail_link(job: Dict, letter: str, subject: str = "") -> str:
         f"&su={urllib.parse.quote(subject)}"
         f"&body={urllib.parse.quote(letter)}"
     )
+
+
+@app.post("/api/review-swedish")
+async def review_swedish(request: Request):
+    """
+    Final-step Swedish language review using LanguageTool (real grammar checker,
+    not an LLM). Catches spelling errors, made-up words, grammar mistakes,
+    and some style issues. Auto-applies the first suggested fix for each match.
+    """
+    body = await request.json()
+    text = body.get("text", "").strip()
+    if not text:
+        raise HTTPException(status_code=400, detail="Ingen text att granska")
+
+    try:
+        async with httpx.AsyncClient() as client:
+            response = await client.post(
+                "https://api.languagetool.org/v2/check",
+                data={
+                    "text": text,
+                    "language": "sv",
+                    "enabledOnly": "false",
+                },
+                timeout=15
+            )
+
+            if response.status_code != 200:
+                logger.warning(f"LanguageTool returned {response.status_code}")
+                return {"success": True, "reviewed_text": text, "fixes": 0}
+
+            result = response.json()
+            matches = result.get("matches", [])
+
+            if not matches:
+                return {"success": True, "reviewed_text": text, "fixes": 0}
+
+            # Apply fixes in reverse order (so offsets stay valid)
+            fixed_text = text
+            applied = 0
+            for match in sorted(matches, key=lambda m: m["offset"], reverse=True):
+                replacements = match.get("replacements", [])
+                if replacements:
+                    offset = match["offset"]
+                    length = match["length"]
+                    best_fix = replacements[0]["value"]
+                    fixed_text = fixed_text[:offset] + best_fix + fixed_text[offset + length:]
+                    applied += 1
+
+            return {
+                "success": True,
+                "reviewed_text": fixed_text,
+                "fixes": applied,
+                "total_issues": len(matches)
+            }
+    except Exception as e:
+        logger.error(f"Swedish review error: {e}")
+        return {"success": True, "reviewed_text": text, "fixes": 0}
 
 
 @app.post("/api/jobs/{job_id}/cover-letter-pdf")
@@ -4300,10 +4483,13 @@ async def save_profile_from_quiz(request: Request, profile: QuizProfileData):
         profile_data["own_computer"] = profile.own_computer != "no"
     # Note: linkedin is NOT a column in user_profiles — stored in quiz_answers instead
 
-    # Upsert to user_profiles
+    # Upsert to user_profiles — on_conflict=user_id is REQUIRED because
+    # the primary key is `id UUID` (auto-generated), not `user_id`.
+    # Without it, PostgREST resolves conflicts on `id`, finds none, and
+    # the INSERT fails on the user_id UNIQUE constraint → updates never persist.
     async with httpx.AsyncClient() as client:
         res = await client.post(
-            f"{SUPABASE_URL}/rest/v1/user_profiles",
+            f"{SUPABASE_URL}/rest/v1/user_profiles?on_conflict=user_id",
             headers={
                 "apikey": SUPABASE_KEY,
                 "Authorization": f"Bearer {SUPABASE_KEY}",
@@ -4313,6 +4499,37 @@ async def save_profile_from_quiz(request: Request, profile: QuizProfileData):
             json=profile_data
         )
         logger.info(f"Profile save: {res.status_code} - {res.text[:200] if res.status_code >= 400 else 'OK'}")
+
+    # When location changes, update the header line in all user's bransch_cvs
+    # so the CV text stays in sync with the profile.
+    if profile.home_location and res.status_code < 400:
+        try:
+            cvs = await db_request("GET", "bransch_cvs", params={
+                "user_id": f"eq.{user_id}", "select": "id,cv_text"
+            })
+            if cvs:
+                new_loc = profile.home_location.strip()
+                for cv in cvs:
+                    cv_text = cv.get("cv_text", "")
+                    if not cv_text:
+                        continue
+                    lines = cv_text.split("\n")
+                    updated = False
+                    for i, line in enumerate(lines[:5]):  # Header is in first 5 lines
+                        parts = line.split("|")
+                        if len(parts) >= 3:
+                            # Pipe-separated header: "X | Location | Phone | Email"
+                            # Replace the location part (typically index 1)
+                            parts[1] = f" {new_loc} "
+                            lines[i] = "|".join(parts)
+                            updated = True
+                            break
+                    if updated:
+                        await db_request("PATCH", f"bransch_cvs?id=eq.{cv['id']}",
+                            data={"cv_text": "\n".join(lines)})
+                logger.info(f"Updated {len(cvs)} bransch_cv headers with location '{new_loc}'")
+        except Exception as e:
+            logger.warning(f"Failed to update bransch_cv headers: {e}")
 
     # Save all personal quiz fields into user_job_preferences.quiz_answers
     # This ensures age, education, earliest_start, own_car, linkedin persist in Supabase
@@ -4352,7 +4569,7 @@ async def save_profile_from_quiz(request: Request, profile: QuizProfileData):
             }
             async with httpx.AsyncClient() as client:
                 await client.post(
-                    f"{SUPABASE_URL}/rest/v1/user_job_preferences",
+                    f"{SUPABASE_URL}/rest/v1/user_job_preferences?on_conflict=user_id",
                     headers={
                         "apikey": SUPABASE_KEY,
                         "Authorization": f"Bearer {SUPABASE_KEY}",
@@ -4563,7 +4780,7 @@ async def save_user_profile(request: Request, profile: UserProfile):
 
     async with httpx.AsyncClient() as client:
         await client.post(
-            f"{SUPABASE_URL}/rest/v1/user_profiles",
+            f"{SUPABASE_URL}/rest/v1/user_profiles?on_conflict=user_id",
             headers={
                 "apikey": SUPABASE_KEY,
                 "Authorization": f"Bearer {SUPABASE_KEY}",
@@ -5314,26 +5531,57 @@ VIKTIGT:
 
 @app.post("/api/cv/enhance-chat")
 async def enhance_chat(request: Request):
-    """Chat about the last CV enhancement — answer follow-up questions."""
+    """Chat about the last CV enhancement — answer follow-up questions.
+    Now receives full conversation history so Claude has context of previous Q&A."""
     user_id = await get_user_id_from_request(request, required=True)
     body = await request.json()
     question = body.get("question", "").strip()
     changes_context = body.get("changes_context", "")
+    conversation_history = body.get("conversation_history", [])
 
     if not question:
         raise HTTPException(status_code=400, detail="Ingen fråga angiven")
     if not ANTHROPIC_API_KEY:
         raise HTTPException(status_code=500, detail="AI ej konfigurerad")
 
-    prompt = f"""Du är en assistent som hjälper en jobbsökare med sitt Master CV.
-Användaren har precis laddat upp ett CV och systemet gjorde dessa ändringar:
+    # Also fetch current master CV data so AI can actually make changes
+    master_cv_data = ""
+    try:
+        experiences = await db_request("GET", "master_cv_experiences", params={
+            "user_id": f"eq.{user_id}", "order": "start_date.desc"
+        })
+        if experiences:
+            exp_lines = []
+            for exp in experiences:
+                line = f"- [{exp.get('category', 'work')}] {exp.get('title', '')} @ {exp.get('company', '')} ({exp.get('start_date', '')[:7] if exp.get('start_date') else ''} – {exp.get('end_date', '')[:7] if exp.get('end_date') else 'pågående'})"
+                if exp.get('description'):
+                    line += f": {exp['description'][:300]}"
+                exp_lines.append(line)
+            master_cv_data = "\n\nANVÄNDARENS NUVARANDE MASTER CV:\n" + "\n".join(exp_lines)
+    except Exception as e:
+        logger.warning(f"Could not fetch master CV for chat: {e}")
 
-{changes_context}
+    system_prompt = f"""Du är en assistent som hjälper en jobbsökare med sitt Master CV. Svara ALLTID på svenska.
 
-Användaren frågar nu: "{question}"
+SENASTE ÄNDRINGAR (från CV-uppladdning):
+{changes_context}{master_cv_data}
 
-Svara kort och hjälpsamt på svenska. Om frågan handlar om vad som ändrades, referera till ändringarna ovan.
-Om frågan handlar om något annat CV-relaterat, svara baserat på din kunskap."""
+REGLER:
+- Läs HELA konversationen — upprepa ALDRIG frågor som redan besvarats
+- Om användaren redan gett dig information, ANVÄND den direkt utan att fråga igen
+- Om användaren ber dig uppdatera/lägga till något, bekräfta kort vad du gör och gör det
+- Skriv naturlig svenska, inte svengelska
+- Var kort och konkret — ingen inställsam AI-ton, inga emojis"""
+
+    # Build Claude messages from conversation history
+    messages = []
+    for msg in conversation_history[-20:]:  # Last 20 messages max
+        role = "user" if msg.get("role") == "user" else "assistant"
+        messages.append({"role": role, "content": msg.get("text", "")})
+
+    # If history is empty or doesn't end with user message, add current question
+    if not messages or messages[-1]["role"] != "user":
+        messages.append({"role": "user", "content": question})
 
     try:
         async with httpx.AsyncClient() as client:
@@ -5347,11 +5595,13 @@ Om frågan handlar om något annat CV-relaterat, svara baserat på din kunskap."
                 json={
                     "model": "claude-sonnet-4-5-20250929",
                     "max_tokens": 1000,
-                    "messages": [{"role": "user", "content": prompt}]
+                    "system": system_prompt,
+                    "messages": messages
                 },
                 timeout=30
             )
             if response.status_code != 200:
+                logger.error(f"Enhance chat Claude error: {response.status_code} - {response.text[:200]}")
                 raise HTTPException(status_code=500, detail="AI-fel")
             result = response.json()
             answer = result["content"][0]["text"].strip()
@@ -6122,7 +6372,7 @@ async def create_gmail_draft(request: CreateGmailDraftRequest, user_id: str = "d
     message = MIMEMultipart()
     message["to"] = request.to_email
     message["subject"] = request.subject
-    message.attach(MIMEText(request.body, "plain"))
+    message.attach(MIMEText(request.body, "plain", "utf-8"))
 
     # Encode message
     raw_message = base64.urlsafe_b64encode(message.as_bytes()).decode("utf-8")
@@ -6153,7 +6403,7 @@ async def create_gmail_draft(request: CreateGmailDraftRequest, user_id: str = "d
             "status": "draft",
             "gmail_draft_id": draft.get("id"),
             "created_at": datetime.now().isoformat()
-        })
+        }, on_conflict="user_id,job_id")
 
     return {
         "success": True,

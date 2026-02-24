@@ -313,6 +313,11 @@
             const [savingAsExample, setSavingAsExample] = useState(false);
             const [savedAsExample, setSavedAsExample] = useState(false);
             const [downloadingPdf, setDownloadingPdf] = useState(false);
+            const [anecdoteHints, setAnecdoteHints] = useState([]);
+            const [selectedAnecdotes, setSelectedAnecdotes] = useState([]);
+            const [reviewingSwedish, setReviewingSwedish] = useState(false);
+            const [swedishReviewed, setSwedishReviewed] = useState(false);
+            const [reviewFixes, setReviewFixes] = useState(0);
 
             const downloadCoverLetterPdf = async () => {
                 setDownloadingPdf(true);
@@ -326,7 +331,7 @@
                         const url = URL.createObjectURL(blob);
                         const a = document.createElement('a');
                         a.href = url;
-                        a.download = `Personligt_Brev_${(job.company || 'Jobb').replace(/[^\w\s-]/g, '').replace(/\s+/g, '_')}.pdf`;
+                        a.download = `Personligt_Brev_${(job.company || 'Jobb').replace(/[^\p{L}\p{N}\s_-]/gu, '').replace(/\s+/g, '_')}.pdf`;
                         a.click();
                         URL.revokeObjectURL(url);
                     } else {
@@ -339,7 +344,7 @@
                 setDownloadingPdf(false);
             };
 
-            // Load user's actual experiences from Master CV when modal opens
+            // Load user's actual experiences + anecdotes when modal opens
             useEffect(() => {
                 if (isOpen && localStorage.getItem('auth_token')) {
                     authFetch('/api/master-cv').then(res => res.json()).then(data => {
@@ -356,7 +361,17 @@
                         hints.push({ id: '_korkort', label: 'B-körkort & bil', hint: '- Har B-körkort och tillgång till bil' });
                         setExperienceHints(hints);
                     }).catch(() => {});
+                    // Load anecdotes
+                    authFetch('/api/user/anecdotes').then(res => res.json()).then(data => {
+                        const anecdotes = (data.anecdotes || []).map(a => ({
+                            id: a.id,
+                            label: (a.type === 'hobby' ? '🎯 ' : '💬 ') + a.title,
+                            hint: `- ${a.type === 'hobby' ? 'Hobby' : 'Anekdot'}: ${a.title} — ${a.content}`
+                        }));
+                        setAnecdoteHints(anecdotes);
+                    }).catch(() => {});
                 }
+                setSwedishReviewed(false);
             }, [isOpen]);
 
             useEffect(() => {
@@ -396,10 +411,12 @@
                 await saveApplication('sent');
                 // Also log 'applied' interaction so job is hidden from feed
                 if (localStorage.getItem('auth_token')) {
-                    authFetch(`/api/jobs/${job.id}/interaction`, {
-                        method: 'POST',
-                        body: JSON.stringify({ action: 'applied' })
-                    }).catch(() => {});
+                    try {
+                        await authFetch(`/api/jobs/${job.id}/interaction`, {
+                            method: 'POST',
+                            body: JSON.stringify({ action: 'applied' })
+                        });
+                    } catch (e) {}
                 }
                 onClose();
             };
@@ -434,11 +451,20 @@
 
             const regenerateLetter = async () => {
                 setRegenerating(true);
+                setSwedishReviewed(false);
                 try {
                     let extraHintText = experienceHints
                         .filter(e => selectedHints.includes(e.id))
                         .map(e => e.hint)
                         .join('\n');
+                    // Include selected anecdotes
+                    const anecdoteText = anecdoteHints
+                        .filter(a => selectedAnecdotes.includes(a.id))
+                        .map(a => a.hint)
+                        .join('\n');
+                    if (anecdoteText) {
+                        extraHintText += (extraHintText ? '\n' : '') + anecdoteText;
+                    }
                     if (customHint.trim()) {
                         extraHintText += (extraHintText ? '\n' : '') + '- ' + customHint.trim();
                     }
@@ -607,12 +633,40 @@
                                     placeholder="Skriv egen erfarenhet här, t.ex. 'Jobbade på Volvo som svetsare 2020-2022'"
                                     className="mt-2 w-full p-2 text-xs border border-slate-300 rounded-lg focus:border-indigo-400 focus:outline-none"
                                 />
-                                {(selectedHints.length > 0 || customHint.trim()) && !regenerating && (
+                                {/* Anecdote chips */}
+                                {anecdoteHints.length > 0 && (
+                                    <div className="mt-3">
+                                        <p className="text-xs font-medium text-slate-600 mb-1.5">Anekdoter & hobbys:</p>
+                                        <div className="flex flex-wrap gap-1.5">
+                                            {anecdoteHints.map(a => (
+                                                <button
+                                                    key={a.id}
+                                                    onClick={() => setSelectedAnecdotes(prev =>
+                                                        prev.includes(a.id) ? prev.filter(id => id !== a.id) : [...prev, a.id]
+                                                    )}
+                                                    className={`text-xs px-2.5 py-1 rounded-full border transition-colors ${
+                                                        selectedAnecdotes.includes(a.id)
+                                                            ? 'bg-amber-100 border-amber-400 text-amber-700 font-medium'
+                                                            : 'bg-white border-slate-300 text-slate-600 hover:bg-slate-100'
+                                                    }`}
+                                                >
+                                                    {selectedAnecdotes.includes(a.id) ? '✓ ' : ''}{a.label}
+                                                </button>
+                                            ))}
+                                        </div>
+                                    </div>
+                                )}
+
+                                {(selectedHints.length > 0 || selectedAnecdotes.length > 0 || customHint.trim()) && !regenerating && (
                                     <button
                                         onClick={regenerateLetter}
                                         className="mt-3 w-full bg-indigo-600 text-white py-2 rounded-lg text-sm font-medium hover:bg-indigo-700"
                                     >
-                                        ✨ Generera om med {selectedHints.length > 0 ? `valda erfarenheter (${selectedHints.length} valda)` : 'egen erfarenhet'}
+                                        ✨ Generera om med {
+                                            [selectedHints.length > 0 && `${selectedHints.length} erfarenheter`,
+                                             selectedAnecdotes.length > 0 && `${selectedAnecdotes.length} anekdoter`,
+                                             customHint.trim() && 'egen text'].filter(Boolean).join(' + ') || 'val'
+                                        }
                                     </button>
                                 )}
                                 {regenerating && (
@@ -625,6 +679,48 @@
                             {feedbackSaved && (
                                 <div className="mt-2 text-sm text-green-600">✓ Feedback sparad! AI använder den nästa gång.</div>
                             )}
+
+                            {/* Swedish review — last step before sending */}
+                            <div className="mt-4 p-3 bg-emerald-50 rounded-lg border border-emerald-200">
+                                <div className="flex items-center justify-between">
+                                    <div>
+                                        <p className="text-sm font-medium text-emerald-800">Sista steget: Granska svenskan</p>
+                                        <p className="text-xs text-emerald-600 mt-0.5">
+                                            {swedishReviewed
+                                                ? (reviewFixes > 0 ? `Klart! ${reviewFixes} rättningar gjorda.` : 'Inga fel hittades — brevet ser bra ut!')
+                                                : 'LanguageTool granskar stavning, grammatik och ordval.'}
+                                        </p>
+                                    </div>
+                                    <button
+                                        onClick={async () => {
+                                            setReviewingSwedish(true);
+                                            try {
+                                                const res = await authFetch('/api/review-swedish', {
+                                                    method: 'POST',
+                                                    body: JSON.stringify({ text: letter })
+                                                });
+                                                const data = await res.json();
+                                                if (data.success && data.reviewed_text) {
+                                                    setLetter(data.reviewed_text);
+                                                    setSwedishReviewed(true);
+                                                    setReviewFixes(data.fixes || 0);
+                                                }
+                                            } catch (e) {
+                                                console.error('Swedish review error:', e);
+                                            }
+                                            setReviewingSwedish(false);
+                                        }}
+                                        disabled={reviewingSwedish || swedishReviewed}
+                                        className={`px-4 py-2 rounded-lg text-sm font-medium whitespace-nowrap transition-colors ${
+                                            swedishReviewed
+                                                ? 'bg-emerald-200 text-emerald-800'
+                                                : 'bg-emerald-600 text-white hover:bg-emerald-700 disabled:opacity-60'
+                                        }`}
+                                    >
+                                        {reviewingSwedish ? 'Granskar...' : swedishReviewed ? `✓ ${reviewFixes} rättningar` : '🔍 Granska svenska'}
+                                    </button>
+                                </div>
+                            </div>
 
                             <div className="flex gap-3 mt-4 flex-wrap">
                                 {job?.contact_email && (
@@ -3203,7 +3299,8 @@
             const handleChatSend = async () => {
                 if (!chatInput.trim() || chatLoading) return;
                 const q = chatInput.trim();
-                setChatMessages(prev => [...prev, { role: 'user', text: q }]);
+                const updatedMessages = [...chatMessages, { role: 'user', text: q }];
+                setChatMessages(updatedMessages);
                 setChatInput('');
                 setChatLoading(true);
                 try {
@@ -3211,6 +3308,7 @@
                         method: 'POST',
                         body: JSON.stringify({
                             question: q,
+                            conversation_history: updatedMessages,
                             changes_context: enhanceChanges || enhanceResult || ''
                         })
                     });
@@ -5203,15 +5301,15 @@
                 } catch (e) {}
             };
 
-            const handleSkip = (job) => {
-                logInteraction(job.id, 'skipped');
+            const handleSkip = async (job) => {
+                await logInteraction(job.id, 'skipped');
                 setLeftPanel('description');
                 setEditMode(false);
                 setCurrentPage(p => Math.min(filteredJobs.length, p + 1));
             };
 
-            const handleReject = (job) => {
-                logInteraction(job.id, 'rejected');
+            const handleReject = async (job) => {
+                await logInteraction(job.id, 'rejected');
                 setHiddenJobIds(prev => new Set([...prev, job.id]));
                 setLeftPanel('description');
                 setEditMode(false);
@@ -5311,6 +5409,8 @@
             const filteredJobs = jobs
                 .filter(job => {
                     if (!showHidden && hiddenJobIds.has(job.id)) return false;
+                    // Saved jobs disappear from feed (find them in Mina ansökningar → Sparade)
+                    if ((savedJobs || []).includes(job.id)) return false;
 
                     // Working hours filter
                     const wh = quizPrefs.working_hours;
@@ -5372,20 +5472,28 @@
                         if (negKw.some(kw => titleLow.includes(kw.toLowerCase()) || descLow.includes(kw.toLowerCase()))) return false;
                     }
 
-                    // Geography filter
+                    // Geography filter — check kommun labels against location, municipality, AND county
                     const locPrefs = quizPrefs.location || [];
                     if (locPrefs.length > 0 && !locPrefs.includes('anywhere')) {
-                        const kommunLabels = locPrefs
-                            .filter(k => k !== 'remote' && k !== 'anywhere')
+                        const locIds = locPrefs.filter(k => k !== 'remote' && k !== 'anywhere');
+                        const kommunLabels = locIds
                             .map(id => { for (const lan of LAN_DATA) { const f = lan.kommuner.find(k => k.id === id); if (f) return f.label.toLowerCase(); } return id.toLowerCase(); });
+                        // Also build county (län) names from selected kommun IDs
+                        const countyLabels = [...new Set(locIds.map(id => {
+                            for (const lan of LAN_DATA) { if (lan.kommuner.some(k => k.id === id)) return lan.label.toLowerCase(); }
+                            return null;
+                        }).filter(Boolean))];
                         if (kommunLabels.length > 0) {
                             const jobLoc = (job.location || '').toLowerCase();
-                            const jobMuni = (job.municipality || '').toLowerCase();
-                            if (jobLoc || jobMuni) {
-                                const matchesLoc = kommunLabels.some(k => jobLoc.includes(k) || jobMuni.includes(k));
-                                const isRemote = locPrefs.includes('remote') && (jobLoc.includes('remote') || jobLoc.includes('distans') || jobLoc.includes('hemma'));
-                                if (!matchesLoc && !isRemote) return false;
-                            }
+                            const jobMuni = (job.municipality || '').toLowerCase().trim();
+                            const jobCounty = (job.county || '').toLowerCase();
+                            // Exact match on municipality (authoritative field from Platsbanken)
+                            const matchesMuni = jobMuni ? kommunLabels.some(k => k === jobMuni) : false;
+                            // Fallback: substring on location only when municipality is empty
+                            const matchesLoc = !jobMuni && jobLoc ? kommunLabels.some(k => jobLoc.includes(k)) : false;
+                            const matchesCounty = countyLabels.some(c => jobCounty.includes(c));
+                            const isRemote = locPrefs.includes('remote') && (jobLoc.includes('remote') || jobLoc.includes('distans') || jobLoc.includes('hemma'));
+                            if (!matchesMuni && !matchesLoc && !matchesCounty && !isRemote) return false;
                         }
                     }
 
@@ -5830,13 +5938,13 @@
                 }
             };
 
-            const handleSkip = (job) => {
-                logInteraction(job.id, 'skipped');
+            const handleSkip = async (job) => {
+                await logInteraction(job.id, 'skipped');
                 setCurrentPage(p => Math.min(filteredJobs.length, p + 1));
             };
 
-            const handleReject = (job) => {
-                logInteraction(job.id, 'rejected');
+            const handleReject = async (job) => {
+                await logInteraction(job.id, 'rejected');
                 setHiddenJobIds(prev => new Set([...prev, job.id]));
                 // Stay on same page index — next job slides in automatically
             };
@@ -5864,6 +5972,8 @@
                 .filter(job => {
                     // Hide locally rejected jobs unless "Visa dolda" is on
                     if (!showHidden && hiddenJobIds.has(job.id)) return false;
+                    // Saved jobs disappear from feed (find them in Mina ansökningar → Sparade)
+                    if ((savedJobs || []).includes(job.id)) return false;
 
                     // Text filter
                     if (filterText) {
@@ -5948,34 +6058,35 @@
                         if (hasNegative) return false;
                     }
 
-                    // Geography filter: only show jobs in selected kommuner
+                    // Geography filter: check kommun labels against location, municipality, AND county
                     const locPrefs = quizPrefs.location || [];
                     if (locPrefs.length > 0 && !locPrefs.includes('anywhere')) {
-                        const kommunLabels = locPrefs
-                            .filter(k => k !== 'remote' && k !== 'anywhere')
-                            .map(id => {
-                                for (const lan of LAN_DATA) {
-                                    const found = lan.kommuner.find(k => k.id === id);
-                                    if (found) return found.label.toLowerCase();
-                                }
-                                return id.toLowerCase();
-                            });
+                        const locIds = locPrefs.filter(k => k !== 'remote' && k !== 'anywhere');
+                        const kommunLabels = locIds.map(id => {
+                            for (const lan of LAN_DATA) {
+                                const found = lan.kommuner.find(k => k.id === id);
+                                if (found) return found.label.toLowerCase();
+                            }
+                            return id.toLowerCase();
+                        });
+                        // Build county (län) names from selected kommun IDs
+                        const countyLabels = [...new Set(locIds.map(id => {
+                            for (const lan of LAN_DATA) { if (lan.kommuner.some(k => k.id === id)) return lan.label.toLowerCase(); }
+                            return null;
+                        }).filter(Boolean))];
 
                         if (kommunLabels.length > 0) {
                             const jobLoc = (job.location || '').toLowerCase();
-                            const jobMuni = (job.municipality || '').toLowerCase();
-                            const hasLocation = jobLoc || jobMuni;
-
-                            if (hasLocation) {
-                                const matchesLoc = kommunLabels.some(k =>
-                                    jobLoc.includes(k) || jobMuni.includes(k)
-                                );
-                                // Also allow remote jobs if user selected remote
-                                const isRemote = locPrefs.includes('remote') &&
-                                    (jobLoc.includes('remote') || jobLoc.includes('distans') || jobLoc.includes('hemma'));
-                                if (!matchesLoc && !isRemote) return false;
-                            }
-                            // Jobs with no location data pass through — we can't filter what we don't know
+                            const jobMuni = (job.municipality || '').toLowerCase().trim();
+                            const jobCounty = (job.county || '').toLowerCase();
+                            // Exact match on municipality (authoritative field from Platsbanken)
+                            const matchesMuni = jobMuni ? kommunLabels.some(k => k === jobMuni) : false;
+                            // Fallback: substring on location only when municipality is empty
+                            const matchesLoc = !jobMuni && jobLoc ? kommunLabels.some(k => jobLoc.includes(k)) : false;
+                            const matchesCounty = countyLabels.some(c => jobCounty.includes(c));
+                            const isRemote = locPrefs.includes('remote') &&
+                                (jobLoc.includes('remote') || jobLoc.includes('distans') || jobLoc.includes('hemma'));
+                            if (!matchesMuni && !matchesLoc && !matchesCounty && !isRemote) return false;
                         }
                     }
 
@@ -7588,6 +7699,7 @@
 
             const [loadingMore, setLoadingMore] = useState(false);
             const [noMoreJobs, setNoMoreJobs] = useState(false);
+            const [toastMsg, setToastMsg] = useState(null);
 
             const fetchJobs = async () => {
                 const res = await authFetch('/api/jobs?limit=500');
@@ -7658,6 +7770,8 @@
                 // Optimistic UI update
                 if (isSaved) {
                     setSavedJobs(prev => [...prev, jobId]);
+                    setToastMsg('Sparad! Hitta den under Ansökningar \u2192 Sparade');
+                    setTimeout(() => setToastMsg(null), 3000);
                 } else {
                     setSavedJobs(prev => prev.filter(id => id !== jobId));
                 }
@@ -7671,6 +7785,7 @@
                         } else {
                             setSavedJobs(prev => [...prev, jobId]);
                         }
+                        setToastMsg(null);
                     }
                 } catch (err) {
                     console.error('Error saving job:', err);
@@ -7680,6 +7795,7 @@
                     } else {
                         setSavedJobs(prev => [...prev, jobId]);
                     }
+                    setToastMsg(null);
                 }
                 fetchApplications();
             };
@@ -7851,10 +7967,12 @@
                         setShowApplyModal(true);
                         // Log 'applied' interaction so this job is hidden from the feed
                         if (localStorage.getItem('auth_token')) {
-                            authFetch(`/api/jobs/${job.id}/interaction`, {
-                                method: 'POST',
-                                body: JSON.stringify({ action: 'applied' })
-                            }).catch(() => {});
+                            try {
+                                await authFetch(`/api/jobs/${job.id}/interaction`, {
+                                    method: 'POST',
+                                    body: JSON.stringify({ action: 'applied' })
+                                });
+                            } catch (e) {}
                         }
                     } else {
                         // Show a helpful error with more context
@@ -8609,6 +8727,12 @@
                         onSave={handleSaveMasterCV}
                         saving={savingMasterCV}
                     />
+
+                    {toastMsg && (
+                        <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 bg-slate-800 text-white px-5 py-3 rounded-xl shadow-lg text-sm animate-fade-in">
+                            {toastMsg}
+                        </div>
+                    )}
 
                     <footer className="border-t border-slate-200 mt-8">
                         <div className="max-w-6xl mx-auto px-4 py-6 text-center text-sm text-slate-500">

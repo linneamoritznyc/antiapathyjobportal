@@ -7,6 +7,7 @@ CREATE TABLE IF NOT EXISTS jobs (
     title TEXT NOT NULL,
     company TEXT,
     location TEXT,
+    municipality TEXT,               -- Kommun from Platsbanken (e.g. "Stockholm", "Jönköping", "Falun")
     county TEXT,                     -- Län from Platsbanken (e.g. "Stockholms län", "Jönköpings län")
     description TEXT,                -- Full job description (used by cover letter AI)
     description_summary TEXT,        -- AI-generated 3-4 sentence summary (shown in UI)
@@ -863,3 +864,6 @@ COMMENT ON TABLE user_anecdotes IS 'Personal anecdotes and hobbies for AI cover 
 --   RLS policy "Users own job prefs" required auth.uid() = user_id, but backend uses service role key
 --   (auth.uid() is null), so all writes were silently blocked. Disabled to match other tables.
 --   Migration: ALTER TABLE user_job_preferences DISABLE ROW LEVEL SECURITY;
+-- 2026-02-24: Added municipality TEXT column to jobs table
+--   Kommun was being scraped but never saved — caused location filtering to fail.
+--   Migration: ALTER TABLE jobs ADD COLUMN IF NOT EXISTS municipality TEXT;
