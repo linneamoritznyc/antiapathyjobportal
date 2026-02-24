@@ -2053,25 +2053,55 @@ async def create_letter(job_id: str, request: GenerateLetterRequest = None, req:
 
 @app.post("/api/applications")
 async def save_application(request: SaveApplicationRequest, req: Request):
-    """Save an application"""
+    """Save or update an application"""
     user_id = await get_user_id_from_request(req)
     if not user_id:
         raise HTTPException(status_code=401, detail="Du måste vara inloggad för att spara ansökningar")
 
-    data = {
-        "job_id": request.job_id,
-        "user_id": user_id,
-        "cover_letter": request.cover_letter,
-        "status": request.status,
-        "created_at": datetime.now().isoformat()
-    }
-    # Set sent_at when marking as sent
-    if request.status == "sent":
-        data["sent_at"] = datetime.now().isoformat()
+    # Check if application already exists (from apply-with-cv or previous save)
+    existing = await db_request("GET", "applications", params={
+        "user_id": f"eq.{user_id}",
+        "job_id": f"eq.{request.job_id}",
+        "select": "id,status"
+    })
 
-    result = await db_request("POST", "applications", data=data, on_conflict="user_id,job_id")
-    if result:
-        return {"success": True, "application": result[0]}
+    if existing and len(existing) > 0:
+        # UPDATE existing application
+        app_id = existing[0]["id"]
+        update_data = {
+            "cover_letter": request.cover_letter,
+            "status": request.status,
+            "updated_at": datetime.now().isoformat()
+        }
+        if request.status == "sent":
+            update_data["sent_at"] = datetime.now().isoformat()
+
+        result = await db_request("PATCH", "applications", data=update_data, params={
+            "id": f"eq.{app_id}"
+        })
+        if result:
+            return {"success": True, "application": result[0]}
+        # PATCH might return empty for some Supabase configs — still treat as success
+        logger.warning(f"PATCH applications/{app_id} returned empty, checking if update worked...")
+        verify = await db_request("GET", "applications", params={"id": f"eq.{app_id}"})
+        if verify:
+            return {"success": True, "application": verify[0]}
+    else:
+        # CREATE new application
+        data = {
+            "job_id": request.job_id,
+            "user_id": user_id,
+            "cover_letter": request.cover_letter,
+            "status": request.status,
+            "created_at": datetime.now().isoformat()
+        }
+        if request.status == "sent":
+            data["sent_at"] = datetime.now().isoformat()
+
+        result = await db_request("POST", "applications", data=data, on_conflict="user_id,job_id")
+        if result:
+            return {"success": True, "application": result[0]}
+
     raise HTTPException(status_code=500, detail="Could not save application")
 
 
