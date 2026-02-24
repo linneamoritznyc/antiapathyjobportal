@@ -311,6 +311,8 @@
             const [regenerating, setRegenerating] = useState(false);
             const [savingDraft, setSavingDraft] = useState(false);
             const [draftSaved, setDraftSaved] = useState(false);
+            const [markingSent, setMarkingSent] = useState(false);
+            const [markedSent, setMarkedSent] = useState(false);
             const [experienceHints, setExperienceHints] = useState([]);
             const [savingAsExample, setSavingAsExample] = useState(false);
             const [savedAsExample, setSavedAsExample] = useState(false);
@@ -324,30 +326,59 @@
             const [reviewFixes, setReviewFixes] = useState(0);
             const [reviewChanges, setReviewChanges] = useState([]);
 
-            // Auto-detect which experiences/anecdotes/education are mentioned in the letter
+            // Auto-detect which experiences/anecdotes/education are actually mentioned in the letter
             const autoSelectMentioned = (letterText, expHints, anecHints, eduHints) => {
                 if (!letterText) return;
                 const lower = letterText.toLowerCase();
 
-                // Match experiences by company name or title
+                // Common Swedish words that appear in most cover letters — not meaningful for matching
+                const stopWords = new Set([
+                    'och', 'att', 'det', 'för', 'som', 'med', 'har', 'var', 'den', 'ett',
+                    'kan', 'till', 'inte', 'alla', 'från', 'mot', 'efter', 'vid', 'hos',
+                    'under', 'utan', 'inom', 'mellan', 'samt', 'genom', 'dess', 'mer',
+                    'nya', 'andra', 'även', 'bara', 'olika', 'hela', 'sedan', 'där',
+                    'här', 'när', 'hur', 'vad', 'vilka', 'över', 'två', 'tre', 'fem',
+                    'detta', 'dessa', 'varit', 'kunde', 'skulle', 'mycket', 'kunna',
+                    'vill', 'bland', 'annat', 'länge', 'redan', 'gärna', 'mitt'
+                ]);
+
+                // Use letter body only (before signature) to avoid matching the user's name in sign-off
+                const sigIdx = lower.lastIndexOf('med vänlig hälsning');
+                const altSigIdx = lower.lastIndexOf('vänliga hälsningar');
+                const bodyEnd = Math.max(sigIdx, altSigIdx);
+                const body = bodyEnd > 0 ? lower.substring(0, bodyEnd) : lower;
+
+                // Match experiences: require company name to appear in letter body
                 const matchedExp = expHints.filter(exp => {
-                    const parts = exp.label.replace(/[()]/g, '').split(/\s+/).filter(w => w.length > 2);
-                    return parts.some(word => lower.includes(word.toLowerCase()));
+                    if (exp.id === '_korkort') return body.includes('körkort');
+                    const parenIdx = exp.label.indexOf('(');
+                    const company = (parenIdx > 0 ? exp.label.substring(0, parenIdx).trim() : exp.label.trim());
+                    // Try full company name first (most reliable)
+                    if (company.length >= 4 && body.includes(company.toLowerCase())) return true;
+                    // Fall back to significant words (5+ chars, not stop words)
+                    const sigWords = company.split(/[\s,/&]+/).filter(w => w.length >= 5 && !stopWords.has(w.toLowerCase()));
+                    return sigWords.some(w => body.includes(w.toLowerCase()));
                 }).map(e => e.id);
                 setSelectedHints(matchedExp);
 
-                // Match anecdotes by title keywords
+                // Match anecdotes: require multiple distinctive keywords from title
                 const matchedAnec = anecHints.filter(a => {
-                    const title = a.label.replace(/^[🎯💬]\s*/, '');
-                    const words = title.split(/\s+/).filter(w => w.length > 2);
-                    return words.some(word => lower.includes(word.toLowerCase()));
+                    const title = a.label.replace(/^[🎯💬🏅😊]\s*/, '');
+                    const words = title.split(/\s+/).filter(w => w.length >= 5 && !stopWords.has(w.toLowerCase()));
+                    if (words.length === 0) return false;
+                    const matchCount = words.filter(w => body.includes(w.toLowerCase())).length;
+                    // Require at least 2 distinctive words to match, or all if only 1 exists
+                    return matchCount >= Math.min(2, words.length);
                 }).map(a => a.id);
                 setSelectedAnecdotes(matchedAnec);
 
-                // Match education by school name
+                // Match education: require school name to appear
                 const matchedEdu = eduHints.filter(edu => {
-                    const parts = edu.label.split(/\s+/).filter(w => w.length > 2);
-                    return parts.some(word => lower.includes(word.toLowerCase()));
+                    const parenIdx = edu.label.indexOf('(');
+                    const school = (parenIdx > 0 ? edu.label.substring(0, parenIdx).trim() : edu.label.trim());
+                    if (school.length >= 5 && body.includes(school.toLowerCase())) return true;
+                    const sigWords = school.split(/\s+/).filter(w => w.length >= 5 && !stopWords.has(w.toLowerCase()));
+                    return sigWords.some(w => body.includes(w.toLowerCase()));
                 }).map(e => e.id);
                 setSelectedEducation(matchedEdu);
             };
@@ -462,9 +493,10 @@
             };
 
             const markAsSent = async () => {
+                setMarkingSent(true);
                 const saved = await saveApplication('sent');
                 if (saved === false) {
-                    // saveApplication failed — show error but don't close modal
+                    setMarkingSent(false);
                     alert('Kunde inte spara ansökan. Försök igen.');
                     return;
                 }
@@ -477,7 +509,10 @@
                         });
                     } catch (e) {}
                 }
-                onClose();
+                setMarkingSent(false);
+                setMarkedSent(true);
+                // Brief success feedback before closing
+                setTimeout(() => onClose(), 800);
             };
 
             const copyLetter = () => {
@@ -835,9 +870,14 @@
                                 )}
                                 <button
                                     onClick={markAsSent}
-                                    className="px-4 py-2.5 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700"
+                                    disabled={markingSent || markedSent}
+                                    className={`px-4 py-2.5 rounded-lg font-medium transition-colors ${
+                                        markedSent
+                                            ? 'bg-green-100 text-green-700 border border-green-300'
+                                            : 'bg-indigo-600 text-white hover:bg-indigo-700 disabled:opacity-60'
+                                    }`}
                                 >
-                                    Markera skickad
+                                    {markingSent ? 'Sparar...' : markedSent ? '✓ Markerad som skickad' : 'Markera skickad'}
                                 </button>
                                 <button onClick={copyLetter} className="px-4 py-2.5 border border-slate-200 rounded-lg hover:bg-slate-50">
                                     {copied ? '✓ Kopierat' : 'Kopiera'}

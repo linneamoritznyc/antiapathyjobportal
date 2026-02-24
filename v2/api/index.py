@@ -111,8 +111,10 @@ FÖRBJUDNA AI-KLICHÉER: "passionerad", "brinner för", "gedigen erfarenhet", "u
   "spännande roll", "dynamisk miljö", "starkt driv", "bidra till er resa", "genuint intresserad",
   "värdefull tillgång", "driven och ambitiös", "positiv mindset".
 
+TOTALFÖRBJUDNA ORD (existerar inte på svenska, använd ALDRIG i någon form):
+  "rondera", "ronder", "rond", "rondering" — dessa ord finns INTE. Om jobbannonsen nämner "rondera lokaler", skriv ISTÄLLET t.ex. "gå igenom lokalerna", "kolla att allt ser bra ut", "hålla koll på lokalerna".
+
 FÖRBJUDNA FORMELLA/STELA UTTRYCK (använd det vardagliga alternativet):
-  "rondera lokaler"→"gå ronder", "rondera"→"gå rond/runda",
   "tillse att"→"se till att", "ombesörja"→"ordna/fixa/se till",
   "beivra"→"ta itu med", "emotse"→"ser fram emot", "delge"→"berätta för",
   "föranstalta"→"ordna", "förhöra sig"→"fråga/kolla",
@@ -1236,7 +1238,7 @@ async def generate_cover_letter(job: Dict, user_cv_text: Optional[str] = None, u
 
                 never = sp.get("never_mention", []) or []
                 if isinstance(never, list) and never:
-                    style_parts.append(f"- Ämnen att ALDRIG nämna: {', '.join(never)}")
+                    style_parts.append(f"- TOTALFÖRBJUDNA ÄMNEN (nämn ALDRIG dessa, även om de finns i CV-texten — hoppa helt över erfarenheter som handlar om dessa ämnen): {', '.join(never)}")
 
                 custom_instr = sp.get("custom_ai_instructions", "") or ""
                 if custom_instr.strip():
@@ -1262,7 +1264,7 @@ async def generate_cover_letter(job: Dict, user_cv_text: Optional[str] = None, u
                 # never_mention list
                 never = sp.get("never_mention", []) or []
                 if isinstance(never, list) and never:
-                    style_parts.append(f"- Ämnen att ALDRIG nämna: {', '.join(never)}")
+                    style_parts.append(f"- TOTALFÖRBJUDNA ÄMNEN (nämn ALDRIG dessa, även om de finns i CV-texten — hoppa helt över erfarenheter som handlar om dessa ämnen): {', '.join(never)}")
 
                 if style_parts:
                     style_section = "\n\nMIN SKRIVSTIL (skriv brevet i min stil):\n" + "\n".join(style_parts)
@@ -1322,7 +1324,7 @@ INSTRUKTIONER:
 6. VIKTIGT: Om annonsen nämner specifika krav eller önskemål (t.ex. körkort, bil, fysisk förmåga, kvällar/helger, sommarsäsong, "annan sysselsättning"), bekräfta kortfattat att jag uppfyller/passar dem — utan att överdriva
 7. Nämn var jag bor (EXAKT den ort som anges under "OM MIG" ovan — ignorera eventuell ort/adress i CV-texten) och att jag är flexibel med arbetstider
 8. KRITISKT: Om "EXTRA ERFARENHETER SOM MÅSTE NÄMNAS I BREVET" finns ovan — du MÅSTE nämna VARJE ENSKILD erfarenhet som listas där i brevet. Hoppa inte över en enda. Nämn alla, även om de inte matchar jobbet perfekt — hitta en naturlig koppling för var och en. Det är helt ok att nämna 2 erfarenheter tillsammans i samma mening eller stycke om de belyser liknande styrkor
-9. Om "MIN SKRIVSTIL" finns ovan — följ den stilen. Undvik ALLA fraser listade under "Fraser jag INTE vill ha". Använd gärna fraser från "Fraser jag gillar".
+9. Om "MIN SKRIVSTIL" finns ovan — följ den stilen. KRITISKT: "Fraser jag INTE vill ha" ÖVERTRUMFAR alla andra regler i detta prompt — även om en fras nämns som "korrekt" eller "vardaglig" på annat ställe. Använd ALDRIG fraser från den listan. Använd gärna fraser från "Fraser jag gillar".
 10. Om "MINA PERSONLIGA ANEKDOTER & HOBBYS" finns ovan — dessa har redan keyword-matchats mot jobbet. Väv in MAX EN om den naturligt stärker din ansökan. Men om kopplingen känns konstruerad eller tunn — SKIPPA den helt. Det är ALLTID bättre att INTE nämna en hobby/anekdot än att tvinga in den.
 11. VIKTIGT om ålder: Om du nämner ålder, använd EXAKT den ålder som står under "OM MIG" ovan. Ignorera eventuell ålder som nämns i bakgrund/erfarenheter — den kan vara gammal.
 12. Avsluta med:
@@ -1337,7 +1339,7 @@ EXTRA REGLER FÖR PERSONLIGT BREV:
 - Börja INTE varje mening med "Jag". Blanda meningslängder. Texten ska ha flyt.
 - INGEN over-explaining: "Jag är noggrann" räcker — behöver INTE tillägga "och det betyder mycket för mig"
 - ALDRIG defensiv: Skriv ALDRIG "Jag inser att er annons efterfrågar..." — kort och rakt istället.
-- KORREKTA vardagliga fraser: "Jobba i kassan" (INTE "på kassavagn"). "Stå i butik" (INTE "arbeta i butiksmiljö"). "Gå ronder" (INTE "rondera lokaler"). "Sköta om" (INTE "ombesörja").
+- KORREKTA vardagliga fraser: "Jobba i kassan" (INTE "på kassavagn"). "Stå i butik" (INTE "arbeta i butiksmiljö"). "Sköta om" (INTE "ombesörja"). ALDRIG "rondera"/"ronder"/"rond" — dessa ord finns inte på svenska.
 - Säg: "trygg i min roll", "van vid att jobba självständigt", "bekväm med kundkontakt".
 - PROPORTIONER: 80% på vad du KAN. Max 20% på saker du inte gjort.
 - Skriv som en RIKTIG person — inte en AI som försöker imponera.
@@ -1963,6 +1965,18 @@ async def list_jobs(request: Request, limit: int = 50, offset: int = 0):
         skipped_with_email = [j for j in skipped_jobs if has_email(j)]
         skipped_without_email = [j for j in skipped_jobs if not has_email(j)]
 
+        # Sort each bucket by deadline (soonest first) so urgent jobs appear first
+        def deadline_sort_key(j):
+            d = j.get("deadline")
+            if not d:
+                return "9999-12-31"
+            return d[:10]  # ISO date prefix for sorting
+
+        fresh_with_email.sort(key=deadline_sort_key)
+        fresh_without_email.sort(key=deadline_sort_key)
+        skipped_with_email.sort(key=deadline_sort_key)
+        skipped_without_email.sort(key=deadline_sort_key)
+
         jobs = fresh_with_email + fresh_without_email + skipped_with_email + skipped_without_email
 
     return {"success": True, "source": "database", "jobs": jobs}
@@ -2051,6 +2065,9 @@ async def save_application(request: SaveApplicationRequest, req: Request):
         "status": request.status,
         "created_at": datetime.now().isoformat()
     }
+    # Set sent_at when marking as sent
+    if request.status == "sent":
+        data["sent_at"] = datetime.now().isoformat()
 
     result = await db_request("POST", "applications", data=data, on_conflict="user_id,job_id")
     if result:

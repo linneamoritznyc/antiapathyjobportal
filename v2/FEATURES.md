@@ -719,3 +719,15 @@ Personuppgifter och kontoinställningar.
 - **PATCH /api/user/anecdotes/{id}** — ny endpoint för att uppdatera anekdoter
 - **GET /api/user/anecdotes/export** — ny endpoint för TXT/PDF-export
 - **Max 30-gräns** — backend kontrollerar limit innan POST (utöver DB-trigger)
+
+### v2.2 — 24 feb 2026
+
+**Bugfixar:**
+- **Markera skickad: sent_at saknades** — `POST /api/applications` satte aldrig `sent_at` vid status='sent'. Nu sätts det automatiskt. Påverkade Aktivitetsrapport och tidsvisning.
+- **Markera skickad: ingen feedback** — Knappen hade ingen loading- eller success-state. Nu visar den "Sparar..." under sparande och "✓ Markerad som skickad" vid lyckat resultat.
+- **Chip-highlighting för löst** — Erfarenhets-chips (gröna) och anekdot-chips (orange) matchades på vilken 3-bokstavsord som helst. Nu krävs: 5+ tecken, svenska stoppord filtreras bort, signatur exkluderas, och anekdoter kräver 2+ nyckelordsmatchningar.
+- **"Ronder" i prompt** — Hårdkodad "gå ronder" i SWEDISH_LANGUAGE_RULES överskred användarens avoid_phrases. Ersatt med "gå runda".
+- **Användarpreferenser övertrumfar allt** — Prompten instruerar nu explicit att "Fraser jag INTE vill ha" ALLTID övertrumfar alla andra regler, även hårdkodade "korrekta" fraser.
+
+**Förbättringar:**
+- **Jobb sorterade efter deadline** — Inom varje bucket (e-post/utan e-post, nya/hoppade) sorteras jobb nu med närmast deadline först.
