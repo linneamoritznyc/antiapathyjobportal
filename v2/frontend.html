@@ -317,6 +317,7 @@
             const [selectedAnecdotes, setSelectedAnecdotes] = useState([]);
             const [reviewingSwedish, setReviewingSwedish] = useState(false);
             const [swedishReviewed, setSwedishReviewed] = useState(false);
+            const [reviewFixes, setReviewFixes] = useState(0);
 
             const downloadCoverLetterPdf = async () => {
                 setDownloadingPdf(true);
@@ -684,7 +685,11 @@
                                 <div className="flex items-center justify-between">
                                     <div>
                                         <p className="text-sm font-medium text-emerald-800">Sista steget: Granska svenskan</p>
-                                        <p className="text-xs text-emerald-600 mt-0.5">AI granskar brevet och fixar svengelska, anglicismer och onaturliga formuleringar.</p>
+                                        <p className="text-xs text-emerald-600 mt-0.5">
+                                            {swedishReviewed
+                                                ? (reviewFixes > 0 ? `Klart! ${reviewFixes} rättningar gjorda.` : 'Inga fel hittades — brevet ser bra ut!')
+                                                : 'LanguageTool granskar stavning, grammatik och ordval.'}
+                                        </p>
                                     </div>
                                     <button
                                         onClick={async () => {
@@ -698,6 +703,7 @@
                                                 if (data.success && data.reviewed_text) {
                                                     setLetter(data.reviewed_text);
                                                     setSwedishReviewed(true);
+                                                    setReviewFixes(data.fixes || 0);
                                                 }
                                             } catch (e) {
                                                 console.error('Swedish review error:', e);
@@ -711,7 +717,7 @@
                                                 : 'bg-emerald-600 text-white hover:bg-emerald-700 disabled:opacity-60'
                                         }`}
                                     >
-                                        {reviewingSwedish ? 'Granskar...' : swedishReviewed ? '✓ Granskad' : '🔍 Granska svenska'}
+                                        {reviewingSwedish ? 'Granskar...' : swedishReviewed ? `✓ ${reviewFixes} rättningar` : '🔍 Granska svenska'}
                                     </button>
                                 </div>
                             </div>

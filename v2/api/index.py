@@ -2556,66 +2556,58 @@ def _create_gmail_link(job: Dict, letter: str, subject: str = "") -> str:
 @app.post("/api/review-swedish")
 async def review_swedish(request: Request):
     """
-    Final-step Swedish language review. Takes a cover letter and returns
-    a cleaned version with svengelska, anglicisms and unnatural phrasing fixed.
-    Uses Claude as a proofreader — no new content, just better Swedish.
+    Final-step Swedish language review using LanguageTool (real grammar checker,
+    not an LLM). Catches spelling errors, made-up words, grammar mistakes,
+    and some style issues. Auto-applies the first suggested fix for each match.
     """
-    user_id = await get_user_id_from_request(request)
     body = await request.json()
     text = body.get("text", "").strip()
     if not text:
         raise HTTPException(status_code=400, detail="Ingen text att granska")
 
-    if not ANTHROPIC_API_KEY:
-        return {"success": True, "reviewed_text": text}
-
-    prompt = f"""Du är en svensk språkgranskare. Granska texten nedan och rätta BARA språkfel — ändra INTE innehållet, tonen eller strukturen.
-
-Fixa:
-- Svengelska (engelska ord/fraser som har en vanlig svensk motsvarighet)
-- Anglicismer (engelska meningsbyggnad översatt rakt av till svenska)
-- Onaturliga formuleringar (text som låter som maskinöversättning)
-- Ordpåhitt (ord som inte finns på svenska — ersätt med riktiga svenska ord)
-- Stavfel och grammatikfel
-
-Ändra INTE:
-- Brevets innehåll, fakta eller meningar
-- Tonen (formell/informell)
-- Strukturen eller styckeindelningen
-- Namn, företag, platser, kontaktuppgifter
-
-Returnera BARA den korrigerade texten, inget annat. Om texten redan är bra, returnera den oförändrad.
-
-TEXT ATT GRANSKA:
-{text}"""
-
     try:
         async with httpx.AsyncClient() as client:
             response = await client.post(
-                "https://api.anthropic.com/v1/messages",
-                headers={
-                    "x-api-key": ANTHROPIC_API_KEY,
-                    "anthropic-version": "2023-06-01",
-                    "content-type": "application/json"
+                "https://api.languagetool.org/v2/check",
+                data={
+                    "text": text,
+                    "language": "sv",
+                    "enabledOnly": "false",
                 },
-                json={
-                    "model": "claude-sonnet-4-5-20250929",
-                    "max_tokens": 1500,
-                    "messages": [{"role": "user", "content": prompt}]
-                },
-                timeout=30
+                timeout=15
             )
 
-            if response.status_code == 200:
-                data = response.json()
-                reviewed = data.get("content", [{}])[0].get("text", "").strip()
-                if reviewed:
-                    return {"success": True, "reviewed_text": reviewed}
+            if response.status_code != 200:
+                logger.warning(f"LanguageTool returned {response.status_code}")
+                return {"success": True, "reviewed_text": text, "fixes": 0}
 
-        return {"success": True, "reviewed_text": text}
+            result = response.json()
+            matches = result.get("matches", [])
+
+            if not matches:
+                return {"success": True, "reviewed_text": text, "fixes": 0}
+
+            # Apply fixes in reverse order (so offsets stay valid)
+            fixed_text = text
+            applied = 0
+            for match in sorted(matches, key=lambda m: m["offset"], reverse=True):
+                replacements = match.get("replacements", [])
+                if replacements:
+                    offset = match["offset"]
+                    length = match["length"]
+                    best_fix = replacements[0]["value"]
+                    fixed_text = fixed_text[:offset] + best_fix + fixed_text[offset + length:]
+                    applied += 1
+
+            return {
+                "success": True,
+                "reviewed_text": fixed_text,
+                "fixes": applied,
+                "total_issues": len(matches)
+            }
     except Exception as e:
         logger.error(f"Swedish review error: {e}")
-        return {"success": True, "reviewed_text": text}
+        return {"success": True, "reviewed_text": text, "fixes": 0}
 
 
 @app.post("/api/jobs/{job_id}/cover-letter-pdf")
