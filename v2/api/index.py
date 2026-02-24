@@ -1546,7 +1546,7 @@ Skriv ENDAST CV-texten, inget annat."""
                 },
                 json={
                     "model": "claude-sonnet-4-5-20250929",
-                    "max_tokens": 1000,
+                    "max_tokens": 2500,
                     "messages": [{"role": "user", "content": prompt}]
                 },
                 timeout=60
@@ -1581,8 +1581,8 @@ async def generate_all_bransch_cvs(master_cv: Dict, user_id: str) -> List[Dict]:
             "created_at": datetime.now().isoformat()
         }
 
-        # Save to database
-        saved = await db_request("POST", "user_cvs", data=cv_data)
+        # Save to database (upsert — re-generating overwrites previous version)
+        saved = await db_request("POST", "user_cvs", data=cv_data, on_conflict="user_id,vibe_id")
         if saved:
             generated_cvs.append(saved[0])
         else:
@@ -2069,58 +2069,63 @@ async def list_applications(request: Request):
 
 
 @app.patch("/api/applications/{application_id}")
-async def update_application(application_id: str, request: UpdateApplicationRequest):
+async def update_application(application_id: str, request: Request):
     """Update an application's status, notes, or cover letter"""
+    user_id = await get_user_id_from_request(request, required=True)
+
+    # Verify ownership
+    existing = await db_request("GET", "applications", params={
+        "id": f"eq.{application_id}",
+        "user_id": f"eq.{user_id}",
+        "select": "id"
+    })
+    if not existing:
+        raise HTTPException(status_code=404, detail="Ansökan hittades inte")
+
+    body = await request.json()
     update_data = {"updated_at": datetime.now().isoformat()}
 
-    if request.status is not None:
-        update_data["status"] = request.status
-        if request.status == "sent":
+    if body.get("status") is not None:
+        update_data["status"] = body["status"]
+        if body["status"] == "sent":
             update_data["sent_at"] = datetime.now().isoformat()
 
-    if request.notes is not None:
-        update_data["notes"] = request.notes
+    if body.get("notes") is not None:
+        update_data["notes"] = body["notes"]
 
-    if request.cover_letter is not None:
-        update_data["cover_letter"] = request.cover_letter
+    if body.get("cover_letter") is not None:
+        update_data["cover_letter"] = body["cover_letter"]
 
-    # Update via Supabase REST API
-    url = f"{SUPABASE_URL}/rest/v1/applications?id=eq.{application_id}"
-    async with httpx.AsyncClient() as client:
-        response = await client.patch(
-            url,
-            json=update_data,
-            headers={
-                "apikey": SUPABASE_KEY,
-                "Authorization": f"Bearer {SUPABASE_KEY}",
-                "Content-Type": "application/json",
-                "Prefer": "return=representation"
-            }
-        )
-        if response.status_code in [200, 201]:
-            result = response.json()
-            if result:
-                return {"success": True, "application": result[0]}
+    # Update via Supabase REST API — scoped to user_id for safety
+    result = await db_request("PATCH", "applications",
+        data=update_data,
+        params={"id": f"eq.{application_id}", "user_id": f"eq.{user_id}"}
+    )
+    if result:
+        return {"success": True, "application": result[0]}
 
     raise HTTPException(status_code=500, detail="Could not update application")
 
 
 @app.delete("/api/applications/{application_id}")
-async def delete_application(application_id: str):
+async def delete_application(application_id: str, request: Request):
     """Delete an application"""
-    url = f"{SUPABASE_URL}/rest/v1/applications?id=eq.{application_id}"
-    async with httpx.AsyncClient() as client:
-        response = await client.delete(
-            url,
-            headers={
-                "apikey": SUPABASE_KEY,
-                "Authorization": f"Bearer {SUPABASE_KEY}"
-            }
-        )
-        if response.status_code in [200, 204]:
-            return {"success": True}
+    user_id = await get_user_id_from_request(request, required=True)
 
-    raise HTTPException(status_code=500, detail="Could not delete application")
+    # Verify ownership
+    existing = await db_request("GET", "applications", params={
+        "id": f"eq.{application_id}",
+        "user_id": f"eq.{user_id}",
+        "select": "id"
+    })
+    if not existing:
+        raise HTTPException(status_code=404, detail="Ansökan hittades inte")
+
+    # Delete scoped to user_id for safety
+    result = await db_request("DELETE", "applications",
+        params={"id": f"eq.{application_id}", "user_id": f"eq.{user_id}"}
+    )
+    return {"success": True}
 
 
 @app.get("/api/aktivitetsrapport")
@@ -2512,11 +2517,12 @@ async def get_master_cv(request: Request):
 
 
 @app.get("/api/cv/export/{bransch_id}")
-async def export_cv_for_bransch(bransch_id: str, user_id: str = "default_user"):
+async def export_cv_for_bransch(bransch_id: str, request: Request):
     """
     Export CV data filtered for a specific bransch.
     Returns structured data ready for PDF template.
     """
+    user_id = await get_user_id_from_request(request, required=True)
     # Get master CV
     master_cv_response = await get_master_cv(user_id)
     if not master_cv_response.get("master_cv"):
@@ -2568,11 +2574,12 @@ async def export_cv_for_bransch(bransch_id: str, user_id: str = "default_user"):
 
 
 @app.post("/api/cv/suggest-bransch")
-async def suggest_new_bransch(job_keywords: List[str], user_id: str = "default_user"):
+async def suggest_new_bransch(request: Request, job_keywords: List[str]):
     """
     Analyze job search keywords and suggest if user should create a new bransch-CV.
     Returns suggestion if pattern detected and user doesn't have that bransch.
     """
+    user_id = await get_user_id_from_request(request, required=True)
     # Count keyword matches per bransch
     bransch_scores = {}
     for bransch in CV_BRANSCHER:
@@ -2654,6 +2661,55 @@ async def generate_cv_branscher(request: Request):
     }
 
 
+@app.post("/api/cv/generate-single/{bransch_id}")
+async def generate_single_cv(bransch_id: str, request: Request):
+    """Generate a single bransch-CV from Master CV data"""
+    user_id = await get_user_id_from_request(request, required=True)
+
+    # Find the bransch
+    bransch = next((b for b in CV_BRANSCHER if b["id"] == bransch_id), None)
+    if not bransch:
+        raise HTTPException(status_code=404, detail=f"Bransch '{bransch_id}' finns inte")
+
+    # Fetch Master CV data
+    import asyncio as _asyncio
+    profiles, experiences, education, skills = await _asyncio.gather(
+        db_request("GET", "user_profiles", params={"user_id": f"eq.{user_id}"}),
+        db_request("GET", "user_experiences", params={"user_id": f"eq.{user_id}", "order": "sort_order.asc"}),
+        db_request("GET", "user_education", params={"user_id": f"eq.{user_id}"}),
+        db_request("GET", "user_skills", params={"user_id": f"eq.{user_id}"})
+    )
+
+    if not experiences or len(experiences) == 0:
+        return {"success": False, "message": "Lägg till erfarenheter i Master CV först!"}
+
+    master_cv = {
+        "profile": profiles[0] if profiles else {},
+        "experiences": experiences,
+        "education": education or [],
+        "skills": skills or []
+    }
+
+    logger.info(f"Generating single bransch-CV: {bransch['name']} for user {user_id[:8]}")
+    cv_text = await generate_bransch_cv(master_cv, bransch)
+
+    cv_data = {
+        "user_id": user_id,
+        "vibe_id": bransch["id"],
+        "vibe_name": bransch["name"],
+        "vibe_emoji": bransch["emoji"],
+        "cv_text": cv_text,
+        "created_at": datetime.now().isoformat()
+    }
+
+    saved = await db_request("POST", "user_cvs", data=cv_data, on_conflict="user_id,vibe_id")
+    return {
+        "success": True,
+        "message": f"CV för {bransch['name']} genererat!",
+        "cv": saved[0] if saved else cv_data
+    }
+
+
 @app.get("/api/cv/all")
 async def get_user_cvs(request: Request):
     """Get all user's generated CV versions"""
@@ -2670,8 +2726,9 @@ async def get_user_cvs(request: Request):
 
 
 @app.get("/api/cv/{bransch_id}")
-async def get_cv_by_bransch(bransch_id: str, user_id: str = "default_user"):
+async def get_cv_by_bransch(bransch_id: str, request: Request):
     """Get a specific CV version"""
+    user_id = await get_user_id_from_request(request, required=True)
     cvs = await db_request("GET", "user_cvs", params={
         "user_id": f"eq.{user_id}",
         "vibe_id": f"eq.{bransch_id}"
@@ -2684,8 +2741,14 @@ async def get_cv_by_bransch(bransch_id: str, user_id: str = "default_user"):
 
 
 @app.patch("/api/cv/{bransch_id}")
-async def update_cv(bransch_id: str, cv_text: str, user_id: str = "default_user"):
+async def update_cv(bransch_id: str, request: Request, cv_text: str = None):
     """Update a CV version (after user edits)"""
+    user_id = await get_user_id_from_request(request, required=True)
+    if not cv_text:
+        body = await request.json()
+        cv_text = body.get("cv_text")
+    if not cv_text:
+        raise HTTPException(status_code=400, detail="cv_text krävs")
     result = await db_request("PATCH", "user_cvs",
         data={"cv_text": cv_text, "updated_at": datetime.now().isoformat()},
         params={"user_id": f"eq.{user_id}", "vibe_id": f"eq.{bransch_id}"}
@@ -7121,8 +7184,10 @@ async def get_gmail_auth_url(request: Request, redirect_uri: str = None):
 
 
 @app.get("/api/gmail/callback")
-async def gmail_oauth_callback(code: str, state: str = "default_user"):
+async def gmail_oauth_callback(code: str, state: str = ""):
     """Handle OAuth callback. Exchange code for tokens using per-user credentials from DB."""
+    if not state or state == "default_user" or len(state) < 10:
+        raise HTTPException(status_code=400, detail="Ogiltig state-parameter. Logga in och försök igen.")
     user_id = state
 
     user_creds = await get_user_gmail_credentials(user_id)
@@ -7479,11 +7544,21 @@ async def create_gmail_draft_for_user(
 
 
 @app.post("/api/gmail/draft")
-async def create_gmail_draft(request: CreateGmailDraftRequest, user_id: str = "default_user"):
+async def create_gmail_draft(request: Request):
     """
     Create a draft email in user's Gmail.
     Requires user to have connected their Gmail first.
     """
+    user_id = await get_user_id_from_request(request, required=True)
+    body = await request.json()
+    to_email = body.get("to_email", "")
+    subject = body.get("subject", "")
+    email_body = body.get("body", "")
+    job_id = body.get("job_id")
+
+    if not to_email or not subject or not email_body:
+        raise HTTPException(status_code=400, detail="to_email, subject och body krävs")
+
     # Get valid access token
     access_token = await refresh_gmail_token(user_id)
     if not access_token:
@@ -7491,9 +7566,9 @@ async def create_gmail_draft(request: CreateGmailDraftRequest, user_id: str = "d
 
     # Create email message
     message = MIMEMultipart()
-    message["to"] = request.to_email
-    message["subject"] = request.subject
-    message.attach(MIMEText(request.body, "plain", "utf-8"))
+    message["to"] = to_email
+    message["subject"] = subject
+    message.attach(MIMEText(email_body, "plain", "utf-8"))
 
     # Encode message
     raw_message = base64.urlsafe_b64encode(message.as_bytes()).decode("utf-8")
@@ -7516,11 +7591,11 @@ async def create_gmail_draft(request: CreateGmailDraftRequest, user_id: str = "d
         draft = response.json()
 
     # Save application if job_id provided
-    if request.job_id:
+    if job_id:
         await db_request("POST", "applications", data={
             "user_id": user_id,
-            "job_id": request.job_id,
-            "cover_letter": request.body,
+            "job_id": job_id,
+            "cover_letter": email_body,
             "status": "draft",
             "gmail_draft_id": draft.get("id"),
             "created_at": datetime.now().isoformat()
