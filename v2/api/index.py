@@ -31,6 +31,88 @@ SUPABASE_URL = os.getenv("SUPABASE_URL")
 SUPABASE_KEY = os.getenv("SUPABASE_SERVICE_ROLE_KEY") or os.getenv("SUPABASE_ANON_KEY")
 SUPABASE_ANON_KEY = os.getenv("SUPABASE_ANON_KEY")  # For client-side auth
 ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY")
+HUGGINGFACE_API_KEY = os.getenv("HUGGINGFACE_API_KEY")
+
+# ── Swedish Language Rules (Svenska Skrivregler) ──────────────────────────
+# Used in all AI text generation: cover letters, CVs, application answers
+SWEDISH_LANGUAGE_RULES = """
+SVENSKA SKRIVREGLER — OBLIGATORISKT (all text MÅSTE följa dessa regler):
+
+── GRAMMATIK ──
+
+DE/DEM: DE = subjekt (vi), DEM = objekt (oss). Skriv ALDRIG "dom" i formell text.
+  RÄTT: De söker tjänsten. Jag skickade till dem.
+
+EN/ETT: -are/-ing/-het/-tion/-else → "en". -ande/-ende/-ium/-ment/-um → "ett".
+  RÄTT: en erfarenhet, en förmåga, en ansökan, ett uppdrag, ett ansvar, ett resultat.
+  FEL: "ett erfarenhet", "en ansvar", "ett förmåga" — vanliga AI-fel.
+
+BISATSORDFÖLJD: I bisatser placeras satsadverbialet (inte, alltid, ofta, aldrig, redan, bara) FÖRE verbet.
+  RÄTT: ...eftersom jag INTE har arbetat med detta.
+  FEL:  ...eftersom jag har INTE arbetat med detta.
+  RÄTT: ...trots att jag ALLTID har strävat efter att utvecklas.
+  FEL:  ...trots att jag har ALLTID strävat...
+
+VAR/VART: VAR = befintlighet. VART = rörelse/riktning.
+  RÄTT: Var arbetar du? Vart är projektet på väg?
+
+JÄMFÖRELSER: Subjektspronomen efter "än".
+  RÄTT: Hon har mer erfarenhet än jag. FEL: ...än mig.
+
+ADJEKTIV/ADVERB: Adjektiv böjs efter substantiv, adverb böjs INTE.
+  RÄTT: ett tydligt ledarskap (adj). Hon kommunicerar tydligt (adv).
+
+PREPOSITIONER (svenska ≠ engelska):
+  ansvarig FÖR (inte "på"), intresserad AV (inte "för"), erfarenhet AV att (inte "från att"),
+  fokuserad PÅ (inte "mot"), bidra TILL (inte "för"), engagerad I (inte "med"),
+  arbeta MED (inte "på"), ta ansvar FÖR (inte "på"), söker tjänsten SOM (inte "för").
+
+── STAVNING OCH FORM ──
+
+SAMMANSATTA ORD IHOP: projektledare, kundansvar, arbetsuppgifter, marknadsföring,
+  kommunikationsförmåga, beslutsfattande, verksamhetsutveckling, kvalitetsarbete.
+  FEL: "projekt ledare", "kund ansvar", "problem lösning". Bindestreck vid siffror/förkortningar: IT-kompetens, 50-årskalas.
+
+APOSTROF: Aldrig vid genitiv. RÄTT: Annas erfarenhet, bolagets strategi. FEL: Anna's erfarenhet.
+
+STOR/LITEN BOKSTAV: Liten: månader, dagar, titlar (vd, chef, projektledare).
+  Stor: företag, organisationer, egennamn. Aldrig stor mitt i mening för betoning.
+
+PLURAL: videor (inte "videos"), scheman, processer, kompetenser.
+
+FÖRKORTNINGAR I LÖPTEXT: Skriv ut. "till exempel" inte "t.ex.", "det vill säga" inte "d.v.s."
+
+DATUM/TAL: "11 oktober 2025". Tal 1–12 med bokstäver. Decimaler med komma: 3,5. Stora tal med mellanslag: 1 200 000.
+
+── ORDVAL — INGEN SVENGELSKA ──
+
+meeting→möte, deadline→tidsgräns, feedback→återkoppling, track record→dokumenterade resultat,
+leverage→dra nytta av, key account→nyckelkund, update→uppdatering, skills→kompetenser,
+mindset→tankesätt, achievements→meriter, stakeholder→intressent, onboarding→introduktion,
+output→resultat, challenge→utmaning, hands-on→praktisk, high-level→övergripande,
+scope→omfattning, impact→påverkan, rollout→lansering, setup→upplägg, know-how→kunnande.
+
+Accepterade lånord (OK att använda): proaktiv, strategi, digital, analys, process, projekt,
+kompetens, effektiv, relevant, professionell, innovation, kommunikation, koordinera, implementera.
+
+── TON OCH STIL ──
+
+MENINGSBYGGNAD: Subjekt + verb tidigt. Det viktigaste först. Aktiv form.
+  RÄTT: Jag ansvarade för budgeten. FEL: Budgeten ansvarades för av mig.
+  Undvik substantiveringar: "Vi genomförde" inte "Genomförandet av".
+
+FÖRBJUDNA AI-KLICHÉER: "passionerad", "brinner för", "gedigen erfarenhet", "unik bakgrund",
+  "spännande roll", "dynamisk miljö", "starkt driv", "bidra till er resa", "genuint intresserad",
+  "värdefull tillgång", "driven och ambitiös", "positiv mindset".
+
+NATURLIGA FORMULERINGAR:
+  CV: "Ledde ett team på åtta personer", "Ökade försäljningen med 30 procent"
+  Brev: "Det som lockar mig med tjänsten är [specifikt]", "Jag har i tre år arbetat med [specifikt]"
+  Mail: "Bifogat hittar du", "Hör gärna av dig om du har frågor", "Tack på förhand"
+
+HÄLSNINGAR: "Hej [namn]," (naturligt). Undvik "Bäste/Bästa" (ålderdomligt).
+  Avslut: "Med vänliga hälsningar" / "Vänligen" / "Med vänlig hälsning".
+"""
 
 # Gmail API scopes
 GMAIL_SCOPES = "https://www.googleapis.com/auth/gmail.compose"
@@ -859,6 +941,73 @@ def detect_job_category(title: str, description: str) -> str:
     return "default"
 
 
+async def check_swedish_with_gpt_sw3(text: str) -> str:
+    """
+    Post-generation Swedish grammar check using GPT-SW3 via HuggingFace Inference API.
+    Returns corrected text, or original text if the check fails/is unavailable.
+    """
+    if not HUGGINGFACE_API_KEY or not text:
+        return text
+
+    try:
+        prompt = f"""<|endoftext|><s>
+User:
+Du är en svensk korrekturläsare. Rätta BARA grammatiska fel i texten nedan.
+Behåll exakt samma innehåll, ton och längd. Ändra BARA:
+- de/dem-fel
+- en/ett-fel
+- bisatsordföljd (satsadverbial före verb i bisats)
+- särskrivningar (sammansatta ord ska vara ihop)
+- felaktiga prepositioner
+- svengelska (byt till svenska ord)
+Om texten redan är korrekt, returnera den oförändrad.
+
+TEXT:
+{text}
+
+RÄTTAD TEXT:
+<s>
+Bot:
+"""
+        async with httpx.AsyncClient(timeout=20) as client:
+            response = await client.post(
+                "https://api-inference.huggingface.co/models/AI-Sweden-Models/gpt-sw3-6.7b-v2-instruct",
+                headers={
+                    "Authorization": f"Bearer {HUGGINGFACE_API_KEY}",
+                    "Content-Type": "application/json"
+                },
+                json={
+                    "inputs": prompt,
+                    "parameters": {
+                        "max_new_tokens": 1500,
+                        "temperature": 0.1,
+                        "do_sample": True,
+                        "return_full_text": False
+                    }
+                }
+            )
+
+            if response.status_code == 200:
+                result = response.json()
+                if isinstance(result, list) and len(result) > 0:
+                    corrected = result[0].get("generated_text", "").strip()
+                    # Only use the correction if it's roughly the same length (not truncated/garbage)
+                    if corrected and len(corrected) > len(text) * 0.5:
+                        logger.info("GPT-SW3 grammar check applied successfully")
+                        return corrected
+                    else:
+                        logger.warning(f"GPT-SW3 returned unexpected output length: {len(corrected)} vs {len(text)}")
+            elif response.status_code == 503:
+                logger.info("GPT-SW3 model is loading (cold start), skipping grammar check")
+            else:
+                logger.warning(f"GPT-SW3 API returned {response.status_code}: {response.text[:200]}")
+
+    except Exception as e:
+        logger.warning(f"GPT-SW3 grammar check failed (non-blocking): {e}")
+
+    return text
+
+
 async def generate_cover_letter(job: Dict, user_cv_text: Optional[str] = None, user_profile: Optional[Dict] = None, extra_hints: Optional[str] = None, user_id: Optional[str] = None) -> str:
     """Generate personalized cover letter using Claude"""
 
@@ -1156,66 +1305,16 @@ INSTRUKTIONER:
    {phone}
    {email}
 
-SVENSKA SKRIVREGLER — KRITISKT (brevet MÅSTE följa korrekt svensk grammatik och stil):
+{SWEDISH_LANGUAGE_RULES}
 
-SVENGELSKA — använd ALLTID svenska ord:
-- Om ett svenskt ord finns, använd det. "Gräsrotsfinansiering" inte "crowdfunding", "möte" inte "meeting", "uppdatering" inte "update", "hantera" inte "managera", "återkoppling" inte "feedback", "mejl" inte "mail" i löptext, "nyckelkund" inte "key account", "dra nytta av" inte "leverage", "dokumenterade resultat" inte "track record"
-- Försvenskade stavningar och böjningar: "videor" inte "videos"
-- Om CV-texten innehåller svengelska, RÄTTA det i brevet
-
-SAMMANSATTA ORD — skriv IHOP:
-- Svenska sammansatta ord skrivs IHOP: "projektledare", "arbetsuppgifter", "merförsäljning", "kundtjänst"
-- Skriv ALDRIG isär: "projekt ledare" ✗, "arbets uppgifter" ✗
-- Tumregel: betoningen på första stavelsen → skriv ihop
-
-STOR/LITEN BOKSTAV:
-- Månader, dagar, titlar med LITEN bokstav: "måndag", "april", "chef", "vd"
-- Företag/organisationer med stor: "Volvo", "Arbetsförmedlingen"
-- Skriv aldrig stor bokstav mitt i mening för att betona
-
-SKILJETECKEN:
-- Komma före "men" inne i mening
-- Komma runt inskott: "Företaget, som grundades 1995, omsatte..."
-- Liten bokstav efter kolon och semikolon
-
-APOSTROF:
-- Apostrof ALDRIG vid genitiv: "Annas bil" — INTE "Anna's bil"
-
-TAL OCH DATUM:
-- Datum: "11 oktober 2025" (inte 11/10/25)
-- Tal 1–12 med bokstäver, större med siffror
-- Decimaler med komma: "3,14"
-
-TON OCH STIL:
-- Mottagaranpassat och tydligt — läsaren ska reagera på innehållet, inte språket
-- Undvik onödiga substantiveringar — använd verb: "Vi genomförde" inte "Genomförandet av"
-- Aktiv form: "Jag ansvarade för" inte "Ansvaret låg hos mig"
-- Börja med det viktigaste (subjekt + verb tidigt), sedan hur/när/varför
-- "Ur min synvinkel" ✓ — inte "Från min synpunkt sett" ✗
-- Skriv ut ord istället för snedstreck: "han eller hon" inte "han/hon"
-- Tankstreck med mellanslag vid inskott: "Hon är – sägs det – skicklig"
-
-KORREKTA SVENSKA FRASER:
-- "Flera års erfarenhet" (INTE "erfarenhet från flera år")
-- "Jobba i kassan" (INTE "på kassavagn")
-- "Stå i butik" (INTE "arbeta i butiksmiljö")
-- Använd vardagliga svenska ord, inte byråkratiska
-
-MENINGSBYGGNAD:
-- Börja INTE varje mening med "Jag". Blanda meningslängder. Använd bisatser och naturliga övergångar
-- Texten ska ha flyt, inte låta som en punktlista
+EXTRA REGLER FÖR PERSONLIGT BREV:
+- Börja INTE varje mening med "Jag". Blanda meningslängder. Texten ska ha flyt.
 - INGEN over-explaining: "Jag är noggrann" räcker — behöver INTE tillägga "och det betyder mycket för mig"
-
-ALDRIG DEFENSIV:
-- Skriv ALDRIG "Jag inser att er annons efterfrågar..." eller "Även om min erfarenhet inte redan omfattar..."
-- Kort och rakt: "Jag har inte jobbat med X förut, men jag lär mig snabbt." MAX en mening
-
-FÖRBJUDNA AI-FLOSKLER:
-- "passionerad", "brinner för", "gedigen", "vittnar om", "värdefull tillgång", "unik möjlighet", "driven och ambitiös", "med glädje", "genuint intresserad", "relevant butikserfarenhet", "självförtroende"
-- Säg istället: "trygg i min roll", "van vid att jobba självständigt", "bekväm med kundkontakt"
-
-PROPORTIONER: 80% på vad du KAN. Max 20% på saker du inte gjort.
-Skriv som en RIKTIG person — inte en AI som försöker imponera.
+- ALDRIG defensiv: Skriv ALDRIG "Jag inser att er annons efterfrågar..." — kort och rakt istället.
+- KORREKTA vardagliga fraser: "Jobba i kassan" (INTE "på kassavagn"). "Stå i butik" (INTE "arbeta i butiksmiljö").
+- Säg: "trygg i min roll", "van vid att jobba självständigt", "bekväm med kundkontakt".
+- PROPORTIONER: 80% på vad du KAN. Max 20% på saker du inte gjort.
+- Skriv som en RIKTIG person — inte en AI som försöker imponera.
 
 Skriv ENDAST det färdiga brevet, inget annat."""
 
@@ -1238,7 +1337,10 @@ Skriv ENDAST det färdiga brevet, inget annat."""
 
             if response.status_code == 200:
                 result = response.json()
-                return result["content"][0]["text"].strip()
+                letter_text = result["content"][0]["text"].strip()
+                # Run GPT-SW3 Swedish grammar check (non-blocking — returns original on failure)
+                letter_text = await check_swedish_with_gpt_sw3(letter_text)
+                return letter_text
             else:
                 error_body = response.text[:300]
                 logger.error(f"Claude API error: {response.status_code} - {error_body}")
@@ -1260,7 +1362,9 @@ Skriv ENDAST det färdiga brevet, inget annat."""
                     )
                     if fallback_resp.status_code == 200:
                         result = fallback_resp.json()
-                        return result["content"][0]["text"].strip()
+                        letter_text = result["content"][0]["text"].strip()
+                        letter_text = await check_swedish_with_gpt_sw3(letter_text)
+                        return letter_text
                 except Exception as fallback_err:
                     logger.error(f"Haiku fallback also failed: {fallback_err}")
                 # Both failed — show template with error details
@@ -1400,14 +1504,7 @@ INSTRUKTIONER:
 
 KRITISKT - Du MÅSTE inkludera VARJE jobb som listas ovan. Räkna jobben. Om det finns 5 jobb ovan måste det finnas 5 jobb i CV:t. INGA undantag. FILTRERA INTE.
 
-SVENSKA SKRIVREGLER:
-- INGEN svengelska — använd svenska ord: "möte" inte "meeting", "hantera" inte "managera", "nyckelkund" inte "key account", "dokumenterade resultat" inte "track record"
-- Sammansatta ord IHOP: "projektledare", "kundtjänst", "arbetsuppgifter" — aldrig isär
-- Liten bokstav på titlar, månader, dagar: "vd", "chef", "januari", "måndag"
-- Ingen apostrof vid genitiv: "Annas erfarenhet" inte "Anna's erfarenhet"
-- Tal 1–12 med bokstäver: "tre år", "fem projekt". Större med siffror: "15 anställda"
-- Aktiv form: "Jag ansvarade för" inte "Ansvaret låg hos mig"
-- Undvik substantiveringar: "genomförde" inte "genomförandet av"
+{SWEDISH_LANGUAGE_RULES}
 
 Skriv ENDAST CV-texten, inget annat."""
 
@@ -2815,13 +2912,7 @@ INSTRUKTIONER:
 5. ALDRIG nämn konst, målning, utställningar eller Shopify
 6. Svaret ska kunna klistras in direkt i ett webbformulär
 
-SVENSKA SKRIVREGLER:
-- Ingen svengelska — svenska ord om de finns: "möte" inte "meeting", "hantera" inte "managera"
-- Sammansatta ord ihop: "projektledare", "kundtjänst" — aldrig isär
-- Liten bokstav på titlar/månader/dagar: "vd", "chef", "januari"
-- Ingen apostrof vid genitiv: "Annas" inte "Anna's"
-- Aktiv form: "Jag ansvarade för" inte "Ansvaret låg hos mig"
-- Undvik AI-floskler: "passionerad", "brinner för", "gedigen", "genuint intresserad\""""
+{SWEDISH_LANGUAGE_RULES}"""
 
     if not ANTHROPIC_API_KEY:
         return {"success": True, "answer": f"Jag är intresserad av tjänsten som {job.get('title', 'denna roll')} och tror att min bakgrund passar bra."}
