@@ -536,6 +536,11 @@ CREATE TABLE IF NOT EXISTS applications (
     status TEXT DEFAULT 'draft',
     gmail_draft_id TEXT,
     notes TEXT,
+    apply_method TEXT,         -- How user applied: platsbanken_email, external_website, linkedin, email_direct, in_person, phone, other
+    custom_title TEXT,         -- Override job title (for manual entries or edits)
+    custom_company TEXT,       -- Override company name
+    custom_location TEXT,      -- Override location
+    apply_date TEXT,           -- When user actually applied (user-editable date)
     created_at TIMESTAMPTZ DEFAULT NOW(),
     updated_at TIMESTAMPTZ DEFAULT NOW(),
     sent_at TIMESTAMPTZ,
@@ -880,3 +885,13 @@ COMMENT ON TABLE user_anecdotes IS 'Personal anecdotes and hobbies for AI cover 
 -- 2026-02-24: Added description TEXT column to user_certifications
 --   Allows users to add context/details to their certifications (like awards already has).
 --   Migration: ALTER TABLE user_certifications ADD COLUMN IF NOT EXISTS description TEXT;
+-- 2026-02-24: Added editable fields to applications for manual entries + editing
+--   apply_method: how the user applied (platsbanken_email, external_website, linkedin, etc.)
+--   custom_title/company/location: overrides for manually added or edited applications
+--   apply_date: when the user actually applied (separate from auto-set sent_at)
+--   Migration:
+--     ALTER TABLE applications ADD COLUMN IF NOT EXISTS apply_method TEXT;
+--     ALTER TABLE applications ADD COLUMN IF NOT EXISTS custom_title TEXT;
+--     ALTER TABLE applications ADD COLUMN IF NOT EXISTS custom_company TEXT;
+--     ALTER TABLE applications ADD COLUMN IF NOT EXISTS custom_location TEXT;
+--     ALTER TABLE applications ADD COLUMN IF NOT EXISTS apply_date TEXT;

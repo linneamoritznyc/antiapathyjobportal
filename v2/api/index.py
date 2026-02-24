@@ -1763,16 +1763,17 @@ async def get_applications_from_db(user_id: str = None) -> List[Dict]:
         )
         if response.status_code == 200:
             apps = response.json()
-            # Flatten job details into application
+            # Flatten job details into application — custom fields override job data
             for app in apps:
-                if app.get("jobs"):
-                    app["job_title"] = app["jobs"].get("title")
-                    app["company"] = app["jobs"].get("company")
-                    app["contact_email"] = app["jobs"].get("contact_email")
-                    app["job_url"] = app["jobs"].get("url")
-                    app["deadline"] = app["jobs"].get("deadline")
-                    app["location"] = app["jobs"].get("location")
-                    app["working_hours"] = app["jobs"].get("working_hours")
+                job = app.get("jobs") or {}
+                app["job_title"] = app.get("custom_title") or job.get("title") or ""
+                app["company"] = app.get("custom_company") or job.get("company") or ""
+                app["contact_email"] = job.get("contact_email") or ""
+                app["job_url"] = job.get("url") or ""
+                app["deadline"] = job.get("deadline") or ""
+                app["location"] = app.get("custom_location") or job.get("location") or ""
+                app["working_hours"] = job.get("working_hours") or ""
+                if "jobs" in app:
                     del app["jobs"]
             return apps
     return []
@@ -1850,7 +1851,7 @@ async def scrape_jobs(request: JobSearchRequest = None, req: Request = None):
             interactions, applications = await _asyncio.gather(
                 db_request("GET", "user_job_interactions", params={
                     "user_id": f"eq.{user_id}",
-                    "action": "in.(applied,rejected)",
+                    "action": "in.(applied,rejected,skipped)",
                     "select": "job_id"
                 }),
                 # Only hide jobs with terminal statuses — NOT 'saved' (user may want to rediscover)
@@ -1945,39 +1946,32 @@ async def list_jobs(request: Request, limit: int = 50, offset: int = 0):
 
         rejected_ids = {i["job_id"] for i in interactions if i["action"] == "rejected"}
         applied_ids = {i["job_id"] for i in interactions if i["action"] == "applied"}
-        # Merge in job IDs from applications table (sent/draft = user already acted on these)
         applied_ids |= {a["job_id"] for a in applied_applications}
         skipped_ids = {i["job_id"] for i in interactions if i["action"] == "skipped"}
 
-        # Hard-filter rejected and applied jobs out of the feed
-        # Skipped jobs are moved to the end (deprioritized)
-        active_jobs = [j for j in jobs if j["id"] not in rejected_ids and j["id"] not in applied_ids]
-        skipped_jobs = [j for j in active_jobs if j["id"] in skipped_ids]
-        fresh_jobs = [j for j in active_jobs if j["id"] not in skipped_ids]
+        # Hard-filter: rejected, applied, AND skipped jobs are completely removed from feed
+        hidden_ids = rejected_ids | applied_ids | skipped_ids
+        active_jobs = [j for j in jobs if j["id"] not in hidden_ids]
 
-        # Within each group, prioritize jobs with contact_email (direct apply) first
+        # Prioritize jobs with contact_email (direct apply) first
         def has_email(j):
             email = j.get("contact_email")
             return bool(email and "@" in str(email))
 
-        fresh_with_email = [j for j in fresh_jobs if has_email(j)]
-        fresh_without_email = [j for j in fresh_jobs if not has_email(j)]
-        skipped_with_email = [j for j in skipped_jobs if has_email(j)]
-        skipped_without_email = [j for j in skipped_jobs if not has_email(j)]
+        with_email = [j for j in active_jobs if has_email(j)]
+        without_email = [j for j in active_jobs if not has_email(j)]
 
-        # Sort each bucket by deadline (soonest first) so urgent jobs appear first
+        # Sort by deadline (soonest first)
         def deadline_sort_key(j):
             d = j.get("deadline")
             if not d:
                 return "9999-12-31"
-            return d[:10]  # ISO date prefix for sorting
+            return d[:10]
 
-        fresh_with_email.sort(key=deadline_sort_key)
-        fresh_without_email.sort(key=deadline_sort_key)
-        skipped_with_email.sort(key=deadline_sort_key)
-        skipped_without_email.sort(key=deadline_sort_key)
+        with_email.sort(key=deadline_sort_key)
+        without_email.sort(key=deadline_sort_key)
 
-        jobs = fresh_with_email + fresh_without_email + skipped_with_email + skipped_without_email
+        jobs = with_email + without_email
 
     return {"success": True, "source": "database", "jobs": jobs}
 
@@ -2132,9 +2126,10 @@ async def update_application(application_id: str, request: Request):
     body = await request.json()
     update_data = {"updated_at": datetime.now().isoformat()}
 
+    # Standard fields
     if body.get("status") is not None:
         update_data["status"] = body["status"]
-        if body["status"] == "sent":
+        if body["status"] == "sent" and "sent_at" not in body:
             update_data["sent_at"] = datetime.now().isoformat()
 
     if body.get("notes") is not None:
@@ -2142,6 +2137,11 @@ async def update_application(application_id: str, request: Request):
 
     if body.get("cover_letter") is not None:
         update_data["cover_letter"] = body["cover_letter"]
+
+    # Editable fields: title, company, location, date, method
+    for field in ["custom_title", "custom_company", "custom_location", "apply_method", "apply_date", "sent_at"]:
+        if body.get(field) is not None:
+            update_data[field] = body[field]
 
     # Update via Supabase REST API — scoped to user_id for safety
     result = await db_request("PATCH", "applications",
@@ -2152,6 +2152,36 @@ async def update_application(application_id: str, request: Request):
         return {"success": True, "application": result[0]}
 
     raise HTTPException(status_code=500, detail="Could not update application")
+
+
+@app.post("/api/applications/manual")
+async def add_manual_application(request: Request):
+    """Manually add a job application (not from Platsbanken)"""
+    user_id = await get_user_id_from_request(request, required=True)
+    body = await request.json()
+
+    custom_title = body.get("custom_title", "").strip()
+    custom_company = body.get("custom_company", "").strip()
+    if not custom_title and not custom_company:
+        raise HTTPException(status_code=400, detail="Ange minst jobbtitel eller företag")
+
+    data = {
+        "user_id": user_id,
+        "custom_title": custom_title or None,
+        "custom_company": custom_company or None,
+        "custom_location": body.get("custom_location", "").strip() or None,
+        "apply_method": body.get("apply_method", "").strip() or None,
+        "apply_date": body.get("apply_date", "").strip() or None,
+        "status": body.get("status", "sent"),
+        "notes": body.get("notes", "").strip() or None,
+        "created_at": datetime.now().isoformat(),
+        "sent_at": body.get("apply_date") or datetime.now().isoformat()
+    }
+
+    result = await db_request("POST", "applications", data=data)
+    if result:
+        return {"success": True, "application": result[0]}
+    raise HTTPException(status_code=500, detail="Kunde inte lägga till ansökan")
 
 
 @app.delete("/api/applications/{application_id}")
@@ -2344,7 +2374,7 @@ async def save_job(job_id: str, request: Request):
                 await log_save_interaction()
                 return {"success": True, "application": response.json()[0]}
     else:
-        # Create new saved application (use on_conflict for belt-and-suspenders)
+        # Create new saved application (plain INSERT, no on_conflict needed)
         data = {
             "job_id": job_id,
             "user_id": user_id,
@@ -2352,7 +2382,7 @@ async def save_job(job_id: str, request: Request):
             "created_at": datetime.now().isoformat()
         }
         logger.info(f"Saving job {job_id} for user {user_id[:8]}...")
-        result = await db_request("POST", "applications", data=data, on_conflict="user_id,job_id")
+        result = await db_request("POST", "applications", data=data)
         logger.info(f"Save result: {bool(result)}, rows: {len(result) if result else 0}")
         if result:
             await log_save_interaction()
@@ -3401,18 +3431,31 @@ async def apply_with_cv(request: Request, job_id: str):
             "action": "applied",
             "context": {"source": "apply_with_cv"}
         })
-        app_result = await db_request("POST", "applications", data={
-            "job_id": job_id,
-            "user_id": user_id,
-            "cover_letter": cover_letter,
-            "status": "sent",
-            "created_at": datetime.now().isoformat(),
-            "sent_at": datetime.now().isoformat()
-        }, on_conflict="user_id,job_id")
+        # Check if application already exists, then PATCH or INSERT
+        existing_app = await db_request("GET", "applications", params={
+            "user_id": f"eq.{user_id}",
+            "job_id": f"eq.{job_id}",
+            "select": "id"
+        })
+        if existing_app:
+            app_result = await db_request("PATCH", "applications", data={
+                "cover_letter": cover_letter,
+                "status": "sent",
+                "sent_at": datetime.now().isoformat(),
+                "updated_at": datetime.now().isoformat()
+            }, params={"id": f"eq.{existing_app[0]['id']}"})
+        else:
+            app_result = await db_request("POST", "applications", data={
+                "job_id": job_id,
+                "user_id": user_id,
+                "cover_letter": cover_letter,
+                "status": "sent",
+                "created_at": datetime.now().isoformat(),
+                "sent_at": datetime.now().isoformat()
+            })
         application_saved = bool(app_result)
         if not app_result:
-            logger.warning(f"Failed to save application for job {job_id}, user {user_id[:8]}. "
-                          "User will need to click 'Markera skickad' manually.")
+            logger.warning(f"Failed to save application for job {job_id}, user {user_id[:8]}.")
 
     # No auto-draft: Gmail draft is only created when user clicks "Spara i Gmail med bilagor"
     # (handled by POST /api/jobs/{job_id}/save-draft)
