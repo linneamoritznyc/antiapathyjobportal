@@ -3133,8 +3133,8 @@
             );
         };
 
-        // Bransch-CV Card Component
-        const BranschCVCard = ({ cv, onView, onUpload, uploading }) => {
+        // Bransch-CV Card Component (simple version for MinaCVPage)
+        const BranschCVCardSimple = ({ cv, onView, onUpload, uploading }) => {
             const iconMap = {
                 'Restaurant & Café': '🍽️',
                 'Butik & Kassa': '🛒',
@@ -3717,7 +3717,7 @@
 
                         <div className="grid grid-cols-4 gap-4">
                             {branschCVs.map((cv, idx) => (
-                                <BranschCVCard
+                                <BranschCVCardSimple
                                     key={cv.id || idx}
                                     cv={cv}
                                     onView={(cv) => setViewingCV(cv)}
