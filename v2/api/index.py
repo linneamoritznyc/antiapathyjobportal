@@ -1603,7 +1603,7 @@ async def health():
 
 
 @app.post("/api/scrape")
-async def scrape_jobs(request: JobSearchRequest = None):
+async def scrape_jobs(request: JobSearchRequest = None, req: Request = None):
     """Scrape jobs from Platsbanken.
     Searches user's positive keywords PLUS a broad catch-all search.
     When municipality_ids are provided, geographic filters are applied at the API level.
@@ -1650,6 +1650,35 @@ async def scrape_jobs(request: JobSearchRequest = None):
 
     # Save to database if configured
     saved_count = await save_jobs_to_db(unique_jobs)
+
+    # Filter out jobs the user already acted on (applied, rejected, saved)
+    # so they don't reappear in fresh scrape results — Tinder-style: once acted on, it's gone.
+    user_id = await get_user_id_from_request(req) if req else None
+    if user_id and unique_jobs:
+        try:
+            import asyncio as _asyncio
+            interactions, applications = await _asyncio.gather(
+                db_request("GET", "user_job_interactions", params={
+                    "user_id": f"eq.{user_id}",
+                    "action": "in.(applied,rejected)",
+                    "select": "job_id"
+                }),
+                db_request("GET", "applications", params={
+                    "user_id": f"eq.{user_id}",
+                    "select": "job_id"
+                })
+            )
+            hidden_ids = set()
+            if interactions:
+                hidden_ids |= {i["job_id"] for i in interactions}
+            if applications:
+                hidden_ids |= {a["job_id"] for a in applications}
+            if hidden_ids:
+                before = len(unique_jobs)
+                unique_jobs = [j for j in unique_jobs if j["id"] not in hidden_ids]
+                logger.info(f"Scrape interaction filter: {before} → {len(unique_jobs)} jobs for user {user_id[:8]}")
+        except Exception as e:
+            logger.warning(f"Could not filter scrape results by interactions: {e}")
 
     return {
         "success": True,
@@ -1781,7 +1810,7 @@ async def log_job_interaction(job_id: str, request: Request):
         "job_id": job_id,
         "action": action,
         "context": context
-    })
+    }, on_conflict="user_id,job_id,action")
 
     return {"success": True, "job_id": job_id, "action": action}
 
@@ -1831,7 +1860,7 @@ async def save_application(request: SaveApplicationRequest, req: Request):
         "created_at": datetime.now().isoformat()
     }
 
-    result = await db_request("POST", "applications", data=data)
+    result = await db_request("POST", "applications", data=data, on_conflict="user_id,job_id")
     if result:
         return {"success": True, "application": result[0]}
     raise HTTPException(status_code=500, detail="Could not save application")
@@ -6284,7 +6313,7 @@ async def create_gmail_draft(request: CreateGmailDraftRequest, user_id: str = "d
             "status": "draft",
             "gmail_draft_id": draft.get("id"),
             "created_at": datetime.now().isoformat()
-        })
+        }, on_conflict="user_id,job_id")
 
     return {
         "success": True,

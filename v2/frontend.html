@@ -396,10 +396,12 @@
                 await saveApplication('sent');
                 // Also log 'applied' interaction so job is hidden from feed
                 if (localStorage.getItem('auth_token')) {
-                    authFetch(`/api/jobs/${job.id}/interaction`, {
-                        method: 'POST',
-                        body: JSON.stringify({ action: 'applied' })
-                    }).catch(() => {});
+                    try {
+                        await authFetch(`/api/jobs/${job.id}/interaction`, {
+                            method: 'POST',
+                            body: JSON.stringify({ action: 'applied' })
+                        });
+                    } catch (e) {}
                 }
                 onClose();
             };
@@ -5203,15 +5205,15 @@
                 } catch (e) {}
             };
 
-            const handleSkip = (job) => {
-                logInteraction(job.id, 'skipped');
+            const handleSkip = async (job) => {
+                await logInteraction(job.id, 'skipped');
                 setLeftPanel('description');
                 setEditMode(false);
                 setCurrentPage(p => Math.min(filteredJobs.length, p + 1));
             };
 
-            const handleReject = (job) => {
-                logInteraction(job.id, 'rejected');
+            const handleReject = async (job) => {
+                await logInteraction(job.id, 'rejected');
                 setHiddenJobIds(prev => new Set([...prev, job.id]));
                 setLeftPanel('description');
                 setEditMode(false);
@@ -5311,6 +5313,8 @@
             const filteredJobs = jobs
                 .filter(job => {
                     if (!showHidden && hiddenJobIds.has(job.id)) return false;
+                    // Saved jobs disappear from feed (find them in Mina ansökningar → Sparade)
+                    if ((savedJobs || []).includes(job.id)) return false;
 
                     // Working hours filter
                     const wh = quizPrefs.working_hours;
@@ -5838,13 +5842,13 @@
                 }
             };
 
-            const handleSkip = (job) => {
-                logInteraction(job.id, 'skipped');
+            const handleSkip = async (job) => {
+                await logInteraction(job.id, 'skipped');
                 setCurrentPage(p => Math.min(filteredJobs.length, p + 1));
             };
 
-            const handleReject = (job) => {
-                logInteraction(job.id, 'rejected');
+            const handleReject = async (job) => {
+                await logInteraction(job.id, 'rejected');
                 setHiddenJobIds(prev => new Set([...prev, job.id]));
                 // Stay on same page index — next job slides in automatically
             };
@@ -5872,6 +5876,8 @@
                 .filter(job => {
                     // Hide locally rejected jobs unless "Visa dolda" is on
                     if (!showHidden && hiddenJobIds.has(job.id)) return false;
+                    // Saved jobs disappear from feed (find them in Mina ansökningar → Sparade)
+                    if ((savedJobs || []).includes(job.id)) return false;
 
                     // Text filter
                     if (filterText) {
@@ -7597,6 +7603,7 @@
 
             const [loadingMore, setLoadingMore] = useState(false);
             const [noMoreJobs, setNoMoreJobs] = useState(false);
+            const [toastMsg, setToastMsg] = useState(null);
 
             const fetchJobs = async () => {
                 const res = await authFetch('/api/jobs?limit=500');
@@ -7667,6 +7674,8 @@
                 // Optimistic UI update
                 if (isSaved) {
                     setSavedJobs(prev => [...prev, jobId]);
+                    setToastMsg('Sparad! Hitta den under Ansökningar \u2192 Sparade');
+                    setTimeout(() => setToastMsg(null), 3000);
                 } else {
                     setSavedJobs(prev => prev.filter(id => id !== jobId));
                 }
@@ -7680,6 +7689,7 @@
                         } else {
                             setSavedJobs(prev => [...prev, jobId]);
                         }
+                        setToastMsg(null);
                     }
                 } catch (err) {
                     console.error('Error saving job:', err);
@@ -7689,6 +7699,7 @@
                     } else {
                         setSavedJobs(prev => [...prev, jobId]);
                     }
+                    setToastMsg(null);
                 }
                 fetchApplications();
             };
@@ -7860,10 +7871,12 @@
                         setShowApplyModal(true);
                         // Log 'applied' interaction so this job is hidden from the feed
                         if (localStorage.getItem('auth_token')) {
-                            authFetch(`/api/jobs/${job.id}/interaction`, {
-                                method: 'POST',
-                                body: JSON.stringify({ action: 'applied' })
-                            }).catch(() => {});
+                            try {
+                                await authFetch(`/api/jobs/${job.id}/interaction`, {
+                                    method: 'POST',
+                                    body: JSON.stringify({ action: 'applied' })
+                                });
+                            } catch (e) {}
                         }
                     } else {
                         // Show a helpful error with more context
@@ -8618,6 +8631,12 @@
                         onSave={handleSaveMasterCV}
                         saving={savingMasterCV}
                     />
+
+                    {toastMsg && (
+                        <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 bg-slate-800 text-white px-5 py-3 rounded-xl shadow-lg text-sm animate-fade-in">
+                            {toastMsg}
+                        </div>
+                    )}
 
                     <footer className="border-t border-slate-200 mt-8">
                         <div className="max-w-6xl mx-auto px-4 py-6 text-center text-sm text-slate-500">
