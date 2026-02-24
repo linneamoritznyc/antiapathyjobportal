@@ -1156,16 +1156,66 @@ INSTRUKTIONER:
    {phone}
    {email}
 
-SPRÅKREGLER — KRITISKT (brevet MÅSTE låta som riktig svenska, inte översatt engelska):
-- INGEN SVENGELSKA. Skriv naturlig svenska — inte engelska fraser översatta rakt av. Undvik engelska lånord när det finns ett vanligt svenskt ord (t.ex. "hantera" istället för "managera", "återkoppling" istället för "feedback"). Om CV-texten innehåller svengelska, rätta det i brevet. Tänk: hur skulle en svensk 25-åring formulera detta muntligt?
-- KORREKTA svenska fraser: "Flera års erfarenhet" (INTE "erfarenhet från flera år"). "Jobba i kassan" (INTE "på kassavagn"). "Stå i butik" (INTE "arbeta i butiksmiljö"). "Packa paket" (INTE "hantera paketdistribution"). Använd vardagliga svenska ord, inte byråkratiska.
-- INGEN over-explaining: Förklara inte självklara saker. "Jag är noggrann" räcker — du behöver INTE lägga till "och det betyder mycket för mig att få arbetet gjort rätt". Skriv inte som en reklamtext.
-- VARIERA meningsbyggnaden: Börja INTE varje mening med "Jag". Blanda meningslängder. Använd bisatser och naturliga övergångar. Texten ska ha flyt, inte låta som en punktlista.
-- ALDRIG defensiv om saknad erfarenhet: Skriv ALDRIG "Jag inser att er annons efterfrågar..." eller "Även om min erfarenhet inte redan omfattar...". Det låter som en ursäkt. Säg det kort och rakt istället: "Jag har inte jobbat med X förut, men jag lär mig snabbt." MAX en mening om saknad erfarenhet — fokusera sedan på vad du KAN.
-- RÄTT ordval för arbetsmeriter: Skriv aldrig "självförtroende" (låter som terapi). Säg istället "trygg i min roll", "van vid att jobba självständigt" eller "bekväm med kundkontakt". Skriv aldrig "genuint intresserad av att utvecklas inom butiksverksamhet" — ingen pratar så. Håll det enkelt och ärligt.
-- Undvik inställsamma AI-floskler: "passionerad", "brinner för", "gedigen", "vittnar om", "värdefull tillgång", "unik möjlighet", "driven och ambitiös", "med glädje", "genuint intresserad", "relevant butikserfarenhet".
-- PROPORTIONER: Lägg 80% av brevet på vad du KAN och har gjort. Max 20% på saker du inte gjort. Brevet ska sälja, inte be om ursäkt.
-- Skriv som en RIKTIG person som söker jobb — inte som en AI som försöker imponera.
+SVENSKA SKRIVREGLER — KRITISKT (brevet MÅSTE följa korrekt svensk grammatik och stil):
+
+SVENGELSKA — använd ALLTID svenska ord:
+- Om ett svenskt ord finns, använd det. "Gräsrotsfinansiering" inte "crowdfunding", "möte" inte "meeting", "uppdatering" inte "update", "hantera" inte "managera", "återkoppling" inte "feedback", "mejl" inte "mail" i löptext, "nyckelkund" inte "key account", "dra nytta av" inte "leverage", "dokumenterade resultat" inte "track record"
+- Försvenskade stavningar och böjningar: "videor" inte "videos"
+- Om CV-texten innehåller svengelska, RÄTTA det i brevet
+
+SAMMANSATTA ORD — skriv IHOP:
+- Svenska sammansatta ord skrivs IHOP: "projektledare", "arbetsuppgifter", "merförsäljning", "kundtjänst"
+- Skriv ALDRIG isär: "projekt ledare" ✗, "arbets uppgifter" ✗
+- Tumregel: betoningen på första stavelsen → skriv ihop
+
+STOR/LITEN BOKSTAV:
+- Månader, dagar, titlar med LITEN bokstav: "måndag", "april", "chef", "vd"
+- Företag/organisationer med stor: "Volvo", "Arbetsförmedlingen"
+- Skriv aldrig stor bokstav mitt i mening för att betona
+
+SKILJETECKEN:
+- Komma före "men" inne i mening
+- Komma runt inskott: "Företaget, som grundades 1995, omsatte..."
+- Liten bokstav efter kolon och semikolon
+
+APOSTROF:
+- Apostrof ALDRIG vid genitiv: "Annas bil" — INTE "Anna's bil"
+
+TAL OCH DATUM:
+- Datum: "11 oktober 2025" (inte 11/10/25)
+- Tal 1–12 med bokstäver, större med siffror
+- Decimaler med komma: "3,14"
+
+TON OCH STIL:
+- Mottagaranpassat och tydligt — läsaren ska reagera på innehållet, inte språket
+- Undvik onödiga substantiveringar — använd verb: "Vi genomförde" inte "Genomförandet av"
+- Aktiv form: "Jag ansvarade för" inte "Ansvaret låg hos mig"
+- Börja med det viktigaste (subjekt + verb tidigt), sedan hur/när/varför
+- "Ur min synvinkel" ✓ — inte "Från min synpunkt sett" ✗
+- Skriv ut ord istället för snedstreck: "han eller hon" inte "han/hon"
+- Tankstreck med mellanslag vid inskott: "Hon är – sägs det – skicklig"
+
+KORREKTA SVENSKA FRASER:
+- "Flera års erfarenhet" (INTE "erfarenhet från flera år")
+- "Jobba i kassan" (INTE "på kassavagn")
+- "Stå i butik" (INTE "arbeta i butiksmiljö")
+- Använd vardagliga svenska ord, inte byråkratiska
+
+MENINGSBYGGNAD:
+- Börja INTE varje mening med "Jag". Blanda meningslängder. Använd bisatser och naturliga övergångar
+- Texten ska ha flyt, inte låta som en punktlista
+- INGEN over-explaining: "Jag är noggrann" räcker — behöver INTE tillägga "och det betyder mycket för mig"
+
+ALDRIG DEFENSIV:
+- Skriv ALDRIG "Jag inser att er annons efterfrågar..." eller "Även om min erfarenhet inte redan omfattar..."
+- Kort och rakt: "Jag har inte jobbat med X förut, men jag lär mig snabbt." MAX en mening
+
+FÖRBJUDNA AI-FLOSKLER:
+- "passionerad", "brinner för", "gedigen", "vittnar om", "värdefull tillgång", "unik möjlighet", "driven och ambitiös", "med glädje", "genuint intresserad", "relevant butikserfarenhet", "självförtroende"
+- Säg istället: "trygg i min roll", "van vid att jobba självständigt", "bekväm med kundkontakt"
+
+PROPORTIONER: 80% på vad du KAN. Max 20% på saker du inte gjort.
+Skriv som en RIKTIG person — inte en AI som försöker imponera.
 
 Skriv ENDAST det färdiga brevet, inget annat."""
 
@@ -1349,6 +1399,15 @@ INSTRUKTIONER:
    [Lista]
 
 KRITISKT - Du MÅSTE inkludera VARJE jobb som listas ovan. Räkna jobben. Om det finns 5 jobb ovan måste det finnas 5 jobb i CV:t. INGA undantag. FILTRERA INTE.
+
+SVENSKA SKRIVREGLER:
+- INGEN svengelska — använd svenska ord: "möte" inte "meeting", "hantera" inte "managera", "nyckelkund" inte "key account", "dokumenterade resultat" inte "track record"
+- Sammansatta ord IHOP: "projektledare", "kundtjänst", "arbetsuppgifter" — aldrig isär
+- Liten bokstav på titlar, månader, dagar: "vd", "chef", "januari", "måndag"
+- Ingen apostrof vid genitiv: "Annas erfarenhet" inte "Anna's erfarenhet"
+- Tal 1–12 med bokstäver: "tre år", "fem projekt". Större med siffror: "15 anställda"
+- Aktiv form: "Jag ansvarade för" inte "Ansvaret låg hos mig"
+- Undvik substantiveringar: "genomförde" inte "genomförandet av"
 
 Skriv ENDAST CV-texten, inget annat."""
 
@@ -2754,7 +2813,15 @@ INSTRUKTIONER:
 3. Referera till specifika delar av jobbeskrivningen som visar varför sökanden passar
 4. Naturlig, varm svenska — inte krystad eller generisk
 5. ALDRIG nämn konst, målning, utställningar eller Shopify
-6. Svaret ska kunna klistras in direkt i ett webbformulär"""
+6. Svaret ska kunna klistras in direkt i ett webbformulär
+
+SVENSKA SKRIVREGLER:
+- Ingen svengelska — svenska ord om de finns: "möte" inte "meeting", "hantera" inte "managera"
+- Sammansatta ord ihop: "projektledare", "kundtjänst" — aldrig isär
+- Liten bokstav på titlar/månader/dagar: "vd", "chef", "januari"
+- Ingen apostrof vid genitiv: "Annas" inte "Anna's"
+- Aktiv form: "Jag ansvarade för" inte "Ansvaret låg hos mig"
+- Undvik AI-floskler: "passionerad", "brinner för", "gedigen", "genuint intresserad\""""
 
     if not ANTHROPIC_API_KEY:
         return {"success": True, "answer": f"Jag är intresserad av tjänsten som {job.get('title', 'denna roll')} och tror att min bakgrund passar bra."}
@@ -5584,7 +5651,7 @@ REGLER:
 - Läs HELA konversationen — upprepa ALDRIG frågor som redan besvarats
 - Om användaren redan gett dig information, ANVÄND den direkt utan att fråga igen
 - Om användaren ber dig uppdatera/lägga till något, bekräfta kort vad du gör och gör det
-- Skriv naturlig svenska, inte svengelska
+- Skriv naturlig svenska, inte svengelska. Sammansatta ord ihop (projektledare, arbetsuppgifter). Ingen apostrof vid genitiv. Liten bokstav på månader/dagar/titlar
 - Var kort och konkret — ingen inställsam AI-ton, inga emojis"""
 
     # Build Claude messages from conversation history
