@@ -926,7 +926,7 @@ DEFAULT_EXPERIENCE = {
 - Deployment: Vercel, Supabase, API-integrationer
 - Innehållsanalytiker, Google Ads (2018-2019): Teknisk granskning, dataanalys""",
 
-    "industri": """- Siggesta Gård: Städning och praktiskt underhållsarbete
+    "industry": """- Siggesta Gård: Städning och praktiskt underhållsarbete
 - Max Hamburgare (Apr-Aug 2024): Kök, drive-in, fysiskt arbete i högt tempo
 - ICA Maxi (2015, 2017, 2019): Fysiskt butiksarbete, varumottagning, frukt/grönt
 - B-körkort och tillgång till bil
@@ -936,7 +936,7 @@ DEFAULT_EXPERIENCE = {
 - Flexibel, pålitlig och van vid ansvar
 - B-körkort och flexibel med arbetstider""",
 
-    "contentmoderation": """- Innehållsmoderator, Clubhouse (Jun 2021-Jan 2022): Trust & Safety, granskning, support
+    "content": """- Innehållsmoderator, Clubhouse (Jun 2021-Jan 2022): Trust & Safety, granskning, support
 - Innehållsanalytiker, Google Ads (Maj 2018-Apr 2019): 100+ annonser/dag, policyhantering
 - Global Marketing, Minerva Project (Sep 2019-Apr 2020): Kundkommunikation via Intercom""",
 
@@ -1607,9 +1607,10 @@ def match_job_to_bransch(job_title: str, job_description: str) -> str:
         "customerservice":   ["kundtjänst", "kundservice", "kundmottagning", "support", "helpdesk", "telefonsupport", "chatt", "reception", "receptionist"],
         "tech":              ["mjukvara", "programmering", "webbutvecklare", "frontend", "backend", "systemutvecklare", "it-tekniker", "it-support", "devops", "agile", "scrum"],
         "healthcare":        ["vård", "omsorg", "sjuksköterska", "undersköterska", "äldreboende", "hemtjänst", "medicin", "rehab", "personlig assistent", "lss", "psykiatri"],
-        "industri":          ["trädgård", "industri", "lager", "städ", "städning", "renhållning", "utomhus", "bygg", "produktion", "truck", "magasin", "underhåll", "rastplats",
+        "industry":          ["trädgård", "industri", "lager", "städ", "städning", "renhållning", "utomhus", "bygg", "produktion", "truck", "magasin", "underhåll", "rastplats",
                               "skötsel", "fastighet", "mark", "park", "reparation", "maskin", "montör", "svetsare", "godshantering", "bud", "chaufför", "sommarjobb utomhus"],
-        "contentmoderation": ["moderator", "content moderation", "trust and safety", "granskning", "recensioner", "online safety"],
+        "hotel":             ["hotell", "hotel", "reception", "receptionist", "gäst", "bokning", "concierge", "incheckning", "lobby", "roomservice"],
+        "content":           ["moderator", "content moderation", "trust and safety", "granskning", "recensioner", "online safety"],
         "art":               ["konst", "kultur", "galleri", "utställning", "kreativ", "illustration", "foto", "film", "musik", "teater"],
     }
 
@@ -1625,8 +1626,9 @@ CV_FILE_MAP = {
     "customerservice":   "CV_Linnea_Moritz_Kundtjanst.pdf",
     "tech":              "CV_Linnea_Moritz_Tech_Kontor.pdf",
     "healthcare":        "CV_Linnea_Moritz_Vard_Omsorg.pdf",
-    "industri":          "CV_Linnea_Moritz_Industri_Tradgard.pdf",
-    "contentmoderation": "CV_Linnea_Moritz_Content_Moderation.pdf",
+    "industry":          "CV_Linnea_Moritz_Industri_Tradgard.pdf",
+    "hotel":             "CV_Linnea_Moritz_Hotell_Reception.pdf",
+    "content":           "CV_Linnea_Moritz_Content_Moderation.pdf",
     "art":               "CV_Linnea_Moritz_Konst_Kultur.pdf",
 }
 CV_FILES_DIR = pathlib.Path(__file__).parent / "cv_files"
@@ -8347,8 +8349,8 @@ async def upload_cv(bransch_id: str, request: Request):
             "tech": "Tech & Kontor",
             "healthcare": "Vard & Omsorg",
             "industry": "Tradgard & Industri",
-            "reception": "Hotell & Reception",
-            "contentmoderation": "Content & Moderation"
+            "hotel": "Hotell & Reception",
+            "content": "Content & Moderation"
         }
 
         await db_request(
