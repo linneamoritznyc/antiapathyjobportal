@@ -1850,7 +1850,7 @@ async def scrape_jobs(request: JobSearchRequest = None, req: Request = None):
             interactions, applications = await _asyncio.gather(
                 db_request("GET", "user_job_interactions", params={
                     "user_id": f"eq.{user_id}",
-                    "action": "in.(applied,rejected)",
+                    "action": "in.(applied,rejected,skipped)",
                     "select": "job_id"
                 }),
                 # Only hide jobs with terminal statuses — NOT 'saved' (user may want to rediscover)
@@ -1945,39 +1945,32 @@ async def list_jobs(request: Request, limit: int = 50, offset: int = 0):
 
         rejected_ids = {i["job_id"] for i in interactions if i["action"] == "rejected"}
         applied_ids = {i["job_id"] for i in interactions if i["action"] == "applied"}
-        # Merge in job IDs from applications table (sent/draft = user already acted on these)
         applied_ids |= {a["job_id"] for a in applied_applications}
         skipped_ids = {i["job_id"] for i in interactions if i["action"] == "skipped"}
 
-        # Hard-filter rejected and applied jobs out of the feed
-        # Skipped jobs are moved to the end (deprioritized)
-        active_jobs = [j for j in jobs if j["id"] not in rejected_ids and j["id"] not in applied_ids]
-        skipped_jobs = [j for j in active_jobs if j["id"] in skipped_ids]
-        fresh_jobs = [j for j in active_jobs if j["id"] not in skipped_ids]
+        # Hard-filter: rejected, applied, AND skipped jobs are completely removed from feed
+        hidden_ids = rejected_ids | applied_ids | skipped_ids
+        active_jobs = [j for j in jobs if j["id"] not in hidden_ids]
 
-        # Within each group, prioritize jobs with contact_email (direct apply) first
+        # Prioritize jobs with contact_email (direct apply) first
         def has_email(j):
             email = j.get("contact_email")
             return bool(email and "@" in str(email))
 
-        fresh_with_email = [j for j in fresh_jobs if has_email(j)]
-        fresh_without_email = [j for j in fresh_jobs if not has_email(j)]
-        skipped_with_email = [j for j in skipped_jobs if has_email(j)]
-        skipped_without_email = [j for j in skipped_jobs if not has_email(j)]
+        with_email = [j for j in active_jobs if has_email(j)]
+        without_email = [j for j in active_jobs if not has_email(j)]
 
-        # Sort each bucket by deadline (soonest first) so urgent jobs appear first
+        # Sort by deadline (soonest first)
         def deadline_sort_key(j):
             d = j.get("deadline")
             if not d:
                 return "9999-12-31"
-            return d[:10]  # ISO date prefix for sorting
+            return d[:10]
 
-        fresh_with_email.sort(key=deadline_sort_key)
-        fresh_without_email.sort(key=deadline_sort_key)
-        skipped_with_email.sort(key=deadline_sort_key)
-        skipped_without_email.sort(key=deadline_sort_key)
+        with_email.sort(key=deadline_sort_key)
+        without_email.sort(key=deadline_sort_key)
 
-        jobs = fresh_with_email + fresh_without_email + skipped_with_email + skipped_without_email
+        jobs = with_email + without_email
 
     return {"success": True, "source": "database", "jobs": jobs}
 
