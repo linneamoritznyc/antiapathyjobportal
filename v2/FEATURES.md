@@ -162,10 +162,13 @@ Tvådelad: jobblista till vänster, detaljer till höger.
 1. **Beskrivning** — full jobbannons, utfällbar
 2. **Brev** — generera personligt brev (samma flöde som Jobb-modalen)
 3. **Q&A** — ställ frågor om jobbet → `POST /api/jobs/{id}/answer-question`
+   - AI:n svarar baserat på **både jobbannonsen OCH ditt CV/profil**: namn, ort, bästa CV-text (från `user_cvs`), ton och avoid-fraser (från `user_cover_letter_preferences`), plus jobbets titel/företag/beskrivning (max 2000 tecken).
+   - Svar: 50–150 ord, refererar till specifika delar av annonsen och väver in din erfarenhet.
+   - Snabbknappar för vanliga frågor ("Varför vill du jobba hos oss?" etc) + fritext.
 
 ### Åtgärdsknappar
-- **"Hoppa över"** — skickar jobbet till slutet
-- **"Avvisa"** — döljer jobbet permanent
+- **"Hoppa över"** — loggar `action=skipped` i `user_job_interactions`. Jobbet filtreras bort från feedet (hård filtrering, inte bara nedprioriterat). Kan dock dyka upp igen vid ny scrape om samma jobb-ID skrapas igen.
+- **"Avvisa"** — loggar `action=rejected`. Jobbet **permanent dolt** från feedet. Visas bara om du klickar "Visa dolda".
 
 **Supabase-koppling:**
 
@@ -184,7 +187,7 @@ Hantera Master CV + 9 branschanpassade versioner.
 
 ### Master CV-sektion
 - **"Redigera Master CV"**-knapp — öppnar fullständig redigeringsmodal
-- **"Generera alla CV"**-knapp → `POST /api/cv/generate-branscher`
+- **"Generera alla CV"**-knapp → `POST /api/cv/generate-branscher` — **regenererar ALLA 9 bransch-CV varje gång** (upsert med `on_conflict=user_id,vibe_id`). Kollar inte om CV redan finns — full omskrivning. Kräver att Master CV (erfarenheter/utbildning) finns.
 - **"Ladda ner Master CV"** → `GET /api/master-cv/download-pdf`
 - Statistik: antal erfarenheter, utbildningar, utmärkelser, projekt, språk
 
@@ -208,7 +211,7 @@ Hantera Master CV + 9 branschanpassade versioner.
 - Statusbadge — "✓ CV finns" / "Inte skapat"
 - **"📤 Ladda upp CV"** → `POST /api/upload/cv/{bransch_id}`
 - **"📄 Visa fil"** — länk till uppladdad PDF
-- **"✏️ Redigera"** — texteditor för CV-texten
+- **"✏️ Redigera"** — öppnar en **fritext-textarea** (monospace-font, `h-64`). Ingen strukturerad editor med bullets/sektioner — bara ren text. Huvudsakliga arbetssättet är att ladda upp PDF eller omgenerera från Master CV, inte redigera inline.
 
 **De 9 branscherna:**
 
@@ -236,13 +239,13 @@ Hantera Master CV + 9 branschanpassade versioner.
 | `user_awards` | ✅ | ✅ | Utmärkelser (CRUD) |
 | `user_certifications` | ✅ | ✅ | Certifieringar (CRUD) |
 | `tech_projects` | ✅ | ✅ | Projekt (för tech-CV) |
-| `user_experience_tags` | ✅ | ✅ | Kopplar erfarenheter → branscher med prioritet |
+| `user_experience_tags` | ✅ | ✅ | Kopplar erfarenheter → branscher med prioritet. **OBS: tabellen finns i DB men har inget UI och inga API-endpoints ännu.** Branschmatchning sker dynamiskt via `experiences.categories`-fältet istället. |
 | `user_cvs` | ✅ | ✅ | Genererade bransch-CV texter |
 | `bransch_cvs` | ✅ | ✅ | Bransch-CV varianter med PDF-URL |
 | `user_cv_branscher` | ✅ | ✅ | Användarens branschdefinitioner |
 | `user_cv_uploads` | ✅ | ✅ | Uppladdade CV-filer (max 20) |
 | `user_cv_creation_conversations` | ✅ | ✅ | AI-chatt historik per CV |
-| `user_cv_versions` | ✅ | ✅ | Versionshistorik per CV |
+| `user_cv_versions` | ✅ | ✅ | Versionshistorik per CV. **OBS: tabellen finns men populeras aldrig och har ingen restore-funktion.** CV:n skrivs över direkt vid omgenerering — ingen historik sparas i praktiken. |
 | `master_cv_exports` | | ✅ | Snapshot av hela Master CV som JSON |
 | **Storage: `cv-files`** | ✅ | ✅ | PDF-filer för bransch-CVer |
 | **Storage: `profile-photos`** | ✅ | | Profilbild på CV |
