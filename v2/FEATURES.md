@@ -753,3 +753,11 @@ Personuppgifter och kontoinställningar.
 - **GET /api/applications returnerar 401** — Triggar authFetch auto-refresh istället för att tyst returnera tom lista.
 - **get_applications_from_db fallback** — Om PostgREST embedded query (`select=*,jobs(...)`) misslyckas, körs en enklare query utan join + batch-fetch av jobb separat. Error loggas alltid.
 - **Nya kolumner i applications** — `apply_method`, `custom_title`, `custom_company`, `custom_location`, `apply_date` (tillagda i DB + schema).
+
+### v2.4 — 24 feb 2026
+
+**Bugfixar:**
+- **Försvarsmakten slapp igenom "Militär"-filter** — Negativa sökord kollade bara titel + beskrivning, inte företagsnamn. Nu kollas titel + företag + beskrivning på både Jobb- och Extern-sidan.
+- **Aktivitetsrapport kraschade** — Ingen auth-kontroll (user_id=None → frågade alla ansökningar), plus Unicode-tecken i jobbtitlar/företagsnamn orsakade Latin-1 encoding-fel i PDF. Nu krävs auth + `_safe_pdf_text()` sanerar all text.
+- **Master CV PDF kraschade** — Samma Unicode-problem: em-dash, typografiska citattecken, m.m. från DB-data kraschade fpdf2. `safe_text()` delegerar nu till `_safe_pdf_text()` som ersätter/filtrerar non-Latin-1 tecken.
+- **Projekt/certifieringar saknades i Master CV PDF** — `project_name` och `certification_name` matchar nu DB-kolumnnamn (inte bara generiska `name`/`title`).

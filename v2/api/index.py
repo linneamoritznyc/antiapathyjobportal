@@ -2245,6 +2245,8 @@ async def generate_aktivitetsrapport(request: Request, month: str = None):
     from fastapi.responses import Response as RawResponse
 
     user_id = await get_user_id_from_request(request)
+    if not user_id:
+        raise HTTPException(status_code=401, detail="Du måste vara inloggad")
 
     # Determine month
     if not month:
@@ -2264,10 +2266,9 @@ async def generate_aktivitetsrapport(request: Request, month: str = None):
 
     # Get user profile
     sender_name = "Namn"
-    if user_id:
-        profiles = await db_request("GET", "user_profiles", params={"user_id": f"eq.{user_id}"})
-        if profiles:
-            sender_name = profiles[0].get("full_name", sender_name)
+    profiles = await db_request("GET", "user_profiles", params={"user_id": f"eq.{user_id}"})
+    if profiles:
+        sender_name = _safe_pdf_text(profiles[0].get("full_name", sender_name))
 
     # Get sent applications for this month
     apps = await get_applications_from_db(user_id=user_id)
@@ -2323,10 +2324,10 @@ async def generate_aktivitetsrapport(request: Request, month: str = None):
         except (ValueError, TypeError):
             datum = sent_date
 
-        yrkesroll = (a.get("job_title") or "")[:30]
-        arbetsgivare = (a.get("company") or "")[:25]
-        omfattning = a.get("working_hours") or "Heltid"
-        ort = (a.get("location") or "")[:22]
+        yrkesroll = _safe_pdf_text((a.get("job_title") or "")[:30])
+        arbetsgivare = _safe_pdf_text((a.get("company") or "")[:25])
+        omfattning = _safe_pdf_text(a.get("working_hours") or "Heltid")
+        ort = _safe_pdf_text((a.get("location") or "")[:22])
 
         pdf.cell(col_widths[0], 7, datum, border=1)
         pdf.cell(col_widths[1], 7, yrkesroll, border=1)
@@ -2933,6 +2934,26 @@ async def get_bransch_cvs(request: Request):
     return {"bransch_cvs": bransch_cvs}
 
 
+def _safe_pdf_text(text) -> str:
+    """Make text safe for fpdf2 built-in fonts (Latin-1 only).
+    Replaces common Unicode chars that appear in Swedish job listings."""
+    if not text:
+        return ""
+    text = str(text)
+    replacements = {
+        '\u2013': '-', '\u2014': '-',    # en/em dash
+        '\u2018': "'", '\u2019': "'",    # curly single quotes
+        '\u201c': '"', '\u201d': '"',    # curly double quotes
+        '\u2026': '...', '\u00a0': ' ',  # ellipsis, nbsp
+        '\u2022': '-', '\u2023': '-',    # bullet chars
+        '\u200b': '', '\u200c': '', '\u200d': '',  # zero-width chars
+        '\ufeff': '',  # BOM
+    }
+    for old, new in replacements.items():
+        text = text.replace(old, new)
+    return text.encode('latin-1', errors='replace').decode('latin-1')
+
+
 def _build_master_cv_pdf(profile: Dict, experiences: list, education: list, volunteer: list, awards: list, skills: list, projects: list = None, certifications: list = None) -> bytes:
     """Build a Master CV PDF using fpdf2 and return raw bytes."""
     from fpdf import FPDF
@@ -2952,7 +2973,7 @@ def _build_master_cv_pdf(profile: Dict, experiences: list, education: list, volu
     pdf.add_page()
 
     # -- Header: Name --
-    name = profile.get("full_name") or "Namn saknas"
+    name = _safe_pdf_text(profile.get("full_name") or "Namn saknas")
     pdf.set_font("Helvetica", "B", 22)
     pdf.set_text_color(30, 30, 30)
     pdf.cell(0, 12, name, new_x="LMARGIN", new_y="NEXT")
@@ -2960,11 +2981,11 @@ def _build_master_cv_pdf(profile: Dict, experiences: list, education: list, volu
     # -- Contact line --
     contact_parts = []
     if profile.get("email"):
-        contact_parts.append(profile["email"])
+        contact_parts.append(_safe_pdf_text(profile["email"]))
     if profile.get("phone"):
-        contact_parts.append(profile["phone"])
+        contact_parts.append(_safe_pdf_text(profile["phone"]))
     if profile.get("location"):
-        contact_parts.append(profile["location"])
+        contact_parts.append(_safe_pdf_text(profile["location"]))
     if contact_parts:
         pdf.set_font("Helvetica", "", 10)
         pdf.set_text_color(80, 80, 80)
@@ -2987,7 +3008,7 @@ def _build_master_cv_pdf(profile: Dict, experiences: list, education: list, volu
         extras.append("Korkort: Ja")
     langs = profile.get("languages") or []
     if langs:
-        extras.append("Sprak: " + ", ".join(langs))
+        extras.append("Sprak: " + ", ".join(_safe_pdf_text(l) for l in langs))
     if extras:
         pdf.set_font("Helvetica", "", 9)
         pdf.set_text_color(100, 100, 100)
@@ -3003,16 +3024,14 @@ def _build_master_cv_pdf(profile: Dict, experiences: list, education: list, volu
     def section_heading(title: str):
         pdf.set_font("Helvetica", "B", 13)
         pdf.set_text_color(40, 40, 40)
-        pdf.cell(0, 8, title, new_x="LMARGIN", new_y="NEXT")
+        pdf.cell(0, 8, _safe_pdf_text(title), new_x="LMARGIN", new_y="NEXT")
         pdf.set_draw_color(60, 130, 200)
         pdf.line(10, pdf.get_y(), 70, pdf.get_y())
         pdf.ln(3)
 
     def safe_text(text):
-        """Clean text for PDF output."""
-        if not text:
-            return ""
-        return str(text)
+        """Clean text for PDF output — Latin-1 safe."""
+        return _safe_pdf_text(text)
 
     # -- Experiences --
     if experiences:
@@ -3082,7 +3101,7 @@ def _build_master_cv_pdf(profile: Dict, experiences: list, education: list, volu
         for proj in projects:
             pdf.set_font("Helvetica", "B", 11)
             pdf.set_text_color(30, 30, 30)
-            pname = safe_text(proj.get("name") or proj.get("title", ""))
+            pname = safe_text(proj.get("project_name") or proj.get("name") or proj.get("title", ""))
             pdf.cell(0, 6, pname, new_x="LMARGIN", new_y="NEXT")
             desc = safe_text(proj.get("description", ""))
             if desc:
@@ -3118,7 +3137,7 @@ def _build_master_cv_pdf(profile: Dict, experiences: list, education: list, volu
         pdf.set_font("Helvetica", "", 10)
         pdf.set_text_color(60, 60, 60)
         for cert in certifications:
-            cname = safe_text(cert.get("name") or cert.get("cert_name") or cert.get("title", ""))
+            cname = safe_text(cert.get("certification_name") or cert.get("name") or cert.get("title", ""))
             if cname:
                 pdf.cell(5)
                 pdf.cell(0, 5, f"• {cname}", new_x="LMARGIN", new_y="NEXT")

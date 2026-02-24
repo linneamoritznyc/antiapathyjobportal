@@ -5989,12 +5989,14 @@
                         if (hasBreaker) return false;
                     }
 
-                    // Negative keywords
+                    // Negative keywords — check title, company, AND description
                     const negKw = quizPrefs.negative_keywords || [];
                     if (negKw.length > 0) {
                         const titleLow = (job.title || '').toLowerCase();
+                        const companyLow = (job.company || '').toLowerCase();
                         const descLow = (job.description || '').toLowerCase();
-                        if (negKw.some(kw => titleLow.includes(kw.toLowerCase()) || descLow.includes(kw.toLowerCase()))) return false;
+                        const searchText = titleLow + ' ' + companyLow + ' ' + descLow;
+                        if (negKw.some(kw => searchText.includes(kw.toLowerCase()))) return false;
                     }
 
                     // Geography filter — check kommun labels against location, municipality, AND county
@@ -6572,14 +6574,14 @@
                         if (hasBreaker) return false;
                     }
 
-                    // Negative keywords filter (from Preferenser tab)
+                    // Negative keywords filter (from Preferenser tab) — check title, company, AND description
                     const negKw = quizPrefs.negative_keywords || [];
                     if (negKw.length > 0) {
                         const titleLow = (job.title || '').toLowerCase();
+                        const companyLow = (job.company || '').toLowerCase();
                         const descLow = (job.description || '').toLowerCase();
-                        const hasNegative = negKw.some(kw =>
-                            titleLow.includes(kw.toLowerCase()) || descLow.includes(kw.toLowerCase())
-                        );
+                        const searchText = titleLow + ' ' + companyLow + ' ' + descLow;
+                        const hasNegative = negKw.some(kw => searchText.includes(kw.toLowerCase()));
                         if (hasNegative) return false;
                     }
 
