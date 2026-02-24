@@ -1763,16 +1763,17 @@ async def get_applications_from_db(user_id: str = None) -> List[Dict]:
         )
         if response.status_code == 200:
             apps = response.json()
-            # Flatten job details into application
+            # Flatten job details into application — custom fields override job data
             for app in apps:
-                if app.get("jobs"):
-                    app["job_title"] = app["jobs"].get("title")
-                    app["company"] = app["jobs"].get("company")
-                    app["contact_email"] = app["jobs"].get("contact_email")
-                    app["job_url"] = app["jobs"].get("url")
-                    app["deadline"] = app["jobs"].get("deadline")
-                    app["location"] = app["jobs"].get("location")
-                    app["working_hours"] = app["jobs"].get("working_hours")
+                job = app.get("jobs") or {}
+                app["job_title"] = app.get("custom_title") or job.get("title") or ""
+                app["company"] = app.get("custom_company") or job.get("company") or ""
+                app["contact_email"] = job.get("contact_email") or ""
+                app["job_url"] = job.get("url") or ""
+                app["deadline"] = job.get("deadline") or ""
+                app["location"] = app.get("custom_location") or job.get("location") or ""
+                app["working_hours"] = job.get("working_hours") or ""
+                if "jobs" in app:
                     del app["jobs"]
             return apps
     return []
@@ -2125,9 +2126,10 @@ async def update_application(application_id: str, request: Request):
     body = await request.json()
     update_data = {"updated_at": datetime.now().isoformat()}
 
+    # Standard fields
     if body.get("status") is not None:
         update_data["status"] = body["status"]
-        if body["status"] == "sent":
+        if body["status"] == "sent" and "sent_at" not in body:
             update_data["sent_at"] = datetime.now().isoformat()
 
     if body.get("notes") is not None:
@@ -2135,6 +2137,11 @@ async def update_application(application_id: str, request: Request):
 
     if body.get("cover_letter") is not None:
         update_data["cover_letter"] = body["cover_letter"]
+
+    # Editable fields: title, company, location, date, method
+    for field in ["custom_title", "custom_company", "custom_location", "apply_method", "apply_date", "sent_at"]:
+        if body.get(field) is not None:
+            update_data[field] = body[field]
 
     # Update via Supabase REST API — scoped to user_id for safety
     result = await db_request("PATCH", "applications",
@@ -2145,6 +2152,36 @@ async def update_application(application_id: str, request: Request):
         return {"success": True, "application": result[0]}
 
     raise HTTPException(status_code=500, detail="Could not update application")
+
+
+@app.post("/api/applications/manual")
+async def add_manual_application(request: Request):
+    """Manually add a job application (not from Platsbanken)"""
+    user_id = await get_user_id_from_request(request, required=True)
+    body = await request.json()
+
+    custom_title = body.get("custom_title", "").strip()
+    custom_company = body.get("custom_company", "").strip()
+    if not custom_title and not custom_company:
+        raise HTTPException(status_code=400, detail="Ange minst jobbtitel eller företag")
+
+    data = {
+        "user_id": user_id,
+        "custom_title": custom_title or None,
+        "custom_company": custom_company or None,
+        "custom_location": body.get("custom_location", "").strip() or None,
+        "apply_method": body.get("apply_method", "").strip() or None,
+        "apply_date": body.get("apply_date", "").strip() or None,
+        "status": body.get("status", "sent"),
+        "notes": body.get("notes", "").strip() or None,
+        "created_at": datetime.now().isoformat(),
+        "sent_at": body.get("apply_date") or datetime.now().isoformat()
+    }
+
+    result = await db_request("POST", "applications", data=data)
+    if result:
+        return {"success": True, "application": result[0]}
+    raise HTTPException(status_code=500, detail="Kunde inte lägga till ansökan")
 
 
 @app.delete("/api/applications/{application_id}")
