@@ -8922,7 +8922,10 @@ async def create_user_anecdote(request: Request):
         "type": anecdote_type,
         "content": content,
         "keywords": keywords
-    }, params={"select": "*"})
+    })
+
+    if not result:
+        raise HTTPException(status_code=500, detail="Kunde inte spara anekdot. Kontrollera att tabellen user_anecdotes finns i databasen.")
 
     return {"success": True, "anecdote": result[0] if result else None}
 

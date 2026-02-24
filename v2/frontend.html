@@ -62,11 +62,13 @@
         const DeadlineBadge = ({ deadline }) => {
             const days = daysUntil(deadline);
             if (days === null) return null;
-            const color = days <= 0 ? 'bg-red-100 text-red-700 border-red-300'
+            const color = days < 0 ? 'bg-red-200 text-red-800 border-red-400'
+                        : days === 0 ? 'bg-red-100 text-red-700 border-red-300'
                         : days <= 3 ? 'bg-red-50 text-red-600 border-red-200'
                         : days <= 7 ? 'bg-amber-50 text-amber-700 border-amber-200'
                         : 'bg-slate-50 text-slate-600 border-slate-200';
-            const label = days <= 0 ? 'Sista dagen idag!'
+            const label = days < 0 ? `Deadline passerad (${Math.abs(days)} dagar sedan)`
+                        : days === 0 ? 'Sista dagen idag!'
                         : days === 1 ? '1 dag kvar'
                         : `${days} dagar kvar`;
             return (
@@ -1467,7 +1469,7 @@
                     <div className="w-full max-w-lg">
                         {/* Header */}
                         <div className="flex justify-between items-center mb-8">
-                            <span className="text-white/40 font-mono text-xs tracking-wide">anti-apathy</span>
+                            <span className="text-white/40 font-mono text-xs tracking-wide">platsbanken-ai</span>
                             <button
                                 onClick={() => setShowSummary(true)}
                                 className="px-4 py-2 bg-white/10 text-white/70 hover:text-white text-sm transition rounded-lg"
@@ -4738,8 +4740,13 @@
                         setNewAnecdote({ title: '', type: 'anecdote', content: '', keywords: '' });
                         setShowAnecdoteForm(false);
                         await fetchAnecdotes();
+                    } else {
+                        const err = await res.json().catch(() => ({}));
+                        alert(err.detail || 'Kunde inte spara anekdot. Försök igen.');
                     }
-                } catch(e) {}
+                } catch(e) {
+                    alert('Nätverksfel — kunde inte spara anekdot.');
+                }
             };
 
             const deleteAnecdote = async (id) => {
@@ -8515,7 +8522,7 @@
                         <header className="px-6 py-5 border-b border-white/10">
                             <div className="max-w-5xl mx-auto flex justify-between items-center">
                                 <div className="flex items-center gap-8">
-                                    <span className="text-white/90 font-mono text-sm tracking-wide cursor-pointer" onClick={() => setLandingTab('hem')}>anti-apathy</span>
+                                    <span className="text-white/90 font-mono text-sm tracking-wide cursor-pointer" onClick={() => setLandingTab('hem')}>platsbanken-ai</span>
                                     <div className="flex gap-1">
                                         {[
                                             { id: 'hem', label: 'Hem' },
@@ -8622,7 +8629,7 @@
                                             Det enda jobbsökarverktyget som faktiskt förstår hur det är att söka jobb i Sverige
                                         </h2>
                                         <p className="text-white/70 text-lg leading-relaxed">
-                                            Anti-Apathy är inte ytterligare en generisk AI-generator. Det är ett komplett system byggt från grunden
+                                            Platsbanken AI är inte ytterligare en generisk AI-generator. Det är ett komplett system byggt från grunden
                                             för den svenska arbetsmarknaden — speciellt för dig som tycker att jobbsökande är överväldigande.
                                         </p>
                                     </div>
@@ -8712,13 +8719,13 @@
 
                                     {/* Comparison table */}
                                     <div className="mb-20">
-                                        <h3 className="text-white/50 text-xs uppercase tracking-widest mb-8">Anti-Apathy vs andra AI-jobbverktyg</h3>
+                                        <h3 className="text-white/50 text-xs uppercase tracking-widest mb-8">Platsbanken AI vs andra AI-jobbverktyg</h3>
                                         <div className="bg-white/5 rounded-2xl border border-white/10 overflow-hidden">
                                             <table className="w-full text-sm">
                                                 <thead>
                                                     <tr className="border-b border-white/10">
                                                         <th className="text-left text-white/50 py-4 px-6 font-normal">Funktion</th>
-                                                        <th className="text-center text-white font-semibold py-4 px-4">Anti-Apathy</th>
+                                                        <th className="text-center text-white font-semibold py-4 px-4">Platsbanken AI</th>
                                                         <th className="text-center text-white/40 py-4 px-4">Generiska AI-verktyg</th>
                                                     </tr>
                                                 </thead>
@@ -8878,7 +8885,7 @@
                         <div className="max-w-6xl mx-auto">
                             <div className="flex justify-between items-center mb-4">
                                 <div>
-                                    <h1 className="text-2xl font-bold">Anti-Apathy Job Portal</h1>
+                                    <h1 className="text-2xl font-bold">Platsbanken AI</h1>
                                     <p className="opacity-80 text-sm">Sök jobb utan apati. En ansökan i taget.</p>
                                 </div>
                                 <div className="flex items-center gap-3">
