@@ -34,6 +34,33 @@
         // ============== SHARED HELPERS ==============
 
         // Authenticated fetch — wraps fetch() with auth token from localStorage
+        let _refreshingToken = null;  // Shared promise to avoid parallel refreshes
+        const _tryRefreshToken = async () => {
+            if (_refreshingToken) return _refreshingToken;
+            _refreshingToken = (async () => {
+                const rt = localStorage.getItem('refresh_token');
+                if (!rt) return null;
+                try {
+                    const res = await fetch('/api/auth/refresh', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ refresh_token: rt })
+                    });
+                    const data = await res.json();
+                    if (data.success && data.access_token) {
+                        localStorage.setItem('auth_token', data.access_token);
+                        if (data.refresh_token) localStorage.setItem('refresh_token', data.refresh_token);
+                        if (data.user) localStorage.setItem('user', JSON.stringify(data.user));
+                        return data.access_token;
+                    }
+                } catch (e) {}
+                return null;
+            })();
+            const result = await _refreshingToken;
+            _refreshingToken = null;
+            return result;
+        };
+
         const authFetch = async (url, options = {}) => {
             const token = localStorage.getItem('auth_token');
             const headers = {
@@ -41,7 +68,20 @@
                 ...(token ? { 'Authorization': `Bearer ${token}` } : {}),
                 ...options.headers
             };
-            return fetch(url, { ...options, headers });
+            const res = await fetch(url, { ...options, headers });
+
+            // Auto-refresh on 401 and retry once
+            if (res.status === 401 && localStorage.getItem('refresh_token')) {
+                const newToken = await _tryRefreshToken();
+                if (newToken) {
+                    const retryHeaders = {
+                        ...headers,
+                        'Authorization': `Bearer ${newToken}`
+                    };
+                    return fetch(url, { ...options, headers: retryHeaders });
+                }
+            }
+            return res;
         };
 
         // Load job preferences from localStorage (shared by PreferencesPage, PlatserPage)
@@ -375,13 +415,15 @@
                 }).map(a => a.id);
                 setSelectedAnecdotes(matchedAnec);
 
-                // Match education: require school name to appear
+                // Match education: require full school name OR 2+ significant words
                 const matchedEdu = eduHints.filter(edu => {
                     const parenIdx = edu.label.indexOf('(');
                     const school = (parenIdx > 0 ? edu.label.substring(0, parenIdx).trim() : edu.label.trim());
                     if (school.length >= 5 && body.includes(school.toLowerCase())) return true;
                     const sigWords = school.split(/\s+/).filter(w => w.length >= 5 && !stopWords.has(w.toLowerCase()));
-                    return sigWords.some(w => body.includes(w.toLowerCase()));
+                    if (sigWords.length === 0) return false;
+                    const matchCount = sigWords.filter(w => body.includes(w.toLowerCase())).length;
+                    return matchCount >= Math.min(2, sigWords.length);
                 }).map(e => e.id);
                 setSelectedEducation(matchedEdu);
             };
