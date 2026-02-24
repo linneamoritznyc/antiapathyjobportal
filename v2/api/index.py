@@ -477,23 +477,31 @@ async def fetch_municipality_labels() -> Dict[str, str]:
 def _job_in_municipalities(job: Dict, municipality_labels_lower: List[str],
                            county_labels_lower: List[str] = None) -> bool:
     """Post-filter: check if job location matches any selected municipality or county.
-    Checks municipality, location, AND county fields for robust matching."""
+    Uses EXACT match on municipality field (most reliable), falls back to
+    substring on location only when municipality is empty, and county as last resort."""
     if not municipality_labels_lower:
         return True
-    job_muni = (job.get("municipality") or "").lower()
+    job_muni = (job.get("municipality") or "").lower().strip()
     job_loc = (job.get("location") or "").lower()
     job_county = (job.get("county") or "").lower()
-    # Check municipality labels against municipality, location, and county fields
-    for label in municipality_labels_lower:
-        if label in job_muni or label in job_loc:
-            return True
-    # Also check county (län) — if user selected kommuner in Stockholms län,
-    # a job with county="Stockholms län" should pass
+    # 1. Exact match on municipality field (clean data from Platsbanken)
+    if job_muni:
+        for label in municipality_labels_lower:
+            if label == job_muni:
+                return True
+        # Municipality exists but doesn't match any selected kommun → skip location fallback
+        # (municipality is the authoritative field when present)
+    else:
+        # 2. Fallback: substring match on location ONLY when municipality field is empty
+        if job_loc:
+            for label in municipality_labels_lower:
+                if label in job_loc:
+                    return True
+    # 3. County (län) match as last resort
     if county_labels_lower and job_county:
         for county in county_labels_lower:
             if county in job_county:
                 return True
-    # No location match at all — filter it out (don't let unknown-location jobs leak through)
     return False
 
 

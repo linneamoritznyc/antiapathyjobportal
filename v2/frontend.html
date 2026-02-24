@@ -5385,12 +5385,15 @@
                         }).filter(Boolean))];
                         if (kommunLabels.length > 0) {
                             const jobLoc = (job.location || '').toLowerCase();
-                            const jobMuni = (job.municipality || '').toLowerCase();
+                            const jobMuni = (job.municipality || '').toLowerCase().trim();
                             const jobCounty = (job.county || '').toLowerCase();
-                            const matchesKommun = kommunLabels.some(k => jobLoc.includes(k) || jobMuni.includes(k));
+                            // Exact match on municipality (authoritative field from Platsbanken)
+                            const matchesMuni = jobMuni ? kommunLabels.some(k => k === jobMuni) : false;
+                            // Fallback: substring on location only when municipality is empty
+                            const matchesLoc = !jobMuni && jobLoc ? kommunLabels.some(k => jobLoc.includes(k)) : false;
                             const matchesCounty = countyLabels.some(c => jobCounty.includes(c));
                             const isRemote = locPrefs.includes('remote') && (jobLoc.includes('remote') || jobLoc.includes('distans') || jobLoc.includes('hemma'));
-                            if (!matchesKommun && !matchesCounty && !isRemote) return false;
+                            if (!matchesMuni && !matchesLoc && !matchesCounty && !isRemote) return false;
                         }
                     }
 
@@ -5972,13 +5975,16 @@
 
                         if (kommunLabels.length > 0) {
                             const jobLoc = (job.location || '').toLowerCase();
-                            const jobMuni = (job.municipality || '').toLowerCase();
+                            const jobMuni = (job.municipality || '').toLowerCase().trim();
                             const jobCounty = (job.county || '').toLowerCase();
-                            const matchesKommun = kommunLabels.some(k => jobLoc.includes(k) || jobMuni.includes(k));
+                            // Exact match on municipality (authoritative field from Platsbanken)
+                            const matchesMuni = jobMuni ? kommunLabels.some(k => k === jobMuni) : false;
+                            // Fallback: substring on location only when municipality is empty
+                            const matchesLoc = !jobMuni && jobLoc ? kommunLabels.some(k => jobLoc.includes(k)) : false;
                             const matchesCounty = countyLabels.some(c => jobCounty.includes(c));
                             const isRemote = locPrefs.includes('remote') &&
                                 (jobLoc.includes('remote') || jobLoc.includes('distans') || jobLoc.includes('hemma'));
-                            if (!matchesKommun && !matchesCounty && !isRemote) return false;
+                            if (!matchesMuni && !matchesLoc && !matchesCounty && !isRemote) return false;
                         }
                     }
 
