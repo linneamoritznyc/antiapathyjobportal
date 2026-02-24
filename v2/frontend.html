@@ -8230,6 +8230,13 @@
             const [savingMasterCV, setSavingMasterCV] = useState(false);
             // LAN_DATA is hardcoded — always ready, no loading state needed
 
+            // Re-fetch applications when switching to Ansökningar tab
+            useEffect(() => {
+                if (activeTab === 'applications') {
+                    fetchApplications();
+                }
+            }, [activeTab]);
+
             // Fetch initial data
             useEffect(() => {
                 fetchJobs();
@@ -8339,52 +8346,72 @@
             };
 
             const fetchApplications = async () => {
-                const res = await authFetch('/api/applications');
-                const data = await res.json();
-                if (data.success) {
-                    setApplications(data.applications || []);
-                    // Extract saved job IDs
-                    const saved = (data.applications || [])
-                        .filter(a => a.status === 'saved')
-                        .map(a => a.job_id);
-                    setSavedJobs(saved);
+                try {
+                    const res = await authFetch('/api/applications');
+                    if (!res.ok) {
+                        console.error('fetchApplications failed:', res.status);
+                        return;
+                    }
+                    const data = await res.json();
+                    if (data.success) {
+                        setApplications(data.applications || []);
+                        // Extract saved job IDs
+                        const saved = (data.applications || [])
+                            .filter(a => a.status === 'saved')
+                            .map(a => a.job_id);
+                        setSavedJobs(saved);
+                    } else {
+                        console.error('fetchApplications returned success=false:', data);
+                    }
+                } catch (err) {
+                    console.error('fetchApplications error:', err);
                 }
             };
 
             const [savedJobs, setSavedJobs] = useState([]);
 
             const handleSaveJob = async (jobId, isSaved) => {
-                // Optimistic UI update
+                // Optimistic UI for star icon only
                 if (isSaved) {
                     setSavedJobs(prev => [...prev, jobId]);
-                    setToastMsg('Sparad! Hitta den under Ansökningar \u2192 Sparade');
-                    setTimeout(() => setToastMsg(null), 3000);
                 } else {
                     setSavedJobs(prev => prev.filter(id => id !== jobId));
                 }
                 try {
                     const method = isSaved ? 'POST' : 'DELETE';
                     const res = await authFetch(`/api/jobs/${jobId}/save`, { method });
-                    if (!res.ok) {
-                        // Revert on failure
+                    if (res.ok) {
+                        // API confirmed — show toast AFTER success
+                        if (isSaved) {
+                            setToastMsg('✓ Sparad! Hitta den under Ansökningar \u2192 Sparade');
+                            setTimeout(() => setToastMsg(null), 3000);
+                        } else {
+                            setToastMsg('Borttagen från sparade');
+                            setTimeout(() => setToastMsg(null), 2000);
+                        }
+                    } else {
+                        // API failed — revert and show error
+                        const errText = await res.text().catch(() => '');
+                        console.error('Save job failed:', res.status, errText);
                         if (isSaved) {
                             setSavedJobs(prev => prev.filter(id => id !== jobId));
                         } else {
                             setSavedJobs(prev => [...prev, jobId]);
                         }
-                        setToastMsg(null);
+                        setToastMsg('❌ Kunde inte spara jobbet. Försök igen.');
+                        setTimeout(() => setToastMsg(null), 4000);
                     }
                 } catch (err) {
                     console.error('Error saving job:', err);
-                    // Revert on error
                     if (isSaved) {
                         setSavedJobs(prev => prev.filter(id => id !== jobId));
                     } else {
                         setSavedJobs(prev => [...prev, jobId]);
                     }
-                    setToastMsg(null);
+                    setToastMsg('❌ Nätverksfel. Kontrollera din anslutning.');
+                    setTimeout(() => setToastMsg(null), 4000);
                 }
-                fetchApplications();
+                await fetchApplications();
             };
 
             const fetchStats = async () => {

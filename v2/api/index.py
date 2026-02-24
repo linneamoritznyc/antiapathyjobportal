@@ -2321,7 +2321,9 @@ async def save_job(job_id: str, request: Request):
             "status": "saved",
             "created_at": datetime.now().isoformat()
         }
+        logger.info(f"Saving job {job_id} for user {user_id[:8]}...")
         result = await db_request("POST", "applications", data=data, on_conflict="user_id,job_id")
+        logger.info(f"Save result: {bool(result)}, rows: {len(result) if result else 0}")
         if result:
             await log_save_interaction()
             return {"success": True, "application": result[0]}
