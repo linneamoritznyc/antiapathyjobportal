@@ -2,6 +2,20 @@
 
 ---
 
+## RECENTLY FIXED (Feb 24 2026)
+
+### Fix: Experience chips now GREEN when mentioned in cover letter
+- **Status:** Fixed (Feb 24 2026)
+- **What was wrong:** Selected experience chips in the cover letter modal used indigo color instead of green. User expected GREEN = "this experience is in the letter".
+- **Fix:** Changed `bg-indigo-100 border-indigo-400 text-indigo-700` → `bg-green-100 border-green-400 text-green-700` for experience chips in ApplyModal.
+
+### Fix: Aktivitetsrapport upgraded from TXT to PDF
+- **Status:** Fixed (Feb 24 2026)
+- **What was wrong:** Aktivitetsrapport was generated client-side as a plain `.txt` file. Needed to match the actual Arbetsformedlingen format (proper PDF with table: Datum, Yrkesroll, Arbetsgivare, Omfattning, Ort).
+- **Fix:** New backend endpoint `GET /api/aktivitetsrapport?month=YYYY-MM` generates a proper PDF using fpdf2. Data pulled from Supabase (`applications` + `jobs` tables). Frontend now calls this endpoint instead of building TXT locally.
+
+---
+
 ## KNOWN ISSUES & BUGS (user-reported)
 
 ### Bug: "Kunde inte skapa ansökan" popup for no-email jobs

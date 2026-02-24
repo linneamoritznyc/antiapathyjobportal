@@ -2095,6 +2095,126 @@ async def delete_application(application_id: str):
     raise HTTPException(status_code=500, detail="Could not delete application")
 
 
+@app.get("/api/aktivitetsrapport")
+async def generate_aktivitetsrapport(request: Request, month: str = None):
+    """Generate a monthly Aktivitetsrapport PDF for A-kassan/Arbetsförmedlingen.
+    ?month=2026-02 format. Defaults to current month."""
+    from fpdf import FPDF
+    from fastapi.responses import Response as RawResponse
+
+    user_id = await get_user_id_from_request(request)
+
+    # Determine month
+    if not month:
+        month = datetime.now().strftime("%Y-%m")
+    try:
+        year, mon = month.split("-")
+        year = int(year)
+        mon = int(mon)
+    except (ValueError, AttributeError):
+        raise HTTPException(status_code=400, detail="Ogiltigt månadsformat. Använd YYYY-MM.")
+
+    month_names = [
+        "januari", "februari", "mars", "april", "maj", "juni",
+        "juli", "augusti", "september", "oktober", "november", "december"
+    ]
+    month_label = month_names[mon - 1]
+
+    # Get user profile
+    sender_name = "Namn"
+    if user_id:
+        profiles = await db_request("GET", "user_profiles", params={"user_id": f"eq.{user_id}"})
+        if profiles:
+            sender_name = profiles[0].get("full_name", sender_name)
+
+    # Get sent applications for this month
+    apps = await get_applications_from_db(user_id=user_id)
+    month_apps = []
+    for a in apps:
+        if a.get("status") != "sent":
+            continue
+        d = (a.get("sent_at") or a.get("created_at") or "")[:7]
+        if d == month:
+            month_apps.append(a)
+
+    # Sort by date
+    month_apps.sort(key=lambda a: a.get("sent_at") or a.get("created_at") or "")
+
+    # Build PDF
+    pdf = FPDF()
+    pdf.set_auto_page_break(auto=True, margin=20)
+    pdf.add_page()
+
+    # Title
+    pdf.set_font("Helvetica", "B", 16)
+    pdf.set_text_color(30, 30, 30)
+    pdf.cell(0, 10, f"Aktivitetsrapport {month_label} {year}", new_x="LMARGIN", new_y="NEXT")
+    pdf.ln(2)
+
+    # Subtitle
+    pdf.set_font("Helvetica", "", 11)
+    pdf.set_text_color(80, 80, 80)
+    pdf.cell(0, 6, f"Sokta jobb / Jobb med annons", new_x="LMARGIN", new_y="NEXT")
+    pdf.cell(0, 6, sender_name, new_x="LMARGIN", new_y="NEXT")
+    pdf.cell(0, 6, f"Period: {month_label} {year}", new_x="LMARGIN", new_y="NEXT")
+    pdf.ln(4)
+
+    # Table header
+    col_widths = [25, 50, 45, 30, 40]
+    headers = ["Datum", "Yrkesroll", "Arbetsgivare", "Omfattning", "Ort"]
+
+    pdf.set_font("Helvetica", "B", 9)
+    pdf.set_fill_color(240, 240, 240)
+    pdf.set_text_color(30, 30, 30)
+    for i, h in enumerate(headers):
+        pdf.cell(col_widths[i], 8, h, border=1, fill=True)
+    pdf.ln()
+
+    # Table rows
+    pdf.set_font("Helvetica", "", 9)
+    pdf.set_text_color(50, 50, 50)
+    for a in month_apps:
+        sent_date = (a.get("sent_at") or a.get("created_at") or "")[:10]
+        try:
+            dt = datetime.fromisoformat(sent_date)
+            datum = dt.strftime("%Y-%m-%d")
+        except (ValueError, TypeError):
+            datum = sent_date
+
+        yrkesroll = (a.get("job_title") or "")[:30]
+        arbetsgivare = (a.get("company") or "")[:25]
+        omfattning = a.get("working_hours") or "Heltid"
+        ort = (a.get("location") or "")[:22]
+
+        pdf.cell(col_widths[0], 7, datum, border=1)
+        pdf.cell(col_widths[1], 7, yrkesroll, border=1)
+        pdf.cell(col_widths[2], 7, arbetsgivare, border=1)
+        pdf.cell(col_widths[3], 7, omfattning, border=1)
+        pdf.cell(col_widths[4], 7, ort, border=1)
+        pdf.ln()
+
+    # Summary
+    pdf.ln(4)
+    pdf.set_font("Helvetica", "B", 10)
+    pdf.set_text_color(30, 30, 30)
+    pdf.cell(0, 8, f"Totalt: {len(month_apps)} ansokningar", new_x="LMARGIN", new_y="NEXT")
+
+    # Footer
+    pdf.ln(6)
+    pdf.set_font("Helvetica", "I", 8)
+    pdf.set_text_color(150, 150, 150)
+    pdf.cell(0, 5, f"Genererad {datetime.now().strftime('%Y-%m-%d')} via Platsbanken AI", new_x="LMARGIN", new_y="NEXT")
+
+    pdf_bytes = pdf.output()
+    filename = f"Aktivitetsrapport_{month_label.upper()}{year}.pdf"
+
+    return RawResponse(
+        content=pdf_bytes,
+        media_type="application/pdf",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'}
+    )
+
+
 @app.post("/api/jobs/{job_id}/save")
 async def save_job(job_id: str, request: Request):
     """Save/bookmark a job for later"""

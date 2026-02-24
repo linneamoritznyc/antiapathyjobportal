@@ -139,7 +139,10 @@ Varje ansökan har status: **Sparad → Utkast → Skickad → Intervju → Erbj
 - Lägg till anteckningar per ansökan
 - Se sökta jobb per dag (stapeldiagram)
 
-**Aktivitetsrapport:** Ladda ner månatlig rapport med alla skickade ansökningar — datum, yrkesroll, arbetsgivare, omfattning, ort. Redo för A-kassan.
+**Aktivitetsrapport (PDF):** Ladda ner månatlig rapport som PDF med alla skickade ansökningar — datum, yrkesroll, arbetsgivare, omfattning, ort. Matchar Arbetsförmedlingens format. Redo för A-kassan. Data hämtas från `applications`-tabellen i Supabase (status = 'sent'), samkört med `jobs`-tabellen för jobbdetaljer.
+
+**Backend:** `GET /api/aktivitetsrapport?month=2026-02` → genererar PDF med fpdf2.
+**Data:** `applications.sent_at` + `jobs.title/company/location/working_hours` från Supabase.
 
 ---
 

@@ -675,7 +675,7 @@
                                                     )}
                                                     className={`text-xs px-2.5 py-1 rounded-full border transition-colors ${
                                                         selectedHints.includes(exp.id)
-                                                            ? 'bg-indigo-100 border-indigo-400 text-indigo-700 font-medium'
+                                                            ? 'bg-green-100 border-green-400 text-green-700 font-medium'
                                                             : 'bg-white border-slate-300 text-slate-600 hover:bg-slate-100'
                                                     }`}
                                                 >
@@ -7389,45 +7389,27 @@
             });
             const sortedDates = Object.keys(appsByDate).sort().reverse();
 
-            const generateAktivitetsrapport = () => {
-                const user = JSON.parse(localStorage.getItem('user') || '{}');
-                const namn = user.name || user.email || 'Namn';
-                const monthNames = ['januari','februari','mars','april','maj','juni','juli','augusti','september','oktober','november','december'];
-                const [rYear, rMonth] = reportMonth.split('-');
-                const monthLabel = monthNames[parseInt(rMonth) - 1];
-
-                // Filter to selected month only
-                const monthApps = sentApps.filter(a => {
-                    const d = (a.sent_at || a.created_at || '').slice(0, 7);
-                    return d === reportMonth;
-                }).sort((a, b) => (a.sent_at || a.created_at || '').localeCompare(b.sent_at || b.created_at || ''));
-
-                // Build rows
-                const allRows = monthApps.map(a => ({
-                    datum: new Date((a.sent_at || a.created_at || '').slice(0, 10) + 'T00:00:00').toLocaleDateString('sv-SE'),
-                    yrkesroll: a.job_title || '',
-                    arbetsgivare: a.company || '',
-                    omfattning: a.working_hours || 'Heltid',
-                    ort: a.location || ''
-                }));
-
-                const header = 'Datum\tYrkesroll\tArbetsgivare\tOmfattning\tOrt';
-                const rows = allRows.map(r => `${r.datum}\t${r.yrkesroll}\t${r.arbetsgivare}\t${r.omfattning}\t${r.ort}`);
-
-                let text = `Sökta jobb / Jobb med annons\n`;
-                text += `${namn}\n`;
-                text += `Period: ${monthLabel} ${rYear}\n\n`;
-                text += header + '\n';
-                text += rows.join('\n') + '\n';
-                text += `\nTotalt: ${allRows.length} ansökningar\n`;
-
-                const blob = new Blob([text], { type: 'text/plain;charset=utf-8' });
-                const url = URL.createObjectURL(blob);
-                const a = document.createElement('a');
-                a.href = url;
-                a.download = `Aktivitetsrapport_${monthLabel.toUpperCase()}${rYear}.txt`;
-                a.click();
-                URL.revokeObjectURL(url);
+            const generateAktivitetsrapport = async () => {
+                try {
+                    const res = await authFetch(`/api/aktivitetsrapport?month=${reportMonth}`);
+                    if (res.ok) {
+                        const blob = await res.blob();
+                        const url = URL.createObjectURL(blob);
+                        const a = document.createElement('a');
+                        a.href = url;
+                        const monthNames = ['januari','februari','mars','april','maj','juni','juli','augusti','september','oktober','november','december'];
+                        const [rYear, rMonth] = reportMonth.split('-');
+                        const monthLabel = monthNames[parseInt(rMonth) - 1];
+                        a.download = `Aktivitetsrapport_${monthLabel.toUpperCase()}${rYear}.pdf`;
+                        a.click();
+                        URL.revokeObjectURL(url);
+                    } else {
+                        alert('Kunde inte generera aktivitetsrapport.');
+                    }
+                } catch (e) {
+                    console.error('Aktivitetsrapport error:', e);
+                    alert('Kunde inte generera aktivitetsrapport.');
+                }
             };
 
             return (

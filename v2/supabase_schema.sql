@@ -14,6 +14,7 @@ CREATE TABLE IF NOT EXISTS jobs (
     url TEXT,
     deadline TIMESTAMPTZ,
     priority TEXT DEFAULT 'normal',
+    working_hours TEXT,              -- Heltid/Deltid from Platsbanken (used in Aktivitetsrapport)
     contact_email TEXT,
     contact_name TEXT,
     source TEXT DEFAULT 'platsbanken',
@@ -868,3 +869,7 @@ COMMENT ON TABLE user_anecdotes IS 'Personal anecdotes and hobbies for AI cover 
 -- 2026-02-24: Added municipality TEXT column to jobs table
 --   Kommun was being scraped but never saved — caused location filtering to fail.
 --   Migration: ALTER TABLE jobs ADD COLUMN IF NOT EXISTS municipality TEXT;
+-- 2026-02-24: Added working_hours TEXT column to jobs table
+--   Heltid/Deltid was being scraped from Platsbanken but missing from schema.
+--   Needed for Aktivitetsrapport PDF generation (Omfattning column).
+--   Migration: ALTER TABLE jobs ADD COLUMN IF NOT EXISTS working_hours TEXT;
