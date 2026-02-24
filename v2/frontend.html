@@ -432,7 +432,7 @@
             const saveApplication = async (status = 'draft') => {
                 if (applicationSaved && status === 'draft') return;
                 try {
-                    await authFetch('/api/applications', {
+                    const res = await authFetch('/api/applications', {
                         method: 'POST',
                         body: JSON.stringify({
                             job_id: job.id,
@@ -440,10 +440,16 @@
                             status: status
                         })
                     });
+                    if (!res.ok) {
+                        console.error('saveApplication failed:', res.status, await res.text().catch(() => ''));
+                        return false;
+                    }
                     setApplicationSaved(true);
                     if (onSaveApplication) onSaveApplication();
+                    return true;
                 } catch (err) {
                     console.error('Error saving application:', err);
+                    return false;
                 }
             };
 
@@ -456,7 +462,12 @@
             };
 
             const markAsSent = async () => {
-                await saveApplication('sent');
+                const saved = await saveApplication('sent');
+                if (saved === false) {
+                    // saveApplication failed — show error but don't close modal
+                    alert('Kunde inte spara ansökan. Försök igen.');
+                    return;
+                }
                 // Also log 'applied' interaction so job is hidden from feed
                 if (localStorage.getItem('auth_token')) {
                     try {
@@ -8406,7 +8417,11 @@
                     } else if (data.success) {
                         setApplyResult(data);
                         setShowApplyModal(true);
-                        if (localStorage.getItem('auth_token')) {
+                        // Immediately refresh applications list so it shows up in Ansökningar tab
+                        fetchApplications();
+                        fetchStats();
+                        if (localStorage.getItem('auth_token') && !data.application_saved) {
+                            // Backend failed to save application — interaction still needed
                             try {
                                 await authFetch(`/api/jobs/${job.id}/interaction`, {
                                     method: 'POST',

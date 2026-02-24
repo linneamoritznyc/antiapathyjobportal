@@ -2040,7 +2040,9 @@ async def create_letter(job_id: str, request: GenerateLetterRequest = None, req:
 @app.post("/api/applications")
 async def save_application(request: SaveApplicationRequest, req: Request):
     """Save an application"""
-    user_id = await get_user_id_from_request(req) or "default_user"
+    user_id = await get_user_id_from_request(req)
+    if not user_id:
+        raise HTTPException(status_code=401, detail="Du måste vara inloggad för att spara ansökningar")
 
     data = {
         "job_id": request.job_id,
@@ -2060,6 +2062,8 @@ async def save_application(request: SaveApplicationRequest, req: Request):
 async def list_applications(request: Request):
     """List applications for the logged-in user"""
     user_id = await get_user_id_from_request(request)
+    if not user_id:
+        return {"success": True, "applications": []}
     apps = await get_applications_from_db(user_id=user_id)
     return {"success": True, "applications": apps}
 
@@ -2242,7 +2246,9 @@ async def generate_aktivitetsrapport(request: Request, month: str = None):
 @app.post("/api/jobs/{job_id}/save")
 async def save_job(job_id: str, request: Request):
     """Save/bookmark a job for later"""
-    user_id = await get_user_id_from_request(request) or "default_user"
+    user_id = await get_user_id_from_request(request)
+    if not user_id:
+        raise HTTPException(status_code=401, detail="Du måste vara inloggad för att spara jobb")
 
     # Helper: log interaction (non-blocking)
     async def log_save_interaction():
@@ -2286,14 +2292,14 @@ async def save_job(job_id: str, request: Request):
                 await log_save_interaction()
                 return {"success": True, "application": response.json()[0]}
     else:
-        # Create new saved application
+        # Create new saved application (use on_conflict for belt-and-suspenders)
         data = {
             "job_id": job_id,
             "user_id": user_id,
             "status": "saved",
             "created_at": datetime.now().isoformat()
         }
-        result = await db_request("POST", "applications", data=data)
+        result = await db_request("POST", "applications", data=data, on_conflict="user_id,job_id")
         if result:
             await log_save_interaction()
             return {"success": True, "application": result[0]}
@@ -2304,7 +2310,9 @@ async def save_job(job_id: str, request: Request):
 @app.delete("/api/jobs/{job_id}/save")
 async def unsave_job(job_id: str, request: Request):
     """Remove a saved job"""
-    user_id = await get_user_id_from_request(request) or "default_user"
+    user_id = await get_user_id_from_request(request)
+    if not user_id:
+        raise HTTPException(status_code=401, detail="Du måste vara inloggad")
 
     # Delete saved application
     url = f"{SUPABASE_URL}/rest/v1/applications?job_id=eq.{job_id}&user_id=eq.{user_id}&status=eq.saved"
@@ -3273,6 +3281,7 @@ async def apply_with_cv(request: Request, job_id: str):
 
     # Log 'applied' interaction server-side so job is hidden from feed
     # AND auto-save application so it appears in Ansökningar + Aktivitetsrapport
+    application_saved = False
     if user_id:
         await db_request("POST", "user_job_interactions", data={
             "user_id": user_id,
@@ -3280,7 +3289,7 @@ async def apply_with_cv(request: Request, job_id: str):
             "action": "applied",
             "context": {"source": "apply_with_cv"}
         })
-        await db_request("POST", "applications", data={
+        app_result = await db_request("POST", "applications", data={
             "job_id": job_id,
             "user_id": user_id,
             "cover_letter": cover_letter,
@@ -3288,6 +3297,10 @@ async def apply_with_cv(request: Request, job_id: str):
             "created_at": datetime.now().isoformat(),
             "sent_at": datetime.now().isoformat()
         }, on_conflict="user_id,job_id")
+        application_saved = bool(app_result)
+        if not app_result:
+            logger.warning(f"Failed to save application for job {job_id}, user {user_id[:8]}. "
+                          "User will need to click 'Markera skickad' manually.")
 
     # No auto-draft: Gmail draft is only created when user clicks "Spara i Gmail med bilagor"
     # (handled by POST /api/jobs/{job_id}/save-draft)
@@ -3299,6 +3312,7 @@ async def apply_with_cv(request: Request, job_id: str):
 
     return {
         "success": True,
+        "application_saved": application_saved,
         "job": {
             "id": job.get("id"),
             "title": job_title,

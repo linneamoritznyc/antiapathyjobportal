@@ -1,6 +1,6 @@
 # Platsbanken-ai — Funktioner & UX per sida
 
-> Uppdaterad: 24 feb 2026
+> Uppdaterad: 24 feb 2026 (v2.1 — bugfixar + nya features)
 
 AI-driven jobbportal för neurodivergenta jobbsökare i Sverige. Skrapar Platsbanken, genererar personliga brev via Claude, skapar Gmail-utkast med bransch-CV.
 
@@ -247,12 +247,14 @@ Spåra alla ansökningar och generera aktivitetsrapport för A-kassan.
 - **✓ Skickade (X)** — inskickade ansökningar
 - **🎉 Intervjuer (X)** — intervjustadiet
 
-### Aktivitetsrapport-sektion
+### Aktivitetsrapport-sektion (LIVE)
 - **Stapeldiagram** — sökta jobb per dag (senaste 7 dagarna)
 - **Månadsväljare** — välj månad (YYYY-MM)
 - **"Ladda ner aktivitetsrapport"**-knapp → `GET /api/aktivitetsrapport?month=YYYY-MM`
   - Genererar PDF med tabell: Datum | Yrkesroll | Arbetsgivare | Omfattning | Ort
   - Matchar Arbetsförmedlingens format — redo för A-kassan
+  - Filnamn: `Aktivitetsrapport_MÅNAD_ÅR.pdf`
+  - Visar användarens namn, period, totalt antal ansökningar
 
 ### Ansökningslista
 Varje ansökan visar:
@@ -261,25 +263,44 @@ Varje ansökan visar:
 - **Status-dropdown** — ändra status: 📌 Sparad → 📝 Utkast → ✓ Skickad → 🎉 Intervju → 🎊 Erbjudande / ✗ Avslag
 
 **Expanderad vy:**
-- Plats + deadline
+- Plats + deadline (med tidsvarnig: "3 dagar kvar", "Deadline passerad")
 - **Anteckningar** — redigera och spara per ansökan
 - **Personligt brev** — visa/ladda ner sparat brev
+- **"✍️ Skapa ansökan"** — för sparade jobb, öppnar ansökningsmodalen
+- **"🔗 Visa annons"** — öppnar original-annonsen
+- **"📧 Maila"** — mailto-länk till kontaktpersonen
+- **"⬇️ Ladda ner brev"** — ladda ner brevet som textfil
 - **"Ta bort"**-knapp
+
+### Ansökningsflöde (apply-with-cv)
+```
+1. Användare klickar "✨ Ansök" på jobbkort
+2. Backend: POST /api/jobs/{id}/apply-with-cv
+   a. Duplikatkontroll — om redan sökt → 409 "Du har redan sökt detta jobb"
+   b. Väljer bästa bransch-CV (match_job_to_bransch)
+   c. Genererar personligt brev via Claude
+   d. Sparar application (status='sent') + interaction (action='applied')
+   e. Returnerar brev, bransch, CV-info
+3. Frontend: Öppnar ansökningsmodal
+4. "Markera skickad" → POST /api/applications (upsert, kontrollerar respons)
+5. fetchApplications() → ansökan syns direkt i Ansökningar-fliken
+```
 
 **Supabase-koppling:**
 
 | Tabell | Läser | Skriver | Syfte |
 |--------|-------|---------|-------|
 | `applications` | ✅ | ✅ | Alla ansökningar — status, notes, cover_letter, sent_at, bransch_id |
-| `jobs` | ✅ | | Jobbdata (titel, företag, ort, working_hours) för aktivitetsrapporten |
+| `jobs` | ✅ | | Jobbdata (titel, företag, ort, working_hours) via LEFT JOIN |
 
 **Nyckelkolumner i `applications`:**
 - `status` — draft/sent/saved/skipped/interview/rejected/offer
-- `sent_at` — TIMESTAMPTZ, sätts vid "Markera skickad", används i aktivitetsrapport
+- `sent_at` — TIMESTAMPTZ, sätts vid "Markera skickad" eller auto vid apply-with-cv
 - `cover_letter` — sparat brevtext
 - `notes` — fria anteckningar per ansökan
 - `bransch_id` — vilken bransch-CV som användes
 - `gmail_draft_id` — Gmail utkast-ID om det sparades
+- `UNIQUE(user_id, job_id)` — en ansökan per jobb per användare
 
 ---
 
@@ -402,8 +423,12 @@ Styr hur AI:n skriver dina personliga brev. **All feedback härifrån påverkar 
 
 ### Anekdoter & hobbys
 - Lista med sparade anekdoter/hobbys
-- Varje post: titel, typ (anekdot/hobby), nyckelord, ta bort-knapp
-- **"+ Lägg till anekdot"** → `POST /api/user/anecdotes`
+- Varje post: titel, typ (anekdot/hobby), nyckelord
+- **"+ Lägg till anekdot"** → `POST /api/user/anecdotes` (max 30 per användare)
+- **"✎ Redigera"**-knapp per anekdot — inline-redigering av titel, typ, innehåll, nyckelord → `PATCH /api/user/anecdotes/{id}`
+- **"✕ Ta bort"**-knapp → `DELETE /api/user/anecdotes/{id}`
+- **"TXT"**-knapp — exportera alla anekdoter/hobbys som textfil → `GET /api/user/anecdotes/export?format=txt`
+- **"PDF"**-knapp — exportera som formaterad PDF → `GET /api/user/anecdotes/export?format=pdf`
 - AI väljer relevanta anekdoter per jobb baserat på nyckelordsmatchning
 
 **Supabase-koppling:**
@@ -669,3 +694,28 @@ Personuppgifter och kontoinställningar.
 ---
 
 *Allt UI-text på svenska. Designat för neurodivergenta jobbsökare — minimera beslut, ge struktur, ett gränssnitt.*
+
+---
+
+## Changelog
+
+### v2.1 — 24 feb 2026
+
+**Bugfixar:**
+- **Sparade jobb filtreras från flödet** — `/api/jobs` filtrerar nu status `saved` (inte bara sent/draft)
+- **Sparade jobb försvinner inte efter scrape** — `/api/scrape` gömmer bara jobb med terminal status, inte saved
+- **Duplikatkontroll vid ansökan** — `apply-with-cv` returnerar 409 om du redan sökt ett jobb
+- **Frontend hanterar 409** — visar tydligt "Du har redan sökt detta jobb" istället för generiskt fel
+- **Markera skickad fixad** — `saveApplication()` kontrollerar nu respons-status, visar felmeddelande vid misslyckande
+- **apply-with-cv verifierar DB-write** — loggar varning om ansökan inte sparades, returnerar `application_saved` flagga
+- **fetchApplications() direkt efter apply** — ansökningar syns omedelbart i Ansökningar-fliken
+- **Auth-krav på endpoints** — `POST /api/applications`, `POST/DELETE /api/jobs/{id}/save` kräver inloggning (inte "default_user")
+- **GET /api/applications** — returnerar tom lista om ej inloggad (inte alla användares data)
+- **save_job upsert** — använder `on_conflict` för att undvika dubbletter vid race conditions
+
+**Nya features:**
+- **Redigera anekdoter** — inline-redigering av titel, typ, innehåll, nyckelord (✎ ikon)
+- **Exportera anekdoter** — TXT och PDF-knappar i anekdotsektionen
+- **PATCH /api/user/anecdotes/{id}** — ny endpoint för att uppdatera anekdoter
+- **GET /api/user/anecdotes/export** — ny endpoint för TXT/PDF-export
+- **Max 30-gräns** — backend kontrollerar limit innan POST (utöver DB-trigger)
