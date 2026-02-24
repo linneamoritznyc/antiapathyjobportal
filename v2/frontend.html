@@ -365,6 +365,8 @@
             const [swedishReviewed, setSwedishReviewed] = useState(false);
             const [reviewFixes, setReviewFixes] = useState(0);
             const [reviewChanges, setReviewChanges] = useState([]);
+            const [branschOverride, setBranschOverride] = useState(null);
+            const [generatingCv, setGeneratingCv] = useState(false);
 
             // Auto-detect which experiences/anecdotes/education are actually mentioned in the letter
             const autoSelectMentioned = (letterText, expHints, anecHints, eduHints) => {
@@ -501,6 +503,8 @@
                     }
                 }
                 setApplicationSaved(false);
+                setBranschOverride(null);
+                setGeneratingCv(false);
             }, [result, experienceHints, anecdoteHints, educationHints]);
 
             if (!isOpen || !job) return null;
@@ -652,12 +656,13 @@
             const saveGmailDraftWithAttachments = async () => {
                 setSavingDraft(true);
                 try {
+                    const effectiveBransch = branschOverride || result?.matched_bransch || 'customerservice';
                     const res = await authFetch(`/api/jobs/${job.id}/save-draft`, {
                         method: 'POST',
                         body: JSON.stringify({
                             job,
                             cover_letter: letter,
-                            bransch: result?.matched_bransch || 'customerservice'
+                            bransch: effectiveBransch
                         })
                     });
                     const data = await res.json();
@@ -673,6 +678,30 @@
                 setSavingDraft(false);
             };
 
+            const generateCvForBransch = async (branschId) => {
+                setGeneratingCv(true);
+                try {
+                    const res = await authFetch(`/api/cv/generate-single/${branschId}`, { method: 'POST' });
+                    const data = await res.json();
+                    if (data.success || data.cv_text) {
+                        setBranschOverride(branschId);
+                        alert(`CV för ${result?.fallback?.original_bransch_name || branschId} har genererats! Du kan nu spara utkast i Gmail.`);
+                    } else {
+                        alert(data.detail || 'Kunde inte generera CV. Försök igen.');
+                    }
+                } catch (err) {
+                    console.error('Generate CV error:', err);
+                    alert('Något gick fel vid CV-generering.');
+                }
+                setGeneratingCv(false);
+            };
+
+            const useFallbackCv = () => {
+                if (result?.fallback?.bransch) {
+                    setBranschOverride(result.fallback.bransch);
+                }
+            };
+
             return (
                 <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50">
                     <div className="bg-white rounded-2xl max-w-5xl w-full max-h-[92vh] flex flex-col overflow-hidden">
@@ -686,6 +715,45 @@
                             )}
                         </div>
                         <div className="p-5 overflow-y-auto flex-1">
+                            {/* CV missing warning popup */}
+                            {result?.cv_pdf_exists === false && !branschOverride && (
+                                <div className="mb-4 p-4 bg-amber-50 border border-amber-300 rounded-xl">
+                                    <div className="flex items-start gap-3">
+                                        <span className="text-2xl">⚠️</span>
+                                        <div className="flex-1">
+                                            <p className="text-sm font-semibold text-amber-800">
+                                                Det finns inget CV för {result?.fallback?.original_bransch_name || result?.matched_bransch}
+                                            </p>
+                                            <p className="text-xs text-amber-700 mt-1">
+                                                Vill du generera ett anpassat CV nu, eller använda ett liknande CV ({result?.fallback?.bransch_name || 'Kundtjänst & Support'})?
+                                            </p>
+                                            <div className="flex gap-2 mt-3">
+                                                <button
+                                                    onClick={() => generateCvForBransch(result?.matched_bransch)}
+                                                    disabled={generatingCv}
+                                                    className="px-4 py-2 bg-indigo-600 text-white text-sm font-medium rounded-lg hover:bg-indigo-700 disabled:opacity-50"
+                                                >
+                                                    {generatingCv ? 'Genererar...' : `Generera ${result?.fallback?.original_bransch_name || ''} CV`}
+                                                </button>
+                                                <button
+                                                    onClick={useFallbackCv}
+                                                    className="px-4 py-2 bg-white border border-amber-300 text-amber-800 text-sm font-medium rounded-lg hover:bg-amber-100"
+                                                >
+                                                    Använd {result?.fallback?.bransch_name || 'Kundtjänst'} CV
+                                                </button>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            )}
+                            {branschOverride && branschOverride !== result?.matched_bransch && (
+                                <div className="mb-4 p-3 bg-blue-50 border border-blue-200 rounded-lg flex items-center gap-2">
+                                    <span>ℹ️</span>
+                                    <p className="text-xs text-blue-700">
+                                        CV ändrat till: <strong>{branschOverride}</strong> (istället för {result?.matched_bransch})
+                                    </p>
+                                </div>
+                            )}
                             <div>
                                 <label className="block text-sm font-medium text-slate-700 mb-2">Personligt brev</label>
                                 <textarea
@@ -744,8 +812,13 @@
                                 <span className="inline-flex items-center gap-1 text-xs bg-slate-100 text-slate-600 px-2 py-1 rounded">
                                     📄 Personligt brev (PDF)
                                 </span>
-                                <span className="inline-flex items-center gap-1 text-xs bg-slate-100 text-slate-600 px-2 py-1 rounded">
-                                    📄 {result?.cv_filename || 'CV (PDF)'}
+                                <span className={`inline-flex items-center gap-1 text-xs px-2 py-1 rounded ${
+                                    result?.cv_pdf_exists === false && !branschOverride
+                                        ? 'bg-amber-100 text-amber-700 border border-amber-300'
+                                        : 'bg-slate-100 text-slate-600'
+                                }`}>
+                                    📄 {branschOverride ? result?.fallback?.cv_filename || 'CV (PDF)' : result?.cv_filename || 'CV (PDF)'}
+                                    {result?.cv_pdf_exists === false && !branschOverride && ' ⚠️ saknas'}
                                 </span>
                             </div>
 

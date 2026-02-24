@@ -1633,6 +1633,28 @@ CV_FILE_MAP = {
 }
 CV_FILES_DIR = pathlib.Path(__file__).parent / "cv_files"
 
+# Fallback bransch when CV PDF doesn't exist on disk
+BRANSCH_FALLBACK = {
+    "hotel": "customerservice",
+    "art": "customerservice",
+    "industry": "customerservice",
+    "content": "tech",
+}
+
+
+def get_cv_pdf_exists(bransch_id: str) -> bool:
+    """Check if a CV PDF actually exists on disk for this bransch."""
+    filename = CV_FILE_MAP.get(bransch_id)
+    if not filename:
+        return False
+    path = CV_FILES_DIR / filename
+    return path.exists()
+
+
+def get_fallback_bransch(bransch_id: str) -> str:
+    """Return the best fallback bransch when PDF is missing."""
+    return BRANSCH_FALLBACK.get(bransch_id, "customerservice")
+
 
 def get_cv_pdf_bytes(bransch_id: str) -> Optional[bytes]:
     """Read the matching CV PDF from disk. Returns None if not found."""
@@ -3526,6 +3548,19 @@ async def apply_with_cv(request: Request, job_id: str):
     sender_name = user_profile.get("full_name", "Linnea Moritz") if user_profile else "Linnea Moritz"
     subject = f"Ansökan: {job_title} – {sender_name}"
 
+    # Check if CV PDF exists on disk for matched bransch
+    cv_exists = get_cv_pdf_exists(best_bransch)
+    fallback = None
+    if not cv_exists:
+        fb = get_fallback_bransch(best_bransch)
+        bransch_names = {b["id"]: b["name"] for b in CV_BRANSCHER}
+        fallback = {
+            "bransch": fb,
+            "cv_filename": get_cv_pdf_filename(fb),
+            "bransch_name": bransch_names.get(fb, fb),
+            "original_bransch_name": bransch_names.get(best_bransch, best_bransch),
+        }
+
     return {
         "success": True,
         "application_saved": application_saved,
@@ -3538,6 +3573,8 @@ async def apply_with_cv(request: Request, job_id: str):
         },
         "matched_bransch": best_bransch,
         "cv_filename": get_cv_pdf_filename(best_bransch),
+        "cv_pdf_exists": cv_exists,
+        "fallback": fallback,
         "cv": cv,
         "cover_letter": cover_letter,
         "draft_created": False,
@@ -3840,6 +3877,7 @@ async def save_gmail_draft_with_attachments(request: Request, job_id: str):
     except Exception:
         body = {}
 
+    import asyncio as _asyncio
     cover_letter_text = body.get("cover_letter", "")
     bransch = body.get("bransch", "customerservice")
     job = body.get("job", {})
@@ -3899,11 +3937,49 @@ async def save_gmail_draft_with_attachments(request: Request, job_id: str):
     except Exception as e:
         logger.error(f"Cover letter PDF generation failed: {e}")
 
-    # 2. Matching CV PDF
+    # 2. Matching CV PDF — try disk file first, then generate from DB bransch-CV
     cv_pdf_bytes = get_cv_pdf_bytes(bransch)
+    cv_filename_used = get_cv_pdf_filename(bransch)
+    cv_source = "file"
+
+    if not cv_pdf_bytes:
+        # No PDF on disk — try to build one from the user's bransch-CV in database
+        logger.info(f"No CV PDF on disk for bransch '{bransch}', trying dynamic generation from DB")
+        try:
+            bransch_cv = await db_request("GET", "user_cvs", params={
+                "user_id": f"eq.{user_id}",
+                "vibe_id": f"eq.{bransch}",
+                "select": "cv_text"
+            })
+            if bransch_cv and bransch_cv[0].get("cv_text"):
+                # Build PDF from master CV data (full professional layout)
+                profiles_data, exp_data, edu_data, vol_data, awards_data, skills_data, proj_data, cert_data = await _asyncio.gather(
+                    db_request("GET", "user_profiles", params={"user_id": f"eq.{user_id}"}),
+                    db_request("GET", "user_experiences", params={"user_id": f"eq.{user_id}", "order": "sort_order.asc"}),
+                    db_request("GET", "user_education", params={"user_id": f"eq.{user_id}", "order": "sort_order.asc"}),
+                    db_request("GET", "user_volunteer", params={"user_id": f"eq.{user_id}", "order": "sort_order.asc"}),
+                    db_request("GET", "user_awards", params={"user_id": f"eq.{user_id}", "order": "sort_order.asc"}),
+                    db_request("GET", "user_skills", params={"user_id": f"eq.{user_id}"}),
+                    db_request("GET", "tech_projects", params={"user_id": f"eq.{user_id}", "order": "sort_order.asc"}),
+                    db_request("GET", "user_certifications", params={"user_id": f"eq.{user_id}", "order": "sort_order.asc"})
+                )
+                cv_pdf_bytes = _build_master_cv_pdf(
+                    profiles_data[0] if profiles_data else {},
+                    exp_data or [], edu_data or [], vol_data or [],
+                    awards_data or [], skills_data or [], proj_data or [], cert_data or []
+                )
+                name_clean = sender_name.replace(' ', '_')
+                bransch_label = next((b["name"] for b in CV_BRANSCHER if b["id"] == bransch), bransch)
+                bransch_clean = re.sub(r'[^\w\s]', '', bransch_label).strip().replace(' ', '_')
+                cv_filename_used = f"CV_{name_clean}_{bransch_clean}.pdf"
+                cv_source = "generated"
+                logger.info(f"Generated CV PDF dynamically for bransch '{bransch}'")
+        except Exception as e:
+            logger.warning(f"Dynamic CV PDF generation failed for '{bransch}': {e}")
+
     if cv_pdf_bytes:
         attachments.append({
-            "filename": get_cv_pdf_filename(bransch),
+            "filename": cv_filename_used,
             "data": cv_pdf_bytes
         })
 
@@ -3917,7 +3993,8 @@ async def save_gmail_draft_with_attachments(request: Request, job_id: str):
     return {
         "success": True,
         "draft_id": draft_id,
-        "cv_filename": get_cv_pdf_filename(bransch),
+        "cv_filename": cv_filename_used,
+        "cv_source": cv_source,
         "attachments_count": len(attachments)
     }
 
