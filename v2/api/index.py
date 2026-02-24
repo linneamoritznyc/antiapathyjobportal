@@ -1325,7 +1325,7 @@ INSTRUKTIONER:
 7. Nämn var jag bor (EXAKT den ort som anges under "OM MIG" ovan — ignorera eventuell ort/adress i CV-texten) och att jag är flexibel med arbetstider
 8. KRITISKT: Om "EXTRA ERFARENHETER SOM MÅSTE NÄMNAS I BREVET" finns ovan — du MÅSTE nämna VARJE ENSKILD erfarenhet som listas där i brevet. Hoppa inte över en enda. Nämn alla, även om de inte matchar jobbet perfekt — hitta en naturlig koppling för var och en. Det är helt ok att nämna 2 erfarenheter tillsammans i samma mening eller stycke om de belyser liknande styrkor
 9. Om "MIN SKRIVSTIL" finns ovan — följ den stilen. KRITISKT: "Fraser jag INTE vill ha" ÖVERTRUMFAR alla andra regler i detta prompt — även om en fras nämns som "korrekt" eller "vardaglig" på annat ställe. Använd ALDRIG fraser från den listan. Använd gärna fraser från "Fraser jag gillar".
-10. Om "MINA PERSONLIGA ANEKDOTER & HOBBYS" finns ovan — dessa har redan keyword-matchats mot jobbet. Väv in MAX EN om den naturligt stärker din ansökan. Men om kopplingen känns konstruerad eller tunn — SKIPPA den helt. Det är ALLTID bättre att INTE nämna en hobby/anekdot än att tvinga in den.
+10. Om "MINA PERSONLIGA ANEKDOTER & HOBBYS" finns ovan — dessa har redan keyword-matchats mot jobbet. Väv in alla som naturligt stärker din ansökan — det kan vara flera anekdoter och hobbys i samma brev. Men om kopplingen känns konstruerad eller tunn för en specifik anekdot — SKIPPA den. Det är ALLTID bättre att INTE nämna en hobby/anekdot än att tvinga in den.
 11. VIKTIGT om ålder: Om du nämner ålder, använd EXAKT den ålder som står under "OM MIG" ovan. Ignorera eventuell ålder som nämns i bakgrund/erfarenheter — den kan vara gammal.
 12. Avsluta med:
    {signature_style}

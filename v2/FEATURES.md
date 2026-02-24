@@ -452,7 +452,7 @@ Styr hur AI:n skriver dina personliga brev. **All feedback härifrån påverkar 
 ### Anekdoter & hobbys
 - Lista med sparade anekdoter/hobbys
 - Varje post: titel, typ (anekdot/hobby), nyckelord
-- **"+ Lägg till anekdot"** → `POST /api/user/anecdotes` (max 30 per användare, godtycklig gräns — inte tokenrelaterad). **Bara MAX 1 anekdot vävas in per brev**, vald via keyword-matchning mot jobbannonsen. De andra 29 ligger redo men används bara om de matchar.
+- **"+ Lägg till anekdot"** → `POST /api/user/anecdotes` (max 30 per användare, godtycklig gräns — inte tokenrelaterad). AI:n väver in **alla relevanta anekdoter/hobbys** per brev (keyword-matchade mot jobbannonsen). Irrelevanta hoppas över.
 - **"✎ Redigera"**-knapp per anekdot — inline-redigering av titel, typ, innehåll, nyckelord → `PATCH /api/user/anecdotes/{id}`
 - **"✕ Ta bort"**-knapp → `DELETE /api/user/anecdotes/{id}`
 - **"TXT"**-knapp — exportera alla anekdoter/hobbys som textfil → `GET /api/user/anecdotes/export?format=txt`
