@@ -90,7 +90,13 @@ meeting→möte, deadline→tidsgräns, feedback→återkoppling, track record�
 leverage→dra nytta av, key account→nyckelkund, update→uppdatering, skills→kompetenser,
 mindset→tankesätt, achievements→meriter, stakeholder→intressent, onboarding→introduktion,
 output→resultat, challenge→utmaning, hands-on→praktisk, high-level→övergripande,
-scope→omfattning, impact→påverkan, rollout→lansering, setup→upplägg, know-how→kunnande.
+scope→omfattning, impact→påverkan, rollout→lansering, setup→upplägg, know-how→kunnande,
+mentored/mentorerade→handledde, NGO→ideell organisation, NGO:er→ideella organisationer,
+NGO-partnerskap→samarbeten med ideella organisationer, policy→regel/riktlinje,
+policyförbättringar→regelförbättringar, policyriktlinjer→riktlinjer,
+teamarbete→lagarbete, team→lag/grupp (i sammansättningar), nätverksevenemang→nätverksträff,
+validated/validerade→bekräftade (t.ex. "bekräftade konceptets bärkraft"),
+servicenivå→tjänstenivå, servicenivåmål→tjänstenivåmål.
 
 Accepterade lånord (OK att använda): proaktiv, strategi, digital, analys, process, projekt,
 kompetens, effektiv, relevant, professionell, innovation, kommunikation, koordinera, implementera.
