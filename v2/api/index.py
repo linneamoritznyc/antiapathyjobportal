@@ -5848,6 +5848,18 @@ async def enhance_master_cv_from_upload(request: Request):
     existing_education = await db_request("GET", "user_education", params={
         "user_id": f"eq.{user_id}", "order": "sort_order.asc"
     }) or []
+    existing_volunteer = await db_request("GET", "user_volunteer", params={
+        "user_id": f"eq.{user_id}", "order": "sort_order.asc"
+    }) or []
+    existing_projects = await db_request("GET", "tech_projects", params={
+        "user_id": f"eq.{user_id}", "order": "sort_order.asc"
+    }) or []
+    existing_skills = await db_request("GET", "user_skills", params={
+        "user_id": f"eq.{user_id}"
+    }) or []
+    existing_certifications = await db_request("GET", "user_certifications", params={
+        "user_id": f"eq.{user_id}", "order": "sort_order.asc"
+    }) or []
 
     # Build context of what already exists
     existing_summary = "BEFINTLIGA ERFARENHETER I MASTER CV:\n"
@@ -5856,17 +5868,43 @@ async def enhance_master_cv_from_upload(request: Request):
     existing_summary += "\nBEFINTLIG UTBILDNING:\n"
     for edu in existing_education:
         existing_summary += f"- ID:{edu.get('id')} | {edu.get('school')} | {edu.get('degree')} | {edu.get('start_date')}-{edu.get('end_date','')}\n"
+    existing_summary += "\nBEFINTLIGT VOLONTÄRARBETE:\n"
+    for vol in existing_volunteer:
+        existing_summary += f"- ID:{vol.get('id')} | {vol.get('organization')} | {vol.get('dates','')} | {(vol.get('description') or '')[:80]}\n"
+    if not existing_volunteer:
+        existing_summary += "- (inga poster)\n"
+    existing_summary += "\nBEFINTLIGA PROJEKT:\n"
+    for proj in existing_projects:
+        existing_summary += f"- ID:{proj.get('id')} | {proj.get('name') or proj.get('title','')} | {(proj.get('description') or '')[:80]}\n"
+    if not existing_projects:
+        existing_summary += "- (inga poster)\n"
+    existing_summary += "\nBEFINTLIGA KOMPETENSER:\n"
+    skill_texts = [s.get('skill_text','') for s in existing_skills]
+    existing_summary += ", ".join(skill_texts) if skill_texts else "(inga)"
+    existing_summary += "\n\nBEFINTLIGA CERTIFIERINGAR:\n"
+    for cert in existing_certifications:
+        existing_summary += f"- ID:{cert.get('id')} | {cert.get('name') or cert.get('cert_name','')}\n"
+    if not existing_certifications:
+        existing_summary += "- (inga poster)\n"
 
     if not ANTHROPIC_API_KEY:
         raise HTTPException(status_code=500, detail="AI ej konfigurerad")
 
     # Ask Claude to compare and find improvements
-    prompt = f"""Jag har ett Master CV med befintliga erfarenheter och utbildningar. Jag har precis laddat upp ett nytt CV-dokument. Jag vill att du:
+    prompt = f"""Jag har ett Master CV med befintliga poster. Jag har precis laddat upp ett nytt CV-dokument.
 
-1. JÄMFÖR det nya CV-dokumentet med mina befintliga poster
-2. Hitta NYA erfarenheter/utbildningar som INTE redan finns → skapa dem
-3. Hitta befintliga poster som kan FÖRBÄTTRAS med mer detaljer från det nya CVt (t.ex. bättre beskrivning, saknade datum, kategorier) → uppdatera dem
-4. RADERA ALDRIG något. Lägg bara till och förbättra.
+UPPGIFT: Analysera ALLA sektioner i det nya dokumentet och jämför med mina befintliga poster. Det nya CVt kan innehålla:
+- Arbetslivserfarenheter (jobb, praktik, anställningar)
+- Utbildningar (skola, kurser, program)
+- Volontärarbete / ideellt arbete
+- Projekt (tech-projekt, sidoprojekt, portföljprojekt)
+- Kompetenser / skills (tekniska, språk, certifikat)
+- Certifieringar
+
+FÖR VARJE SEKTION:
+1. Hitta NYA poster som INTE redan finns → skapa dem
+2. Hitta befintliga poster som kan FÖRBÄTTRAS med mer detaljer → uppdatera dem
+3. RADERA ALDRIG något. Lägg bara till och förbättra.
 
 {existing_summary}
 
@@ -5887,15 +5925,30 @@ Svara i EXAKT detta JSON-format (inga kommentarer, bara ren JSON):
     "updated_education": [
         {{"id": "befintligt-uuid", "degree": "förbättrad examen text", "field_of_study": "inriktning"}}
     ],
+    "new_volunteer": [
+        {{"organization": "...", "dates": "...", "description": "..."}}
+    ],
+    "new_projects": [
+        {{"name": "...", "description": "...", "tech_stack": "...", "url": ""}}
+    ],
+    "new_skills": [
+        {{"skill_text": "...", "skill_type": "technical|language|certificate", "category": "all"}}
+    ],
+    "new_certifications": [
+        {{"name": "...", "issuer": "...", "date": ""}}
+    ],
     "summary": "Kort sammanfattning av vad som ändrades"
 }}
 
 VIKTIGT:
+- Analysera HELA dokumentet — missa inte volontärarbete, projekt, kompetenser eller certifieringar
 - Bara inkludera poster som verkligen behöver skapas eller uppdateras
-- Om inget behöver ändras, returnera tomma arrayer
-- Kategorier ska vara: restaurant, retail, tech, healthcare, customerservice, contentmoderation, industri, art, marketing, education, reception
+- Om inget behöver ändras i en sektion, returnera tom array för den
+- Kategorier för erfarenheter: restaurant, retail, tech, healthcare, customerservice, contentmoderation, industri, art, marketing, education, reception
+- skill_type: "technical" (programmeringsspråk, verktyg), "language" (svenska, engelska), "certificate" (körkort, etc.)
 - Datum i format "Aug 2024" eller "2024"
-- Beskrivningar på svenska, korta och informativa"""
+- Beskrivningar på svenska, korta och informativa
+- Dubblera INTE kompetenser som redan finns i listan"""
 
     try:
         async with httpx.AsyncClient() as client:
@@ -6027,6 +6080,72 @@ VIKTIGT:
                 updated += 1
             except Exception as e:
                 logger.warning(f"Failed to update education {edu_id}: {e}")
+
+    # Create new volunteer entries
+    for vol in changes.get("new_volunteer", []):
+        try:
+            bullets = []
+            desc = vol.get("description", "")
+            if desc:
+                bullets = [s.strip() for s in desc.split(".") if s.strip()]
+            await db_request("POST", "user_volunteer", data={
+                "user_id": user_id,
+                "organization": vol.get("organization", ""),
+                "dates": vol.get("dates", ""),
+                "bullets": bullets,
+                "sort_order": len(existing_volunteer) + added
+            })
+            added += 1
+        except Exception as e:
+            logger.warning(f"Failed to add volunteer: {e}")
+
+    # Create new projects
+    for proj in changes.get("new_projects", []):
+        try:
+            await db_request("POST", "tech_projects", data={
+                "user_id": user_id,
+                "name": proj.get("name", ""),
+                "description": proj.get("description", ""),
+                "tech_stack": proj.get("tech_stack", ""),
+                "url": proj.get("url", ""),
+                "sort_order": len(existing_projects) + added
+            })
+            added += 1
+        except Exception as e:
+            logger.warning(f"Failed to add project: {e}")
+
+    # Create new skills (skip duplicates)
+    existing_skill_texts = {s.get("skill_text", "").lower() for s in existing_skills}
+    for skill in changes.get("new_skills", []):
+        try:
+            skill_text = skill.get("skill_text", "").strip()
+            if skill_text and skill_text.lower() not in existing_skill_texts:
+                await db_request("POST", "user_skills", data={
+                    "user_id": user_id,
+                    "skill_text": skill_text,
+                    "skill_type": skill.get("skill_type", "technical"),
+                    "category": skill.get("category", "all")
+                })
+                existing_skill_texts.add(skill_text.lower())
+                added += 1
+        except Exception as e:
+            logger.warning(f"Failed to add skill: {e}")
+
+    # Create new certifications
+    for cert in changes.get("new_certifications", []):
+        try:
+            cert_name = cert.get("name", "").strip()
+            if cert_name:
+                await db_request("POST", "user_certifications", data={
+                    "user_id": user_id,
+                    "name": cert_name,
+                    "issuer": cert.get("issuer", ""),
+                    "date": cert.get("date", ""),
+                    "sort_order": len(existing_certifications) + added
+                })
+                added += 1
+        except Exception as e:
+            logger.warning(f"Failed to add certification: {e}")
 
     return {
         "success": True,
