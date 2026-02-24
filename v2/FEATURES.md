@@ -27,6 +27,8 @@ Besökare som inte är inloggade ser en marknadsföringssida med tre flikar:
 - Prisnivåer och planer
 - FAQ-sektion
 
+**Supabase-koppling:** Ingen — statisk sida.
+
 ---
 
 ## Inloggning (`/login`)
@@ -50,7 +52,10 @@ Separat HTML-fil (`v2/login.html`). Två flikar: **Logga in** / **Skapa konto**.
 ### Lösenordsåterställning
 - E-postfält
 - **"Skicka återställningslänk"**-knapp → `POST /api/auth/reset-password`
-- Tillbaka till inloggning-länk
+
+**Supabase-koppling:**
+- `auth.users` — Supabase Auth hanterar e-post/lösenord + Google OAuth
+- Tokens sparas i `localStorage` (auth_token, refresh_token, user)
 
 ---
 
@@ -73,8 +78,6 @@ Separat HTML-fil (`v2/login.html`). Två flikar: **Logga in** / **Skapa konto**.
 | `quiz` | ✨ | Quiz |
 | `profil` | 👤 | Profil |
 
-Jobb- och Extern-flikarna visar antal hittade jobb. Ansökningar visar antal sparade.
-
 ---
 
 ## 📧 Jobb
@@ -90,58 +93,76 @@ Visar jobb som skrapats från Platsbanken och som har **kontakt-e-post** (= kan 
 ### Jobbkort (12 per sida, grid-layout)
 Varje kort visar:
 - **Prioritetsbadge** — ⚡ Akut (röd) / ⏰ Snart (amber) / ✓ Normal
-- **📌 Spara-knapp** — bokmärker jobbet → `POST /api/jobs/{id}/save`
-- **Deadline** — datum + färgkodad badge (röd = idag, amber = inom 7 dagar)
-- **Jobbtitel**
-- **Företagsnamn**
-- **Ort**
+- **📌 Spara-knapp** — bokmärker jobbet
+- **Deadline** — datum + färgkodad badge
+- **Jobbtitel**, **Företagsnamn**, **Ort**
 - **Kontakt-epost** (grön badge)
-- **"✨ Ansök"**-knapp — öppnar ansökningsmodalen (se nedan)
+- **"✨ Ansök"**-knapp — öppnar ansökningsmodalen
 - **↗ Extern länk** — öppnar originalannonsen på Platsbanken
-
-### Pagination
-- 12 jobb per sida
-- "Ladda fler"-knapp i botten
 
 ### Ansökningsmodal (öppnas vid "✨ Ansök")
 1. AI genererar personligt brev via `POST /api/jobs/{id}/apply-with-cv`
-2. **Kvalifikationsvarning** — om Haiku bedömer att du inte matchar (t.ex. kräver legitimation) visas varning INNAN credits används. Tre val: Sök ändå / Hoppa över / Filtrera bort liknande
+2. **Kvalifikationsvarning** — om Haiku bedömer att du inte matchar visas varning INNAN credits används
 3. Brevet visas i redigerbar textarea
-4. **Erfarenhets-chips** — gröna chips för erfarenheter som nämns i brevet. Klicka bort/i och omgenerera
-5. **Utbildnings-chips** (grön) + **Anekdot-chips** (amber) — samma logik
+4. **Erfarenhets-chips** (gröna) — erfarenheter som nämns i brevet. Klicka bort/i och omgenerera
+5. **Utbildnings-chips** (gröna) + **Anekdot-chips** (amber) — samma logik
 6. **Fritext-ruta** — skriv egen erfarenhet att inkludera
-7. **"✨ Omgenerera brev"**-knapp — genererar nytt brev med uppdaterade val
-8. **"Granska svenskan"**-knapp — LanguageTool kollar grammatik/stavning
-9. **Knappar**:
-   - **"Kopiera"** — kopierar brevet till urklipp
-   - **"Ladda ner PDF"** → `POST /api/jobs/{id}/cover-letter-pdf`
-   - **"Spara i Gmail med bilagor"** → `POST /api/jobs/{id}/save-draft` — skapar Gmail-utkast med:
-     1. Ämne: `Ansökan: [Jobbtitel] – [Ditt namn]`
-     2. Brödtext: personligt brev
-     3. Bilaga 1: Personligt brev som PDF
-     4. Bilaga 2: Rätt bransch-CV som PDF
-   - **CV-badge** — visar vilken bransch som matchades (t.ex. "Restaurang & Cafe")
+7. **"✨ Omgenerera brev"**-knapp
+8. **"Granska svenskan"**-knapp — LanguageTool kollar grammatik/stavning (bara säkra rättningar)
+9. **Feedback-ruta** — skriv feedback om brevet → `POST /api/user/ai-feedback/smart` → uppdaterar dina preferenser automatiskt
+10. **Knappar**:
+    - **"Kopiera"** — kopierar brevet till urklipp
+    - **"Ladda ner PDF"** → `POST /api/jobs/{id}/cover-letter-pdf`
+    - **"Spara i Gmail med bilagor"** → `POST /api/jobs/{id}/save-draft` — skapar Gmail-utkast med:
+      1. Ämne: `Ansökan: [Jobbtitel] – [Ditt namn]`
+      2. Brödtext: personligt brev
+      3. Bilaga 1: Personligt brev som PDF
+      4. Bilaga 2: Rätt bransch-CV som PDF
+    - **"Markera skickad"** — ändrar status till "sent"
+    - **CV-badge** — visar vilken bransch som matchades
+
+**Supabase-koppling:**
+
+| Tabell | Läser | Skriver | Syfte |
+|--------|-------|---------|-------|
+| `jobs` | ✅ | | Hämtar skrapade jobb med e-postkontakt |
+| `applications` | ✅ | ✅ | Sparar ansökan (status, brev, bransch_id, gmail_draft_id) |
+| `user_job_interactions` | | ✅ | Loggar viewed/skipped/applied/saved/rejected |
+| `user_experiences` | ✅ | | Hämtar erfarenheter för brevgenerering |
+| `user_education` | ✅ | | Hämtar utbildning för brevgenerering |
+| `user_anecdotes` | ✅ | | Hämtar anekdoter/hobbys att väva in |
+| `user_profiles` | ✅ | | Namn, ort, telefon, e-post för brev + signatur |
+| `user_cover_letter_preferences` | ✅ | ✅ | Ton, stil, avoid/like-fraser, AI-instruktioner |
+| `user_ai_feedback` | ✅ | ✅ | Sparar + hämtar feedback om brev (smart endpoint uppdaterar preferences) |
+| `user_cvs` / `bransch_cvs` | ✅ | | Hämtar bransch-CV PDF för bilaga |
+| `user_google_credentials` | ✅ | | Gmail OAuth-tokens för att skapa utkast |
 
 ---
 
 ## 🌐 Extern
 
-Visar jobb från Platsbanken som **saknar kontakt-e-post** — användaren ansöker via företagets hemsida, men appen hjälper med brev + CV.
+Visar jobb från Platsbanken som **saknar kontakt-e-post** — användaren ansöker via företagets hemsida.
 
 ### Layout
 Tvådelad: jobblista till vänster, detaljer till höger.
 
 ### Höger panel — tre flikar:
 1. **Beskrivning** — full jobbannons, utfällbar
-2. **Brev** — generera personligt brev (samma flöde som Jobb-modalen). Knappar: Kopiera / Ladda ner PDF / Spara i Gmail
-3. **Q&A** — ställ frågor om jobbet (t.ex. "Varför vill du jobba här?")
-   - Inmatningsfält + **"Ställ fråga"**-knapp → `POST /api/jobs/{id}/answer-question`
-   - AI svarar baserat på din profil + jobbannonsen
-   - Kopiera-knapp för svaren
+2. **Brev** — generera personligt brev (samma flöde som Jobb-modalen)
+3. **Q&A** — ställ frågor om jobbet → `POST /api/jobs/{id}/answer-question`
 
 ### Åtgärdsknappar
 - **"Hoppa över"** — skickar jobbet till slutet
 - **"Avvisa"** — döljer jobbet permanent
+
+**Supabase-koppling:**
+
+| Tabell | Läser | Skriver | Syfte |
+|--------|-------|---------|-------|
+| `jobs` | ✅ | | Hämtar jobb UTAN e-postkontakt |
+| `user_job_interactions` | ✅ | ✅ | Filtrerar bort skipped/rejected, loggar interaktioner |
+| `applications` | | ✅ | Sparar om man genererar brev |
+| Alla brevgenereringstabell (se Jobb ovan) | ✅ | | Samma data för brevgenerering |
 
 ---
 
@@ -151,35 +172,31 @@ Hantera Master CV + 9 branschanpassade versioner.
 
 ### Master CV-sektion
 - **"Redigera Master CV"**-knapp — öppnar fullständig redigeringsmodal
-- **"Generera alla CV"**-knapp → `POST /api/cv/generate-branscher` — AI genererar alla 9 bransch-CVer
+- **"Generera alla CV"**-knapp → `POST /api/cv/generate-branscher`
 - **"Ladda ner Master CV"** → `GET /api/master-cv/download-pdf`
-- **Statistik**: antal erfarenheter, utbildningar, utmärkelser, projekt, språk
+- Statistik: antal erfarenheter, utbildningar, utmärkelser, projekt, språk
 
 ### CV-uppladdning med AI-parsning
 - Ladda upp befintligt CV (PDF/DOCX/TXT) → `POST /api/cv/enhance-master`
-- AI extraherar: erfarenheter, utbildning, skills → fyller i Master CV automatiskt
-- **AI-chatt** efter uppladdning — fråga om förslag, be om ändringar:
-  - Skriv t.ex. *"Jag jobbar inte längre på Ica Maxi"* → AI uppdaterar
-  - `POST /api/cv/enhance-chat`
+- AI extraherar: erfarenheter, utbildning, skills
+- **AI-chatt** efter uppladdning: `POST /api/cv/enhance-chat`
 
 ### Master CV Editor (modal)
-Redigera varje sektion:
-- **Erfarenheter** — titel, företag, datum, beskrivning, bullet points. Lägg till / redigera / ta bort
-- **Utbildning** — skola, examen, datum. Lägg till / redigera / ta bort
-- **Skills** — kompetenser, typ (teknisk/bransch/språk). Lägg till / redigera / ta bort
+- **Erfarenheter** — titel, företag, datum, bullets
+- **Utbildning** — skola, examen, datum
+- **Skills** — kompetenser, typ (teknisk/bransch/språk)
 - **Projekt** — namn, beskrivning, GitHub/live-länkar
-- **Certifieringar** — körkort, kassahantering, första hjälpen, etc
+- **Certifieringar** — körkort, kassahantering, etc
 - **Volontärarbete** — organisation, datum, bullets
 - **Utmärkelser**
 
 ### Bransch-CV-kort (9 kort i grid)
-Varje kort visar:
-- **Emoji + branschnamn** (t.ex. 🍽️ Restaurang & Cafe)
-- **Fokusområde** (t.ex. "Kundkontakt, stresshantering, teamwork")
-- **Statusbadge** — "✓ CV finns" (grön) eller "Inte skapat"
-- **"📤 Ladda upp CV"**-knapp — ladda upp egen PDF → `POST /api/upload/cv/{bransch_id}`
+- Emoji + branschnamn
+- Fokusområde
+- Statusbadge — "✓ CV finns" / "Inte skapat"
+- **"📤 Ladda upp CV"** → `POST /api/upload/cv/{bransch_id}`
 - **"📄 Visa fil"** — länk till uppladdad PDF
-- **"✏️ Redigera"** — öppnar texteditor för CV-texten
+- **"✏️ Redigera"** — texteditor för CV-texten
 
 **De 9 branscherna:**
 
@@ -194,6 +211,29 @@ Varje kort visar:
 | Hotell & Reception | 🏨 | Gästservice, bokning |
 | Content & Moderation | 🛡️ | Digitalt innehåll, riktlinjer |
 | Konst & Kultur | 🎨 | Kreativitet, evenemang |
+
+**Supabase-koppling:**
+
+| Tabell | Läser | Skriver | Syfte |
+|--------|-------|---------|-------|
+| `user_profiles` | ✅ | | Namn, ort, foto för CV |
+| `user_experiences` | ✅ | ✅ | Arbetslivserfarenheter (CRUD i editor) |
+| `user_education` | ✅ | ✅ | Utbildning (CRUD i editor) |
+| `user_skills` | ✅ | ✅ | Kompetenser per kategori (CRUD) |
+| `user_volunteer` | ✅ | ✅ | Volontärarbete (CRUD) |
+| `user_awards` | ✅ | ✅ | Utmärkelser (CRUD) |
+| `user_certifications` | ✅ | ✅ | Certifieringar (CRUD) |
+| `tech_projects` | ✅ | ✅ | Projekt (för tech-CV) |
+| `user_experience_tags` | ✅ | ✅ | Kopplar erfarenheter → branscher med prioritet |
+| `user_cvs` | ✅ | ✅ | Genererade bransch-CV texter |
+| `bransch_cvs` | ✅ | ✅ | Bransch-CV varianter med PDF-URL |
+| `user_cv_branscher` | ✅ | ✅ | Användarens branschdefinitioner |
+| `user_cv_uploads` | ✅ | ✅ | Uppladdade CV-filer (max 20) |
+| `user_cv_creation_conversations` | ✅ | ✅ | AI-chatt historik per CV |
+| `user_cv_versions` | ✅ | ✅ | Versionshistorik per CV |
+| `master_cv_exports` | | ✅ | Snapshot av hela Master CV som JSON |
+| **Storage: `cv-files`** | ✅ | ✅ | PDF-filer för bransch-CVer |
+| **Storage: `profile-photos`** | ✅ | | Profilbild på CV |
 
 ---
 
@@ -218,15 +258,28 @@ Spåra alla ansökningar och generera aktivitetsrapport för A-kassan.
 Varje ansökan visar:
 - Jobbtitel + företag
 - **Statusbadge** med färgkodning
-- **Status-dropdown** — ändra status:
-  - 📌 Sparad → 📝 Utkast → ✓ Skickad → 🎉 Intervju → 🎊 Erbjudande / ✗ Avslag
-  - `PATCH /api/applications/{id}`
+- **Status-dropdown** — ändra status: 📌 Sparad → 📝 Utkast → ✓ Skickad → 🎉 Intervju → 🎊 Erbjudande / ✗ Avslag
 
 **Expanderad vy:**
 - Plats + deadline
 - **Anteckningar** — redigera och spara per ansökan
 - **Personligt brev** — visa/ladda ner sparat brev
-- **"Ta bort"**-knapp → `DELETE /api/applications/{id}`
+- **"Ta bort"**-knapp
+
+**Supabase-koppling:**
+
+| Tabell | Läser | Skriver | Syfte |
+|--------|-------|---------|-------|
+| `applications` | ✅ | ✅ | Alla ansökningar — status, notes, cover_letter, sent_at, bransch_id |
+| `jobs` | ✅ | | Jobbdata (titel, företag, ort, working_hours) för aktivitetsrapporten |
+
+**Nyckelkolumner i `applications`:**
+- `status` — draft/sent/saved/skipped/interview/rejected/offer
+- `sent_at` — TIMESTAMPTZ, sätts vid "Markera skickad", används i aktivitetsrapport
+- `cover_letter` — sparat brevtext
+- `notes` — fria anteckningar per ansökan
+- `bransch_id` — vilken bransch-CV som användes
+- `gmail_draft_id` — Gmail utkast-ID om det sparades
 
 ---
 
@@ -241,9 +294,13 @@ Dashboard med 4 sifferkort:
 | Intervjuer | Amber | Antal med status "intervju" |
 | CV-versioner | Lila | Antal genererade bransch-CVer |
 
-Plus:
-- **Sparade jobb** (blå badge)
-- **Deadline idag** (röd badge)
+**Supabase-koppling:**
+
+| Tabell | Läser | Syfte |
+|--------|-------|-------|
+| `jobs` | ✅ | Räknar totalt antal jobb |
+| `applications` | ✅ | Räknar per status (skickad, intervju, sparad) |
+| `user_cvs` | ✅ | Räknar antal bransch-CVer |
 
 ---
 
@@ -252,25 +309,33 @@ Plus:
 Styr vilka jobb som skrapas och visas.
 
 ### Positiva sökord (blå chips)
-- Förvalda chips från quiz: Servering, Kundtjänst, Butik, Lager, Kontor, IT/Tech, Vård, Hotell, Barn, Skola, Trädgård, Städ
-- **Inmatningsfält + "Lägg till"** — stödjer kommaseparerade listor (t.ex. "Hotell, Lärare, Trädgård" → 3 chips)
-- X-knapp på varje chip för att ta bort
+- Förvalda chips från quiz: Servering, Kundtjänst, Butik, Lager, etc
+- Inmatningsfält — stödjer kommaseparerade listor ("Hotell, Lärare, Trädgård" → 3 chips)
 
 ### Negativa sökord (röda chips)
 - Kategorifilter: Hälsa & Vård, Utbildning, Teknik, Juridik, etc
-- Sökfilter för att hitta nyckelord
-- **Inmatningsfält + "Lägg till"** — stödjer kommaseparerade listor
-- X-knapp på varje chip
+- Sökfilter + inmatningsfält (kommaseparerat)
 
 ### Arbetstid (multi-select toggles)
-- Heltid
-- Deltid
-- Extra/Timanställning
+- Heltid / Deltid / Extra/Timanställning
 
 ### Dealbreakers (multi-select toggles)
 - Nattarbete / Helgarbete / Telefonarbete / Tunga lyft / Utomhusarbete / Ingen
 
 **"Spara preferenser"**-knapp → `POST /api/user/preferences`
+
+**Supabase-koppling:**
+
+| Tabell | Läser | Skriver | Syfte |
+|--------|-------|---------|-------|
+| `user_job_preferences` | ✅ | ✅ | search_keywords, excluded_keywords, job_types, quiz_answers |
+
+**Nyckelkolumner i `user_job_preferences`:**
+- `search_keywords` TEXT[] — positiva sökord (blå chips), påverkar Platsbanken-skrapning
+- `excluded_keywords` TEXT[] — negativa sökord (röda chips), filtrerar bort jobb
+- `job_types` TEXT[] — heltid/deltid/extra
+- `quiz_answers` JSONB — all data från quiz (dealbreakers, lön, anställningsform, etc.)
+- `preferred_locations` TEXT[] — valda kommuner (sätts från Platser-sidan)
 
 ---
 
@@ -279,59 +344,115 @@ Styr vilka jobb som skrapas och visas.
 Välj vilka kommuner du vill söka jobb i.
 
 ### Snabbval
-- **"✓ Hela Sverige"** — toggle, söker överallt
+- **"✓ Hela Sverige"** — toggle
 - **"✓ Distans / Remote"** — toggle
 
-### Sökfält
-- Sök bland alla 290 kommuner i realtid
-
-### Län-picker (om inte "Hela Sverige" valt)
-- Varje län expanderbart
-- **"Markera alla"** per län
+### Län-picker
+- Sök bland alla 290 kommuner
+- Expanderbara län med "Markera alla"
 - Checkbox per kommun
-- Visar antal valda: "{n} kommuner valda"
 
 **"Spara platser"**-knapp → `POST /api/user/locations`
+
+**Supabase-koppling:**
+
+| Tabell | Läser | Skriver | Syfte |
+|--------|-------|---------|-------|
+| `user_job_preferences` | ✅ | ✅ | `preferred_locations` TEXT[] + `quiz_answers.location` JSONB |
+
+**Hur det hänger ihop med skrapning:**
+- Valda kommuner → backend skrapar Platsbanken med dessa kommun-ID:n
+- Sparas som kommun-ID:n i `quiz_answers.location` och som namn i `preferred_locations`
 
 ---
 
 ## ✍️ Personligt brev (stilpreferenser)
 
-Styr hur AI:n skriver dina personliga brev.
+Styr hur AI:n skriver dina personliga brev. **All feedback härifrån påverkar ALLA brevgenereringar — både på Jobb-sidan och Extern-sidan.**
 
 ### Träningsbrev
-- Ladda upp (PDF/DOCX) eller klistra in text från tidigare brev du skrivit
+- Ladda upp (PDF/DOCX) eller klistra in text → `POST /api/user/training-letters`
 - AI analyserar din stil: ton, struktur, favoritfraser
 - Lista med uppladdade brev + ta bort-knapp
 
-### Gillade fraser (blå chips)
-- Chips med fraser du VILL att AI:n använder
+### Fraser jag gillar (blå chips)
+- Fraser du VILL att AI:n använder
 - Input + "Lägg till" / X för att ta bort
-- `PATCH /api/user/letter-style/phrases`
-
-### Undvik-fraser (röda chips)
-- Chips med fraser AI:n ALDRIG ska använda (t.ex. "brinner för", "gedigen erfarenhet")
-- Samma add/remove-logik
+- `PATCH /api/user/letter-style/phrases` (action: add, list: phrases)
 
 ### Ämnen att aldrig nämna
-- Nyckelord som AI:n ska undvika helt (t.ex. "konst", "Shopify")
+- Nyckelord AI:n ska undvika helt (t.ex. "konst", "Shopify")
+
+### Fraser jag inte vill ha (röda chips)
+- Fraser AI:n ALDRIG ska använda
+- Förvalda AI-klichéer att klicka och blockera: "solid erfarenhet", "brinner för", "gedigen kompetens", "passionerad", "vittnar om", "starkt engagemang", "unik möjlighet", "spännande utmaning"
+- `PATCH /api/user/letter-style/phrases` (action: add, list: avoid)
+
+### Egna instruktioner till AI
+- Stor textarea för fria instruktioner
+- T.ex. ordersättningar: "Mentorerade" → "Handledde", "NGO:er" → "ideella organisationer"
+- **"Spara instruktioner"**-knapp → `PATCH /api/user/letter-style`
+
+### AI Feedback
+- **Fritext-ruta** — skriv feedback, t.ex. "Gör breven kortare" eller "Säg aldrig rondera"
+- **"Skicka feedback"**-knapp → `POST /api/user/ai-feedback/smart`
+- AI (Claude) tolkar feedbacken → extraherar avoid/like-fraser → sparar strukturerat
+- Feedback sparas i `user_ai_feedback` OCH uppdaterar `user_cover_letter_preferences`
+- **Historik** — lista med sparad feedback + ta bort-knapp
 
 ### Anekdoter & hobbys
 - Lista med sparade anekdoter/hobbys
 - Varje post: titel, typ (anekdot/hobby), nyckelord, ta bort-knapp
-- **"+ Lägg till anekdot"** — formulär: titel, typ, innehåll, nyckelord → `POST /api/user/anecdotes`
+- **"+ Lägg till anekdot"** → `POST /api/user/anecdotes`
 - AI väljer relevanta anekdoter per jobb baserat på nyckelordsmatchning
 
-### AI Feedback
-- **Fritext-ruta** — skriv feedback, t.ex. "Gör breven kortare och mer personliga"
-- **"Skicka feedback"**-knapp → `POST /api/user/ai-feedback/smart`
-- AI analyserar feedbacken och extraherar: undvik-fraser, gillade fraser, stiländringar
-- Feedback sparas i databasen och appliceras automatiskt vid varje brevgenerering
-- **Historik** — lista med tidigare feedback + ta bort-knapp
+**Supabase-koppling:**
 
-### Egna AI-instruktioner
-- Stor textarea för fria instruktioner till AI:n
-- **"Spara instruktioner"**-knapp → `PATCH /api/user/letter-style`
+| Tabell | Läser | Skriver | Syfte |
+|--------|-------|---------|-------|
+| `user_cover_letter_preferences` | ✅ | ✅ | Huvudtabell för brevstil |
+| `user_ai_feedback` | ✅ | ✅ | Sparad feedback som AI läser vid varje brevgenerering |
+| `user_anecdotes` | ✅ | ✅ | Personliga anekdoter/hobbys (max 30) |
+| `user_training_letters` | ✅ | ✅ | Uppladdade träningsbrev |
+| **Storage: `training-letters`** | ✅ | ✅ | PDF/DOCX-filer för träningsbrev |
+
+**Nyckelkolumner i `user_cover_letter_preferences`:**
+- `liked_phrases` TEXT[] — fraser AI ska gärna använda
+- `avoid_phrases` JSONB — fraser AI ALDRIG ska använda (röda chips)
+- `never_mention` TEXT[] — ämnen att aldrig nämna
+- `custom_ai_instructions` TEXT — fria instruktioner (textarea)
+- `tone` TEXT — "professional_friendly" / "formal" / "casual"
+- `max_words` INT — maxlängd på brev
+- `writing_style` TEXT — AI-analyserad stilbeskrivning från träningsbrev
+- `opening_style` TEXT — hur brev öppnas
+- `greeting_style` TEXT — "Hej!" / "Hej [Company]!"
+- `signature_style` TEXT — "Med vänliga hälsningar"
+- `sign_off_name/phone/email` TEXT — signaturuppgifter
+- `priority_experiences_per_vibe` JSONB — vilka erfarenheter som prioriteras per bransch
+
+**Nyckelkolumner i `user_ai_feedback`:**
+- `feedback_text` TEXT — sammanfattning av feedback
+- `feedback_type` TEXT — "cover_letter" / "new_bransch_request" / "exclude_jobs" / "general"
+- `is_active` BOOLEAN — aktiv feedback läses vid varje brevgenerering
+- `applies_to_branscher` TEXT[] — om feedbacken bara gäller vissa branscher
+
+**Dataflöde vid brevgenerering:**
+```
+generate_cover_letter() hämtar:
+  1. user_cover_letter_preferences → ton, fraser, avoid, instruktioner
+  2. user_ai_feedback (is_active=true, limit 10) → senaste feedback
+  3. user_anecdotes → relevanta anekdoter baserat på nyckelord
+  → Allt matas in i Claude-prompten som kontext
+```
+
+**Feedback-flöde (synk mellan sidor):**
+```
+Jobb-sidan feedback → POST /api/user/ai-feedback/smart → Claude tolkar →
+  1. Sparar i user_ai_feedback (feedback_text)
+  2. Uppdaterar user_cover_letter_preferences (avoid_phrases, liked_phrases)
+  → Ändringen syns DIREKT i Personligt brev-sidan (röda/blå chips)
+  → Och används vid nästa brevgenerering
+```
 
 ---
 
@@ -340,14 +461,10 @@ Styr hur AI:n skriver dina personliga brev.
 Kontrollera layouten på genererade brev.
 
 ### Förhandsgranskning
-- Live-preview av brevformat med:
-  - Hälsningsfras
-  - "[Brevets innehåll — ca X ord]"
-  - Avslutningsfras
-  - Namn + telefon + e-post
+- Live-preview av brevformat med hälsning, innehåll, avslutning, signatur
 
 ### Formulärfält
-- **Hälsning** — t.ex. "Hej!" (kontaktpersons namn läggs till automatiskt)
+- **Hälsning** — t.ex. "Hej!"
 - **Avslutningsfras** — t.ex. "Med vänliga hälsningar,"
 - **Namn i signatur**
 - **Telefon**
@@ -356,6 +473,12 @@ Kontrollera layouten på genererade brev.
 
 **"Spara"**-knapp → `PATCH /api/user/letter-style`
 
+**Supabase-koppling:**
+
+| Tabell | Läser | Skriver | Syfte |
+|--------|-------|---------|-------|
+| `user_cover_letter_preferences` | ✅ | ✅ | greeting_style, signature_style, max_words, sign_off_* |
+
 ---
 
 ## 📬 Gmail
@@ -363,58 +486,78 @@ Kontrollera layouten på genererade brev.
 Koppla ditt Gmail-konto för att skapa utkast direkt från appen.
 
 ### Ej kopplad
-- Beskrivning av vad Gmail-koppling gör
-- **3 samtyckes-checkboxar** (alla obligatoriska):
-  1. Appen skapar utkast (skickar aldrig automatiskt)
-  2. Appen skickar aldrig automatiskt
-  3. Jag kan koppla bort när som helst
+- 3 samtyckes-checkboxar (alla obligatoriska)
 - **"Anslut Gmail"**-knapp → `GET /api/gmail/auth-url` → Google OAuth-popup
 
 ### Kopplad (grön banner)
 - ✓ "Gmail kopplad" + din Gmail-adress
-- **Vad appen KAN göra:**
-  - ✓ Skapa utkast med personligt brev + CV-bilagor
-  - ✓ Bifoga PDF-filer
-- **Vad appen INTE kan göra:**
-  - ✗ Skicka e-post
-  - ✗ Läsa befintliga mejl
-  - ✗ Radera något
+- Vad appen KAN/INTE kan göra
 - **"Koppla bort Gmail"**-knapp → `POST /api/gmail/disconnect`
+
+**Supabase-koppling:**
+
+| Tabell | Läser | Skriver | Syfte |
+|--------|-------|---------|-------|
+| `user_google_credentials` | ✅ | ✅ | OAuth client_id/secret, access/refresh_token, gmail_address, is_connected |
+
+**Gmail-flöde vid "Spara i Gmail med bilagor":**
+```
+1. Hämta access_token från user_google_credentials
+2. Om expired → refresh med refresh_token → uppdatera i DB
+3. Skapa Gmail draft via Gmail API med:
+   - Ämne: "Ansökan: [Jobbtitel] – [Namn]"
+   - Body: personligt brev
+   - Bilaga 1: Personligt_Brev_[Förnamn]_[Efternamn].pdf (genereras on-the-fly)
+   - Bilaga 2: CV_[Förnamn]_[Efternamn]_[Bransch].pdf (från cv_files/ eller Storage)
+4. Spara gmail_draft_id i applications-tabellen
+```
 
 ---
 
 ## ✨ Quiz (onboarding)
 
-Steg-för-steg-guide för nya användare. Återvändande användare ser en sammanfattningsvy med inline-redigering.
+Steg-för-steg-guide för nya användare.
 
 ### Frågor (15+ steg)
 
 **Personuppgifter:**
-1. Vad heter du? (namn)
+1. Namn
 2. Telefonnummer
 3. Var bor du?
 4. Ålder (16-19 / 20-25 / 26-35 / 36-50 / 50+)
 5. Körkort? (Manuell / Automat / Nej)
-6. Egen bil? (Ja / Nej)
-7. Egen dator? (Stationär / Laptop / Både / Nej)
-8. Tidigaste startdatum? (Omgående / 2 veckor / 1 månad / 2-3 månader / Senare)
-9. Utbildningsnivå? (Grundskola / Gymnasiet / Yrkesskola / Högskola / Universitet)
-10. LinkedIn-profil? (valfritt)
-11. Portfolio/webbsida? (valfritt)
+6. Egen bil?
+7. Egen dator?
+8. Tidigaste startdatum?
+9. Utbildningsnivå?
+10. LinkedIn-profil?
+11. Portfolio/webbsida?
 
 **Jobbpreferenser:**
 12. Vad söker du? (multi-select chips)
 13. Fritextsökning (kommaseparerade sökord)
-14. Arbetstid (Heltid / Deltid / Extra)
-15. Anställningsform (Tillsvidare / Tidsbegränsad / Behovs / Sommar)
-16. Längd (Tillsvidare / 6+ mån / 3-6 mån / Kortare)
-17. Lön (Månadslön / Provision)
-18. Dealbreakers (multi-select)
+14. Arbetstid
+15. Anställningsform
+16. Längd
+17. Lön
+18. Dealbreakers
 
 ### Dataflöde
-- Sparas lokalt i `localStorage` som `job_preferences`
-- Vid slutförande: `POST /api/user/profile-from-quiz` + `POST /api/user/preferences`
-- Triggar automatisk scrape av jobb efter slutförd quiz
+```
+Quiz svar sparas i localStorage som job_preferences
+  ↓ vid slutförande ↓
+POST /api/user/profile-from-quiz → user_profiles (namn, telefon, ort, körkort, etc.)
+POST /api/user/preferences → user_job_preferences (sökord, dealbreakers, quiz_answers JSONB)
+  ↓
+Automatisk scrape av jobb triggas
+```
+
+**Supabase-koppling:**
+
+| Tabell | Läser | Skriver | Syfte |
+|--------|-------|---------|-------|
+| `user_profiles` | | ✅ | Skapas/uppdateras med personuppgifter från quiz |
+| `user_job_preferences` | | ✅ | Alla jobbpreferenser sparas — search_keywords, quiz_answers JSONB |
 
 ---
 
@@ -423,34 +566,34 @@ Steg-för-steg-guide för nya användare. Återvändande användare ser en samma
 Personuppgifter och kontoinställningar.
 
 ### Personuppgifter
-- **Namn** — textfält → `PATCH /api/profile`
-- **Telefon** — textfält → `PATCH /api/profile`
-- **E-post** — skrivskyddat (från auth)
-- **Ort** — textfält → `PATCH /api/profile`
+- **Namn** → `PATCH /api/profile`
+- **Telefon** → `PATCH /api/profile`
+- **E-post** — skrivskyddat
+- **Ort** → `PATCH /api/profile`
 
 ### Födelsedatum
-- **Datumväljare** (YYYY-MM-DD)
-- Beräknad ålder visas automatiskt
-- **"Spara födelsedatum"**-knapp → `PATCH /api/profile/birth-date`
+- Datumväljare → `PATCH /api/profile/birth-date`
+- Beräknad ålder visas
 
 ### Profilbild
-- Uppladdningsknapp → `POST /api/upload/profile-photo`
-- Visar nuvarande bild om den finns
-- Accepterar: JPG, PNG
+- Uppladdning → `POST /api/upload/profile-photo`
 
 ### E-postsignatur
-- Stor textarea
-- **"Spara signatur"**-knapp → `PATCH /api/profile/signature`
+- Textarea → `PATCH /api/profile/signature`
 
 ### Platsbaser (per region)
 - Regionala adresser — om jobbet är i Stockholm, använd Stockholmsadress i brevet
-- Varje bas: Län, Ort, highlights
-- Redigera per region
-- **"Spara baser"**-knapp
 
 ### GDPR
-- **Exportera all data** — ladda ner all din data som JSON
-- **Radera konto** — permanent radering av konto + all data
+- **Exportera all data** — JSON
+- **Radera konto** — `SELECT delete_user_data('user_id')` (raderar ALLT i 21 tabeller)
+
+**Supabase-koppling:**
+
+| Tabell | Läser | Skriver | Syfte |
+|--------|-------|---------|-------|
+| `user_profiles` | ✅ | ✅ | full_name, phone, location, photo_url, birth_date, email_signature, location_by_region |
+| **Storage: `profile-photos`** | ✅ | ✅ | Profilbild (JPG/PNG, max 10MB) |
 
 ---
 
@@ -460,13 +603,68 @@ Personuppgifter och kontoinställningar.
 |-----------|--------|
 | Frontend | React + Tailwind CSS (single-page, CDN) |
 | Backend | FastAPI (Python, Vercel serverless, 60s timeout) |
-| Databas | Supabase PostgreSQL + Storage |
+| Databas | Supabase PostgreSQL + Storage (3 buckets) |
 | AI Brev | Claude Sonnet (fallback: Haiku → mall) |
-| AI CV-chatt | Claude Haiku (läser + skriver Master CV i DB) |
-| Grammatik | LanguageTool API |
+| AI CV-chatt | Claude Haiku |
+| AI Feedback-tolkning | Claude (smart endpoint) |
+| Grammatik | LanguageTool API (bara säkra rättningar) |
+| Svenska grammatik | GPT-SW3 via HuggingFace (post-generation check) |
 | Jobbkälla | Platsbanken API (Arbetsförmedlingen) |
 | E-post | Gmail API (användarens egna OAuth) |
 | Deploy | Vercel Pro |
+
+---
+
+## Komplett databasöversikt
+
+### Huvudtabeller (21 st)
+
+| Tabell | Syfte | Sidor som använder |
+|--------|-------|-------------------|
+| `jobs` | Skrapade jobb från Platsbanken | Jobb, Extern, Ansökningar, Statistik |
+| `applications` | Ansökningar med status-tracking | Jobb, Extern, Ansökningar, Statistik |
+| `user_profiles` | Personuppgifter + foto | Alla sidor (brev, CV, profil) |
+| `user_experiences` | Arbetslivserfarenheter | Mina CV, Jobb (brevgenerering) |
+| `user_education` | Utbildning | Mina CV, Jobb (brevgenerering) |
+| `user_skills` | Kompetenser per kategori | Mina CV |
+| `user_volunteer` | Volontärarbete | Mina CV |
+| `user_awards` | Utmärkelser | Mina CV |
+| `user_certifications` | Certifieringar | Mina CV |
+| `user_cvs` | Genererade bransch-CV texter | Mina CV, Jobb (bilaga) |
+| `bransch_cvs` | Bransch-CV varianter med PDF | Mina CV, Jobb (bilaga) |
+| `user_cv_branscher` | Branschdefinitioner per user | Mina CV |
+| `user_experience_tags` | Erfarenhet→bransch koppling | Mina CV |
+| `user_cover_letter_preferences` | Brevstil och preferenser | Personligt brev, Brevformat, Jobb, Extern |
+| `user_ai_feedback` | AI-feedback från användaren | Personligt brev, Jobb |
+| `user_anecdotes` | Anekdoter/hobbys | Personligt brev, Jobb (brevgenerering) |
+| `user_job_preferences` | Sökord, platser, dealbreakers | Preferenser, Platser, Quiz |
+| `user_google_credentials` | Gmail OAuth-tokens | Gmail, Jobb (utkast) |
+| `user_training_letters` | Uppladdade träningsbrev | Personligt brev |
+| `user_cv_uploads` | Uppladdade CV-filer | Mina CV |
+| `user_job_interactions` | Visad/hoppat/avslagen/sparad | Jobb, Extern |
+
+### Specialtabeller
+
+| Tabell | Syfte |
+|--------|-------|
+| `master_cv_exports` | Snapshot av Master CV som JSON |
+| `user_cv_versions` | Versionshistorik per CV |
+| `user_cv_creation_conversations` | AI-chatt historik |
+| `cv_industry_templates` | Mallar: traditional, artist, tech, academic |
+| `tech_projects` | Projekt (tech-CV) |
+| `tech_certifications` | Certifieringar (tech-CV) |
+| `artist_exhibitions` | Utställningar (konstnärs-CV) |
+| `artist_residencies` | Residencies (konstnärs-CV) |
+| `artist_collections` | Samlingar (konstnärs-CV) |
+| `academic_publications` | Publikationer (akademiskt CV) |
+
+### Storage-buckets (3 st)
+
+| Bucket | MIME-typer | Max storlek | Syfte |
+|--------|-----------|-------------|-------|
+| `profile-photos` | image/jpeg, png, webp | 10 MB | Profilbilder |
+| `training-letters` | pdf, docx, doc, txt | 50 MB | Träningsbrev |
+| `cv-files` | pdf, docx, doc, txt, rtf, odt | 50 MB | Bransch-CV PDF:er |
 
 ---
 

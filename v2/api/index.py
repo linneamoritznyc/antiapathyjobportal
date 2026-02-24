@@ -111,6 +111,18 @@ FÖRBJUDNA AI-KLICHÉER: "passionerad", "brinner för", "gedigen erfarenhet", "u
   "spännande roll", "dynamisk miljö", "starkt driv", "bidra till er resa", "genuint intresserad",
   "värdefull tillgång", "driven och ambitiös", "positiv mindset".
 
+FÖRBJUDNA FORMELLA/STELA UTTRYCK (använd det vardagliga alternativet):
+  "rondera lokaler"→"gå ronder", "rondera"→"gå rond/runda",
+  "tillse att"→"se till att", "ombesörja"→"ordna/fixa/se till",
+  "beivra"→"ta itu med", "emotse"→"ser fram emot", "delge"→"berätta för",
+  "föranstalta"→"ordna", "förhöra sig"→"fråga/kolla",
+  "inneha"→"har", "tillgodose"→"uppfylla/möta",
+  "vidta åtgärder"→"ta tag i/göra något åt", "genomlysa"→"granska/gå igenom",
+  "tillvarata"→"ta vara på", "tillhandahålla"→"erbjuda/ge",
+  "säkerställa"→"se till att" (i vardagliga sammanhang),
+  "beakta"→"tänka på/ha i åtanke", "ansvara för att upprätthålla"→"sköta/hålla koll på".
+  REGEL: Om ett ord inte skulle sägas i ett normalt samtal — byt ut det.
+
 NATURLIGA FORMULERINGAR:
   CV: "Ledde ett team på åtta personer", "Ökade försäljningen med 30 procent"
   Brev: "Det som lockar mig med tjänsten är [specifikt]", "Jag har i tre år arbetat med [specifikt]"
@@ -1255,19 +1267,27 @@ async def generate_cover_letter(job: Dict, user_cv_text: Optional[str] = None, u
                 if style_parts:
                     style_section = "\n\nMIN SKRIVSTIL (skriv brevet i min stil):\n" + "\n".join(style_parts)
 
-            # Build anecdotes section — include all, let AI pick relevant ones
+            # Build anecdotes section — only include anecdotes whose keywords match the job
             if anecdotes_result and len(anecdotes_result) > 0:
+                job_text = (job.get('title', '') + ' ' + job.get('description', '') + ' ' + job.get('full_description', '')).lower()
                 anecdote_parts = []
                 for a in anecdotes_result:
                     kw = a.get("keywords", []) or []
-                    kw_text = f" (relevant för: {', '.join(kw)})" if kw else ""
-                    if a.get("type") == "hobby":
-                        anecdote_parts.append(f"- Hobby: {a['title']} — {a['content']}{kw_text}")
+                    # Only include if at least one keyword matches the job description
+                    if kw:
+                        matches = [k for k in kw if k.lower() in job_text]
+                        if not matches:
+                            continue  # Skip — no keyword match, not relevant to this job
                     else:
-                        anecdote_parts.append(f"- Anekdot: {a['title']} — {a['content']}{kw_text}")
+                        continue  # No keywords defined — skip to be safe
+
+                    if a.get("type") == "hobby":
+                        anecdote_parts.append(f"- Hobby: {a['title']} — {a['content']} (matchade nyckelord: {', '.join(matches)})")
+                    else:
+                        anecdote_parts.append(f"- Anekdot: {a['title']} — {a['content']} (matchade nyckelord: {', '.join(matches)})")
 
                 if anecdote_parts:
-                    anecdotes_section = "\n\nMINA PERSONLIGA ANEKDOTER & HOBBYS (använd BARA om de passar jobbet):\n" + "\n".join(anecdote_parts)
+                    anecdotes_section = "\n\nMINA PERSONLIGA ANEKDOTER & HOBBYS (keyword-matchade mot detta jobb):\n" + "\n".join(anecdote_parts)
 
             # Build feedback section from previous user feedback
             if feedback_result and len(feedback_result) > 0:
@@ -1303,7 +1323,7 @@ INSTRUKTIONER:
 7. Nämn var jag bor (EXAKT den ort som anges under "OM MIG" ovan — ignorera eventuell ort/adress i CV-texten) och att jag är flexibel med arbetstider
 8. KRITISKT: Om "EXTRA ERFARENHETER SOM MÅSTE NÄMNAS I BREVET" finns ovan — du MÅSTE nämna VARJE ENSKILD erfarenhet som listas där i brevet. Hoppa inte över en enda. Nämn alla, även om de inte matchar jobbet perfekt — hitta en naturlig koppling för var och en. Det är helt ok att nämna 2 erfarenheter tillsammans i samma mening eller stycke om de belyser liknande styrkor
 9. Om "MIN SKRIVSTIL" finns ovan — följ den stilen. Undvik ALLA fraser listade under "Fraser jag INTE vill ha". Använd gärna fraser från "Fraser jag gillar".
-10. Om "MINA PERSONLIGA ANEKDOTER & HOBBYS" finns ovan — väv in EN relevant anekdot eller hobby om den passar jobbet. Tvinga inte in irrelevanta anekdoter.
+10. Om "MINA PERSONLIGA ANEKDOTER & HOBBYS" finns ovan — dessa har redan keyword-matchats mot jobbet. Väv in MAX EN om den naturligt stärker din ansökan. Men om kopplingen känns konstruerad eller tunn — SKIPPA den helt. Det är ALLTID bättre att INTE nämna en hobby/anekdot än att tvinga in den.
 11. VIKTIGT om ålder: Om du nämner ålder, använd EXAKT den ålder som står under "OM MIG" ovan. Ignorera eventuell ålder som nämns i bakgrund/erfarenheter — den kan vara gammal.
 12. Avsluta med:
    {signature_style}
@@ -1317,10 +1337,11 @@ EXTRA REGLER FÖR PERSONLIGT BREV:
 - Börja INTE varje mening med "Jag". Blanda meningslängder. Texten ska ha flyt.
 - INGEN over-explaining: "Jag är noggrann" räcker — behöver INTE tillägga "och det betyder mycket för mig"
 - ALDRIG defensiv: Skriv ALDRIG "Jag inser att er annons efterfrågar..." — kort och rakt istället.
-- KORREKTA vardagliga fraser: "Jobba i kassan" (INTE "på kassavagn"). "Stå i butik" (INTE "arbeta i butiksmiljö").
+- KORREKTA vardagliga fraser: "Jobba i kassan" (INTE "på kassavagn"). "Stå i butik" (INTE "arbeta i butiksmiljö"). "Gå ronder" (INTE "rondera lokaler"). "Sköta om" (INTE "ombesörja").
 - Säg: "trygg i min roll", "van vid att jobba självständigt", "bekväm med kundkontakt".
 - PROPORTIONER: 80% på vad du KAN. Max 20% på saker du inte gjort.
 - Skriv som en RIKTIG person — inte en AI som försöker imponera.
+- TESTFRÅGA: Skulle en 25-åring säga det här högt? Om inte → skriv om.
 
 Skriv ENDAST det färdiga brevet, inget annat."""
 
@@ -1817,8 +1838,9 @@ async def scrape_jobs(request: JobSearchRequest = None, req: Request = None):
     # Save to database if configured
     saved_count = await save_jobs_to_db(unique_jobs)
 
-    # Filter out jobs the user already acted on (applied, rejected, saved)
-    # so they don't reappear in fresh scrape results — Tinder-style: once acted on, it's gone.
+    # Filter out jobs the user already acted on (applied, rejected, etc.)
+    # so they don't reappear in fresh scrape results. Saved jobs are NOT hidden
+    # — they stay discoverable until the user actually applies or rejects them.
     user_id = await get_user_id_from_request(req) if req else None
     if user_id and unique_jobs:
         try:
@@ -1829,8 +1851,10 @@ async def scrape_jobs(request: JobSearchRequest = None, req: Request = None):
                     "action": "in.(applied,rejected)",
                     "select": "job_id"
                 }),
+                # Only hide jobs with terminal statuses — NOT 'saved' (user may want to rediscover)
                 db_request("GET", "applications", params={
                     "user_id": f"eq.{user_id}",
+                    "status": "in.(sent,draft,interview,offer,rejected,skipped)",
                     "select": "job_id"
                 })
             )
@@ -1881,11 +1905,11 @@ async def list_jobs(request: Request, limit: int = 50, offset: int = 0):
             "user_id": f"eq.{user_id}",
             "select": "job_id,action"
         })
-        # Also check applications table — belt-and-suspenders so applied jobs
+        # Also check applications table — belt-and-suspenders so applied/saved jobs
         # are hidden even if the interaction log silently failed
         applications_task = db_request("GET", "applications", params={
             "user_id": f"eq.{user_id}",
-            "status": "in.(sent,draft)",
+            "status": "in.(sent,draft,saved)",
             "select": "job_id"
         })
         # Fetch user's preferred locations for server-side geo filtering
@@ -3194,6 +3218,20 @@ async def apply_with_cv(request: Request, job_id: str):
     # Get user_id from auth token (optional - works without login too)
     user_id = await get_user_id_from_request(request)
 
+    # Check if user already applied to this job (prevent duplicate applications)
+    if user_id:
+        existing = await db_request("GET", "applications", params={
+            "user_id": f"eq.{user_id}",
+            "job_id": f"eq.{job_id}",
+            "status": "in.(sent,draft,interview,offer)",
+            "select": "id,status"
+        })
+        if existing:
+            raise HTTPException(
+                status_code=409,
+                detail=f"Du har redan sökt detta jobb (status: {existing[0].get('status', 'okänd')})"
+            )
+
     # Parse request body (may contain job data as fallback)
     try:
         body = await request.json()
@@ -3295,14 +3333,25 @@ def _create_gmail_link(job: Dict, letter: str, subject: str = "") -> str:
 @app.post("/api/review-swedish")
 async def review_swedish(request: Request):
     """
-    Final-step Swedish language review using LanguageTool (real grammar checker,
-    not an LLM). Catches spelling errors, made-up words, grammar mistakes,
-    and some style issues. Auto-applies the first suggested fix for each match.
+    Final-step Swedish language review using LanguageTool.
+    Only applies HIGH-CONFIDENCE fixes (spelling, grammar, compounding).
+    Skips style suggestions and uncertain replacements that could make text worse.
+    Returns details of each change so the user can see what happened.
     """
     body = await request.json()
     text = body.get("text", "").strip()
     if not text:
         raise HTTPException(status_code=400, detail="Ingen text att granska")
+
+    # Categories we trust enough to auto-apply
+    SAFE_CATEGORIES = {
+        "TYPOS", "SPELLING", "COMPOUNDING", "GRAMMAR",
+        "PUNCTUATION", "CASING", "CONFUSED_WORDS",
+    }
+    # Categories we skip — style suggestions often make text worse
+    SKIP_CATEGORIES = {
+        "STYLE", "REDUNDANCY", "TYPOGRAPHY", "MISC",
+    }
 
     try:
         async with httpx.AsyncClient() as client:
@@ -3318,35 +3367,73 @@ async def review_swedish(request: Request):
 
             if response.status_code != 200:
                 logger.warning(f"LanguageTool returned {response.status_code}")
-                return {"success": True, "reviewed_text": text, "fixes": 0}
+                return {"success": True, "reviewed_text": text, "fixes": 0, "changes": []}
 
             result = response.json()
             matches = result.get("matches", [])
 
             if not matches:
-                return {"success": True, "reviewed_text": text, "fixes": 0}
+                return {"success": True, "reviewed_text": text, "fixes": 0, "changes": []}
 
-            # Apply fixes in reverse order (so offsets stay valid)
+            # Filter matches — only apply safe, high-confidence fixes
             fixed_text = text
             applied = 0
+            skipped = 0
+            changes = []
+
             for match in sorted(matches, key=lambda m: m["offset"], reverse=True):
                 replacements = match.get("replacements", [])
-                if replacements:
-                    offset = match["offset"]
-                    length = match["length"]
-                    best_fix = replacements[0]["value"]
-                    fixed_text = fixed_text[:offset] + best_fix + fixed_text[offset + length:]
-                    applied += 1
+                if not replacements:
+                    continue
+
+                rule = match.get("rule", {})
+                category = rule.get("category", {}).get("id", "UNKNOWN")
+                issue_type = rule.get("issueType", "")
+                original = text[match["offset"]:match["offset"] + match["length"]]
+                best_fix = replacements[0]["value"]
+
+                # Skip if the replacement is drastically different (likely wrong)
+                if len(best_fix) > len(original) * 3 or len(best_fix) < len(original) * 0.3:
+                    skipped += 1
+                    logger.info(f"LT skip (size mismatch): '{original}' → '{best_fix}' [{category}]")
+                    continue
+
+                # Skip style/misc suggestions — they often make text worse
+                if category in SKIP_CATEGORIES or issue_type == "style":
+                    skipped += 1
+                    logger.info(f"LT skip (style): '{original}' → '{best_fix}' [{category}]")
+                    continue
+
+                # Skip if category is unknown and we're not confident
+                if category not in SAFE_CATEGORIES and category != "UNKNOWN":
+                    skipped += 1
+                    logger.info(f"LT skip (unknown cat): '{original}' → '{best_fix}' [{category}]")
+                    continue
+
+                # Apply the fix
+                offset = match["offset"]
+                length = match["length"]
+                fixed_text = fixed_text[:offset] + best_fix + fixed_text[offset + length:]
+                applied += 1
+                changes.append({
+                    "original": original,
+                    "replacement": best_fix,
+                    "category": category,
+                    "message": match.get("message", ""),
+                })
+                logger.info(f"LT applied: '{original}' → '{best_fix}' [{category}]")
 
             return {
                 "success": True,
                 "reviewed_text": fixed_text,
                 "fixes": applied,
-                "total_issues": len(matches)
+                "skipped": skipped,
+                "total_issues": len(matches),
+                "changes": changes,
             }
     except Exception as e:
         logger.error(f"Swedish review error: {e}")
-        return {"success": True, "reviewed_text": text, "fixes": 0}
+        return {"success": True, "reviewed_text": text, "fixes": 0, "changes": []}
 
 
 @app.post("/api/jobs/{job_id}/cover-letter-pdf")
@@ -5970,6 +6057,23 @@ async def delete_award(request: Request, award_id: str):
         "id": f"eq.{award_id}", "user_id": f"eq.{user_id}"
     })
     return {"success": True, "message": "Pris borttaget"}
+
+@app.put("/api/user/certification/{cert_id}")
+async def update_certification(request: Request, cert_id: str):
+    """Update a certification entry."""
+    user_id = await get_user_id_from_request(request, required=True)
+    body = await request.json()
+    update_data = {}
+    for field in ["certification_name", "issuing_organization", "issue_date", "expiry_date", "description"]:
+        if field in body:
+            update_data[field] = body[field]
+    if not update_data:
+        raise HTTPException(status_code=400, detail="Inget att uppdatera")
+    result = await db_request("PATCH", "user_certifications", data=update_data, params={
+        "id": f"eq.{cert_id}", "user_id": f"eq.{user_id}"
+    })
+    return {"success": True, "certification": result[0] if result else None}
+
 
 @app.delete("/api/user/certification/{cert_id}")
 async def delete_certification(request: Request, cert_id: str):
@@ -8837,14 +8941,50 @@ async def create_user_anecdote(request: Request):
     if anecdote_type not in ("anecdote", "hobby"):
         raise HTTPException(status_code=400, detail="Typ måste vara 'anecdote' eller 'hobby'")
 
+    # Enforce max 30 anecdotes+hobbies per user
+    existing = await db_request("GET", "user_anecdotes", params={
+        "user_id": f"eq.{user_id}", "select": "id"
+    })
+    if existing and len(existing) >= 30:
+        raise HTTPException(status_code=400, detail="Max 30 anekdoter och hobbys tillåtna. Ta bort en innan du lägger till fler.")
+
     result = await db_request("POST", "user_anecdotes", data={
         "user_id": user_id,
         "title": title,
         "type": anecdote_type,
         "content": content,
         "keywords": keywords
-    }, params={"select": "*"})
+    })
 
+    if not result:
+        raise HTTPException(status_code=500, detail="Kunde inte spara anekdot. Kontrollera att tabellen user_anecdotes finns i databasen.")
+
+    return {"success": True, "anecdote": result[0] if result else None}
+
+
+@app.patch("/api/user/anecdotes/{anecdote_id}")
+async def update_user_anecdote(anecdote_id: str, request: Request):
+    """Update an existing anecdote or hobby"""
+    user_id = await get_user_id_from_request(request, required=True)
+    body = await request.json()
+
+    update_data = {}
+    if "title" in body:
+        update_data["title"] = body["title"].strip()
+    if "type" in body:
+        if body["type"] not in ("anecdote", "hobby"):
+            raise HTTPException(status_code=400, detail="Typ måste vara 'anecdote' eller 'hobby'")
+        update_data["type"] = body["type"]
+    if "content" in body:
+        update_data["content"] = body["content"].strip()
+    if "keywords" in body:
+        update_data["keywords"] = body["keywords"]
+
+    if not update_data:
+        raise HTTPException(status_code=400, detail="Inga fält att uppdatera")
+
+    result = await db_request("PATCH", "user_anecdotes", data=update_data,
+        params={"id": f"eq.{anecdote_id}", "user_id": f"eq.{user_id}"})
     return {"success": True, "anecdote": result[0] if result else None}
 
 
@@ -8855,6 +8995,96 @@ async def delete_user_anecdote(anecdote_id: str, request: Request):
     await db_request("DELETE", "user_anecdotes",
         params={"id": f"eq.{anecdote_id}", "user_id": f"eq.{user_id}"})
     return {"success": True}
+
+
+@app.get("/api/user/anecdotes/export")
+async def export_user_anecdotes(request: Request, format: str = "txt"):
+    """Export anecdotes and hobbies as TXT or PDF"""
+    user_id = await get_user_id_from_request(request, required=True)
+    anecdotes = await db_request("GET", "user_anecdotes",
+        params={"user_id": f"eq.{user_id}", "order": "type.asc,created_at.desc"})
+    anecdotes = anecdotes or []
+
+    # Fetch user name for the header
+    profiles = await db_request("GET", "user_profiles", params={
+        "user_id": f"eq.{user_id}", "select": "full_name"
+    })
+    user_name = profiles[0].get("full_name", "Användare") if profiles else "Användare"
+
+    hobbies = [a for a in anecdotes if a.get("type") == "hobby"]
+    stories = [a for a in anecdotes if a.get("type") == "anecdote"]
+
+    if format == "pdf":
+        from fpdf import FPDF
+        pdf = FPDF()
+        pdf.add_page()
+
+        # Use built-in fonts with latin-1 fallback for Swedish chars
+        pdf.set_auto_page_break(auto=True, margin=20)
+
+        pdf.set_font("Helvetica", "B", 18)
+        pdf.cell(0, 12, f"Anekdoter & Hobbys", new_x="LMARGIN", new_y="NEXT")
+        pdf.set_font("Helvetica", "", 11)
+        pdf.cell(0, 8, user_name, new_x="LMARGIN", new_y="NEXT")
+        pdf.ln(6)
+
+        def write_section(title, items):
+            if not items:
+                return
+            pdf.set_font("Helvetica", "B", 14)
+            pdf.cell(0, 10, title, new_x="LMARGIN", new_y="NEXT")
+            pdf.line(10, pdf.get_y(), 200, pdf.get_y())
+            pdf.ln(4)
+            for item in items:
+                pdf.set_font("Helvetica", "B", 11)
+                pdf.cell(0, 7, item.get("title", ""), new_x="LMARGIN", new_y="NEXT")
+                pdf.set_font("Helvetica", "", 10)
+                pdf.multi_cell(0, 5, item.get("content", ""))
+                kws = item.get("keywords") or []
+                if kws:
+                    pdf.set_font("Helvetica", "I", 9)
+                    pdf.cell(0, 6, f"Nyckelord: {', '.join(kws)}", new_x="LMARGIN", new_y="NEXT")
+                pdf.ln(4)
+
+        write_section("Hobbys", hobbies)
+        write_section("Anekdoter", stories)
+
+        pdf_bytes = pdf.output()
+        return Response(
+            content=bytes(pdf_bytes),
+            media_type="application/pdf",
+            headers={"Content-Disposition": f'attachment; filename="Anekdoter_Hobbys_{user_name.replace(" ", "_")}.pdf"'}
+        )
+    else:
+        # TXT format
+        lines = [f"ANEKDOTER & HOBBYS — {user_name}", "=" * 40, ""]
+        if hobbies:
+            lines.append("HOBBYS")
+            lines.append("-" * 20)
+            for h in hobbies:
+                lines.append(f"  {h.get('title', '')}")
+                lines.append(f"  {h.get('content', '')}")
+                kws = h.get("keywords") or []
+                if kws:
+                    lines.append(f"  Nyckelord: {', '.join(kws)}")
+                lines.append("")
+        if stories:
+            lines.append("ANEKDOTER")
+            lines.append("-" * 20)
+            for s in stories:
+                lines.append(f"  {s.get('title', '')}")
+                lines.append(f"  {s.get('content', '')}")
+                kws = s.get("keywords") or []
+                if kws:
+                    lines.append(f"  Nyckelord: {', '.join(kws)}")
+                lines.append("")
+
+        txt_content = "\n".join(lines)
+        return Response(
+            content=txt_content.encode("utf-8"),
+            media_type="text/plain; charset=utf-8",
+            headers={"Content-Disposition": f'attachment; filename="Anekdoter_Hobbys_{user_name.replace(" ", "_")}.txt"'}
+        )
 
 
 # ============== STYLE FIELD EDITING ==============
