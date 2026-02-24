@@ -326,7 +326,7 @@
                         const url = URL.createObjectURL(blob);
                         const a = document.createElement('a');
                         a.href = url;
-                        a.download = `Personligt_Brev_${(job.company || 'Jobb').replace(/[^\w\s-]/g, '').replace(/\s+/g, '_')}.pdf`;
+                        a.download = `Personligt_Brev_${(job.company || 'Jobb').replace(/[^\p{L}\p{N}\s_-]/gu, '').replace(/\s+/g, '_')}.pdf`;
                         a.click();
                         URL.revokeObjectURL(url);
                     } else {

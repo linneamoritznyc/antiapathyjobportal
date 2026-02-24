@@ -6122,7 +6122,7 @@ async def create_gmail_draft(request: CreateGmailDraftRequest, user_id: str = "d
     message = MIMEMultipart()
     message["to"] = request.to_email
     message["subject"] = request.subject
-    message.attach(MIMEText(request.body, "plain"))
+    message.attach(MIMEText(request.body, "plain", "utf-8"))
 
     # Encode message
     raw_message = base64.urlsafe_b64encode(message.as_bytes()).decode("utf-8")
