@@ -1971,10 +1971,10 @@ async def list_jobs(request: Request, limit: int = 50, offset: int = 0):
             "status": "in.(sent,draft,saved)",
             "select": "job_id"
         })
-        # Fetch user's preferred locations for server-side geo filtering
+        # Fetch user's preferred locations AND excluded keywords for server-side filtering
         prefs_task = db_request("GET", "user_job_preferences", params={
             "user_id": f"eq.{user_id}",
-            "select": "preferred_locations"
+            "select": "preferred_locations,excluded_keywords,quiz_answers"
         })
         interactions, applied_applications, user_prefs = await _asyncio.gather(
             interactions_task, applications_task, prefs_task
@@ -1999,6 +1999,36 @@ async def list_jobs(request: Request, limit: int = 50, offset: int = 0):
                     before = len(jobs)
                     jobs = [j for j in jobs if _job_in_municipalities(j, municipality_labels_lower, county_labels_lower)]
                     logger.info(f"Server geo filter: {before} → {len(jobs)} jobs for user {user_id[:8]}")
+
+        # --- SERVER-SIDE EXCLUDED KEYWORDS FILTER ---
+        # Filter out jobs matching user's negative keywords (e.g., "militär" → also "försvar", "fmv")
+        KEYWORD_EXPANSIONS = {
+            "militär": ["försvar", "fmv", "försvarsmakten", "försvaret", "krigsmakten"],
+            "försvar": ["militär", "fmv", "försvarsmakten", "försvaret"],
+            "fmv": ["försvar", "försvarsmakten", "militär"],
+            "polis": ["polisen", "polismyndigheten"],
+        }
+        excluded_kw = []
+        if user_prefs and len(user_prefs) > 0:
+            excluded_kw = user_prefs[0].get("excluded_keywords") or []
+            # Also check quiz_answers.negative_keywords as backup
+            if not excluded_kw:
+                qa = user_prefs[0].get("quiz_answers") or {}
+                excluded_kw = qa.get("negative_keywords") or []
+        if excluded_kw:
+            # Expand keywords for broader matching
+            expanded = set()
+            for kw in excluded_kw:
+                expanded.add(kw.lower())
+                for extra in KEYWORD_EXPANSIONS.get(kw.lower(), []):
+                    expanded.add(extra)
+            before = len(jobs)
+            jobs = [j for j in jobs if not any(
+                kw in (j.get("title", "") + " " + j.get("company", "") + " " + j.get("description", "")).lower()
+                for kw in expanded
+            )]
+            if before != len(jobs):
+                logger.info(f"Server keyword filter: {before} → {len(jobs)} jobs for user {user_id[:8]} (excluded: {excluded_kw})")
 
         rejected_ids = {i["job_id"] for i in interactions if i["action"] == "rejected"}
         applied_ids = {i["job_id"] for i in interactions if i["action"] == "applied"}

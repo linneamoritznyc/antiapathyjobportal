@@ -4125,8 +4125,17 @@
                 'jurist', 'advokat', 'revisor', 'ekonom', 'controller', 'analytiker', 'redovisningsekonom'
             ],
             'Övrigt': [
-                'polis', 'militär', 'brandman', 'veterinär', 'djurskötare', 'pilot', 'präst', 'socialsekreterare'
+                'polis', 'militär', 'försvar', 'fmv', 'försvarsmakten', 'brandman', 'veterinär', 'djurskötare', 'pilot', 'präst', 'socialsekreterare'
             ]
+        };
+
+        // When user selects a negative keyword, also auto-include related terms
+        const NEGATIVE_KEYWORD_EXPANSIONS = {
+            'militär': ['försvar', 'fmv', 'försvarsmakten', 'försvaret', 'krigsmakten'],
+            'försvar': ['militär', 'fmv', 'försvarsmakten', 'försvaret'],
+            'fmv': ['försvar', 'försvarsmakten', 'militär'],
+            'försvarsmakten': ['försvar', 'fmv', 'militär'],
+            'polis': ['polisen', 'polismyndigheten'],
         };
 
         // LAN_DATA loaded from /static/lan-data.js (Swedish counties & municipalities)
@@ -6062,14 +6071,20 @@
                         if (hasBreaker) return false;
                     }
 
-                    // Negative keywords — check title, company, AND description
+                    // Negative keywords — check title, company, AND description (with expansions)
                     const negKw = quizPrefs.negative_keywords || [];
                     if (negKw.length > 0) {
                         const titleLow = (job.title || '').toLowerCase();
                         const companyLow = (job.company || '').toLowerCase();
                         const descLow = (job.description || '').toLowerCase();
                         const searchText = titleLow + ' ' + companyLow + ' ' + descLow;
-                        if (negKw.some(kw => searchText.includes(kw.toLowerCase()))) return false;
+                        // Expand keywords: "militär" also checks "försvar", "fmv", etc.
+                        const expandedKw = new Set(negKw.map(k => k.toLowerCase()));
+                        negKw.forEach(kw => {
+                            const extras = NEGATIVE_KEYWORD_EXPANSIONS[kw.toLowerCase()];
+                            if (extras) extras.forEach(e => expandedKw.add(e));
+                        });
+                        if ([...expandedKw].some(kw => searchText.includes(kw))) return false;
                     }
 
                     // Geography filter — check kommun labels against location, municipality, AND county
@@ -6647,15 +6662,20 @@
                         if (hasBreaker) return false;
                     }
 
-                    // Negative keywords filter (from Preferenser tab) — check title, company, AND description
+                    // Negative keywords filter (from Preferenser tab) — check title, company, AND description (with expansions)
                     const negKw = quizPrefs.negative_keywords || [];
                     if (negKw.length > 0) {
                         const titleLow = (job.title || '').toLowerCase();
                         const companyLow = (job.company || '').toLowerCase();
                         const descLow = (job.description || '').toLowerCase();
                         const searchText = titleLow + ' ' + companyLow + ' ' + descLow;
-                        const hasNegative = negKw.some(kw => searchText.includes(kw.toLowerCase()));
-                        if (hasNegative) return false;
+                        // Expand keywords: "militär" also checks "försvar", "fmv", etc.
+                        const expandedKw = new Set(negKw.map(k => k.toLowerCase()));
+                        negKw.forEach(kw => {
+                            const extras = NEGATIVE_KEYWORD_EXPANSIONS[kw.toLowerCase()];
+                            if (extras) extras.forEach(e => expandedKw.add(e));
+                        });
+                        if ([...expandedKw].some(kw => searchText.includes(kw))) return false;
                     }
 
                     // Geography filter: check kommun labels against location, municipality, AND county
