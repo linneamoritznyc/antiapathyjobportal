@@ -1,6 +1,6 @@
 # Platsbanken-ai — Funktioner & UX per sida
 
-> Uppdaterad: 24 feb 2026 (v2.5 — kvalifikationskontroll fixad, Q&A-dokumentation, statusmarkeringar för halvbyggda features)
+> Uppdaterad: 25 feb 2026 (v2.6 — full DB-audit, 6 bugfixar, aktivitetsrapport AF-format, schema synkad mot live DB)
 
 AI-driven jobbportal för neurodivergenta jobbsökare i Sverige. Skrapar Platsbanken, genererar personliga brev via Claude, skapar Gmail-utkast med bransch-CV.
 
@@ -188,7 +188,7 @@ Hantera Master CV + 9 branschanpassade versioner.
 
 ### Master CV-sektion
 - **"Redigera Master CV"**-knapp — öppnar fullständig redigeringsmodal
-- **"Generera alla CV"**-knapp → `POST /api/cv/generate-branscher` — **regenererar ALLA 9 bransch-CV varje gång** (upsert med `on_conflict=user_id,vibe_id`). Kollar inte om CV redan finns — full omskrivning. Kräver att Master CV (erfarenheter/utbildning) finns.
+- **"Generera alla CV"**-knapp → `POST /api/cv/generate-branscher` — **regenererar ALLA 9 bransch-CV varje gång** (upsert med `on_conflict=user_id,vibe_id`). Kollar inte om CV redan finns — full omskrivning. Kräver att Master CV (erfarenheter/utbildning) finns. **v2.6 fix**: Ändrat från sekventiell (8×~8s = timeout) till parallella batchar om 4 — klarar Vercels 60s-gräns.
 - **"Ladda ner Master CV"** → `GET /api/master-cv/download-pdf`
 - Statistik: antal erfarenheter, utbildningar, utmärkelser, projekt, språk
 
@@ -196,6 +196,8 @@ Hantera Master CV + 9 branschanpassade versioner.
 - Ladda upp befintligt CV (PDF/DOCX/TXT) → `POST /api/cv/enhance-master`
 - AI extraherar: erfarenheter, utbildning, skills
 - **AI-chatt** efter uppladdning: `POST /api/cv/enhance-chat`
+- **v2.6 fix**: `enhance-master` hade för liten max_tokens (3000→8192) och komprimerad prompt. Vid 90+ befintliga poster trunkerades AI-svaret.
+- **v2.6 fix**: `enhance-chat` visade inte description-fält för volontärarbete, utmärkelser eller certifieringar — AI kunde inte se eller redigera dem. Fixat: alla fält skickas nu i AI-kontexten.
 
 ### Master CV Editor (modal)
 - **Erfarenheter** — titel, företag, datum, bullets
@@ -266,10 +268,15 @@ Spåra alla ansökningar och generera aktivitetsrapport för A-kassan.
 ### Aktivitetsrapport-sektion (LIVE)
 - **Stapeldiagram** — sökta jobb per dag (senaste 7 dagarna)
 - **Månadsväljare** — välj månad (YYYY-MM)
-- **"Ladda ner aktivitetsrapport"**-knapp → `GET /api/aktivitetsrapport?month=YYYY-MM`
-  - Genererar PDF med tabell: Datum | Yrkesroll | Arbetsgivare | Omfattning | Ort
-  - **⚠️ EJ VERIFIERAD med Arbetsförmedlingen/A-kassan.** Formatet är egendesignat med FPDF — ser rimligt ut men baseras inte på en officiell mall. Användaren ansvarar för att kolla med sin handläggare om det accepteras.
-  - Filnamn: `Aktivitetsrapport_MÅNAD_ÅR.pdf`
+- **"Ladda ner PDF"**-knapp → `GET /api/aktivitetsrapport?month=YYYY-MM&format=pdf`
+- **"Ladda ner TXT"**-knapp → `GET /api/aktivitetsrapport?month=YYYY-MM&format=txt`
+  - **7 kolumner i AF-format**: Datum | Aktivitet | Yrkesbenämning | Arbetsgivare | Omfattning | Ort | Resulterade i
+  - Landscape PDF (A4) med FPDF, kolumner matchade mot Arbetsförmedlingens rapportstruktur
+  - `Aktivitet` = alltid "Skickat ansökan" (alla poster är jobbansökningar)
+  - `Resulterade i` = Intervju/Erbjudande/Avslag om status uppdaterats, annars tom
+  - TXT-variant med tab-separerade kolumner + sammanfattningsrader
+  - **⚠️ EJ VERIFIERAD med Arbetsförmedlingen/A-kassan.** Formatet är anpassat efter AF:s rapportstruktur men baseras inte på en officiell mall. Användaren ansvarar för att kolla med sin handläggare om det accepteras.
+  - Filnamn: `Aktivitetsrapport_MÅNAD_ÅR.pdf` / `.txt`
   - Visar användarens namn, period, totalt antal ansökningar
 
 ### Ansökningslista
@@ -426,6 +433,7 @@ Styr hur AI:n skriver dina personliga brev. **All feedback härifrån påverkar 
 - Fraser du VILL att AI:n använder
 - Input + "Lägg till" / X för att ta bort
 - `PATCH /api/user/letter-style/phrases` (action: add, list: phrases)
+- **v2.6 fix**: Max 150 fraser per lista (liked_phrases + avoid_phrases). Tidigare obegränsat → kunde orsaka databasfel.
 
 ### Ämnen att aldrig nämna
 - Nyckelord AI:n ska undvika helt (t.ex. "konst", "Shopify")
@@ -445,6 +453,7 @@ Styr hur AI:n skriver dina personliga brev. **All feedback härifrån påverkar 
 - **"Skicka feedback"**-knapp → `POST /api/user/ai-feedback/smart`
 - AI (Claude) tolkar feedbacken → extraherar avoid/like-fraser → sparar strukturerat
 - Feedback sparas i `user_ai_feedback` OCH uppdaterar `user_cover_letter_preferences`
+- **v2.6 fix**: Endpointen kontrollerade inte DB-responsens statuskod — returnerade `success: true` även vid skriv-fel (silent failure). Nu loggas och returneras fel korrekt.
 - **`is_active`** — feedback är aktiv tills du manuellt tar bort den (soft-delete via DELETE-endpoint). **Ingen auto-expiry eller åldersbaserad deaktivering.** Senaste 10 aktiva feedback-rader hämtas vid brevgenerering.
 - **`applies_to_branscher`** — kan sättas manuellt vid POST. **AI:n (smart feedback) sätter den INTE automatiskt** — defaultar till `[]` (gäller alla branscher). **Ska byggas ut i framtiden?** Needs a decision: ska smart feedback extrahera bransch från texten?
 - **Historik** — lista med sparad feedback + ta bort-knapp
@@ -474,12 +483,12 @@ Styr hur AI:n skriver dina personliga brev. **All feedback härifrån påverkar 
 - `avoid_phrases` JSONB — fraser AI ALDRIG ska använda (röda chips)
 - `never_mention` TEXT[] — ämnen att aldrig nämna
 - `custom_ai_instructions` TEXT — fria instruktioner (textarea)
-- `tone` TEXT — "professional_friendly" / "formal" / "casual"
+- `tone` TEXT — "professional" / "formal" / "casual" (live default: 'professional')
 - `max_words` INT — maxlängd på brev
 - `writing_style` TEXT — AI-analyserad stilbeskrivning från träningsbrev
 - `opening_style` TEXT — hur brev öppnas
 - `greeting_style` TEXT — "Hej!" / "Hej [Company]!"
-- `signature_style` TEXT — "Med vänliga hälsningar"
+- `signature_style` TEXT — "Med vänlig hälsning" (live default)
 - `sign_off_name/phone/email` TEXT — signaturuppgifter
 - `priority_experiences_per_vibe` JSONB — vilka erfarenheter som prioriteras per bransch
 
@@ -683,7 +692,7 @@ Personuppgifter och kontoinställningar.
 
 ## Komplett databasöversikt
 
-### Huvudtabeller (21 st)
+### Huvudtabeller (22 st)
 
 | Tabell | Syfte | Sidor som använder |
 |--------|-------|-------------------|
@@ -694,8 +703,8 @@ Personuppgifter och kontoinställningar.
 | `user_education` | Utbildning | Mina CV, Jobb (brevgenerering) |
 | `user_skills` | Kompetenser per kategori | Mina CV |
 | `user_volunteer` | Volontärarbete | Mina CV |
-| `user_awards` | Utmärkelser | Mina CV |
-| `user_certifications` | Certifieringar | Mina CV |
+| `user_awards` | Utmärkelser (med description-fält, tillagt 25 feb) | Mina CV |
+| `user_certifications` | Certifieringar (med description-fält) | Mina CV |
 | `user_cvs` | Genererade bransch-CV texter | Mina CV, Jobb (bilaga) |
 | `bransch_cvs` | Bransch-CV varianter med PDF | Mina CV, Jobb (bilaga) |
 | `user_cv_branscher` | Branschdefinitioner per user | Mina CV |
@@ -708,6 +717,7 @@ Personuppgifter och kontoinställningar.
 | `user_training_letters` | Uppladdade träningsbrev | Personligt brev |
 | `user_cv_uploads` | Uppladdade CV-filer | Mina CV |
 | `user_job_interactions` | Visad/hoppat/avslagen/sparad | Jobb, Extern |
+| `user_photos` | Portfolio-/gallerifoton (ej profilbild) — **⚠️ Tabell finns i DB, inget UI/API ännu** | — |
 
 ### Specialtabeller
 
@@ -804,3 +814,31 @@ Personuppgifter och kontoinställningar.
 - **Kvalifikationskontroll använde hårdkodad "Gymnasium"** — `qualification-check` endpointen skickade alltid `Utbildning: Gymnasium` till Haiku oavsett användarens faktiska utbildning. Nu hämtas riktig utbildning från `user_education`.
 - **Kvalifikationskontroll missade erfarenheter** — Bara 8 erfarenheter hämtades (limit=8). Om vårderfarenhet låg som nr 9+ sågs den aldrig. Limit borttagen — alla erfarenheter skickas nu.
 - **Falskt "saknar kvalifikationer"-varning** — Kombination av hårdkodad utbildning + trunkerade erfarenheter gjorde att Haiku felaktigt sa att användaren saknade relevant erfarenhet (t.ex. äldrevård).
+
+### v2.6 — 25 feb 2026
+
+**Kritiska bugfixar (6 st):**
+- **Smart feedback silent failure** — `POST /api/user/ai-feedback/smart` returnerade `success: true` även när DB-write misslyckades. Responsens statuskod kontrollerades aldrig. Nu loggas och returneras fel korrekt.
+- **Obegränsad frastillväxt** — `liked_phrases` och `avoid_phrases` hade ingen storleksgräns. Kunde växa obegränsat → databasfel, tröga queries. Nu max 150 fraser per lista (enforced i backend).
+- **Master CV upload trunkerade AI-svar** — `enhance-master` hade `max_tokens=3000` (för litet vid 90+ befintliga poster). Prompt komprimerad + max_tokens höjt till 8192. Befintlig data sammanfattas kompakt istället för att skickas verbatim.
+- **Bransch-CV generering timeout** — 8 sekventiella AI-anrop (8×~8s = ~64s) överskred Vercels 60s-gräns. Ändrat till parallella batchar om 4 (2 batchar × ~8s = ~16s).
+- **tech_projects kolumnnamn-mismatch** — Kod skrev `name`/`url` men DB-kolumner heter `project_name`/`github_url`. Alla db_request-anrop fixade med korrekt fältmappning.
+- **enhance-chat saknade description-fält** — Volontärarbete, utmärkelser och certifieringar visades utan description i AI-kontexten. AI kunde inte se eller redigera dessa fält. Dessutom använde certifieringar fel kolumnnamn (`name` istället för `certification_name`).
+
+**Nya features:**
+- **Aktivitetsrapport i AF-format** — Ombyggd med 7 kolumner (Datum, Aktivitet, Yrkesbenämning, Arbetsgivare, Omfattning, Ort, Resulterade i) som matchar Arbetsförmedlingens rapportstruktur. Landscape PDF + TXT-export.
+
+**Databasaudit (full column-level):**
+- Alla 32 tabeller i live Supabase DB jämfördes kolumn-för-kolumn mot `v2/supabase_schema.sql`
+- **`user_photos`-tabell** — fanns i live DB men saknades helt i schemafilen. Tillagd.
+- **`user_awards.description`** — saknades i live DB trots att koden refererade till den. Migration körd (ALTER TABLE).
+- **15+ kolumntyper/defaults korrigerade** i schemafilen (user_id TEXT→UUID, felaktiga defaults, nullable-status)
+- **`avoid_phrases` JSONB vs `liked_phrases` TEXT[]** — typinkonsistens dokumenterad (avoid_phrases är JSONB, liked_phrases är TEXT[])
+- Schemafilen (`v2/supabase_schema.sql`) är nu fullständigt synkad mot live DB med alla 32 tabeller, korrekta datatyper, defaults och nullable-status.
+
+**Kända buggar som inte fixats (kräver framtida beslut):**
+- **`user_photos`** — tabell finns i DB, inget UI eller API-endpoints. Ska det byggas ut?
+- **`user_experience_tags`** — tabell finns, inget UI. Branschmatchning sker via `experiences.categories`.
+- **`user_cv_versions`** — tabell finns, populeras aldrig. Ingen versionshistorik eller restore.
+- **`cv_industry_templates`** — 4 mallar seedade, appen hårdkodar "traditional".
+- **GDPR Storage-filer** — filer i buckets raderas inte vid kontoborttagning.

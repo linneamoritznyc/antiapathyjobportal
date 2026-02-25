@@ -1,46 +1,47 @@
 -- Anti-Apathy Job Portal v2 - Database Schema
--- Run this in your Supabase SQL Editor
+-- Source of truth for Supabase PostgreSQL structure.
+-- Last verified against live DB: 25 feb 2026 (full column-level audit).
 
 -- Jobs table (scraped from Platsbanken)
 CREATE TABLE IF NOT EXISTS jobs (
     id TEXT PRIMARY KEY,
-    title TEXT NOT NULL,
+    title TEXT,                          -- Nullable in live DB
     company TEXT,
     location TEXT,
-    municipality TEXT,               -- Kommun from Platsbanken (e.g. "Stockholm", "Jönköping", "Falun")
-    county TEXT,                     -- Län from Platsbanken (e.g. "Stockholms län", "Jönköpings län")
-    description TEXT,                -- Full job description (used by cover letter AI)
-    description_summary TEXT,        -- AI-generated 3-4 sentence summary (shown in UI)
+    municipality TEXT,                   -- Kommun from Platsbanken (e.g. "Stockholm", "Jönköping", "Falun")
+    county TEXT,                         -- Län from Platsbanken (e.g. "Stockholms län", "Jönköpings län")
+    description TEXT,                    -- Full job description (used by cover letter AI)
+    description_summary TEXT,            -- AI-generated 3-4 sentence summary (shown in UI)
     url TEXT,
     deadline TIMESTAMPTZ,
-    priority TEXT DEFAULT 'normal',
-    working_hours TEXT,              -- Heltid/Deltid from Platsbanken (used in Aktivitetsrapport)
+    priority TEXT,                       -- No default in live DB; backend sets 'normal' on insert
+    working_hours TEXT,                  -- Heltid/Deltid from Platsbanken (used in Aktivitetsrapport)
     contact_email TEXT,
     contact_name TEXT,
-    source TEXT DEFAULT 'platsbanken',
+    source TEXT,                         -- No default in live DB; backend sets 'platsbanken' on insert
     scraped_at TIMESTAMPTZ DEFAULT NOW(),
-    link_status TEXT DEFAULT 'active'
+    link_status TEXT                     -- No default in live DB; backend sets 'active' on insert
 );
 
 -- User profiles (personal info + photo)
 CREATE TABLE IF NOT EXISTS user_profiles (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    user_id TEXT NOT NULL UNIQUE,
-    full_name TEXT NOT NULL,
+    user_id UUID NOT NULL UNIQUE,        -- UUID in live DB (was TEXT pre-auth)
+    full_name TEXT,                       -- Nullable in live DB
     email TEXT,
     phone TEXT,
     location TEXT,
-    photo_url TEXT,  -- Supabase Storage URL
+    photo_url TEXT,                       -- Supabase Storage URL
     drivers_license BOOLEAN DEFAULT FALSE,
     own_car BOOLEAN DEFAULT FALSE,
     own_computer BOOLEAN DEFAULT FALSE,
     location_by_region JSONB DEFAULT '{}'::JSONB,  -- Region→location mapping for cover letters
-    languages TEXT[] DEFAULT ARRAY['Svenska (Modersmål)', 'Engelska (flytande)']::TEXT[],
+    languages TEXT[] DEFAULT ARRAY['Svenska']::TEXT[],  -- Live default is just 'Svenska'
     certificates TEXT[] DEFAULT ARRAY[]::TEXT[],  -- ['B-körkort', 'ICA kassahantering', etc.]
-    about_me TEXT,  -- Professional bio/summary
-    birth_date DATE,  -- For accurate age calculation in cover letters (added 2026-02-18)
-    email_signature TEXT DEFAULT '',  -- Custom email signature for Gmail drafts
-    portfolio_url TEXT,  -- Personal portfolio/website URL (from quiz)
+    about_me TEXT,                        -- Professional bio/summary
+    birth_date DATE,                      -- For accurate age calculation in cover letters
+    email_signature TEXT DEFAULT '',       -- Custom email signature for Gmail drafts
+    portfolio_url TEXT,                   -- Personal portfolio/website URL (from quiz)
     -- Legacy columns (exist in live DB, used by quiz flow — stored here + in quiz_answers JSONB)
     linkedin TEXT,
     age TEXT,
@@ -70,24 +71,24 @@ CREATE TABLE IF NOT EXISTS user_cv_branscher (
 
 -- Cover letter preferences per user
 CREATE TABLE IF NOT EXISTS user_cover_letter_preferences (
-    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),  -- Live DB has separate id + user_id
-    user_id TEXT NOT NULL UNIQUE,
-    tone TEXT DEFAULT 'professional_friendly',  -- 'formal', 'casual', 'warm'
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    user_id UUID NOT NULL UNIQUE,        -- UUID in live DB
+    tone TEXT DEFAULT 'professional',    -- Live default is 'professional' (not 'professional_friendly')
     max_words INT DEFAULT 200,
-    greeting_style TEXT DEFAULT 'Hej!',  -- 'Hej [Company]!', 'Till [Company],'
-    signature_style TEXT DEFAULT 'Med vänliga hälsningar',
-    liked_phrases TEXT[] DEFAULT ARRAY[]::TEXT[],  -- ['flexibel med tider', 'körkort'] — phrases user likes to use (not forced)
+    greeting_style TEXT DEFAULT 'Hej!',
+    signature_style TEXT DEFAULT 'Med vänlig hälsning',  -- Live default (not 'Med vänliga hälsningar')
+    liked_phrases TEXT[] DEFAULT ARRAY[]::TEXT[],  -- Phrases user likes to use (not forced)
     never_mention TEXT[] DEFAULT ARRAY[]::TEXT[],  -- ['konst', 'Shopify']
-    priority_jobs JSONB,  -- priority job types/preferences
+    priority_jobs JSONB,                 -- priority job types/preferences
     sign_off_name TEXT,
     sign_off_phone TEXT,
     sign_off_email TEXT,
-    priority_experiences_per_vibe JSONB,  -- {"restaurant": ["Max Hamburgare"], "tech": ["Clubhouse"]} (column uses "vibe" but means "bransch")
-    custom_ai_instructions TEXT,  -- Free-form additional rules
-    writing_style TEXT,             -- How the letter is structured (from AI analysis)
-    avoid_phrases JSONB DEFAULT '[]'::jsonb,  -- Phrases/clichés the user never uses
-    length_preference TEXT,         -- Short/long preference description
-    opening_style TEXT,             -- How user typically opens letters
+    priority_experiences_per_vibe JSONB,  -- {"restaurant": ["Max Hamburgare"], "tech": ["Clubhouse"]}
+    custom_ai_instructions TEXT,          -- Free-form additional rules
+    writing_style TEXT,                   -- How the letter is structured (from AI analysis)
+    avoid_phrases JSONB DEFAULT '[]'::jsonb,  -- Phrases/clichés the user never uses (JSONB, not TEXT[])
+    length_preference TEXT,               -- Short/long preference description
+    opening_style TEXT,                   -- How user typically opens letters
     created_at TIMESTAMPTZ DEFAULT NOW(),
     updated_at TIMESTAMPTZ DEFAULT NOW()
 );
@@ -97,10 +98,10 @@ CREATE TABLE IF NOT EXISTS user_cover_letter_preferences (
 -- This is the primary source of truth; other columns are legacy/denormalized.
 CREATE TABLE IF NOT EXISTS user_job_preferences (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    user_id UUID NOT NULL UNIQUE,  -- UUID in live DB; FK to auth.users was dropped 2026-02-23
-    search_keywords TEXT[] DEFAULT ARRAY[]::TEXT[],
-    locations TEXT,  -- legacy column, kept for backwards compat
-    excluded_companies TEXT[] DEFAULT ARRAY[]::TEXT[],
+    user_id UUID NOT NULL UNIQUE,        -- UUID in live DB; FK to auth.users was dropped 2026-02-23
+    search_keywords TEXT[],              -- No default in live DB
+    locations TEXT[],                    -- ARRAY in live DB (not single TEXT)
+    excluded_companies TEXT[],           -- No default in live DB
     quiz_answers JSONB DEFAULT '{}'::jsonb,  -- All quiz + preferences data (location, dealbreakers, etc.)
     preferred_locations TEXT[] DEFAULT ARRAY[]::TEXT[],
     excluded_keywords TEXT[] DEFAULT ARRAY[]::TEXT[],
@@ -122,9 +123,9 @@ CREATE TABLE IF NOT EXISTS user_ai_feedback (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     user_id TEXT NOT NULL,
     feedback_type TEXT DEFAULT 'cover_letter',
-    feedback_text TEXT NOT NULL,  -- Can be Swedish or English
+    feedback_text TEXT NOT NULL,          -- Can be Swedish or English
     applies_to_branscher TEXT[] DEFAULT ARRAY[]::TEXT[],  -- ['tattoo', 'art'] or empty for all
-    excluded_keywords TEXT[] DEFAULT ARRAY[]::TEXT[],  -- For exclude_jobs: keywords to filter out
+    excluded_keywords TEXT[] DEFAULT ARRAY[]::TEXT[],     -- For exclude_jobs: keywords to filter out
     is_active BOOLEAN DEFAULT TRUE,
     is_processed BOOLEAN DEFAULT FALSE,
     created_at TIMESTAMPTZ DEFAULT NOW()
@@ -133,7 +134,7 @@ CREATE TABLE IF NOT EXISTS user_ai_feedback (
 -- Education entries (same for all bransch-CVer)
 CREATE TABLE IF NOT EXISTS user_education (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    user_id TEXT NOT NULL,
+    user_id UUID NOT NULL,               -- UUID in live DB
     school TEXT NOT NULL,
     location TEXT,
     degree TEXT,
@@ -149,24 +150,24 @@ CREATE TABLE IF NOT EXISTS user_education (
 -- Work experience entries (tagged with categories + AI matching tags)
 CREATE TABLE IF NOT EXISTS user_experiences (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    user_id TEXT NOT NULL,
+    user_id UUID NOT NULL,               -- UUID in live DB
     company TEXT NOT NULL,
     location TEXT,
-    title TEXT,
+    title TEXT NOT NULL,                  -- NOT NULL in live DB
     dates TEXT,
-    start_date TEXT,           -- 'Juli 2024' (for AI sorting/matching)
-    end_date TEXT,             -- 'Augusti 2025' or 'Pågående'
-    description TEXT,          -- Free-text description of the role
-    description_long TEXT,     -- Extended description
-    description_short TEXT,    -- One-line summary
-    description_variants JSONB,  -- {'formal': '...', 'casual': '...'}
+    start_date TEXT,                      -- 'Juli 2024' (for AI sorting/matching)
+    end_date TEXT,                        -- 'Augusti 2025' or 'Pågående'
+    description TEXT,                     -- Free-text description of the role
+    description_long TEXT,                -- Extended description
+    description_short TEXT,               -- One-line summary
+    description_variants JSONB DEFAULT '{}'::jsonb,  -- {'formal': '...', 'casual': '...'}
     bullets TEXT[] DEFAULT ARRAY[]::TEXT[],
     categories TEXT[] DEFAULT ARRAY[]::TEXT[],  -- ['restaurant', 'retail', 'customerservice', 'tech', etc.]
-    relevance_scores JSONB,      -- {'restaurant': 9, 'tech': 3}
+    relevance_scores JSONB DEFAULT '{}'::jsonb,  -- {'restaurant': 9, 'tech': 3}
     key_achievements TEXT[] DEFAULT ARRAY[]::TEXT[],
     keywords TEXT[] DEFAULT ARRAY[]::TEXT[],
     is_featured BOOLEAN DEFAULT FALSE,
-    last_updated TIMESTAMPTZ,
+    last_updated TIMESTAMPTZ DEFAULT NOW(),
     -- AI matching tags
     job_types TEXT[] DEFAULT ARRAY[]::TEXT[],        -- ['industri', 'fysiskt_arbete', 'kundtjänst']
     skill_level TEXT,                                 -- 'entry', 'mid', 'senior'
@@ -184,7 +185,7 @@ CREATE TABLE IF NOT EXISTS user_experience_tags (
     user_id TEXT NOT NULL,
     experience_id UUID REFERENCES user_experiences(id) ON DELETE CASCADE,
     bransch_id TEXT NOT NULL,  -- which CV bransch this experience is relevant for
-    priority INT DEFAULT 5,  -- 1-10, how important for this bransch
+    priority INT DEFAULT 5,   -- 1-10, how important for this bransch
     highlight_points TEXT[] DEFAULT ARRAY[]::TEXT[],  -- specific bullets to emphasize
     created_at TIMESTAMPTZ DEFAULT NOW(),
     UNIQUE(experience_id, bransch_id)
@@ -207,8 +208,8 @@ CREATE TABLE IF NOT EXISTS user_volunteer (
 CREATE TABLE IF NOT EXISTS user_awards (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     user_id TEXT NOT NULL,
-    award_text TEXT NOT NULL,  -- Full award line like '1:a pris Stockholms Konstsalong 2024 - ...'
-    description TEXT DEFAULT NULL,  -- Optional backstory/context for the award
+    award_text TEXT NOT NULL,             -- Full award line like '1:a pris Stockholms Konstsalong 2024 - ...'
+    description TEXT,                     -- Optional backstory/context for the award (added 2026-02-25)
     sort_order INT DEFAULT 0,
     created_at TIMESTAMPTZ DEFAULT NOW()
 );
@@ -219,7 +220,7 @@ CREATE TABLE IF NOT EXISTS user_certifications (
     user_id TEXT NOT NULL,
     certification_name TEXT NOT NULL,
     issuing_organization TEXT,
-    description TEXT,                -- Context/details about the certification
+    description TEXT,                     -- Context/details about the certification
     issue_date TEXT,
     expiry_date TEXT,
     sort_order INT DEFAULT 0,
@@ -229,9 +230,9 @@ CREATE TABLE IF NOT EXISTS user_certifications (
 -- Skills per category (different branscher show different skills)
 CREATE TABLE IF NOT EXISTS user_skills (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    user_id TEXT NOT NULL,
-    category TEXT NOT NULL,  -- 'tech', 'restaurant', 'all', etc.
-    skill_type TEXT NOT NULL,  -- 'technical', 'certificate', 'language'
+    user_id UUID NOT NULL,               -- UUID in live DB
+    category TEXT DEFAULT 'all',         -- Nullable with default in live DB (not NOT NULL)
+    skill_type TEXT DEFAULT 'soft',      -- Nullable with default in live DB (not NOT NULL)
     skill_text TEXT NOT NULL,
     created_at TIMESTAMPTZ DEFAULT NOW(),
     UNIQUE(user_id, category, skill_text)
@@ -425,15 +426,14 @@ $$ LANGUAGE plpgsql;
 -- The app calls these "branscher". Do NOT rename DB columns.
 CREATE TABLE IF NOT EXISTS user_cvs (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    user_id TEXT NOT NULL,
-    vibe_id TEXT NOT NULL,  -- bransch ID: 'restaurant', 'tech', 'retail', etc. (column named "vibe_id" for legacy reasons)
-    vibe_name TEXT,         -- bransch display name (legacy column name)
-    vibe_emoji TEXT,        -- bransch emoji (legacy column name)
-    cv_text TEXT NOT NULL,
-    pdf_url TEXT,           -- Added 2026-02-17: Supabase Storage URL for uploaded/generated PDF
-    -- Extra columns in live DB (not used by backend code, but exist)
-    is_ai_generated BOOLEAN,
-    created_via_conversation BOOLEAN,
+    user_id UUID NOT NULL,               -- UUID in live DB
+    vibe_id TEXT NOT NULL,               -- bransch ID: 'restaurant', 'tech', 'retail', etc.
+    vibe_name TEXT,                      -- bransch display name (legacy column name)
+    vibe_emoji TEXT,                     -- bransch emoji (legacy column name)
+    cv_text TEXT,                        -- Nullable in live DB
+    pdf_url TEXT,                        -- Supabase Storage URL for uploaded/generated PDF
+    is_ai_generated BOOLEAN DEFAULT FALSE,
+    created_via_conversation BOOLEAN DEFAULT FALSE,
     conversation_id UUID,
     job_types_matched TEXT[],
     times_used INT DEFAULT 0,
@@ -443,42 +443,40 @@ CREATE TABLE IF NOT EXISTS user_cvs (
 );
 
 -- Industry-specific CV variants (read by /api/bransch-cvs, shown in MinaCVPage)
--- Added 2026-02-17: table was referenced in code but never created
 -- NOTE: DB columns use "vibe_id"/"vibe_name"/"vibe_emoji" (legacy naming). App calls these "branscher".
 CREATE TABLE IF NOT EXISTS bransch_cvs (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     user_id TEXT NOT NULL,
-    vibe_id TEXT NOT NULL,   -- bransch ID: 'restaurant', 'tech', 'retail', etc. (legacy column name)
-    vibe_name TEXT,          -- bransch display name (legacy column name)
-    vibe_emoji TEXT,         -- bransch emoji (legacy column name)
+    vibe_id TEXT NOT NULL,               -- bransch ID: 'restaurant', 'tech', 'retail', etc.
+    vibe_name TEXT,                      -- bransch display name (legacy column name)
+    vibe_emoji TEXT,                     -- bransch emoji (legacy column name)
     cv_text TEXT,
-    pdf_url TEXT,            -- Supabase Storage URL for downloadable PDF
+    pdf_url TEXT,                        -- Supabase Storage URL for downloadable PDF
     created_at TIMESTAMPTZ DEFAULT NOW(),
     updated_at TIMESTAMPTZ DEFAULT NOW(),
     UNIQUE(user_id, vibe_id)
 );
 
 -- Raw uploaded CV PDFs — max 20 per user (enforced by trigger)
--- Added 2026-02-17: updated from stub (had only cv_text + recommendations)
 CREATE TABLE IF NOT EXISTS user_cv_uploads (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     user_id UUID NOT NULL,
     filename TEXT,
-    file_url TEXT,           -- Supabase Storage URL (cv-files bucket)
-    upload_number INTEGER,   -- 1–20
+    file_url TEXT,                       -- Supabase Storage URL (cv-files bucket)
+    upload_number INTEGER,               -- 1–20
     cv_text TEXT NOT NULL,
     recommendations JSONB DEFAULT '[]'::jsonb,
     created_at TIMESTAMPTZ DEFAULT NOW()
 );
 
 -- Training letters (personal letters uploaded to train AI style)
--- Max 20 per user, enforced by trigger. Added 2026-02-17.
+-- Max 20 per user, enforced by trigger.
 CREATE TABLE IF NOT EXISTS user_training_letters (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    user_id UUID REFERENCES auth.users(id) ON DELETE CASCADE NOT NULL,
+    user_id UUID NOT NULL,               -- FK to auth.users(id) ON DELETE CASCADE in live DB
     filename TEXT NOT NULL,
     letter_text TEXT,
-    file_url TEXT,           -- Supabase Storage URL (training-letters bucket)
+    file_url TEXT,                       -- Supabase Storage URL (training-letters bucket)
     uploaded_at TIMESTAMPTZ DEFAULT NOW()
 );
 
@@ -486,7 +484,6 @@ CREATE TABLE IF NOT EXISTS user_training_letters (
 -- action: 'viewed' | 'skipped' | 'applied' | 'saved' | 'rejected'
 -- Skipped jobs move to end of feed; rejected + applied are hidden by default.
 -- context JSONB holds optional metadata (time_spent_seconds, etc.)
--- Added 2026-02-18.
 CREATE TABLE IF NOT EXISTS user_job_interactions (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     user_id TEXT NOT NULL,
@@ -528,23 +525,34 @@ CREATE TABLE IF NOT EXISTS user_google_credentials (
 --   'offer' - Got job offer!
 CREATE TABLE IF NOT EXISTS applications (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    user_id TEXT DEFAULT 'default_user',
+    user_id UUID,                        -- UUID in live DB (no default; was TEXT DEFAULT 'default_user' pre-auth)
     job_id TEXT REFERENCES jobs(id),
     cv_id UUID,
-    bransch_id TEXT,  -- Which bransch CV was used
+    bransch_id TEXT,                     -- Which bransch CV was used
     cover_letter TEXT,
     status TEXT DEFAULT 'draft',
     gmail_draft_id TEXT,
     notes TEXT,
-    apply_method TEXT,         -- How user applied: platsbanken_email, external_website, linkedin, email_direct, in_person, phone, other
-    custom_title TEXT,         -- Override job title (for manual entries or edits)
-    custom_company TEXT,       -- Override company name
-    custom_location TEXT,      -- Override location
-    apply_date TEXT,           -- When user actually applied (user-editable date)
+    apply_method TEXT,                   -- How user applied: platsbanken_email, external_website, linkedin, email_direct, in_person, phone, other
+    custom_title TEXT,                   -- Override job title (for manual entries or edits)
+    custom_company TEXT,                 -- Override company name
+    custom_location TEXT,                -- Override location
+    apply_date TEXT,                     -- When user actually applied (user-editable date)
     created_at TIMESTAMPTZ DEFAULT NOW(),
     updated_at TIMESTAMPTZ DEFAULT NOW(),
     sent_at TIMESTAMPTZ,
-    UNIQUE(user_id, job_id)  -- One application per job per user
+    UNIQUE(user_id, job_id)             -- One application per job per user
+);
+
+-- User photos (portfolio/gallery images — NOT profile photos)
+-- Exists in live DB; not currently used by backend code.
+CREATE TABLE IF NOT EXISTS user_photos (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    user_id UUID NOT NULL,
+    photo_url TEXT NOT NULL,
+    description TEXT NOT NULL DEFAULT '',
+    sort_order INT DEFAULT 0,
+    created_at TIMESTAMPTZ DEFAULT NOW()
 );
 
 -- Indexes for performance
@@ -585,8 +593,9 @@ COMMENT ON TABLE user_certifications IS 'General certifications (körkort, kassa
 COMMENT ON TABLE user_training_letters IS 'User-uploaded training letters for AI style analysis (max 20 per user)';
 COMMENT ON TABLE user_cv_uploads IS 'User-uploaded CVs as PDFs (max 20 per user)';
 COMMENT ON TABLE bransch_cvs IS 'Industry-specific bransch-CV variants shown in MinaCVPage (DB columns use legacy "vibe_id" naming)';
+COMMENT ON TABLE user_photos IS 'User portfolio/gallery photos (not profile photo — that is on user_profiles.photo_url)';
 
--- CV version history per CV — added from actual DB state (Feb 18 2026)
+-- CV version history per CV
 CREATE TABLE IF NOT EXISTS user_cv_versions (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     cv_id UUID NOT NULL,
@@ -596,7 +605,7 @@ CREATE TABLE IF NOT EXISTS user_cv_versions (
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
--- Chat history for AI-built CVs — added from actual DB state (Feb 18 2026)
+-- Chat history for AI-built CVs
 CREATE TABLE IF NOT EXISTS user_cv_creation_conversations (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     user_id TEXT NOT NULL,
@@ -607,17 +616,20 @@ CREATE TABLE IF NOT EXISTS user_cv_creation_conversations (
 );
 
 -- ============== KNOWN user_id TYPE INCONSISTENCY ==============
--- Some tables use UUID, others use TEXT for user_id:
+-- Some tables use UUID, others use TEXT for user_id.
+-- Verified against live DB 25 feb 2026:
 --
 -- UUID: user_profiles, user_education, user_experiences, user_skills,
 --       user_cvs, user_cv_uploads, user_training_letters, applications,
---       user_cover_letter_preferences, user_job_preferences
+--       user_cover_letter_preferences, user_job_preferences, user_anecdotes,
+--       user_photos
 --
 -- TEXT: user_volunteer, user_awards, user_certifications, tech_certifications,
 --       tech_projects, user_cv_branscher, user_experience_tags, bransch_cvs,
 --       master_cv_exports, artist_exhibitions, artist_residencies,
 --       artist_collections, academic_publications,
---       user_cv_creation_conversations
+--       user_cv_creation_conversations, user_google_credentials,
+--       user_ai_feedback, user_job_interactions
 --
 -- When inserting data, cast accordingly:
 --   UUID tables: 'da8ed517-...'::UUID
@@ -744,22 +756,22 @@ $$ LANGUAGE plpgsql;
 
 -- GDPR / account deletion: removes all data for a user across every table.
 -- NOTE: user_id is TEXT in most tables but UUID in user_cv_uploads + user_training_letters.
--- Call with: SELECT delete_user_data('1e9d7392-b0d6-4f35-b69d-090c2fe2c671');
+-- Call with: SELECT delete_user_data('da8ed517-3b67-4456-8831-6ed3cb7114ad');
 CREATE OR REPLACE FUNCTION delete_user_data(p_user_id TEXT)
 RETURNS VOID AS $$
 BEGIN
     -- Interaction / application data
     DELETE FROM user_job_interactions     WHERE user_id = p_user_id;
-    DELETE FROM applications              WHERE user_id = p_user_id;
+    DELETE FROM applications              WHERE user_id = p_user_id::UUID;
 
     -- CV content
     DELETE FROM user_experience_tags      WHERE user_id = p_user_id;
-    DELETE FROM user_experiences          WHERE user_id = p_user_id;
-    DELETE FROM user_education            WHERE user_id = p_user_id;
+    DELETE FROM user_experiences          WHERE user_id = p_user_id::UUID;
+    DELETE FROM user_education            WHERE user_id = p_user_id::UUID;
     DELETE FROM user_volunteer            WHERE user_id = p_user_id;
     DELETE FROM user_awards               WHERE user_id = p_user_id;
     DELETE FROM user_certifications       WHERE user_id = p_user_id;
-    DELETE FROM user_skills               WHERE user_id = p_user_id;
+    DELETE FROM user_skills               WHERE user_id = p_user_id::UUID;
     DELETE FROM tech_projects             WHERE user_id = p_user_id;
     DELETE FROM tech_certifications       WHERE user_id = p_user_id;
     DELETE FROM artist_exhibitions        WHERE user_id = p_user_id;
@@ -768,7 +780,7 @@ BEGIN
     DELETE FROM academic_publications     WHERE user_id = p_user_id;
 
     -- Generated CVs + exports
-    DELETE FROM user_cvs                  WHERE user_id = p_user_id;
+    DELETE FROM user_cvs                  WHERE user_id = p_user_id::UUID;
     DELETE FROM bransch_cvs               WHERE user_id = p_user_id;
     DELETE FROM master_cv_exports         WHERE user_id = p_user_id;
     DELETE FROM user_cv_branscher         WHERE user_id = p_user_id;
@@ -781,15 +793,16 @@ BEGIN
     DELETE FROM user_anecdotes            WHERE user_id = p_user_id::UUID;
     DELETE FROM user_cv_uploads           WHERE user_id = p_user_id::UUID;
     DELETE FROM user_training_letters     WHERE user_id = p_user_id::UUID;
+    DELETE FROM user_photos               WHERE user_id = p_user_id::UUID;
 
     -- Preferences + credentials
-    DELETE FROM user_cover_letter_preferences WHERE user_id = p_user_id;
-    DELETE FROM user_job_preferences          WHERE user_id = p_user_id;
+    DELETE FROM user_cover_letter_preferences WHERE user_id = p_user_id::UUID;
+    DELETE FROM user_job_preferences          WHERE user_id = p_user_id::UUID;
     DELETE FROM user_google_credentials       WHERE user_id = p_user_id;
     DELETE FROM user_ai_feedback              WHERE user_id = p_user_id;
 
     -- Profile last (other tables may reference user_id but no FK enforced)
-    DELETE FROM user_profiles             WHERE user_id = p_user_id;
+    DELETE FROM user_profiles             WHERE user_id = p_user_id::UUID;
 END;
 $$ LANGUAGE plpgsql SECURITY DEFINER;
 
@@ -798,7 +811,6 @@ $$ LANGUAGE plpgsql SECURITY DEFINER;
 -- Example anecdote: "Jag var konfirmationsledare i Värmdö Församling 2012-2014"
 -- Example hobby: "Gymma", "Matlagning"
 -- Keywords help AI match: ["kyrka", "församling", "ideellt"] → matches church jobs
--- Added 2026-02-18.
 CREATE TABLE IF NOT EXISTS user_anecdotes (
     id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
     user_id UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
@@ -834,64 +846,43 @@ CREATE INDEX IF NOT EXISTS idx_user_anecdotes_user ON user_anecdotes(user_id);
 
 COMMENT ON TABLE user_anecdotes IS 'Personal anecdotes and hobbies for AI cover letter personalization (max 30 per user)';
 
--- ============== LIVE STATUS (Feb 18 2026) ==============
--- user_anecdotes: LIVE (created Feb 18 2026)
--- user_profiles.birth_date: LIVE (added Feb 18 2026)
---
--- ============== TABLES STATUS ==============
--- user_ai_feedback — LIVE (created 2026-02-22)
---
 -- ============== MIGRATIONS APPLIED ==============
 -- 2026-02-19: user_job_preferences.quiz_answers JSONB — LIVE
---   Single source of truth for kommun IDs, search keywords, dealbreakers, etc.
 -- 2026-02-21: jobs.description_summary TEXT — LIVE
---   AI-generated short summary for UI display. Full text stays in description for cover letters.
---   Migration: ALTER TABLE jobs ADD COLUMN IF NOT EXISTS description_summary TEXT;
 -- 2026-02-22: user_ai_feedback — LIVE
---   Created table for AI feedback on cover letters.
--- 2026-02-22: user_cover_letter_preferences.always_mention → liked_phrases
---   Renamed column: "always_mention" was misleading (implies forced). Now "liked_phrases".
---   Migration: ALTER TABLE user_cover_letter_preferences RENAME COLUMN always_mention TO liked_phrases;
+-- 2026-02-22: user_cover_letter_preferences.always_mention → liked_phrases (renamed)
 -- 2026-02-22: Added 5 missing columns to user_cover_letter_preferences — LIVE
---   sign_off_name, sign_off_phone, sign_off_email, priority_experiences_per_vibe, custom_ai_instructions
 -- 2026-02-22: user_job_preferences.preferred_locations TEXT[] — LIVE
---   Stores user's selected kommun/län names from PlatserPage.
---   Migration: ALTER TABLE user_job_preferences ADD COLUMN IF NOT EXISTS preferred_locations TEXT[] DEFAULT ARRAY[]::TEXT[];
--- 2026-02-22: FULL AUDIT — synced schema with live DB. All changes below are LIVE.
---   applications: added cv_id, bransch_id, gmail_draft_id, notes, updated_at, sent_at
---     Removed aspirational columns: gmail_message_id, response_at (not in live, not used by code)
---   user_cover_letter_preferences: added id UUID, created_at, updated_at
---   user_cvs: added vibe_emoji, is_ai_generated, created_via_conversation, conversation_id, job_types_matched, times_used
---   user_experiences: added dates, bullets, created_at
---   user_education: added created_at
---   user_profiles: added certificates, about_me, updated_at; documented legacy cols (linkedin, age, earliest_start, education_level, preferred_locations)
---     Removed aspirational columns: onboarding_completed, privacy_policy_accepted, data_consent_given_at (never created in live DB)
---   user_skills: added created_at
--- 2026-02-23: Dropped FK user_job_preferences_user_id_fkey (pointed to auth.users, blocked inserts)
---   user_job_preferences.user_id is UUID in live DB (schema said TEXT — fixed)
--- 2026-02-23: Migrated ALL user data from old user_id 1e9d7392-... to real auth.users id da8ed517-...
---   Updated 21 tables. Old ID was pre-auth seed data; real ID comes from Supabase Auth.
+-- 2026-02-22: FULL AUDIT — synced schema with live DB
+-- 2026-02-23: Dropped FK user_job_preferences_user_id_fkey
+-- 2026-02-23: Migrated ALL user data from old user_id to real auth.users id
 -- 2026-02-23: Disabled RLS on user_job_preferences
---   RLS policy "Users own job prefs" required auth.uid() = user_id, but backend uses service role key
---   (auth.uid() is null), so all writes were silently blocked. Disabled to match other tables.
---   Migration: ALTER TABLE user_job_preferences DISABLE ROW LEVEL SECURITY;
--- 2026-02-24: Added municipality TEXT column to jobs table
---   Kommun was being scraped but never saved — caused location filtering to fail.
---   Migration: ALTER TABLE jobs ADD COLUMN IF NOT EXISTS municipality TEXT;
--- 2026-02-24: Added working_hours TEXT column to jobs table
---   Heltid/Deltid was being scraped from Platsbanken but missing from schema.
---   Needed for Aktivitetsrapport PDF generation (Omfattning column).
---   Migration: ALTER TABLE jobs ADD COLUMN IF NOT EXISTS working_hours TEXT;
--- 2026-02-24: Added description TEXT column to user_certifications
---   Allows users to add context/details to their certifications (like awards already has).
---   Migration: ALTER TABLE user_certifications ADD COLUMN IF NOT EXISTS description TEXT;
--- 2026-02-24: Added editable fields to applications for manual entries + editing
---   apply_method: how the user applied (platsbanken_email, external_website, linkedin, etc.)
---   custom_title/company/location: overrides for manually added or edited applications
---   apply_date: when the user actually applied (separate from auto-set sent_at)
---   Migration:
---     ALTER TABLE applications ADD COLUMN IF NOT EXISTS apply_method TEXT;
---     ALTER TABLE applications ADD COLUMN IF NOT EXISTS custom_title TEXT;
---     ALTER TABLE applications ADD COLUMN IF NOT EXISTS custom_company TEXT;
---     ALTER TABLE applications ADD COLUMN IF NOT EXISTS custom_location TEXT;
---     ALTER TABLE applications ADD COLUMN IF NOT EXISTS apply_date TEXT;
+-- 2026-02-24: Added municipality, working_hours to jobs
+-- 2026-02-24: Added description to user_certifications
+-- 2026-02-24: Added apply_method, custom_title/company/location, apply_date to applications
+-- 2026-02-25: Added description to user_awards — LIVE
+-- 2026-02-25: FULL COLUMN-LEVEL AUDIT — synced ALL 32 tables against live DB
+--   Changes from audit:
+--   - Added user_photos table (existed in live DB, missing from schema)
+--   - Fixed applications.user_id: UUID (was TEXT DEFAULT 'default_user')
+--   - Fixed user_cover_letter_preferences.user_id: UUID (was TEXT)
+--   - Fixed user_cover_letter_preferences.tone default: 'professional' (was 'professional_friendly')
+--   - Fixed user_cover_letter_preferences.signature_style default: 'Med vänlig hälsning'
+--   - Fixed user_profiles.user_id: UUID (was TEXT)
+--   - Fixed user_profiles.full_name: nullable (was NOT NULL)
+--   - Fixed user_profiles.languages default: ARRAY['Svenska'] (was longer default)
+--   - Fixed user_education.user_id: UUID (was TEXT)
+--   - Fixed user_experiences.user_id: UUID (was TEXT)
+--   - Fixed user_experiences.title: NOT NULL (was nullable)
+--   - Fixed user_skills.user_id: UUID (was TEXT)
+--   - Fixed user_skills.category: nullable DEFAULT 'all' (was NOT NULL)
+--   - Fixed user_skills.skill_type: nullable DEFAULT 'soft' (was NOT NULL)
+--   - Fixed user_cvs.user_id: UUID (was TEXT)
+--   - Fixed user_cvs.cv_text: nullable (was NOT NULL)
+--   - Fixed user_cvs.is_ai_generated/created_via_conversation: DEFAULT false (had no default)
+--   - Fixed user_job_preferences.locations: TEXT[] ARRAY (was single TEXT)
+--   - Fixed user_job_preferences.search_keywords/excluded_companies: no default (had DEFAULT ARRAY[])
+--   - Fixed jobs.title: nullable (was NOT NULL)
+--   - Fixed jobs.priority/source/link_status: no default (backend sets them on insert)
+--   - Updated delete_user_data() with UUID casts for UUID-typed tables
+--   - Updated user_id type inconsistency section to match reality

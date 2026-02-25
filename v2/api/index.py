@@ -1050,9 +1050,9 @@ async def generate_cover_letter(job: Dict, user_cv_text: Optional[str] = None, u
     # If no bransch-CV text, try to fetch master CV experiences for richer content
     if not experience and user_id:
         try:
-            master_exps = await db_request("GET", "master_cv_experiences", params={
+            master_exps = await db_request("GET", "user_experiences", params={
                 "user_id": f"eq.{user_id}",
-                "order": "start_date.desc",
+                "order": "sort_order",
                 "limit": "10"
             })
             if master_exps:
@@ -7006,30 +7006,32 @@ KRITISKT — BESKRIVNINGAR ÄR OBLIGATORISKA:
             except Exception as e:
                 logger.warning(f"Failed to update volunteer {vol_id}: {e}")
 
-    # Create new projects
+    # Create new projects (DB column is project_name, not name)
     for proj in changes.get("new_projects", []):
         try:
             await db_request("POST", "tech_projects", data={
                 "user_id": user_id,
-                "name": proj.get("name", ""),
+                "project_name": proj.get("name") or proj.get("project_name", ""),
                 "description": proj.get("description", ""),
                 "tech_stack": proj.get("tech_stack", ""),
-                "url": proj.get("url", ""),
+                "github_url": proj.get("url") or proj.get("github_url", ""),
                 "sort_order": len(existing_projects) + added
             })
             added += 1
         except Exception as e:
             logger.warning(f"Failed to add project: {e}")
 
-    # Update existing projects
+    # Update existing projects (map AI field names to DB column names)
     for proj in changes.get("updated_projects", []):
         proj_id = proj.get("id")
         if not proj_id:
             continue
         update_data = {}
-        for field in ["name", "description", "tech_stack", "url"]:
-            if proj.get(field):
-                update_data[field] = proj[field]
+        # Map AI names → DB column names
+        field_map = {"name": "project_name", "project_name": "project_name", "description": "description", "tech_stack": "tech_stack", "url": "github_url", "github_url": "github_url"}
+        for ai_field, db_field in field_map.items():
+            if proj.get(ai_field):
+                update_data[db_field] = proj[ai_field]
         if update_data:
             try:
                 async with httpx.AsyncClient() as client:
