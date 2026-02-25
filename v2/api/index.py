@@ -6783,7 +6783,7 @@ KRITISKT — BESKRIVNINGAR ÄR OBLIGATORISKA:
                 },
                 json={
                     "model": "claude-sonnet-4-5-20250929",
-                    "max_tokens": 3000,
+                    "max_tokens": 4096,
                     "messages": [{"role": "user", "content": prompt}]
                 },
                 timeout=55
@@ -7161,7 +7161,11 @@ async def enhance_chat(request: Request):
 
         lines.append("\n=== VOLONTÄRARBETE ===")
         for vol in volunteer:
-            lines.append(f"[ID:{vol.get('id')}] {vol.get('organization','')} | {vol.get('dates','')} | {vol.get('bullets',[])}")
+            vol_desc = vol.get('description') or ''
+            vol_title = vol.get('title') or ''
+            vol_bullets = vol.get('bullets') or []
+            has_desc = "✅" if vol_desc.strip() else "❌ SAKNAR DESCRIPTION"
+            lines.append(f"[ID:{vol.get('id')}] {vol.get('organization','')} | Titel: {vol_title} | {vol.get('dates','')} | {has_desc} | Beskrivning: {vol_desc[:150]} | Bullets: {vol_bullets}")
         if not volunteer:
             lines.append("(inga)")
 
@@ -7173,13 +7177,20 @@ async def enhance_chat(request: Request):
 
         lines.append("\n=== UTMÄRKELSER ===")
         for a in awards:
-            lines.append(f"[ID:{a.get('id')}] {a.get('award_text','')}")
+            a_desc = a.get('description') or ''
+            has_desc = "✅" if a_desc.strip() else "❌ SAKNAR DESCRIPTION"
+            lines.append(f"[ID:{a.get('id')}] {a.get('award_text','')} | {has_desc} | Beskrivning: {a_desc[:150]}")
         if not awards:
             lines.append("(inga)")
 
         lines.append("\n=== CERTIFIERINGAR ===")
         for c in certifications:
-            lines.append(f"[ID:{c.get('id')}] {c.get('name', c.get('cert_name',''))}")
+            c_name = c.get('certification_name') or c.get('name') or ''
+            c_org = c.get('issuing_organization') or c.get('issuer') or ''
+            c_desc = c.get('description') or ''
+            c_date = c.get('issue_date') or ''
+            has_desc = "✅" if c_desc.strip() else "❌ SAKNAR DESCRIPTION"
+            lines.append(f"[ID:{c.get('id')}] {c_name} | Utfärdare: {c_org} | Datum: {c_date} | {has_desc} | Beskrivning: {c_desc[:150]}")
         if not certifications:
             lines.append("(inga)")
 
@@ -7206,7 +7217,10 @@ FORMAT FÖR ÄNDRINGAR — lägg JSON-blocket i slutet av ditt svar, inuti ```ac
 [
   {{"action": "update", "table": "user_experiences", "id": "uuid-här", "data": {{"description": "ny text", "categories": ["tech", "customerservice"]}}}},
   {{"action": "update", "table": "tech_projects", "id": "uuid-här", "data": {{"name": "nytt namn", "description": "ny beskrivning"}}}},
-  {{"action": "create", "table": "user_volunteer", "data": {{"organization": "...", "dates": "...", "bullets": ["..."]}}}},
+  {{"action": "create", "table": "user_volunteer", "data": {{"organization": "...", "title": "...", "dates": "...", "description": "vad personen gjorde", "bullets": ["..."]}}}},
+  {{"action": "update", "table": "user_volunteer", "id": "uuid-här", "data": {{"description": "ny beskrivning", "title": "uppdaterad titel"}}}},
+  {{"action": "update", "table": "user_awards", "id": "uuid-här", "data": {{"description": "bakgrund/kontext för utmärkelsen"}}}},
+  {{"action": "update", "table": "user_certifications", "id": "uuid-här", "data": {{"description": "vad certifieringen innebär", "certification_name": "rätt namn"}}}},
   {{"action": "create", "table": "user_skills", "data": {{"skill_text": "Python", "skill_type": "technical", "category": "tech"}}}},
   {{"action": "delete", "table": "user_skills", "id": "uuid-här"}}
 ]
@@ -7216,17 +7230,20 @@ TABELLER DU KAN ÄNDRA:
 - user_experiences: company, title, location, start_date, end_date, description, categories (array)
 - user_education: school, degree, field_of_study, location, start_date, end_date
 - tech_projects: name, description, tech_stack, url
-- user_volunteer: organization, dates, bullets (array)
+- user_volunteer: organization, title, dates, description, bullets (array)
 - user_skills: skill_text, skill_type (technical/language/certificate), category
-- user_awards: award_text
-- user_certifications: name, issuer, date
+- user_awards: award_text, description
+- user_certifications: certification_name, issuing_organization, issue_date, expiry_date, description
 
 REGLER:
 - Om användaren ber dig ändra något — GÖR DET DIREKT. Inkludera actions-blocket i ditt svar.
 - Fråga ALDRIG om saker som redan framgår av konversationen eller det uppladdade CVt
 - Om användaren säger "läs CVt jag laddade upp" — informationen finns redan i SENASTE ÄNDRINGAR ovan
 - Var kort och konkret — ingen inställsam AI-ton, inga emojis
-- Skriv naturlig svenska"""
+- Skriv naturlig svenska
+- Poster markerade med ❌ SAKNAR DESCRIPTION behöver ALLTID en description — påpeka det för användaren och erbjud att fylla i
+- För certifieringar: använd ALLTID fältnamnet certification_name (INTE name), issuing_organization (INTE issuer), issue_date (INTE date)
+- VARJE volontärpost, award och certifiering BÖR ha en description — det är viktigt för CV-generering"""
 
     # Build Claude messages from conversation history
     messages = []
