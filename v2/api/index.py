@@ -6552,7 +6552,10 @@ async def enhance_master_cv_from_upload(request: Request):
         existing_summary += f"- ID:{edu.get('id')} | {edu.get('school')} | {edu.get('degree')} | {edu.get('start_date')}-{edu.get('end_date','')}\n"
     existing_summary += "\nBEFINTLIGT VOLONTÄRARBETE:\n"
     for vol in existing_volunteer:
-        existing_summary += f"- ID:{vol.get('id')} | {vol.get('organization')} | {vol.get('dates','')} | {(vol.get('description') or '')[:80]}\n"
+        vol_desc = vol.get('description') or ''
+        vol_bullets = vol.get('bullets') or []
+        vol_text = vol_desc if vol_desc else '. '.join(vol_bullets) if vol_bullets else '(ingen beskrivning)'
+        existing_summary += f"- ID:{vol.get('id')} | {vol.get('organization')} | {vol.get('title', '')} | {vol.get('dates','')} | {vol_text[:120]}\n"
     if not existing_volunteer:
         existing_summary += "- (inga poster)\n"
     existing_summary += "\nBEFINTLIGA PROJEKT:\n"
@@ -6614,10 +6617,10 @@ Svara i EXAKT detta JSON-format (inga kommentarer, bara ren JSON):
         {{"id": "befintligt-uuid", "degree": "förbättrad examen text", "field_of_study": "inriktning"}}
     ],
     "new_volunteer": [
-        {{"organization": "...", "dates": "...", "description": "..."}}
+        {{"organization": "...", "title": "...", "dates": "...", "description": "..."}}
     ],
     "updated_volunteer": [
-        {{"id": "befintligt-uuid", "description": "förbättrad beskrivning"}}
+        {{"id": "befintligt-uuid", "title": "roll/titel", "description": "förbättrad beskrivning"}}
     ],
     "new_projects": [
         {{"name": "...", "description": "...", "tech_stack": "...", "url": ""}}
@@ -6789,14 +6792,14 @@ VIKTIGT:
     # Create new volunteer entries
     for vol in changes.get("new_volunteer", []):
         try:
-            bullets = []
             desc = vol.get("description", "")
-            if desc:
-                bullets = [s.strip() for s in desc.split(".") if s.strip()]
+            bullets = [s.strip() for s in desc.split(".") if s.strip()] if desc else []
             await db_request("POST", "user_volunteer", data={
                 "user_id": user_id,
                 "organization": vol.get("organization", ""),
+                "title": vol.get("title", ""),
                 "dates": vol.get("dates", ""),
+                "description": desc,
                 "bullets": bullets,
                 "sort_order": len(existing_volunteer) + added
             })
@@ -6812,8 +6815,9 @@ VIKTIGT:
         update_data = {}
         desc = vol.get("description")
         if desc:
+            update_data["description"] = desc
             update_data["bullets"] = [s.strip() for s in desc.split(".") if s.strip()]
-        for field in ["organization", "dates"]:
+        for field in ["organization", "title", "dates"]:
             if vol.get(field):
                 update_data[field] = vol[field]
         if update_data:
