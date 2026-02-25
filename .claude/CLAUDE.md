@@ -183,6 +183,14 @@ Handled by:
 
 ## Database rules
 
+### Databasändringar — process
+
+1. **Claude Code** skriver SQL-migrationskoden (ALTER TABLE, CREATE TABLE, etc.) och presenterar den i chatten
+2. **Linnea** kopierar SQL-koden och kör den i Supabase Dashboard → SQL Editor
+3. **Claude Code** uppdaterar `v2/supabase_schema.sql` i samma commit så att schemafilen alltid speglar den faktiska databasen
+
+`v2/supabase_schema.sql` är source-of-truth för hur databasen är uppbyggd. Claude Code ska alltid läsa den innan ny kod skrivs, och alltid uppdatera den efter att ny SQL-migration presenterats.
+
 - **Reading DB**: Ask user to run SELECT in Supabase SQL Editor and paste results. Don't build API endpoints for this.
 - **Writing migrations**: Ask user to show actual schema first. Don't write blind.
 - **Migration files**: Give SQL directly in chat — never create SQL files in the repo. Update `v2/supabase_schema.sql` to reflect changes.

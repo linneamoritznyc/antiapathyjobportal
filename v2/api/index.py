@@ -926,7 +926,7 @@ DEFAULT_EXPERIENCE = {
 - Deployment: Vercel, Supabase, API-integrationer
 - Innehållsanalytiker, Google Ads (2018-2019): Teknisk granskning, dataanalys""",
 
-    "industri": """- Siggesta Gård: Städning och praktiskt underhållsarbete
+    "industry": """- Siggesta Gård: Städning och praktiskt underhållsarbete
 - Max Hamburgare (Apr-Aug 2024): Kök, drive-in, fysiskt arbete i högt tempo
 - ICA Maxi (2015, 2017, 2019): Fysiskt butiksarbete, varumottagning, frukt/grönt
 - B-körkort och tillgång till bil
@@ -936,7 +936,7 @@ DEFAULT_EXPERIENCE = {
 - Flexibel, pålitlig och van vid ansvar
 - B-körkort och flexibel med arbetstider""",
 
-    "contentmoderation": """- Innehållsmoderator, Clubhouse (Jun 2021-Jan 2022): Trust & Safety, granskning, support
+    "content": """- Innehållsmoderator, Clubhouse (Jun 2021-Jan 2022): Trust & Safety, granskning, support
 - Innehållsanalytiker, Google Ads (Maj 2018-Apr 2019): 100+ annonser/dag, policyhantering
 - Global Marketing, Minerva Project (Sep 2019-Apr 2020): Kundkommunikation via Intercom""",
 
@@ -1325,7 +1325,7 @@ INSTRUKTIONER:
 7. Nämn var jag bor (EXAKT den ort som anges under "OM MIG" ovan — ignorera eventuell ort/adress i CV-texten) och att jag är flexibel med arbetstider
 8. KRITISKT: Om "EXTRA ERFARENHETER SOM MÅSTE NÄMNAS I BREVET" finns ovan — du MÅSTE nämna VARJE ENSKILD erfarenhet som listas där i brevet. Hoppa inte över en enda. Nämn alla, även om de inte matchar jobbet perfekt — hitta en naturlig koppling för var och en. Det är helt ok att nämna 2 erfarenheter tillsammans i samma mening eller stycke om de belyser liknande styrkor
 9. Om "MIN SKRIVSTIL" finns ovan — följ den stilen. KRITISKT: "Fraser jag INTE vill ha" ÖVERTRUMFAR alla andra regler i detta prompt — även om en fras nämns som "korrekt" eller "vardaglig" på annat ställe. Använd ALDRIG fraser från den listan. Använd gärna fraser från "Fraser jag gillar".
-10. Om "MINA PERSONLIGA ANEKDOTER & HOBBYS" finns ovan — dessa har redan keyword-matchats mot jobbet. Väv in MAX EN om den naturligt stärker din ansökan. Men om kopplingen känns konstruerad eller tunn — SKIPPA den helt. Det är ALLTID bättre att INTE nämna en hobby/anekdot än att tvinga in den.
+10. Om "MINA PERSONLIGA ANEKDOTER & HOBBYS" finns ovan — dessa har redan keyword-matchats mot jobbet. Väv in alla som naturligt stärker din ansökan — det kan vara flera anekdoter och hobbys i samma brev. Men om kopplingen känns konstruerad eller tunn för en specifik anekdot — SKIPPA den. Det är ALLTID bättre att INTE nämna en hobby/anekdot än att tvinga in den.
 11. VIKTIGT om ålder: Om du nämner ålder, använd EXAKT den ålder som står under "OM MIG" ovan. Ignorera eventuell ålder som nämns i bakgrund/erfarenheter — den kan vara gammal.
 12. Avsluta med:
    {signature_style}
@@ -1485,6 +1485,47 @@ async def generate_bransch_cv(master_cv: Dict, bransch: Dict) -> str:
         elif isinstance(skill, str):
             skills_text += f"\n- {skill}"
 
+    # Format volunteer as text
+    volunteer_list = master_cv.get('volunteer', [])
+    volunteer_text = ""
+    for vol in volunteer_list:
+        if isinstance(vol, dict):
+            org = vol.get('organization', '')
+            title = vol.get('title', '')
+            dates = vol.get('dates', '')
+            desc = vol.get('description', '')
+            volunteer_text += f"\n{title} - {org} ({dates})\n{desc}\n"
+
+    # Format awards as text
+    awards_list = master_cv.get('awards', [])
+    awards_text = ""
+    for award in awards_list:
+        if isinstance(award, dict):
+            awards_text += f"\n- {award.get('award_text', '')}"
+            if award.get('description'):
+                awards_text += f" — {award['description']}"
+
+    # Format certifications as text
+    certs_list = master_cv.get('certifications', [])
+    certs_text = ""
+    for cert in certs_list:
+        if isinstance(cert, dict):
+            certs_text += f"\n- {cert.get('certification_name', '')}"
+            if cert.get('issuing_organization'):
+                certs_text += f" ({cert['issuing_organization']})"
+            if cert.get('description'):
+                certs_text += f" — {cert['description']}"
+
+    # Format projects as text
+    projects_list = master_cv.get('projects', [])
+    projects_text = ""
+    for proj in projects_list:
+        if isinstance(proj, dict):
+            pname = proj.get('name') or proj.get('project_name') or proj.get('title', '')
+            projects_text += f"\n- {pname}"
+            if proj.get('description'):
+                projects_text += f": {proj['description']}"
+
     prompt = f"""Skriv ett komplett CV på svenska för {bransch['name']}-jobb.
 
 PERSONINFO:
@@ -1504,6 +1545,18 @@ ALL UTBILDNING:
 ALLA FÄRDIGHETER:
 {skills_text or 'Ej angivet'}
 
+IDEELLT ARBETE / VOLONTÄRARBETE:
+{volunteer_text or 'Ej angivet'}
+
+UTMÄRKELSER & AWARDS:
+{awards_text or 'Ej angivet'}
+
+CERTIFIERINGAR:
+{certs_text or 'Ej angivet'}
+
+PROJEKT:
+{projects_text or 'Ej angivet'}
+
 DENNA CV-VERSION ÄR FÖR: {bransch['name']}
 Fokus: {bransch['focus']}
 
@@ -1513,7 +1566,8 @@ INSTRUKTIONER:
 3. För {bransch['name']}-versionen: skriv en kort profil (2-3 meningar) som lyfter erfarenhet relevant för denna bransch
 4. Bullet points för varje jobb ska vara korta och konkreta
 5. Inga emojis
-6. Format:
+6. Inkludera relevanta utmärkelser, certifieringar, volontärarbete och projekt
+7. Format:
    NAMN
    Plats | Telefon | E-post
 
@@ -1527,6 +1581,15 @@ INSTRUKTIONER:
 
    UTBILDNING
    [Skola - Examen (Datum)]
+
+   IDEELLT ARBETE
+   [Om relevant för branschen]
+
+   UTMÄRKELSER
+   [Om relevant]
+
+   CERTIFIERINGAR
+   [Om relevant]
 
    FÄRDIGHETER
    [Lista]
@@ -1607,9 +1670,10 @@ def match_job_to_bransch(job_title: str, job_description: str) -> str:
         "customerservice":   ["kundtjänst", "kundservice", "kundmottagning", "support", "helpdesk", "telefonsupport", "chatt", "reception", "receptionist"],
         "tech":              ["mjukvara", "programmering", "webbutvecklare", "frontend", "backend", "systemutvecklare", "it-tekniker", "it-support", "devops", "agile", "scrum"],
         "healthcare":        ["vård", "omsorg", "sjuksköterska", "undersköterska", "äldreboende", "hemtjänst", "medicin", "rehab", "personlig assistent", "lss", "psykiatri"],
-        "industri":          ["trädgård", "industri", "lager", "städ", "städning", "renhållning", "utomhus", "bygg", "produktion", "truck", "magasin", "underhåll", "rastplats",
+        "industry":          ["trädgård", "industri", "lager", "städ", "städning", "renhållning", "utomhus", "bygg", "produktion", "truck", "magasin", "underhåll", "rastplats",
                               "skötsel", "fastighet", "mark", "park", "reparation", "maskin", "montör", "svetsare", "godshantering", "bud", "chaufför", "sommarjobb utomhus"],
-        "contentmoderation": ["moderator", "content moderation", "trust and safety", "granskning", "recensioner", "online safety"],
+        "hotel":             ["hotell", "hotel", "reception", "receptionist", "gäst", "bokning", "concierge", "incheckning", "lobby", "roomservice"],
+        "content":           ["moderator", "content moderation", "trust and safety", "granskning", "recensioner", "online safety"],
         "art":               ["konst", "kultur", "galleri", "utställning", "kreativ", "illustration", "foto", "film", "musik", "teater"],
     }
 
@@ -1625,11 +1689,34 @@ CV_FILE_MAP = {
     "customerservice":   "CV_Linnea_Moritz_Kundtjanst.pdf",
     "tech":              "CV_Linnea_Moritz_Tech_Kontor.pdf",
     "healthcare":        "CV_Linnea_Moritz_Vard_Omsorg.pdf",
-    "industri":          "CV_Linnea_Moritz_Industri_Tradgard.pdf",
-    "contentmoderation": "CV_Linnea_Moritz_Content_Moderation.pdf",
+    "industry":          "CV_Linnea_Moritz_Industri_Tradgard.pdf",
+    "hotel":             "CV_Linnea_Moritz_Hotell_Reception.pdf",
+    "content":           "CV_Linnea_Moritz_Content_Moderation.pdf",
     "art":               "CV_Linnea_Moritz_Konst_Kultur.pdf",
 }
 CV_FILES_DIR = pathlib.Path(__file__).parent / "cv_files"
+
+# Fallback bransch when CV PDF doesn't exist on disk
+BRANSCH_FALLBACK = {
+    "hotel": "customerservice",
+    "art": "customerservice",
+    "industry": "customerservice",
+    "content": "tech",
+}
+
+
+def get_cv_pdf_exists(bransch_id: str) -> bool:
+    """Check if a CV PDF actually exists on disk for this bransch."""
+    filename = CV_FILE_MAP.get(bransch_id)
+    if not filename:
+        return False
+    path = CV_FILES_DIR / filename
+    return path.exists()
+
+
+def get_fallback_bransch(bransch_id: str) -> str:
+    """Return the best fallback bransch when PDF is missing."""
+    return BRANSCH_FALLBACK.get(bransch_id, "customerservice")
 
 
 def get_cv_pdf_bytes(bransch_id: str) -> Optional[bytes]:
@@ -1947,13 +2034,20 @@ async def list_jobs(request: Request, limit: int = 50, offset: int = 0):
             "status": "in.(sent,draft,saved)",
             "select": "job_id"
         })
-        # Fetch user's preferred locations for server-side geo filtering
+        # Fetch user's preferred locations AND excluded keywords for server-side filtering
         prefs_task = db_request("GET", "user_job_preferences", params={
             "user_id": f"eq.{user_id}",
-            "select": "preferred_locations"
+            "select": "preferred_locations,excluded_keywords,quiz_answers"
         })
-        interactions, applied_applications, user_prefs = await _asyncio.gather(
-            interactions_task, applications_task, prefs_task
+        # Also fetch AI feedback with exclude_jobs type
+        exclude_feedback_task = db_request("GET", "user_ai_feedback", params={
+            "user_id": f"eq.{user_id}",
+            "feedback_type": "eq.exclude_jobs",
+            "is_active": "eq.true",
+            "select": "feedback_text"
+        })
+        interactions, applied_applications, user_prefs, exclude_feedback = await _asyncio.gather(
+            interactions_task, applications_task, prefs_task, exclude_feedback_task
         )
         interactions = interactions or []
         applied_applications = applied_applications or []
@@ -1975,6 +2069,48 @@ async def list_jobs(request: Request, limit: int = 50, offset: int = 0):
                     before = len(jobs)
                     jobs = [j for j in jobs if _job_in_municipalities(j, municipality_labels_lower, county_labels_lower)]
                     logger.info(f"Server geo filter: {before} → {len(jobs)} jobs for user {user_id[:8]}")
+
+        # --- SERVER-SIDE EXCLUDED KEYWORDS FILTER ---
+        # Filter out jobs matching user's negative keywords (e.g., "militär" → also "försvar", "fmv")
+        KEYWORD_EXPANSIONS = {
+            "militär": ["försvar", "fmv", "försvarsmakten", "försvaret", "krigsmakten"],
+            "försvar": ["militär", "fmv", "försvarsmakten", "försvaret"],
+            "fmv": ["försvar", "försvarsmakten", "militär"],
+            "polis": ["polisen", "polismyndigheten"],
+        }
+        excluded_kw = []
+        if user_prefs and len(user_prefs) > 0:
+            excluded_kw = user_prefs[0].get("excluded_keywords") or []
+            # Also check quiz_answers.negative_keywords as backup
+            if not excluded_kw:
+                qa = user_prefs[0].get("quiz_answers") or {}
+                excluded_kw = qa.get("negative_keywords") or []
+        # Also extract keywords from user_ai_feedback with feedback_type=exclude_jobs
+        exclude_feedback = exclude_feedback or []
+        for fb in exclude_feedback:
+            fb_text = (fb.get("feedback_text") or "").lower()
+            # Extract meaningful words from feedback text (skip common Swedish words)
+            skip_words = {"jag", "vill", "inte", "att", "med", "på", "i", "för", "och", "eller", "av",
+                          "en", "ett", "den", "det", "de", "som", "har", "kan", "ska", "om", "är",
+                          "jobba", "arbeta", "söka", "jobb", "arbete", "inga", "ingen", "inget", "nej",
+                          "typ", "typer", "inom", "hos", "till"}
+            words = [w.strip(".,!?:;()\"'") for w in fb_text.split() if len(w.strip(".,!?:;()\"'")) >= 3]
+            meaningful = [w for w in words if w not in skip_words]
+            excluded_kw.extend(meaningful)
+        if excluded_kw:
+            # Expand keywords for broader matching
+            expanded = set()
+            for kw in excluded_kw:
+                expanded.add(kw.lower())
+                for extra in KEYWORD_EXPANSIONS.get(kw.lower(), []):
+                    expanded.add(extra)
+            before = len(jobs)
+            jobs = [j for j in jobs if not any(
+                kw in (j.get("title", "") + " " + j.get("company", "") + " " + j.get("description", "")).lower()
+                for kw in expanded
+            )]
+            if before != len(jobs):
+                logger.info(f"Server keyword filter: {before} → {len(jobs)} jobs for user {user_id[:8]} (excluded: {excluded_kw})")
 
         rejected_ids = {i["job_id"] for i in interactions if i["action"] == "rejected"}
         applied_ids = {i["job_id"] for i in interactions if i["action"] == "applied"}
@@ -2238,13 +2374,14 @@ async def delete_application(application_id: str, request: Request):
 
 
 @app.get("/api/aktivitetsrapport")
-async def generate_aktivitetsrapport(request: Request, month: str = None):
-    """Generate a monthly Aktivitetsrapport PDF for A-kassan/Arbetsförmedlingen.
-    ?month=2026-02 format. Defaults to current month."""
-    from fpdf import FPDF
+async def generate_aktivitetsrapport(request: Request, month: str = None, format: str = "pdf"):
+    """Generate a monthly Aktivitetsrapport (PDF or TXT) matching Arbetsförmedlingen format.
+    ?month=2026-02&format=pdf|txt. Defaults to current month, PDF."""
     from fastapi.responses import Response as RawResponse
 
     user_id = await get_user_id_from_request(request)
+    if not user_id:
+        raise HTTPException(status_code=401, detail="Du måste vara inloggad")
 
     # Determine month
     if not month:
@@ -2264,88 +2401,147 @@ async def generate_aktivitetsrapport(request: Request, month: str = None):
 
     # Get user profile
     sender_name = "Namn"
-    if user_id:
-        profiles = await db_request("GET", "user_profiles", params={"user_id": f"eq.{user_id}"})
-        if profiles:
-            sender_name = profiles[0].get("full_name", sender_name)
+    profiles = await db_request("GET", "user_profiles", params={"user_id": f"eq.{user_id}"})
+    if profiles:
+        sender_name = profiles[0].get("full_name", sender_name)
 
-    # Get sent applications for this month
+    # Get applications for this month (sent, interview, offer, rejected all count as "sökt")
     apps = await get_applications_from_db(user_id=user_id)
+    counted_statuses = {"sent", "interview", "offer", "rejected"}
     month_apps = []
     for a in apps:
-        if a.get("status") != "sent":
+        if a.get("status") not in counted_statuses:
             continue
-        d = (a.get("sent_at") or a.get("created_at") or "")[:7]
+        # Use apply_date first, then sent_at, then created_at
+        d = (a.get("apply_date") or a.get("sent_at") or a.get("created_at") or "")[:7]
         if d == month:
             month_apps.append(a)
 
     # Sort by date
-    month_apps.sort(key=lambda a: a.get("sent_at") or a.get("created_at") or "")
+    month_apps.sort(key=lambda a: a.get("apply_date") or a.get("sent_at") or a.get("created_at") or "")
 
-    # Build PDF
-    pdf = FPDF()
+    # Map app status to "Resulterade i" text (Arbetsförmedlingen style)
+    def get_result_text(status):
+        return {
+            "sent": "",
+            "interview": "Intervju",
+            "offer": "Erbjudande",
+            "rejected": "Avslag",
+        }.get(status, "")
+
+    # Build row data shared between PDF and TXT
+    rows = []
+    for a in month_apps:
+        raw_date = (a.get("apply_date") or a.get("sent_at") or a.get("created_at") or "")[:10]
+        try:
+            dt = datetime.fromisoformat(raw_date)
+            datum = dt.strftime("%Y-%m-%d")
+        except (ValueError, TypeError):
+            datum = raw_date
+
+        rows.append({
+            "datum": datum,
+            "aktivitet": "Sokt arbete",
+            "yrkesbenamning": (a.get("custom_title") or a.get("job_title") or "")[:40],
+            "arbetsgivare": (a.get("custom_company") or a.get("company") or "")[:35],
+            "omfattning": a.get("working_hours") or "Heltid",
+            "ort": (a.get("custom_location") or a.get("location") or "")[:25],
+            "resultat": get_result_text(a.get("status", "sent")),
+        })
+
+    # ---- TXT FORMAT ----
+    if format == "txt":
+        lines = []
+        lines.append(f"AKTIVITETSRAPPORT for {month_label} {year}")
+        lines.append(f"Namn: {sender_name}")
+        lines.append(f"Sokta jobb / Jobb med annons")
+        lines.append(f"Period: {month_label} {year}")
+        lines.append("")
+        lines.append("-" * 120)
+        header = f"{'Datum':<12} {'Aktivitet':<16} {'Yrkesbenamning':<30} {'Arbetsgivare':<28} {'Omfattning':<12} {'Ort':<20} {'Resultat'}"
+        lines.append(header)
+        lines.append("-" * 120)
+
+        for r in rows:
+            line = f"{r['datum']:<12} {r['aktivitet']:<16} {r['yrkesbenamning']:<30} {r['arbetsgivare']:<28} {r['omfattning']:<12} {r['ort']:<20} {r['resultat']}"
+            lines.append(line)
+
+        lines.append("-" * 120)
+        lines.append(f"Totalt: {len(rows)} ansokningar")
+        lines.append("")
+        lines.append(f"Genererad {datetime.now().strftime('%Y-%m-%d')}")
+
+        txt_content = "\n".join(lines)
+        filename = f"Aktivitetsrapport_{month_label.upper()}{year}.txt"
+        return RawResponse(
+            content=txt_content.encode("utf-8"),
+            media_type="text/plain; charset=utf-8",
+            headers={"Content-Disposition": f'attachment; filename="{filename}"'}
+        )
+
+    # ---- PDF FORMAT (Arbetsförmedlingen style) ----
+    from fpdf import FPDF
+
+    pdf = FPDF(orientation="L")  # Landscape for more columns
     pdf.set_auto_page_break(auto=True, margin=20)
     pdf.add_page()
 
-    # Title
-    pdf.set_font("Helvetica", "B", 16)
+    # Title block
+    pdf.set_font("Helvetica", "B", 14)
     pdf.set_text_color(30, 30, 30)
-    pdf.cell(0, 10, f"Aktivitetsrapport {month_label} {year}", new_x="LMARGIN", new_y="NEXT")
-    pdf.ln(2)
+    pdf.cell(0, 8, _safe_pdf_text(f"Aktivitetsrapport for {month_label} {year}"), new_x="LMARGIN", new_y="NEXT")
+    pdf.ln(1)
 
-    # Subtitle
-    pdf.set_font("Helvetica", "", 11)
+    pdf.set_font("Helvetica", "", 10)
     pdf.set_text_color(80, 80, 80)
-    pdf.cell(0, 6, f"Sokta jobb / Jobb med annons", new_x="LMARGIN", new_y="NEXT")
-    pdf.cell(0, 6, sender_name, new_x="LMARGIN", new_y="NEXT")
-    pdf.cell(0, 6, f"Period: {month_label} {year}", new_x="LMARGIN", new_y="NEXT")
+    pdf.cell(0, 5, _safe_pdf_text(f"Sokta jobb / Jobb med annons"), new_x="LMARGIN", new_y="NEXT")
+    pdf.cell(0, 5, _safe_pdf_text(sender_name), new_x="LMARGIN", new_y="NEXT")
+    pdf.cell(0, 5, _safe_pdf_text(f"Period: {month_label} {year}"), new_x="LMARGIN", new_y="NEXT")
     pdf.ln(4)
 
-    # Table header
-    col_widths = [25, 50, 45, 30, 40]
-    headers = ["Datum", "Yrkesroll", "Arbetsgivare", "Omfattning", "Ort"]
+    # Table header — Arbetsförmedlingen columns
+    col_widths = [24, 28, 55, 50, 26, 42, 32]
+    headers = ["Datum", "Aktivitet", "Yrkesbenamning", "Arbetsgivare", "Omfattning", "Ort", "Resulterade i"]
 
-    pdf.set_font("Helvetica", "B", 9)
-    pdf.set_fill_color(240, 240, 240)
+    pdf.set_font("Helvetica", "B", 8)
+    pdf.set_fill_color(230, 230, 230)
     pdf.set_text_color(30, 30, 30)
+    pdf.set_draw_color(180, 180, 180)
     for i, h in enumerate(headers):
-        pdf.cell(col_widths[i], 8, h, border=1, fill=True)
+        pdf.cell(col_widths[i], 7, h, border=1, fill=True)
     pdf.ln()
 
     # Table rows
-    pdf.set_font("Helvetica", "", 9)
+    pdf.set_font("Helvetica", "", 8)
     pdf.set_text_color(50, 50, 50)
-    for a in month_apps:
-        sent_date = (a.get("sent_at") or a.get("created_at") or "")[:10]
-        try:
-            dt = datetime.fromisoformat(sent_date)
-            datum = dt.strftime("%Y-%m-%d")
-        except (ValueError, TypeError):
-            datum = sent_date
+    for idx, r in enumerate(rows):
+        # Alternate row background
+        if idx % 2 == 1:
+            pdf.set_fill_color(248, 248, 248)
+            fill = True
+        else:
+            fill = False
 
-        yrkesroll = (a.get("job_title") or "")[:30]
-        arbetsgivare = (a.get("company") or "")[:25]
-        omfattning = a.get("working_hours") or "Heltid"
-        ort = (a.get("location") or "")[:22]
-
-        pdf.cell(col_widths[0], 7, datum, border=1)
-        pdf.cell(col_widths[1], 7, yrkesroll, border=1)
-        pdf.cell(col_widths[2], 7, arbetsgivare, border=1)
-        pdf.cell(col_widths[3], 7, omfattning, border=1)
-        pdf.cell(col_widths[4], 7, ort, border=1)
+        pdf.cell(col_widths[0], 6, r["datum"], border=1, fill=fill)
+        pdf.cell(col_widths[1], 6, _safe_pdf_text(r["aktivitet"]), border=1, fill=fill)
+        pdf.cell(col_widths[2], 6, _safe_pdf_text(r["yrkesbenamning"]), border=1, fill=fill)
+        pdf.cell(col_widths[3], 6, _safe_pdf_text(r["arbetsgivare"]), border=1, fill=fill)
+        pdf.cell(col_widths[4], 6, _safe_pdf_text(r["omfattning"]), border=1, fill=fill)
+        pdf.cell(col_widths[5], 6, _safe_pdf_text(r["ort"]), border=1, fill=fill)
+        pdf.cell(col_widths[6], 6, _safe_pdf_text(r["resultat"]), border=1, fill=fill)
         pdf.ln()
 
     # Summary
     pdf.ln(4)
     pdf.set_font("Helvetica", "B", 10)
     pdf.set_text_color(30, 30, 30)
-    pdf.cell(0, 8, f"Totalt: {len(month_apps)} ansokningar", new_x="LMARGIN", new_y="NEXT")
+    pdf.cell(0, 7, f"Totalt: {len(rows)} ansokningar under {month_label} {year}", new_x="LMARGIN", new_y="NEXT")
 
     # Footer
     pdf.ln(6)
-    pdf.set_font("Helvetica", "I", 8)
+    pdf.set_font("Helvetica", "I", 7)
     pdf.set_text_color(150, 150, 150)
-    pdf.cell(0, 5, f"Genererad {datetime.now().strftime('%Y-%m-%d')} via Platsbanken AI", new_x="LMARGIN", new_y="NEXT")
+    pdf.cell(0, 5, f"Genererad {datetime.now().strftime('%Y-%m-%d')}", new_x="LMARGIN", new_y="NEXT")
 
     pdf_bytes = pdf.output()
     filename = f"Aktivitetsrapport_{month_label.upper()}{year}.pdf"
@@ -2737,23 +2933,34 @@ async def generate_cv_branscher(request: Request):
     """Generate all CV bransch versions from master CV"""
     user_id = await get_user_id_from_request(request, required=True)
 
-    # Get user's profile and experiences
-    profiles = await db_request("GET", "user_profiles", params={"user_id": f"eq.{user_id}"})
-    experiences = await db_request("GET", "user_experiences", params={"user_id": f"eq.{user_id}", "order": "sort_order.asc"})
-    education = await db_request("GET", "user_education", params={"user_id": f"eq.{user_id}"})
-    skills = await db_request("GET", "user_skills", params={"user_id": f"eq.{user_id}"})
+    # Get user's profile and ALL master CV sections
+    import asyncio as _asyncio
+    profiles, experiences, education, skills, volunteer, awards, certifications, projects = await _asyncio.gather(
+        db_request("GET", "user_profiles", params={"user_id": f"eq.{user_id}"}),
+        db_request("GET", "user_experiences", params={"user_id": f"eq.{user_id}", "order": "sort_order.asc"}),
+        db_request("GET", "user_education", params={"user_id": f"eq.{user_id}"}),
+        db_request("GET", "user_skills", params={"user_id": f"eq.{user_id}"}),
+        db_request("GET", "user_volunteer", params={"user_id": f"eq.{user_id}", "order": "sort_order.asc"}),
+        db_request("GET", "user_awards", params={"user_id": f"eq.{user_id}", "order": "sort_order.asc"}),
+        db_request("GET", "user_certifications", params={"user_id": f"eq.{user_id}", "order": "sort_order.asc"}),
+        db_request("GET", "tech_projects", params={"user_id": f"eq.{user_id}", "order": "sort_order.asc"})
+    )
 
     if not experiences or len(experiences) == 0:
         return {"success": False, "message": "Lägg till erfarenheter i Master CV först!"}
 
     profile = profiles[0] if profiles else {}
 
-    # Build master CV structure
+    # Build master CV structure with ALL sections
     master_cv = {
         "profile": profile,
         "experiences": experiences,
         "education": education or [],
-        "skills": skills or []
+        "skills": skills or [],
+        "volunteer": volunteer or [],
+        "awards": awards or [],
+        "certifications": certifications or [],
+        "projects": projects or []
     }
 
     # Generate all bransch-CVs
@@ -2776,13 +2983,17 @@ async def generate_single_cv(bransch_id: str, request: Request):
     if not bransch:
         raise HTTPException(status_code=404, detail=f"Bransch '{bransch_id}' finns inte")
 
-    # Fetch Master CV data
+    # Fetch ALL Master CV data
     import asyncio as _asyncio
-    profiles, experiences, education, skills = await _asyncio.gather(
+    profiles, experiences, education, skills, volunteer, awards, certifications, projects = await _asyncio.gather(
         db_request("GET", "user_profiles", params={"user_id": f"eq.{user_id}"}),
         db_request("GET", "user_experiences", params={"user_id": f"eq.{user_id}", "order": "sort_order.asc"}),
         db_request("GET", "user_education", params={"user_id": f"eq.{user_id}"}),
-        db_request("GET", "user_skills", params={"user_id": f"eq.{user_id}"})
+        db_request("GET", "user_skills", params={"user_id": f"eq.{user_id}"}),
+        db_request("GET", "user_volunteer", params={"user_id": f"eq.{user_id}", "order": "sort_order.asc"}),
+        db_request("GET", "user_awards", params={"user_id": f"eq.{user_id}", "order": "sort_order.asc"}),
+        db_request("GET", "user_certifications", params={"user_id": f"eq.{user_id}", "order": "sort_order.asc"}),
+        db_request("GET", "tech_projects", params={"user_id": f"eq.{user_id}", "order": "sort_order.asc"})
     )
 
     if not experiences or len(experiences) == 0:
@@ -2792,7 +3003,11 @@ async def generate_single_cv(bransch_id: str, request: Request):
         "profile": profiles[0] if profiles else {},
         "experiences": experiences,
         "education": education or [],
-        "skills": skills or []
+        "skills": skills or [],
+        "volunteer": volunteer or [],
+        "awards": awards or [],
+        "certifications": certifications or [],
+        "projects": projects or []
     }
 
     logger.info(f"Generating single bransch-CV: {bransch['name']} for user {user_id[:8]}")
@@ -2933,6 +3148,26 @@ async def get_bransch_cvs(request: Request):
     return {"bransch_cvs": bransch_cvs}
 
 
+def _safe_pdf_text(text) -> str:
+    """Make text safe for fpdf2 built-in fonts (Latin-1 only).
+    Replaces common Unicode chars that appear in Swedish job listings."""
+    if not text:
+        return ""
+    text = str(text)
+    replacements = {
+        '\u2013': '-', '\u2014': '-',    # en/em dash
+        '\u2018': "'", '\u2019': "'",    # curly single quotes
+        '\u201c': '"', '\u201d': '"',    # curly double quotes
+        '\u2026': '...', '\u00a0': ' ',  # ellipsis, nbsp
+        '\u2022': '-', '\u2023': '-',    # bullet chars
+        '\u200b': '', '\u200c': '', '\u200d': '',  # zero-width chars
+        '\ufeff': '',  # BOM
+    }
+    for old, new in replacements.items():
+        text = text.replace(old, new)
+    return text.encode('latin-1', errors='replace').decode('latin-1')
+
+
 def _build_master_cv_pdf(profile: Dict, experiences: list, education: list, volunteer: list, awards: list, skills: list, projects: list = None, certifications: list = None) -> bytes:
     """Build a Master CV PDF using fpdf2 and return raw bytes."""
     from fpdf import FPDF
@@ -2952,7 +3187,7 @@ def _build_master_cv_pdf(profile: Dict, experiences: list, education: list, volu
     pdf.add_page()
 
     # -- Header: Name --
-    name = profile.get("full_name") or "Namn saknas"
+    name = _safe_pdf_text(profile.get("full_name") or "Namn saknas")
     pdf.set_font("Helvetica", "B", 22)
     pdf.set_text_color(30, 30, 30)
     pdf.cell(0, 12, name, new_x="LMARGIN", new_y="NEXT")
@@ -2960,11 +3195,11 @@ def _build_master_cv_pdf(profile: Dict, experiences: list, education: list, volu
     # -- Contact line --
     contact_parts = []
     if profile.get("email"):
-        contact_parts.append(profile["email"])
+        contact_parts.append(_safe_pdf_text(profile["email"]))
     if profile.get("phone"):
-        contact_parts.append(profile["phone"])
+        contact_parts.append(_safe_pdf_text(profile["phone"]))
     if profile.get("location"):
-        contact_parts.append(profile["location"])
+        contact_parts.append(_safe_pdf_text(profile["location"]))
     if contact_parts:
         pdf.set_font("Helvetica", "", 10)
         pdf.set_text_color(80, 80, 80)
@@ -2987,7 +3222,7 @@ def _build_master_cv_pdf(profile: Dict, experiences: list, education: list, volu
         extras.append("Korkort: Ja")
     langs = profile.get("languages") or []
     if langs:
-        extras.append("Sprak: " + ", ".join(langs))
+        extras.append("Sprak: " + ", ".join(_safe_pdf_text(l) for l in langs))
     if extras:
         pdf.set_font("Helvetica", "", 9)
         pdf.set_text_color(100, 100, 100)
@@ -3003,16 +3238,14 @@ def _build_master_cv_pdf(profile: Dict, experiences: list, education: list, volu
     def section_heading(title: str):
         pdf.set_font("Helvetica", "B", 13)
         pdf.set_text_color(40, 40, 40)
-        pdf.cell(0, 8, title, new_x="LMARGIN", new_y="NEXT")
+        pdf.cell(0, 8, _safe_pdf_text(title), new_x="LMARGIN", new_y="NEXT")
         pdf.set_draw_color(60, 130, 200)
         pdf.line(10, pdf.get_y(), 70, pdf.get_y())
         pdf.ln(3)
 
     def safe_text(text):
-        """Clean text for PDF output."""
-        if not text:
-            return ""
-        return str(text)
+        """Clean text for PDF output — Latin-1 safe."""
+        return _safe_pdf_text(text)
 
     # -- Experiences --
     if experiences:
@@ -3082,7 +3315,7 @@ def _build_master_cv_pdf(profile: Dict, experiences: list, education: list, volu
         for proj in projects:
             pdf.set_font("Helvetica", "B", 11)
             pdf.set_text_color(30, 30, 30)
-            pname = safe_text(proj.get("name") or proj.get("title", ""))
+            pname = safe_text(proj.get("project_name") or proj.get("name") or proj.get("title", ""))
             pdf.cell(0, 6, pname, new_x="LMARGIN", new_y="NEXT")
             desc = safe_text(proj.get("description", ""))
             if desc:
@@ -3118,7 +3351,7 @@ def _build_master_cv_pdf(profile: Dict, experiences: list, education: list, volu
         pdf.set_font("Helvetica", "", 10)
         pdf.set_text_color(60, 60, 60)
         for cert in certifications:
-            cname = safe_text(cert.get("name") or cert.get("cert_name") or cert.get("title", ""))
+            cname = safe_text(cert.get("certification_name") or cert.get("name") or cert.get("title", ""))
             if cname:
                 pdf.cell(5)
                 pdf.cell(0, 5, f"• {cname}", new_x="LMARGIN", new_y="NEXT")
@@ -3311,22 +3544,34 @@ async def qualification_check(job_id: str, request: Request):
     else:
         job = jobs[0]
 
-    # Get user profile + CV summary
+    # Get user profile + CV summary + education
     user_profile = None
     cv_summary = ""
+    edu_summary = ""
     if user_id:
         profiles = await db_request("GET", "user_profiles", params={"user_id": f"eq.{user_id}"})
         user_profile = profiles[0] if profiles else None
 
-        # Get master CV experiences for a quick summary
+        # Get ALL master CV experiences (not just 8 — user might have care experience further down)
         experiences = await db_request("GET", "user_experiences", params={
             "user_id": f"eq.{user_id}",
             "select": "title,company,categories",
-            "order": "sort_order.asc",
-            "limit": "8"
+            "order": "sort_order.asc"
         })
         if experiences:
             cv_summary = ", ".join([f"{e.get('title', '')} ({e.get('company', '')})" for e in experiences])
+
+        # Get actual education (not hardcoded "Gymnasium")
+        education = await db_request("GET", "user_education", params={
+            "user_id": f"eq.{user_id}",
+            "select": "school_name,degree,field_of_study",
+            "order": "start_date.desc"
+        })
+        if education:
+            edu_summary = ", ".join([
+                f"{e.get('degree', '')} {e.get('field_of_study', '')} ({e.get('school_name', '')})"
+                for e in education
+            ])
 
     job_title = job.get("title", "")
     job_desc = job.get("description", "")[:2000]  # Keep prompt small
@@ -3335,9 +3580,9 @@ async def qualification_check(job_id: str, request: Request):
         profile_info = f"""
 Användarens profil:
 - Namn: {user_profile.get('full_name', 'Okänt')}
-- Utbildning: Gymnasium
+- Utbildning: {edu_summary or 'Ej angivet'}
 - Körkort: {'Ja' if user_profile.get('drivers_license') else 'Nej'}
-- Erfarenhet: {cv_summary or 'Kundtjänst, butik, restaurang, café'}
+- Erfarenhet: {cv_summary or 'Ej angivet'}
 """
 
     prompt = f"""Analysera om denna jobbsökare verkar kvalificerad för jobbet nedan.
@@ -3493,6 +3738,19 @@ async def apply_with_cv(request: Request, job_id: str):
     sender_name = user_profile.get("full_name", "Linnea Moritz") if user_profile else "Linnea Moritz"
     subject = f"Ansökan: {job_title} – {sender_name}"
 
+    # Check if CV PDF exists on disk for matched bransch
+    cv_exists = get_cv_pdf_exists(best_bransch)
+    fallback = None
+    if not cv_exists:
+        fb = get_fallback_bransch(best_bransch)
+        bransch_names = {b["id"]: b["name"] for b in CV_BRANSCHER}
+        fallback = {
+            "bransch": fb,
+            "cv_filename": get_cv_pdf_filename(fb),
+            "bransch_name": bransch_names.get(fb, fb),
+            "original_bransch_name": bransch_names.get(best_bransch, best_bransch),
+        }
+
     return {
         "success": True,
         "application_saved": application_saved,
@@ -3505,6 +3763,8 @@ async def apply_with_cv(request: Request, job_id: str):
         },
         "matched_bransch": best_bransch,
         "cv_filename": get_cv_pdf_filename(best_bransch),
+        "cv_pdf_exists": cv_exists,
+        "fallback": fallback,
         "cv": cv,
         "cover_letter": cover_letter,
         "draft_created": False,
@@ -3807,6 +4067,7 @@ async def save_gmail_draft_with_attachments(request: Request, job_id: str):
     except Exception:
         body = {}
 
+    import asyncio as _asyncio
     cover_letter_text = body.get("cover_letter", "")
     bransch = body.get("bransch", "customerservice")
     job = body.get("job", {})
@@ -3866,11 +4127,49 @@ async def save_gmail_draft_with_attachments(request: Request, job_id: str):
     except Exception as e:
         logger.error(f"Cover letter PDF generation failed: {e}")
 
-    # 2. Matching CV PDF
+    # 2. Matching CV PDF — try disk file first, then generate from DB bransch-CV
     cv_pdf_bytes = get_cv_pdf_bytes(bransch)
+    cv_filename_used = get_cv_pdf_filename(bransch)
+    cv_source = "file"
+
+    if not cv_pdf_bytes:
+        # No PDF on disk — try to build one from the user's bransch-CV in database
+        logger.info(f"No CV PDF on disk for bransch '{bransch}', trying dynamic generation from DB")
+        try:
+            bransch_cv = await db_request("GET", "user_cvs", params={
+                "user_id": f"eq.{user_id}",
+                "vibe_id": f"eq.{bransch}",
+                "select": "cv_text"
+            })
+            if bransch_cv and bransch_cv[0].get("cv_text"):
+                # Build PDF from master CV data (full professional layout)
+                profiles_data, exp_data, edu_data, vol_data, awards_data, skills_data, proj_data, cert_data = await _asyncio.gather(
+                    db_request("GET", "user_profiles", params={"user_id": f"eq.{user_id}"}),
+                    db_request("GET", "user_experiences", params={"user_id": f"eq.{user_id}", "order": "sort_order.asc"}),
+                    db_request("GET", "user_education", params={"user_id": f"eq.{user_id}", "order": "sort_order.asc"}),
+                    db_request("GET", "user_volunteer", params={"user_id": f"eq.{user_id}", "order": "sort_order.asc"}),
+                    db_request("GET", "user_awards", params={"user_id": f"eq.{user_id}", "order": "sort_order.asc"}),
+                    db_request("GET", "user_skills", params={"user_id": f"eq.{user_id}"}),
+                    db_request("GET", "tech_projects", params={"user_id": f"eq.{user_id}", "order": "sort_order.asc"}),
+                    db_request("GET", "user_certifications", params={"user_id": f"eq.{user_id}", "order": "sort_order.asc"})
+                )
+                cv_pdf_bytes = _build_master_cv_pdf(
+                    profiles_data[0] if profiles_data else {},
+                    exp_data or [], edu_data or [], vol_data or [],
+                    awards_data or [], skills_data or [], proj_data or [], cert_data or []
+                )
+                name_clean = sender_name.replace(' ', '_')
+                bransch_label = next((b["name"] for b in CV_BRANSCHER if b["id"] == bransch), bransch)
+                bransch_clean = re.sub(r'[^\w\s]', '', bransch_label).strip().replace(' ', '_')
+                cv_filename_used = f"CV_{name_clean}_{bransch_clean}.pdf"
+                cv_source = "generated"
+                logger.info(f"Generated CV PDF dynamically for bransch '{bransch}'")
+        except Exception as e:
+            logger.warning(f"Dynamic CV PDF generation failed for '{bransch}': {e}")
+
     if cv_pdf_bytes:
         attachments.append({
-            "filename": get_cv_pdf_filename(bransch),
+            "filename": cv_filename_used,
             "data": cv_pdf_bytes
         })
 
@@ -3884,7 +4183,8 @@ async def save_gmail_draft_with_attachments(request: Request, job_id: str):
     return {
         "success": True,
         "draft_id": draft_id,
-        "cv_filename": get_cv_pdf_filename(bransch),
+        "cv_filename": cv_filename_used,
+        "cv_source": cv_source,
         "attachments_count": len(attachments)
     }
 
@@ -6399,6 +6699,9 @@ async def enhance_master_cv_from_upload(request: Request):
     existing_certifications = await db_request("GET", "user_certifications", params={
         "user_id": f"eq.{user_id}", "order": "sort_order.asc"
     }) or []
+    existing_awards = await db_request("GET", "user_awards", params={
+        "user_id": f"eq.{user_id}", "order": "sort_order.asc"
+    }) or []
 
     # Build context of what already exists
     existing_summary = "BEFINTLIGA ERFARENHETER I MASTER CV:\n"
@@ -6409,7 +6712,11 @@ async def enhance_master_cv_from_upload(request: Request):
         existing_summary += f"- ID:{edu.get('id')} | {edu.get('school')} | {edu.get('degree')} | {edu.get('start_date')}-{edu.get('end_date','')}\n"
     existing_summary += "\nBEFINTLIGT VOLONTÄRARBETE:\n"
     for vol in existing_volunteer:
-        existing_summary += f"- ID:{vol.get('id')} | {vol.get('organization')} | {vol.get('dates','')} | {(vol.get('description') or '')[:80]}\n"
+        vol_desc = vol.get('description') or ''
+        vol_bullets = vol.get('bullets') or []
+        vol_text = vol_desc if vol_desc else '. '.join(vol_bullets) if vol_bullets else ''
+        has_desc = "✅" if vol_text.strip() else "❌ SAKNAR DESCRIPTION"
+        existing_summary += f"- ID:{vol.get('id')} | {vol.get('organization')} | {vol.get('title', '')} | {vol.get('dates','')} | {has_desc} | {vol_text[:120]}\n"
     if not existing_volunteer:
         existing_summary += "- (inga poster)\n"
     existing_summary += "\nBEFINTLIGA PROJEKT:\n"
@@ -6422,8 +6729,17 @@ async def enhance_master_cv_from_upload(request: Request):
     existing_summary += ", ".join(skill_texts) if skill_texts else "(inga)"
     existing_summary += "\n\nBEFINTLIGA CERTIFIERINGAR:\n"
     for cert in existing_certifications:
-        existing_summary += f"- ID:{cert.get('id')} | {cert.get('name') or cert.get('cert_name','')}\n"
+        cert_desc = cert.get('description') or ''
+        has_desc = "✅" if cert_desc.strip() else "❌ SAKNAR DESCRIPTION"
+        existing_summary += f"- ID:{cert.get('id')} | {cert.get('certification_name', '')} | Utfärdare: {cert.get('issuing_organization', '')} | {has_desc} | {cert_desc[:80]}\n"
     if not existing_certifications:
+        existing_summary += "- (inga poster)\n"
+    existing_summary += "\nBEFINTLIGA UTMÄRKELSER/AWARDS:\n"
+    for award in existing_awards:
+        award_desc = award.get('description') or ''
+        has_desc = "✅" if award_desc.strip() else "❌ SAKNAR DESCRIPTION"
+        existing_summary += f"- ID:{award.get('id')} | {award.get('award_text', '')} | {has_desc} | {award_desc[:80]}\n"
+    if not existing_awards:
         existing_summary += "- (inga poster)\n"
 
     if not ANTHROPIC_API_KEY:
@@ -6438,7 +6754,8 @@ UPPGIFT: Analysera ALLA sektioner i det nya dokumentet och jämför med mina bef
 - Volontärarbete / ideellt arbete
 - Projekt (tech-projekt, sidoprojekt, portföljprojekt)
 - Kompetenser / skills (tekniska, språk, certifikat)
-- Certifieringar
+- Certifieringar (körkort, kassahantering, första hjälpen, etc.)
+- Utmärkelser / Awards (priser, stipendier, utmärkelser)
 
 FÖR VARJE SEKTION:
 1. Hitta NYA poster som INTE redan finns → skapa dem
@@ -6465,29 +6782,54 @@ Svara i EXAKT detta JSON-format (inga kommentarer, bara ren JSON):
         {{"id": "befintligt-uuid", "degree": "förbättrad examen text", "field_of_study": "inriktning"}}
     ],
     "new_volunteer": [
-        {{"organization": "...", "dates": "...", "description": "..."}}
+        {{"organization": "...", "title": "...", "dates": "...", "description": "..."}}
+    ],
+    "updated_volunteer": [
+        {{"id": "befintligt-uuid", "title": "roll/titel", "description": "förbättrad beskrivning"}}
     ],
     "new_projects": [
         {{"name": "...", "description": "...", "tech_stack": "...", "url": ""}}
+    ],
+    "updated_projects": [
+        {{"id": "befintligt-uuid", "description": "förbättrad beskrivning", "tech_stack": "uppdaterad"}}
     ],
     "new_skills": [
         {{"skill_text": "...", "skill_type": "technical|language|certificate", "category": "all"}}
     ],
     "new_certifications": [
-        {{"name": "...", "issuer": "...", "date": ""}}
+        {{"certification_name": "...", "issuing_organization": "...", "issue_date": "", "description": ""}}
+    ],
+    "updated_certifications": [
+        {{"id": "befintligt-uuid", "description": "förbättrad beskrivning"}}
+    ],
+    "new_awards": [
+        {{"award_text": "...", "description": ""}}
+    ],
+    "updated_awards": [
+        {{"id": "befintligt-uuid", "award_text": "förbättrad text", "description": "förbättrad beskrivning"}}
     ],
     "summary": "Kort sammanfattning av vad som ändrades"
 }}
 
 VIKTIGT:
-- Analysera HELA dokumentet — missa inte volontärarbete, projekt, kompetenser eller certifieringar
+- Analysera HELA dokumentet — missa inte volontärarbete, projekt, kompetenser, certifieringar eller utmärkelser/awards
 - Bara inkludera poster som verkligen behöver skapas eller uppdateras
 - Om inget behöver ändras i en sektion, returnera tom array för den
-- Kategorier för erfarenheter: restaurant, retail, tech, healthcare, customerservice, contentmoderation, industri, art, marketing, education, reception
+- Kategorier för erfarenheter: restaurant, retail, tech, healthcare, customerservice, content, industry, art, hotel
 - skill_type: "technical" (programmeringsspråk, verktyg), "language" (svenska, engelska), "certificate" (körkort, etc.)
 - Datum i format "Aug 2024" eller "2024"
 - Beskrivningar på svenska, korta och informativa
-- Dubblera INTE kompetenser som redan finns i listan"""
+- Dubblera INTE kompetenser som redan finns i listan
+- Certifieringar: använd certification_name (inte name), issuing_organization (inte issuer), issue_date (inte date)
+- Awards/utmärkelser: award_text = hela texten (t.ex. "1:a pris Stockholms Konstsalong 2024"), description = valfri bakgrund
+
+KRITISKT — BESKRIVNINGAR ÄR OBLIGATORISKA:
+- VARJE volontärpost MÅSTE ha en description — beskriv vad personen gjorde, vilka uppgifter, vad de lärde sig (2-3 meningar)
+- VARJE award/utmärkelse MÅSTE ha en description — förklara sammanhanget, varför det är imponerande, vad det innebar
+- VARJE certifiering MÅSTE ha en description — beskriv vad certifieringen innebär, hur den är relevant
+- VARJE projekt MÅSTE ha en description — beskriv projektets syfte, teknologier, resultat
+- Om det nya CV-dokumentet inte ger detaljer, skriv en rimlig kort beskrivning baserat på titeln/organisationen
+- Uppdatera ÄVEN befintliga poster som har tom/saknad description — lägg till description via updated_volunteer, updated_awards, updated_certifications"""
 
     try:
         async with httpx.AsyncClient() as client:
@@ -6500,7 +6842,7 @@ VIKTIGT:
                 },
                 json={
                     "model": "claude-sonnet-4-5-20250929",
-                    "max_tokens": 3000,
+                    "max_tokens": 4096,
                     "messages": [{"role": "user", "content": prompt}]
                 },
                 timeout=55
@@ -6623,20 +6965,49 @@ VIKTIGT:
     # Create new volunteer entries
     for vol in changes.get("new_volunteer", []):
         try:
-            bullets = []
             desc = vol.get("description", "")
-            if desc:
-                bullets = [s.strip() for s in desc.split(".") if s.strip()]
+            bullets = [s.strip() for s in desc.split(".") if s.strip()] if desc else []
             await db_request("POST", "user_volunteer", data={
                 "user_id": user_id,
                 "organization": vol.get("organization", ""),
+                "title": vol.get("title", ""),
                 "dates": vol.get("dates", ""),
+                "description": desc,
                 "bullets": bullets,
                 "sort_order": len(existing_volunteer) + added
             })
             added += 1
         except Exception as e:
             logger.warning(f"Failed to add volunteer: {e}")
+
+    # Update existing volunteer entries
+    for vol in changes.get("updated_volunteer", []):
+        vol_id = vol.get("id")
+        if not vol_id:
+            continue
+        update_data = {}
+        desc = vol.get("description")
+        if desc:
+            update_data["description"] = desc
+            update_data["bullets"] = [s.strip() for s in desc.split(".") if s.strip()]
+        for field in ["organization", "title", "dates"]:
+            if vol.get(field):
+                update_data[field] = vol[field]
+        if update_data:
+            try:
+                async with httpx.AsyncClient() as client:
+                    await client.patch(
+                        f"{SUPABASE_URL}/rest/v1/user_volunteer?id=eq.{vol_id}&user_id=eq.{user_id}",
+                        headers={
+                            "apikey": SUPABASE_KEY,
+                            "Authorization": f"Bearer {SUPABASE_KEY}",
+                            "Content-Type": "application/json"
+                        },
+                        json=update_data
+                    )
+                updated += 1
+            except Exception as e:
+                logger.warning(f"Failed to update volunteer {vol_id}: {e}")
 
     # Create new projects
     for proj in changes.get("new_projects", []):
@@ -6652,6 +7023,31 @@ VIKTIGT:
             added += 1
         except Exception as e:
             logger.warning(f"Failed to add project: {e}")
+
+    # Update existing projects
+    for proj in changes.get("updated_projects", []):
+        proj_id = proj.get("id")
+        if not proj_id:
+            continue
+        update_data = {}
+        for field in ["name", "description", "tech_stack", "url"]:
+            if proj.get(field):
+                update_data[field] = proj[field]
+        if update_data:
+            try:
+                async with httpx.AsyncClient() as client:
+                    await client.patch(
+                        f"{SUPABASE_URL}/rest/v1/tech_projects?id=eq.{proj_id}&user_id=eq.{user_id}",
+                        headers={
+                            "apikey": SUPABASE_KEY,
+                            "Authorization": f"Bearer {SUPABASE_KEY}",
+                            "Content-Type": "application/json"
+                        },
+                        json=update_data
+                    )
+                updated += 1
+            except Exception as e:
+                logger.warning(f"Failed to update project {proj_id}: {e}")
 
     # Create new skills (skip duplicates)
     existing_skill_texts = {s.get("skill_text", "").lower() for s in existing_skills}
@@ -6673,18 +7069,84 @@ VIKTIGT:
     # Create new certifications
     for cert in changes.get("new_certifications", []):
         try:
-            cert_name = cert.get("name", "").strip()
+            cert_name = (cert.get("certification_name") or cert.get("name", "")).strip()
             if cert_name:
                 await db_request("POST", "user_certifications", data={
                     "user_id": user_id,
-                    "name": cert_name,
-                    "issuer": cert.get("issuer", ""),
-                    "date": cert.get("date", ""),
+                    "certification_name": cert_name,
+                    "issuing_organization": cert.get("issuing_organization") or cert.get("issuer", ""),
+                    "description": cert.get("description", ""),
+                    "issue_date": cert.get("issue_date") or cert.get("date", ""),
                     "sort_order": len(existing_certifications) + added
                 })
                 added += 1
         except Exception as e:
             logger.warning(f"Failed to add certification: {e}")
+
+    # Update existing certifications
+    for cert in changes.get("updated_certifications", []):
+        cert_id = cert.get("id")
+        if not cert_id:
+            continue
+        update_data = {}
+        for field in ["certification_name", "issuing_organization", "description", "issue_date", "expiry_date"]:
+            if cert.get(field):
+                update_data[field] = cert[field]
+        if update_data:
+            try:
+                async with httpx.AsyncClient() as client:
+                    await client.patch(
+                        f"{SUPABASE_URL}/rest/v1/user_certifications?id=eq.{cert_id}&user_id=eq.{user_id}",
+                        headers={
+                            "apikey": SUPABASE_KEY,
+                            "Authorization": f"Bearer {SUPABASE_KEY}",
+                            "Content-Type": "application/json"
+                        },
+                        json=update_data
+                    )
+                updated += 1
+            except Exception as e:
+                logger.warning(f"Failed to update certification {cert_id}: {e}")
+
+    # Create new awards
+    for award in changes.get("new_awards", []):
+        try:
+            award_text = (award.get("award_text", "")).strip()
+            if award_text:
+                await db_request("POST", "user_awards", data={
+                    "user_id": user_id,
+                    "award_text": award_text,
+                    "description": award.get("description", ""),
+                    "sort_order": len(existing_awards) + added
+                })
+                added += 1
+        except Exception as e:
+            logger.warning(f"Failed to add award: {e}")
+
+    # Update existing awards
+    for award in changes.get("updated_awards", []):
+        award_id = award.get("id")
+        if not award_id:
+            continue
+        update_data = {}
+        for field in ["award_text", "description"]:
+            if award.get(field):
+                update_data[field] = award[field]
+        if update_data:
+            try:
+                async with httpx.AsyncClient() as client:
+                    await client.patch(
+                        f"{SUPABASE_URL}/rest/v1/user_awards?id=eq.{award_id}&user_id=eq.{user_id}",
+                        headers={
+                            "apikey": SUPABASE_KEY,
+                            "Authorization": f"Bearer {SUPABASE_KEY}",
+                            "Content-Type": "application/json"
+                        },
+                        json=update_data
+                    )
+                updated += 1
+            except Exception as e:
+                logger.warning(f"Failed to update award {award_id}: {e}")
 
     return {
         "success": True,
@@ -6758,7 +7220,11 @@ async def enhance_chat(request: Request):
 
         lines.append("\n=== VOLONTÄRARBETE ===")
         for vol in volunteer:
-            lines.append(f"[ID:{vol.get('id')}] {vol.get('organization','')} | {vol.get('dates','')} | {vol.get('bullets',[])}")
+            vol_desc = vol.get('description') or ''
+            vol_title = vol.get('title') or ''
+            vol_bullets = vol.get('bullets') or []
+            has_desc = "✅" if vol_desc.strip() else "❌ SAKNAR DESCRIPTION"
+            lines.append(f"[ID:{vol.get('id')}] {vol.get('organization','')} | Titel: {vol_title} | {vol.get('dates','')} | {has_desc} | Beskrivning: {vol_desc[:150]} | Bullets: {vol_bullets}")
         if not volunteer:
             lines.append("(inga)")
 
@@ -6770,13 +7236,20 @@ async def enhance_chat(request: Request):
 
         lines.append("\n=== UTMÄRKELSER ===")
         for a in awards:
-            lines.append(f"[ID:{a.get('id')}] {a.get('award_text','')}")
+            a_desc = a.get('description') or ''
+            has_desc = "✅" if a_desc.strip() else "❌ SAKNAR DESCRIPTION"
+            lines.append(f"[ID:{a.get('id')}] {a.get('award_text','')} | {has_desc} | Beskrivning: {a_desc[:150]}")
         if not awards:
             lines.append("(inga)")
 
         lines.append("\n=== CERTIFIERINGAR ===")
         for c in certifications:
-            lines.append(f"[ID:{c.get('id')}] {c.get('name', c.get('cert_name',''))}")
+            c_name = c.get('certification_name') or c.get('name') or ''
+            c_org = c.get('issuing_organization') or c.get('issuer') or ''
+            c_desc = c.get('description') or ''
+            c_date = c.get('issue_date') or ''
+            has_desc = "✅" if c_desc.strip() else "❌ SAKNAR DESCRIPTION"
+            lines.append(f"[ID:{c.get('id')}] {c_name} | Utfärdare: {c_org} | Datum: {c_date} | {has_desc} | Beskrivning: {c_desc[:150]}")
         if not certifications:
             lines.append("(inga)")
 
@@ -6803,7 +7276,10 @@ FORMAT FÖR ÄNDRINGAR — lägg JSON-blocket i slutet av ditt svar, inuti ```ac
 [
   {{"action": "update", "table": "user_experiences", "id": "uuid-här", "data": {{"description": "ny text", "categories": ["tech", "customerservice"]}}}},
   {{"action": "update", "table": "tech_projects", "id": "uuid-här", "data": {{"name": "nytt namn", "description": "ny beskrivning"}}}},
-  {{"action": "create", "table": "user_volunteer", "data": {{"organization": "...", "dates": "...", "bullets": ["..."]}}}},
+  {{"action": "create", "table": "user_volunteer", "data": {{"organization": "...", "title": "...", "dates": "...", "description": "vad personen gjorde", "bullets": ["..."]}}}},
+  {{"action": "update", "table": "user_volunteer", "id": "uuid-här", "data": {{"description": "ny beskrivning", "title": "uppdaterad titel"}}}},
+  {{"action": "update", "table": "user_awards", "id": "uuid-här", "data": {{"description": "bakgrund/kontext för utmärkelsen"}}}},
+  {{"action": "update", "table": "user_certifications", "id": "uuid-här", "data": {{"description": "vad certifieringen innebär", "certification_name": "rätt namn"}}}},
   {{"action": "create", "table": "user_skills", "data": {{"skill_text": "Python", "skill_type": "technical", "category": "tech"}}}},
   {{"action": "delete", "table": "user_skills", "id": "uuid-här"}}
 ]
@@ -6813,17 +7289,20 @@ TABELLER DU KAN ÄNDRA:
 - user_experiences: company, title, location, start_date, end_date, description, categories (array)
 - user_education: school, degree, field_of_study, location, start_date, end_date
 - tech_projects: name, description, tech_stack, url
-- user_volunteer: organization, dates, bullets (array)
+- user_volunteer: organization, title, dates, description, bullets (array)
 - user_skills: skill_text, skill_type (technical/language/certificate), category
-- user_awards: award_text
-- user_certifications: name, issuer, date
+- user_awards: award_text, description
+- user_certifications: certification_name, issuing_organization, issue_date, expiry_date, description
 
 REGLER:
 - Om användaren ber dig ändra något — GÖR DET DIREKT. Inkludera actions-blocket i ditt svar.
 - Fråga ALDRIG om saker som redan framgår av konversationen eller det uppladdade CVt
 - Om användaren säger "läs CVt jag laddade upp" — informationen finns redan i SENASTE ÄNDRINGAR ovan
 - Var kort och konkret — ingen inställsam AI-ton, inga emojis
-- Skriv naturlig svenska"""
+- Skriv naturlig svenska
+- Poster markerade med ❌ SAKNAR DESCRIPTION behöver ALLTID en description — påpeka det för användaren och erbjud att fylla i
+- För certifieringar: använd ALLTID fältnamnet certification_name (INTE name), issuing_organization (INTE issuer), issue_date (INTE date)
+- VARJE volontärpost, award och certifiering BÖR ha en description — det är viktigt för CV-generering"""
 
     # Build Claude messages from conversation history
     messages = []
@@ -7878,19 +8357,23 @@ Analysera vad användaren menar. Det kan vara:
 - Grammatikfel de vill undvika
 - Saker de VILL att AI nämner
 - Generella tankar om hur brevet ska låta
+- Typ av jobb de INTE vill ha (t.ex. "vill inte jobba med militären", "inga polisjobb")
 
 Svara EXAKT i detta JSON-format (inget annat):
 {{
   "summary": "Kort sammanfattning på svenska av vad användaren vill (1-2 meningar)",
   "avoid_phrases": ["fras1", "fras2"],
   "like_phrases": ["fras1"],
-  "feedback_type": "cover_letter"
+  "feedback_type": "cover_letter eller exclude_jobs",
+  "exclude_keywords": ["nyckelord1", "nyckelord2"]
 }}
 
 Regler:
 - "summary" ska vara tydlig och kort, på svenska
-- "avoid_phrases" = specifika ord/fraser användaren inte vill ha (kan vara tom lista)
-- "like_phrases" = specifika ord/fraser användaren vill ha (kan vara tom lista)
+- "avoid_phrases" = specifika ord/fraser användaren inte vill ha i brev (kan vara tom lista)
+- "like_phrases" = specifika ord/fraser användaren vill ha i brev (kan vara tom lista)
+- "feedback_type" = "exclude_jobs" om användaren vill UNDVIKA en typ av jobb/arbetsgivare/bransch. Annars "cover_letter"
+- "exclude_keywords" = nyckelord för jobbtyper att filtrera bort (t.ex. om de skriver "vill inte jobba på militären" → ["militär"]). Tom lista om det inte handlar om jobbexkludering.
 - Om användaren bara ger en generell tanke, lägg den i summary och lämna listorna tomma
 - Svara BARA med JSON, ingen annan text"""
 
@@ -7923,16 +8406,37 @@ Regler:
     summary = parsed.get("summary", body.text.strip())
     avoid_phrases = parsed.get("avoid_phrases", [])
     like_phrases = parsed.get("like_phrases", [])
+    feedback_type = parsed.get("feedback_type", "cover_letter")
+    exclude_keywords = parsed.get("exclude_keywords", [])
 
     # Save the structured feedback to user_ai_feedback
     feedback_data = {
         "user_id": user_id,
         "feedback_text": summary,
-        "feedback_type": "cover_letter",
+        "feedback_type": feedback_type,
         "is_active": True,
         "created_at": datetime.now().isoformat()
     }
     await db_request("POST", "user_ai_feedback", data=feedback_data)
+
+    # If user wants to exclude job types, write keywords to user_job_preferences.excluded_keywords
+    if feedback_type == "exclude_jobs" and exclude_keywords:
+        try:
+            existing_prefs = await db_request("GET", "user_job_preferences", params={
+                "user_id": f"eq.{user_id}",
+                "select": "excluded_keywords"
+            })
+            current_excluded = []
+            if existing_prefs:
+                current_excluded = existing_prefs[0].get("excluded_keywords") or []
+            # Merge new keywords (deduplicate, lowercase)
+            merged = list(set([kw.lower() for kw in current_excluded] + [kw.lower() for kw in exclude_keywords]))
+            await db_request("PATCH", "user_job_preferences", params={
+                "user_id": f"eq.{user_id}"
+            }, data={"excluded_keywords": merged, "updated_at": datetime.now().isoformat()})
+            logger.info(f"Updated excluded_keywords for user {user_id[:8]}: {merged}")
+        except Exception as e:
+            logger.warning(f"Failed to update excluded_keywords from feedback: {e}")
 
     # Also update avoid_phrases and like_phrases in user_cover_letter_preferences
     if avoid_phrases or like_phrases:
@@ -7971,7 +8475,9 @@ Regler:
         "success": True,
         "summary": summary,
         "avoid_phrases": avoid_phrases,
-        "like_phrases": like_phrases
+        "like_phrases": like_phrases,
+        "feedback_type": feedback_type,
+        "exclude_keywords": exclude_keywords
     }
 
 
@@ -8316,8 +8822,8 @@ async def upload_cv(bransch_id: str, request: Request):
             "tech": "Tech & Kontor",
             "healthcare": "Vard & Omsorg",
             "industry": "Tradgard & Industri",
-            "reception": "Hotell & Reception",
-            "contentmoderation": "Content & Moderation"
+            "hotel": "Hotell & Reception",
+            "content": "Content & Moderation"
         }
 
         await db_request(

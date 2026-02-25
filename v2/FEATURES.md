@@ -1,6 +1,6 @@
 # Platsbanken-ai — Funktioner & UX per sida
 
-> Uppdaterad: 24 feb 2026 (v2.1 — bugfixar + nya features)
+> Uppdaterad: 24 feb 2026 (v2.5 — kvalifikationskontroll fixad, Q&A-dokumentation, statusmarkeringar för halvbyggda features)
 
 AI-driven jobbportal för neurodivergenta jobbsökare i Sverige. Skrapar Platsbanken, genererar personliga brev via Claude, skapar Gmail-utkast med bransch-CV.
 
@@ -26,6 +26,7 @@ Besökare som inte är inloggade ser en marknadsföringssida med tre flikar:
 ### Priser
 - Prisnivåer och planer
 - FAQ-sektion
+- **⚠️ PLACEHOLDER** — ingen riktig prismodell eller betalningssystem finns. Needs a decision: freemium, subscription, pay-per-use?
 
 **Supabase-koppling:** Ingen — statisk sida.
 
@@ -84,6 +85,12 @@ Separat HTML-fil (`v2/login.html`). Två flikar: **Logga in** / **Skapa konto**.
 
 Visar jobb som skrapats från Platsbanken och som har **kontakt-e-post** (= kan sökas via Gmail).
 
+### Platsbanken-scraping
+- **Triggas manuellt** — användaren klickar "Sök nya jobb"-knappen (`POST /api/scrape`)
+- **Triggas automatiskt** efter onboarding-quiz (en gång)
+- **Ingen cron/schema** — ingen automatisk scraping i bakgrunden. **Ska byggas ut i framtiden?** Needs a decision: daglig cron, scrape vid login, eller manuellt för alltid?
+- **Volym per scrape**: upp till 5 sökord × 15 jobb + 2 breda sökningar × 20 jobb = ~95 jobb, deduplicerade på jobb-ID
+
 ### Toppsektion
 - **Sökfält** — filtrerar på titel, företag, plats (klientside)
 - **Prioritetsfilter** — dropdown: Alla / Akut / Snart / Normal
@@ -93,7 +100,7 @@ Visar jobb som skrapats från Platsbanken och som har **kontakt-e-post** (= kan 
 ### Jobbkort (12 per sida, grid-layout)
 Varje kort visar:
 - **Prioritetsbadge** — ⚡ Akut (röd) / ⏰ Snart (amber) / ✓ Normal
-- **📌 Spara-knapp** — bokmärker jobbet
+- **📌 Spara-knapp** — sparar jobbet i DB (`POST /api/jobs/{id}/save` → `applications`-tabellen med `status=saved`). Inte localStorage — kräver inloggning. Unsave via `DELETE /api/jobs/{id}/save`.
 - **Deadline** — datum + färgkodad badge
 - **Jobbtitel**, **Företagsnamn**, **Ort**
 - **Kontakt-epost** (grön badge)
@@ -101,8 +108,14 @@ Varje kort visar:
 - **↗ Extern länk** — öppnar originalannonsen på Platsbanken
 
 ### Ansökningsmodal (öppnas vid "✨ Ansök")
-1. AI genererar personligt brev via `POST /api/jobs/{id}/apply-with-cv`
-2. **Kvalifikationsvarning** — om Haiku bedömer att du inte matchar visas varning INNAN credits används
+1. **Kvalifikationsvarning** — Haiku (billig + snabb modell) gör en snabbkontroll mot dina erfarenheter + utbildning. Om `qualified=false` visas varning med tre val:
+   - **"Jag vill söka ändå"** — struntar i varningen, genererar brev som vanligt
+   - **"Hoppa över"** — stänger modalen
+   - **"Hoppa över + filtrera bort liknande"** — lägger till föreslagna negativa sökord
+   - **Varningen är bara rådgivande** — användaren kan ALLTID söka ändå. Om Haiku-API:t misslyckas → `qualified=true` (fail open).
+   - **"Credit"** = en Claude API-anrop. Att generera ett brev kostar ~1 Sonnet-anrop. Kvalifikationskontrollen kostar ~1 Haiku-anrop (mycket billigare). Det finns inget credit-saldo i appen — det är en kostnadssignal till appägaren. **Ska byggas ut i framtiden?** Needs a decision: per-user credit-system, flat monthly fee, eller obegränsat?
+2. AI genererar personligt brev via `POST /api/jobs/{id}/apply-with-cv`
+   - **Status sätts direkt till `sent`** + `sent_at` sätts till nu. Ansökan syns direkt i Ansökningar-fliken.
 3. Brevet visas i redigerbar textarea
 4. **Erfarenhets-chips** (gröna) — erfarenheter som nämns i brevet. Klicka bort/i och omgenerera
 5. **Utbildnings-chips** (gröna) + **Anekdot-chips** (amber) — samma logik
@@ -118,8 +131,8 @@ Varje kort visar:
       2. Brödtext: personligt brev
       3. Bilaga 1: Personligt brev som PDF
       4. Bilaga 2: Rätt bransch-CV som PDF
-    - **"Markera skickad"** — ändrar status till "sent"
-    - **CV-badge** — visar vilken bransch som matchades
+    - **"Markera skickad"** — sätter `status=sent` + `sent_at`. Redundant om man redan klickat "Ansök" (som redan sätter sent). Finns mest för manuella flöden där man sparar jobb först och ansöker utanför appen.
+    - **CV-badge** — visar vilken bransch som matchades. Om inget bransch-CV matchar jobbet faller det tillbaka till **"customerservice"** (kundtjänst) som default. **Needs a decision:** är customerservice rätt fallback för alla användare, eller borde det vara konfigurerbart?
 
 **Supabase-koppling:**
 
@@ -150,10 +163,13 @@ Tvådelad: jobblista till vänster, detaljer till höger.
 1. **Beskrivning** — full jobbannons, utfällbar
 2. **Brev** — generera personligt brev (samma flöde som Jobb-modalen)
 3. **Q&A** — ställ frågor om jobbet → `POST /api/jobs/{id}/answer-question`
+   - AI:n svarar baserat på **både jobbannonsen OCH ditt CV/profil**: namn, ort, bästa CV-text (från `user_cvs`), ton och avoid-fraser (från `user_cover_letter_preferences`), plus jobbets titel/företag/beskrivning (max 2000 tecken).
+   - Svar: 50–150 ord, refererar till specifika delar av annonsen och väver in din erfarenhet.
+   - Snabbknappar för vanliga frågor ("Varför vill du jobba hos oss?" etc) + fritext.
 
 ### Åtgärdsknappar
-- **"Hoppa över"** — skickar jobbet till slutet
-- **"Avvisa"** — döljer jobbet permanent
+- **"Hoppa över"** — loggar `action=skipped` i `user_job_interactions`. Jobbet filtreras bort från feedet (hård filtrering, inte bara nedprioriterat). Kan dock dyka upp igen vid ny scrape om samma jobb-ID skrapas igen.
+- **"Avvisa"** — loggar `action=rejected`. Jobbet **permanent dolt** från feedet. Visas bara om du klickar "Visa dolda".
 
 **Supabase-koppling:**
 
@@ -172,7 +188,7 @@ Hantera Master CV + 9 branschanpassade versioner.
 
 ### Master CV-sektion
 - **"Redigera Master CV"**-knapp — öppnar fullständig redigeringsmodal
-- **"Generera alla CV"**-knapp → `POST /api/cv/generate-branscher`
+- **"Generera alla CV"**-knapp → `POST /api/cv/generate-branscher` — **regenererar ALLA 9 bransch-CV varje gång** (upsert med `on_conflict=user_id,vibe_id`). Kollar inte om CV redan finns — full omskrivning. Kräver att Master CV (erfarenheter/utbildning) finns.
 - **"Ladda ner Master CV"** → `GET /api/master-cv/download-pdf`
 - Statistik: antal erfarenheter, utbildningar, utmärkelser, projekt, språk
 
@@ -196,7 +212,7 @@ Hantera Master CV + 9 branschanpassade versioner.
 - Statusbadge — "✓ CV finns" / "Inte skapat"
 - **"📤 Ladda upp CV"** → `POST /api/upload/cv/{bransch_id}`
 - **"📄 Visa fil"** — länk till uppladdad PDF
-- **"✏️ Redigera"** — texteditor för CV-texten
+- **"✏️ Redigera"** — öppnar en **fritext-textarea** (monospace-font, `h-64`). Ingen strukturerad editor med bullets/sektioner — bara ren text. Huvudsakliga arbetssättet är att ladda upp PDF eller omgenerera från Master CV, inte redigera inline.
 
 **De 9 branscherna:**
 
@@ -208,7 +224,7 @@ Hantera Master CV + 9 branschanpassade versioner.
 | Tech & Kontor | 💻 | Tekniska projekt, struktur |
 | Vård & Omsorg | 🏥 | Omtanke, patientsäkerhet |
 | Industri & Trädgård | 🔧 | Fysiskt arbete, maskiner |
-| Hotell & Reception | 🏨 | Gästservice, bokning |
+| Hotell & Reception | 🏨 | Gästservice, bokning | **⚠️ PDF saknas** — ingen `CV_Linnea_Moritz_Hotell_Reception.pdf` finns i cv_files/. Faller tillbaka till kundtjänst-CV. |
 | Content & Moderation | 🛡️ | Digitalt innehåll, riktlinjer |
 | Konst & Kultur | 🎨 | Kreativitet, evenemang |
 
@@ -224,13 +240,13 @@ Hantera Master CV + 9 branschanpassade versioner.
 | `user_awards` | ✅ | ✅ | Utmärkelser (CRUD) |
 | `user_certifications` | ✅ | ✅ | Certifieringar (CRUD) |
 | `tech_projects` | ✅ | ✅ | Projekt (för tech-CV) |
-| `user_experience_tags` | ✅ | ✅ | Kopplar erfarenheter → branscher med prioritet |
+| `user_experience_tags` | ✅ | ✅ | Kopplar erfarenheter → branscher med prioritet. **OBS: tabellen finns i DB men har inget UI och inga API-endpoints ännu.** Branschmatchning sker dynamiskt via `experiences.categories`-fältet istället. |
 | `user_cvs` | ✅ | ✅ | Genererade bransch-CV texter |
 | `bransch_cvs` | ✅ | ✅ | Bransch-CV varianter med PDF-URL |
 | `user_cv_branscher` | ✅ | ✅ | Användarens branschdefinitioner |
 | `user_cv_uploads` | ✅ | ✅ | Uppladdade CV-filer (max 20) |
 | `user_cv_creation_conversations` | ✅ | ✅ | AI-chatt historik per CV |
-| `user_cv_versions` | ✅ | ✅ | Versionshistorik per CV |
+| `user_cv_versions` | ✅ | ✅ | Versionshistorik per CV. **⚠️ Ska byggas ut i framtiden** — tabellen finns men populeras aldrig och har ingen restore-funktion. CV:n skrivs över direkt vid omgenerering. |
 | `master_cv_exports` | | ✅ | Snapshot av hela Master CV som JSON |
 | **Storage: `cv-files`** | ✅ | ✅ | PDF-filer för bransch-CVer |
 | **Storage: `profile-photos`** | ✅ | | Profilbild på CV |
@@ -252,7 +268,7 @@ Spåra alla ansökningar och generera aktivitetsrapport för A-kassan.
 - **Månadsväljare** — välj månad (YYYY-MM)
 - **"Ladda ner aktivitetsrapport"**-knapp → `GET /api/aktivitetsrapport?month=YYYY-MM`
   - Genererar PDF med tabell: Datum | Yrkesroll | Arbetsgivare | Omfattning | Ort
-  - Matchar Arbetsförmedlingens format — redo för A-kassan
+  - **⚠️ EJ VERIFIERAD med Arbetsförmedlingen/A-kassan.** Formatet är egendesignat med FPDF — ser rimligt ut men baseras inte på en officiell mall. Användaren ansvarar för att kolla med sin handläggare om det accepteras.
   - Filnamn: `Aktivitetsrapport_MÅNAD_ÅR.pdf`
   - Visar användarens namn, period, totalt antal ansökningar
 
@@ -260,11 +276,11 @@ Spåra alla ansökningar och generera aktivitetsrapport för A-kassan.
 Varje ansökan visar:
 - Jobbtitel + företag
 - **Statusbadge** med färgkodning
-- **Status-dropdown** — ändra status: 📌 Sparad → 📝 Utkast → ✓ Skickad → 🎉 Intervju → 🎊 Erbjudande / ✗ Avslag
+- **Status-dropdown** — ändra status: 📌 Sparad → 📝 Utkast → ✓ Skickad → 🎉 Intervju → 🎊 Erbjudande / ✗ Avslag. **"Erbjudande" har ingen speciallogik** — det är bara en etikett/badge som alla andra statusar. Skyddad från nedgradering (kan inte gå tillbaka till "Sparad"). Ingen notifikation eller firande triggas.
 
 **Expanderad vy:**
 - Plats + deadline (med tidsvarnig: "3 dagar kvar", "Deadline passerad")
-- **Anteckningar** — redigera och spara per ansökan
+- **Anteckningar** — redigera och spara per ansökan. **Manuell sparning** — klicka "Spara"-knappen efter redigering. Ingen auto-save/realtids-sync.
 - **Personligt brev** — visa/ladda ner sparat brev
 - **"✍️ Skapa ansökan"** — för sparade jobb, öppnar ansökningsmodalen
 - **"🔗 Visa annons"** — öppnar original-annonsen
@@ -300,6 +316,11 @@ Varje ansökan visar:
 - `notes` — fria anteckningar per ansökan
 - `bransch_id` — vilken bransch-CV som användes
 - `gmail_draft_id` — Gmail utkast-ID om det sparades
+- `apply_method` — hur man sökte: platsbanken_email, external_website, linkedin, email_direct, in_person, phone, other
+- `custom_title` — override jobbtitel (för manuella ansökningar eller redigeringar)
+- `custom_company` — override företagsnamn
+- `custom_location` — override ort
+- `apply_date` — när man faktiskt sökte (user-editable, separat från auto-satt sent_at)
 - `UNIQUE(user_id, job_id)` — en ansökan per jobb per användare
 
 ---
@@ -336,12 +357,14 @@ Styr vilka jobb som skrapas och visas.
 ### Negativa sökord (röda chips)
 - Kategorifilter: Hälsa & Vård, Utbildning, Teknik, Juridik, etc
 - Sökfilter + inmatningsfält (kommaseparerat)
+- **⚠️ Filtrering sker CLIENT-SIDE** — Platsbanken-API:t tar inte emot negativa sökord. Jobben skrapas först, sedan filtreras de bort i frontend via `String.includes()` mot titel + företag + beskrivning. Det betyder att jobb fortfarande laddas ner men aldrig visas.
 
 ### Arbetstid (multi-select toggles)
 - Heltid / Deltid / Extra/Timanställning
 
 ### Dealbreakers (multi-select toggles)
 - Nattarbete / Helgarbete / Telefonarbete / Tunga lyft / Utomhusarbete / Ingen
+- **⚠️ Enkel keyword-match, ingen NLP.** Frontend gör `String.includes()` mot jobbets titel + beskrivning med hårdkodad mappning: `natt` → "natt", `helg` → "helg", `telefon` → "telefon", `tunga_lyft` → "tunga lyft", `utomhus` → "utomhus". Kan ge false positives (t.ex. "Nattavdelningen" filtreras bort) och false negatives (t.ex. "kvällsarbete" fångas inte).
 
 **"Spara preferenser"**-knapp → `POST /api/user/preferences`
 
@@ -393,7 +416,10 @@ Styr hur AI:n skriver dina personliga brev. **All feedback härifrån påverkar 
 
 ### Träningsbrev
 - Ladda upp (PDF/DOCX) eller klistra in text → `POST /api/user/training-letters`
-- AI analyserar din stil: ton, struktur, favoritfraser
+- AI analyserar din stil: ton, struktur, favoritfraser (Sonnet, 700 tokens)
+- **1 brev räcker** för att starta stilanalys. Fler brev = rikare analys (AI noterar skillnader mellan breven, samlar fler fraser). Max 20 brev.
+- **1 brev**: `analyze_writing_tone_rich()` — extraherar ton, meningsstruktur, 3-6 unika fraser, klichéer du undviker, öppningsstil
+- **2+ brev**: `analyze_writing_tone_multi()` — analyserar alla brev tillsammans, noterar stilskillnader ("Brev 1: Formellt. Brev 2: Personligt")
 - Lista med uppladdade brev + ta bort-knapp
 
 ### Fraser jag gillar (blå chips)
@@ -419,12 +445,14 @@ Styr hur AI:n skriver dina personliga brev. **All feedback härifrån påverkar 
 - **"Skicka feedback"**-knapp → `POST /api/user/ai-feedback/smart`
 - AI (Claude) tolkar feedbacken → extraherar avoid/like-fraser → sparar strukturerat
 - Feedback sparas i `user_ai_feedback` OCH uppdaterar `user_cover_letter_preferences`
+- **`is_active`** — feedback är aktiv tills du manuellt tar bort den (soft-delete via DELETE-endpoint). **Ingen auto-expiry eller åldersbaserad deaktivering.** Senaste 10 aktiva feedback-rader hämtas vid brevgenerering.
+- **`applies_to_branscher`** — kan sättas manuellt vid POST. **AI:n (smart feedback) sätter den INTE automatiskt** — defaultar till `[]` (gäller alla branscher). **Ska byggas ut i framtiden?** Needs a decision: ska smart feedback extrahera bransch från texten?
 - **Historik** — lista med sparad feedback + ta bort-knapp
 
 ### Anekdoter & hobbys
 - Lista med sparade anekdoter/hobbys
 - Varje post: titel, typ (anekdot/hobby), nyckelord
-- **"+ Lägg till anekdot"** → `POST /api/user/anecdotes` (max 30 per användare)
+- **"+ Lägg till anekdot"** → `POST /api/user/anecdotes` (max 30 per användare, godtycklig gräns — inte tokenrelaterad). AI:n väver in **alla relevanta anekdoter/hobbys** per brev (keyword-matchade mot jobbannonsen). Irrelevanta hoppas över.
 - **"✎ Redigera"**-knapp per anekdot — inline-redigering av titel, typ, innehåll, nyckelord → `PATCH /api/user/anecdotes/{id}`
 - **"✕ Ta bort"**-knapp → `DELETE /api/user/anecdotes/{id}`
 - **"TXT"**-knapp — exportera alla anekdoter/hobbys som textfil → `GET /api/user/anecdotes/export?format=txt`
@@ -527,14 +555,18 @@ Koppla ditt Gmail-konto för att skapa utkast direkt från appen.
 
 **Gmail-flöde vid "Spara i Gmail med bilagor":**
 ```
-1. Hämta access_token från user_google_credentials
-2. Om expired → refresh med refresh_token → uppdatera i DB
+1. refresh_gmail_token() — hämtar access_token, auto-refreshar om <5 min kvar
+2. Om refresh misslyckas → detaljerat felmeddelande (inte tyst fel):
+   - "Gmail är inte kopplat" / "refresh token saknas" / "token kunde inte förnyas"
 3. Skapa Gmail draft via Gmail API med:
    - Ämne: "Ansökan: [Jobbtitel] – [Namn]"
    - Body: personligt brev
    - Bilaga 1: Personligt_Brev_[Förnamn]_[Efternamn].pdf (genereras on-the-fly)
-   - Bilaga 2: CV_[Förnamn]_[Efternamn]_[Bransch].pdf (från cv_files/ eller Storage)
-4. Spara gmail_draft_id i applications-tabellen
+   - Bilaga 2: CV_[Förnamn]_[Efternamn]_[Bransch].pdf (BARA från lokal disk v2/api/cv_files/)
+     ⚠️ Om PDF saknas på disk → bilagan hoppas över TYST (inget fel, utkastet skapas utan CV).
+     Ingen fallback till Supabase Storage.
+4. Om Gmail API returnerar 401 → "Token har gått ut. Koppla bort och koppla om Gmail."
+5. Spara gmail_draft_id i applications-tabellen
 ```
 
 ---
@@ -569,13 +601,18 @@ Steg-för-steg-guide för nya användare.
 
 ### Dataflöde
 ```
-Quiz svar sparas i localStorage som job_preferences
+Quiz svar sparas i React state (EJ localStorage under pågående quiz!)
   ↓ vid slutförande ↓
+localStorage.setItem('job_preferences', ...) + localStorage.setItem('user_profile', ...)
 POST /api/user/profile-from-quiz → user_profiles (namn, telefon, ort, körkort, etc.)
 POST /api/user/preferences → user_job_preferences (sökord, dealbreakers, quiz_answers JSONB)
   ↓
 Automatisk scrape av jobb triggas
 ```
+
+**Byta enhet mitt i quiz?** Svar i React state går **förlorade** — ingen auto-save under pågående quiz. Först efter slutförande sparas till localStorage + Supabase. Om inloggad på ny enhet hämtas quiz-status från DB (skippar quiz om redan gjord).
+
+**Köra quiz igen?** Backend **MERGAR** (inte skriver över). UPSERT med `on_conflict=user_id` och `quiz_answers` JSONB mergas: befintliga fält behålls om frontend inte skickar nytt värde.
 
 **Supabase-koppling:**
 
@@ -608,10 +645,14 @@ Personuppgifter och kontoinställningar.
 
 ### Platsbaser (per region)
 - Regionala adresser — om jobbet är i Stockholm, använd Stockholmsadress i brevet
+- **Manuell input** — användaren anger ort i quiz (`home_location`) + väljer kommuner i Platser-sidan
+- Kommun-ID:n hämtas från JobTech Taxonomy API (290 svenska kommuner)
+- **Ingen geocoding/GPS** — all platsdata manuell
 
 ### GDPR
 - **Exportera all data** — JSON
-- **Radera konto** — `SELECT delete_user_data('user_id')` (raderar ALLT i 21 tabeller)
+- **Radera konto** — `delete_account()` raderar 14 DB-tabeller + Supabase Auth-användaren
+- **⚠️ BUG: Storage-filer raderas INTE** — filer i `training-letters/{user_id}/*`, `profile-photos/{user_id}/*` och eventuella `cv-files/{user_id}/*` blir kvar som orphans efter kontoborttagning. Behöver fixas för full GDPR-compliance.
 
 **Supabase-koppling:**
 
@@ -658,7 +699,7 @@ Personuppgifter och kontoinställningar.
 | `user_cvs` | Genererade bransch-CV texter | Mina CV, Jobb (bilaga) |
 | `bransch_cvs` | Bransch-CV varianter med PDF | Mina CV, Jobb (bilaga) |
 | `user_cv_branscher` | Branschdefinitioner per user | Mina CV |
-| `user_experience_tags` | Erfarenhet→bransch koppling | Mina CV |
+| `user_experience_tags` | Erfarenhet→bransch koppling — **⚠️ Ska byggas ut i framtiden** (tabell finns, inget UI/API) | Mina CV |
 | `user_cover_letter_preferences` | Brevstil och preferenser | Personligt brev, Brevformat, Jobb, Extern |
 | `user_ai_feedback` | AI-feedback från användaren | Personligt brev, Jobb |
 | `user_anecdotes` | Anekdoter/hobbys | Personligt brev, Jobb (brevgenerering) |
@@ -673,15 +714,15 @@ Personuppgifter och kontoinställningar.
 | Tabell | Syfte |
 |--------|-------|
 | `master_cv_exports` | Snapshot av Master CV som JSON |
-| `user_cv_versions` | Versionshistorik per CV |
+| `user_cv_versions` | Versionshistorik per CV — **⚠️ Ska byggas ut i framtiden** (tabell finns, aldrig populerad) |
 | `user_cv_creation_conversations` | AI-chatt historik |
-| `cv_industry_templates` | Mallar: traditional, artist, tech, academic |
+| `cv_industry_templates` | Mallar: traditional, artist, tech, academic — **⚠️ Ska byggas ut i framtiden** (4 mallar seedade, appen hårdkodar "traditional") |
 | `tech_projects` | Projekt (tech-CV) |
-| `tech_certifications` | Certifieringar (tech-CV) |
-| `artist_exhibitions` | Utställningar (konstnärs-CV) |
-| `artist_residencies` | Residencies (konstnärs-CV) |
-| `artist_collections` | Samlingar (konstnärs-CV) |
-| `academic_publications` | Publikationer (akademiskt CV) |
+| `tech_certifications` | Certifieringar (tech-CV) — **⚠️ Ska byggas ut i framtiden** (separat från generella certifieringar, inget UI) |
+| `artist_exhibitions` | Utställningar (konstnärs-CV) — **⚠️ Ska byggas ut i framtiden** (tabell finns, inget UI) |
+| `artist_residencies` | Residencies (konstnärs-CV) — **⚠️ Ska byggas ut i framtiden** (tabell finns, inget UI) |
+| `artist_collections` | Samlingar (konstnärs-CV) — **⚠️ Ska byggas ut i framtiden** (tabell finns, inget UI) |
+| `academic_publications` | Publikationer (akademiskt CV) — **⚠️ Ska byggas ut i framtiden** (tabell finns, inget UI) |
 
 ### Storage-buckets (3 st)
 
@@ -731,3 +772,35 @@ Personuppgifter och kontoinställningar.
 
 **Förbättringar:**
 - **Jobb sorterade efter deadline** — Inom varje bucket (e-post/utan e-post, nya/hoppade) sorteras jobb nu med närmast deadline först.
+
+### v2.3 — 24 feb 2026
+
+**Kritiska bugfixar:**
+- **Ansökningar visades inte (0 överallt)** — Tre samverkande buggar fixade:
+  1. `GET /api/applications` returnerade `200 OK` med tom lista när token var utgången (istället för 401). Frontend trodde det fanns 0 ansökningar.
+  2. `get_applications_from_db` hade noll error-logging och ingen fallback — om PostgREST-frågan misslyckades (t.ex. schema-cache stale efter nya kolumner) returnerades tyst `[]`.
+  3. `authFetch` hade ingen auto-refresh — utgångna tokens orsakade tysta misslyckanden överallt.
+- **apply-with-cv sparade inte ansökan** — `user_id` var valfritt. Om token gått ut blev `user_id = None`, brevgenereringen fungerade men ansökan sparades aldrig i DB. Nu krävs auth (401 om inte inloggad).
+- **"Kunde inte spara jobbet"** — `save_job` INSERT saknade `on_conflict=user_id,job_id`, race conditions kunde orsaka duplicate key violation.
+- **Utbildnings-chips false positive** — "International School of the Stockholm Region" markerades grön för att "Stockholm" förekom i brevet. Nu krävs 2+ signifikanta ord (samma logik som erfarenhets-chips).
+
+**Förbättringar:**
+- **authFetch auto-refresh** — Vid 401 refreshas token automatiskt via `POST /api/auth/refresh` och requesten körs om. Shared promise förhindrar parallella refresh-anrop.
+- **GET /api/applications returnerar 401** — Triggar authFetch auto-refresh istället för att tyst returnera tom lista.
+- **get_applications_from_db fallback** — Om PostgREST embedded query (`select=*,jobs(...)`) misslyckas, körs en enklare query utan join + batch-fetch av jobb separat. Error loggas alltid.
+- **Nya kolumner i applications** — `apply_method`, `custom_title`, `custom_company`, `custom_location`, `apply_date` (tillagda i DB + schema).
+
+### v2.4 — 24 feb 2026
+
+**Bugfixar:**
+- **Försvarsmakten slapp igenom "Militär"-filter** — Negativa sökord kollade bara titel + beskrivning, inte företagsnamn. Nu kollas titel + företag + beskrivning på både Jobb- och Extern-sidan.
+- **Aktivitetsrapport kraschade** — Ingen auth-kontroll (user_id=None → frågade alla ansökningar), plus Unicode-tecken i jobbtitlar/företagsnamn orsakade Latin-1 encoding-fel i PDF. Nu krävs auth + `_safe_pdf_text()` sanerar all text.
+- **Master CV PDF kraschade** — Samma Unicode-problem: em-dash, typografiska citattecken, m.m. från DB-data kraschade fpdf2. `safe_text()` delegerar nu till `_safe_pdf_text()` som ersätter/filtrerar non-Latin-1 tecken.
+- **Projekt/certifieringar saknades i Master CV PDF** — `project_name` och `certification_name` matchar nu DB-kolumnnamn (inte bara generiska `name`/`title`).
+
+### v2.5 — 24 feb 2026
+
+**Bugfixar:**
+- **Kvalifikationskontroll använde hårdkodad "Gymnasium"** — `qualification-check` endpointen skickade alltid `Utbildning: Gymnasium` till Haiku oavsett användarens faktiska utbildning. Nu hämtas riktig utbildning från `user_education`.
+- **Kvalifikationskontroll missade erfarenheter** — Bara 8 erfarenheter hämtades (limit=8). Om vårderfarenhet låg som nr 9+ sågs den aldrig. Limit borttagen — alla erfarenheter skickas nu.
+- **Falskt "saknar kvalifikationer"-varning** — Kombination av hårdkodad utbildning + trunkerade erfarenheter gjorde att Haiku felaktigt sa att användaren saknade relevant erfarenhet (t.ex. äldrevård).
