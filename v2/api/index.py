@@ -6573,8 +6573,9 @@ async def enhance_master_cv_from_upload(request: Request):
     for vol in existing_volunteer:
         vol_desc = vol.get('description') or ''
         vol_bullets = vol.get('bullets') or []
-        vol_text = vol_desc if vol_desc else '. '.join(vol_bullets) if vol_bullets else '(ingen beskrivning)'
-        existing_summary += f"- ID:{vol.get('id')} | {vol.get('organization')} | {vol.get('title', '')} | {vol.get('dates','')} | {vol_text[:120]}\n"
+        vol_text = vol_desc if vol_desc else '. '.join(vol_bullets) if vol_bullets else ''
+        has_desc = "✅" if vol_text.strip() else "❌ SAKNAR DESCRIPTION"
+        existing_summary += f"- ID:{vol.get('id')} | {vol.get('organization')} | {vol.get('title', '')} | {vol.get('dates','')} | {has_desc} | {vol_text[:120]}\n"
     if not existing_volunteer:
         existing_summary += "- (inga poster)\n"
     existing_summary += "\nBEFINTLIGA PROJEKT:\n"
@@ -6587,12 +6588,16 @@ async def enhance_master_cv_from_upload(request: Request):
     existing_summary += ", ".join(skill_texts) if skill_texts else "(inga)"
     existing_summary += "\n\nBEFINTLIGA CERTIFIERINGAR:\n"
     for cert in existing_certifications:
-        existing_summary += f"- ID:{cert.get('id')} | {cert.get('certification_name', '')} | Utfärdare: {cert.get('issuing_organization', '')} | {(cert.get('description') or '')[:80]}\n"
+        cert_desc = cert.get('description') or ''
+        has_desc = "✅" if cert_desc.strip() else "❌ SAKNAR DESCRIPTION"
+        existing_summary += f"- ID:{cert.get('id')} | {cert.get('certification_name', '')} | Utfärdare: {cert.get('issuing_organization', '')} | {has_desc} | {cert_desc[:80]}\n"
     if not existing_certifications:
         existing_summary += "- (inga poster)\n"
     existing_summary += "\nBEFINTLIGA UTMÄRKELSER/AWARDS:\n"
     for award in existing_awards:
-        existing_summary += f"- ID:{award.get('id')} | {award.get('award_text', '')} | {(award.get('description') or '')[:80]}\n"
+        award_desc = award.get('description') or ''
+        has_desc = "✅" if award_desc.strip() else "❌ SAKNAR DESCRIPTION"
+        existing_summary += f"- ID:{award.get('id')} | {award.get('award_text', '')} | {has_desc} | {award_desc[:80]}\n"
     if not existing_awards:
         existing_summary += "- (inga poster)\n"
 
@@ -6675,7 +6680,15 @@ VIKTIGT:
 - Beskrivningar på svenska, korta och informativa
 - Dubblera INTE kompetenser som redan finns i listan
 - Certifieringar: använd certification_name (inte name), issuing_organization (inte issuer), issue_date (inte date)
-- Awards/utmärkelser: award_text = hela texten (t.ex. "1:a pris Stockholms Konstsalong 2024"), description = valfri bakgrund"""
+- Awards/utmärkelser: award_text = hela texten (t.ex. "1:a pris Stockholms Konstsalong 2024"), description = valfri bakgrund
+
+KRITISKT — BESKRIVNINGAR ÄR OBLIGATORISKA:
+- VARJE volontärpost MÅSTE ha en description — beskriv vad personen gjorde, vilka uppgifter, vad de lärde sig (2-3 meningar)
+- VARJE award/utmärkelse MÅSTE ha en description — förklara sammanhanget, varför det är imponerande, vad det innebar
+- VARJE certifiering MÅSTE ha en description — beskriv vad certifieringen innebär, hur den är relevant
+- VARJE projekt MÅSTE ha en description — beskriv projektets syfte, teknologier, resultat
+- Om det nya CV-dokumentet inte ger detaljer, skriv en rimlig kort beskrivning baserat på titeln/organisationen
+- Uppdatera ÄVEN befintliga poster som har tom/saknad description — lägg till description via updated_volunteer, updated_awards, updated_certifications"""
 
     try:
         async with httpx.AsyncClient() as client:
