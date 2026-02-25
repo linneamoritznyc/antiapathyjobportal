@@ -1485,6 +1485,47 @@ async def generate_bransch_cv(master_cv: Dict, bransch: Dict) -> str:
         elif isinstance(skill, str):
             skills_text += f"\n- {skill}"
 
+    # Format volunteer as text
+    volunteer_list = master_cv.get('volunteer', [])
+    volunteer_text = ""
+    for vol in volunteer_list:
+        if isinstance(vol, dict):
+            org = vol.get('organization', '')
+            title = vol.get('title', '')
+            dates = vol.get('dates', '')
+            desc = vol.get('description', '')
+            volunteer_text += f"\n{title} - {org} ({dates})\n{desc}\n"
+
+    # Format awards as text
+    awards_list = master_cv.get('awards', [])
+    awards_text = ""
+    for award in awards_list:
+        if isinstance(award, dict):
+            awards_text += f"\n- {award.get('award_text', '')}"
+            if award.get('description'):
+                awards_text += f" — {award['description']}"
+
+    # Format certifications as text
+    certs_list = master_cv.get('certifications', [])
+    certs_text = ""
+    for cert in certs_list:
+        if isinstance(cert, dict):
+            certs_text += f"\n- {cert.get('certification_name', '')}"
+            if cert.get('issuing_organization'):
+                certs_text += f" ({cert['issuing_organization']})"
+            if cert.get('description'):
+                certs_text += f" — {cert['description']}"
+
+    # Format projects as text
+    projects_list = master_cv.get('projects', [])
+    projects_text = ""
+    for proj in projects_list:
+        if isinstance(proj, dict):
+            pname = proj.get('name') or proj.get('project_name') or proj.get('title', '')
+            projects_text += f"\n- {pname}"
+            if proj.get('description'):
+                projects_text += f": {proj['description']}"
+
     prompt = f"""Skriv ett komplett CV på svenska för {bransch['name']}-jobb.
 
 PERSONINFO:
@@ -1504,6 +1545,18 @@ ALL UTBILDNING:
 ALLA FÄRDIGHETER:
 {skills_text or 'Ej angivet'}
 
+IDEELLT ARBETE / VOLONTÄRARBETE:
+{volunteer_text or 'Ej angivet'}
+
+UTMÄRKELSER & AWARDS:
+{awards_text or 'Ej angivet'}
+
+CERTIFIERINGAR:
+{certs_text or 'Ej angivet'}
+
+PROJEKT:
+{projects_text or 'Ej angivet'}
+
 DENNA CV-VERSION ÄR FÖR: {bransch['name']}
 Fokus: {bransch['focus']}
 
@@ -1513,7 +1566,8 @@ INSTRUKTIONER:
 3. För {bransch['name']}-versionen: skriv en kort profil (2-3 meningar) som lyfter erfarenhet relevant för denna bransch
 4. Bullet points för varje jobb ska vara korta och konkreta
 5. Inga emojis
-6. Format:
+6. Inkludera relevanta utmärkelser, certifieringar, volontärarbete och projekt
+7. Format:
    NAMN
    Plats | Telefon | E-post
 
@@ -1527,6 +1581,15 @@ INSTRUKTIONER:
 
    UTBILDNING
    [Skola - Examen (Datum)]
+
+   IDEELLT ARBETE
+   [Om relevant för branschen]
+
+   UTMÄRKELSER
+   [Om relevant]
+
+   CERTIFIERINGAR
+   [Om relevant]
 
    FÄRDIGHETER
    [Lista]
@@ -2811,23 +2874,34 @@ async def generate_cv_branscher(request: Request):
     """Generate all CV bransch versions from master CV"""
     user_id = await get_user_id_from_request(request, required=True)
 
-    # Get user's profile and experiences
-    profiles = await db_request("GET", "user_profiles", params={"user_id": f"eq.{user_id}"})
-    experiences = await db_request("GET", "user_experiences", params={"user_id": f"eq.{user_id}", "order": "sort_order.asc"})
-    education = await db_request("GET", "user_education", params={"user_id": f"eq.{user_id}"})
-    skills = await db_request("GET", "user_skills", params={"user_id": f"eq.{user_id}"})
+    # Get user's profile and ALL master CV sections
+    import asyncio as _asyncio
+    profiles, experiences, education, skills, volunteer, awards, certifications, projects = await _asyncio.gather(
+        db_request("GET", "user_profiles", params={"user_id": f"eq.{user_id}"}),
+        db_request("GET", "user_experiences", params={"user_id": f"eq.{user_id}", "order": "sort_order.asc"}),
+        db_request("GET", "user_education", params={"user_id": f"eq.{user_id}"}),
+        db_request("GET", "user_skills", params={"user_id": f"eq.{user_id}"}),
+        db_request("GET", "user_volunteer", params={"user_id": f"eq.{user_id}", "order": "sort_order.asc"}),
+        db_request("GET", "user_awards", params={"user_id": f"eq.{user_id}", "order": "sort_order.asc"}),
+        db_request("GET", "user_certifications", params={"user_id": f"eq.{user_id}", "order": "sort_order.asc"}),
+        db_request("GET", "tech_projects", params={"user_id": f"eq.{user_id}", "order": "sort_order.asc"})
+    )
 
     if not experiences or len(experiences) == 0:
         return {"success": False, "message": "Lägg till erfarenheter i Master CV först!"}
 
     profile = profiles[0] if profiles else {}
 
-    # Build master CV structure
+    # Build master CV structure with ALL sections
     master_cv = {
         "profile": profile,
         "experiences": experiences,
         "education": education or [],
-        "skills": skills or []
+        "skills": skills or [],
+        "volunteer": volunteer or [],
+        "awards": awards or [],
+        "certifications": certifications or [],
+        "projects": projects or []
     }
 
     # Generate all bransch-CVs
@@ -2850,13 +2924,17 @@ async def generate_single_cv(bransch_id: str, request: Request):
     if not bransch:
         raise HTTPException(status_code=404, detail=f"Bransch '{bransch_id}' finns inte")
 
-    # Fetch Master CV data
+    # Fetch ALL Master CV data
     import asyncio as _asyncio
-    profiles, experiences, education, skills = await _asyncio.gather(
+    profiles, experiences, education, skills, volunteer, awards, certifications, projects = await _asyncio.gather(
         db_request("GET", "user_profiles", params={"user_id": f"eq.{user_id}"}),
         db_request("GET", "user_experiences", params={"user_id": f"eq.{user_id}", "order": "sort_order.asc"}),
         db_request("GET", "user_education", params={"user_id": f"eq.{user_id}"}),
-        db_request("GET", "user_skills", params={"user_id": f"eq.{user_id}"})
+        db_request("GET", "user_skills", params={"user_id": f"eq.{user_id}"}),
+        db_request("GET", "user_volunteer", params={"user_id": f"eq.{user_id}", "order": "sort_order.asc"}),
+        db_request("GET", "user_awards", params={"user_id": f"eq.{user_id}", "order": "sort_order.asc"}),
+        db_request("GET", "user_certifications", params={"user_id": f"eq.{user_id}", "order": "sort_order.asc"}),
+        db_request("GET", "tech_projects", params={"user_id": f"eq.{user_id}", "order": "sort_order.asc"})
     )
 
     if not experiences or len(experiences) == 0:
@@ -2866,7 +2944,11 @@ async def generate_single_cv(bransch_id: str, request: Request):
         "profile": profiles[0] if profiles else {},
         "experiences": experiences,
         "education": education or [],
-        "skills": skills or []
+        "skills": skills or [],
+        "volunteer": volunteer or [],
+        "awards": awards or [],
+        "certifications": certifications or [],
+        "projects": projects or []
     }
 
     logger.info(f"Generating single bransch-CV: {bransch['name']} for user {user_id[:8]}")
