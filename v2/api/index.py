@@ -7274,7 +7274,7 @@ FORMAT FÖR ÄNDRINGAR — lägg JSON-blocket i slutet av ditt svar, inuti ```ac
 ```actions
 [
   {{"action": "update", "table": "user_experiences", "id": "uuid-här", "data": {{"description": "ny text", "categories": ["tech", "customerservice"]}}}},
-  {{"action": "update", "table": "tech_projects", "id": "uuid-här", "data": {{"name": "nytt namn", "description": "ny beskrivning"}}}},
+  {{"action": "update", "table": "tech_projects", "id": "uuid-här", "data": {{"project_name": "nytt namn", "description": "ny beskrivning"}}}},
   {{"action": "create", "table": "user_volunteer", "data": {{"organization": "...", "title": "...", "dates": "...", "description": "vad personen gjorde", "bullets": ["..."]}}}},
   {{"action": "update", "table": "user_volunteer", "id": "uuid-här", "data": {{"description": "ny beskrivning", "title": "uppdaterad titel"}}}},
   {{"action": "update", "table": "user_awards", "id": "uuid-här", "data": {{"description": "bakgrund/kontext för utmärkelsen"}}}},
@@ -7287,7 +7287,7 @@ FORMAT FÖR ÄNDRINGAR — lägg JSON-blocket i slutet av ditt svar, inuti ```ac
 TABELLER DU KAN ÄNDRA:
 - user_experiences: company, title, location, start_date, end_date, description, categories (array)
 - user_education: school, degree, field_of_study, location, start_date, end_date
-- tech_projects: name, description, tech_stack, url
+- tech_projects: project_name, description, tech_stack, github_url
 - user_volunteer: organization, title, dates, description, bullets (array)
 - user_skills: skill_text, skill_type (technical/language/certificate), category
 - user_awards: award_text, description
