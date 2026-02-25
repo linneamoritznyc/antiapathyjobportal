@@ -3566,12 +3566,12 @@ async def qualification_check(job_id: str, request: Request):
         # Get actual education (not hardcoded "Gymnasium")
         education = await db_request("GET", "user_education", params={
             "user_id": f"eq.{user_id}",
-            "select": "school_name,degree,field_of_study",
+            "select": "school,degree,field_of_study",
             "order": "start_date.desc"
         })
         if education:
             edu_summary = ", ".join([
-                f"{e.get('degree', '')} {e.get('field_of_study', '')} ({e.get('school_name', '')})"
+                f"{e.get('degree', '')} {e.get('field_of_study', '')} ({e.get('school', '')})"
                 for e in education
             ])
 
@@ -6105,8 +6105,8 @@ async def save_user_profile(request: Request, profile: UserProfile):
         "full_name": profile.full_name,
         "email": profile.email or user.get("email"),
         "phone": profile.phone,
-        "linkedin_url": profile.linkedin_url,
-        "summary": profile.summary,
+        "linkedin": profile.linkedin_url,
+        "about_me": profile.summary,
         "updated_at": datetime.now().isoformat()
     }
 
@@ -6128,7 +6128,7 @@ async def save_user_profile(request: Request, profile: UserProfile):
         for skill in skills_list:
             skill_data = {
                 "user_id": user_id,
-                "skill_name": skill
+                "skill_text": skill
             }
             async with httpx.AsyncClient() as client:
                 await client.post(
