@@ -1976,8 +1976,15 @@ async def list_jobs(request: Request, limit: int = 50, offset: int = 0):
             "user_id": f"eq.{user_id}",
             "select": "preferred_locations,excluded_keywords,quiz_answers"
         })
-        interactions, applied_applications, user_prefs = await _asyncio.gather(
-            interactions_task, applications_task, prefs_task
+        # Also fetch AI feedback with exclude_jobs type
+        exclude_feedback_task = db_request("GET", "user_ai_feedback", params={
+            "user_id": f"eq.{user_id}",
+            "feedback_type": "eq.exclude_jobs",
+            "is_active": "eq.true",
+            "select": "feedback_text"
+        })
+        interactions, applied_applications, user_prefs, exclude_feedback = await _asyncio.gather(
+            interactions_task, applications_task, prefs_task, exclude_feedback_task
         )
         interactions = interactions or []
         applied_applications = applied_applications or []
@@ -2015,6 +2022,18 @@ async def list_jobs(request: Request, limit: int = 50, offset: int = 0):
             if not excluded_kw:
                 qa = user_prefs[0].get("quiz_answers") or {}
                 excluded_kw = qa.get("negative_keywords") or []
+        # Also extract keywords from user_ai_feedback with feedback_type=exclude_jobs
+        exclude_feedback = exclude_feedback or []
+        for fb in exclude_feedback:
+            fb_text = (fb.get("feedback_text") or "").lower()
+            # Extract meaningful words from feedback text (skip common Swedish words)
+            skip_words = {"jag", "vill", "inte", "att", "med", "på", "i", "för", "och", "eller", "av",
+                          "en", "ett", "den", "det", "de", "som", "har", "kan", "ska", "om", "är",
+                          "jobba", "arbeta", "söka", "jobb", "arbete", "inga", "ingen", "inget", "nej",
+                          "typ", "typer", "inom", "hos", "till"}
+            words = [w.strip(".,!?:;()\"'") for w in fb_text.split() if len(w.strip(".,!?:;()\"'")) >= 3]
+            meaningful = [w for w in words if w not in skip_words]
+            excluded_kw.extend(meaningful)
         if excluded_kw:
             # Expand keywords for broader matching
             expanded = set()
@@ -8167,19 +8186,23 @@ Analysera vad användaren menar. Det kan vara:
 - Grammatikfel de vill undvika
 - Saker de VILL att AI nämner
 - Generella tankar om hur brevet ska låta
+- Typ av jobb de INTE vill ha (t.ex. "vill inte jobba med militären", "inga polisjobb")
 
 Svara EXAKT i detta JSON-format (inget annat):
 {{
   "summary": "Kort sammanfattning på svenska av vad användaren vill (1-2 meningar)",
   "avoid_phrases": ["fras1", "fras2"],
   "like_phrases": ["fras1"],
-  "feedback_type": "cover_letter"
+  "feedback_type": "cover_letter eller exclude_jobs",
+  "exclude_keywords": ["nyckelord1", "nyckelord2"]
 }}
 
 Regler:
 - "summary" ska vara tydlig och kort, på svenska
-- "avoid_phrases" = specifika ord/fraser användaren inte vill ha (kan vara tom lista)
-- "like_phrases" = specifika ord/fraser användaren vill ha (kan vara tom lista)
+- "avoid_phrases" = specifika ord/fraser användaren inte vill ha i brev (kan vara tom lista)
+- "like_phrases" = specifika ord/fraser användaren vill ha i brev (kan vara tom lista)
+- "feedback_type" = "exclude_jobs" om användaren vill UNDVIKA en typ av jobb/arbetsgivare/bransch. Annars "cover_letter"
+- "exclude_keywords" = nyckelord för jobbtyper att filtrera bort (t.ex. om de skriver "vill inte jobba på militären" → ["militär"]). Tom lista om det inte handlar om jobbexkludering.
 - Om användaren bara ger en generell tanke, lägg den i summary och lämna listorna tomma
 - Svara BARA med JSON, ingen annan text"""
 
@@ -8212,16 +8235,37 @@ Regler:
     summary = parsed.get("summary", body.text.strip())
     avoid_phrases = parsed.get("avoid_phrases", [])
     like_phrases = parsed.get("like_phrases", [])
+    feedback_type = parsed.get("feedback_type", "cover_letter")
+    exclude_keywords = parsed.get("exclude_keywords", [])
 
     # Save the structured feedback to user_ai_feedback
     feedback_data = {
         "user_id": user_id,
         "feedback_text": summary,
-        "feedback_type": "cover_letter",
+        "feedback_type": feedback_type,
         "is_active": True,
         "created_at": datetime.now().isoformat()
     }
     await db_request("POST", "user_ai_feedback", data=feedback_data)
+
+    # If user wants to exclude job types, write keywords to user_job_preferences.excluded_keywords
+    if feedback_type == "exclude_jobs" and exclude_keywords:
+        try:
+            existing_prefs = await db_request("GET", "user_job_preferences", params={
+                "user_id": f"eq.{user_id}",
+                "select": "excluded_keywords"
+            })
+            current_excluded = []
+            if existing_prefs:
+                current_excluded = existing_prefs[0].get("excluded_keywords") or []
+            # Merge new keywords (deduplicate, lowercase)
+            merged = list(set([kw.lower() for kw in current_excluded] + [kw.lower() for kw in exclude_keywords]))
+            await db_request("PATCH", "user_job_preferences", params={
+                "user_id": f"eq.{user_id}"
+            }, data={"excluded_keywords": merged, "updated_at": datetime.now().isoformat()})
+            logger.info(f"Updated excluded_keywords for user {user_id[:8]}: {merged}")
+        except Exception as e:
+            logger.warning(f"Failed to update excluded_keywords from feedback: {e}")
 
     # Also update avoid_phrases and like_phrases in user_cover_letter_preferences
     if avoid_phrases or like_phrases:
@@ -8260,7 +8304,9 @@ Regler:
         "success": True,
         "summary": summary,
         "avoid_phrases": avoid_phrases,
-        "like_phrases": like_phrases
+        "like_phrases": like_phrases,
+        "feedback_type": feedback_type,
+        "exclude_keywords": exclude_keywords
     }
 
 
