@@ -886,3 +886,10 @@ COMMENT ON TABLE user_anecdotes IS 'Personal anecdotes and hobbies for AI cover 
 --   - Fixed jobs.priority/source/link_status: no default (backend sets them on insert)
 --   - Updated delete_user_data() with UUID casts for UUID-typed tables
 --   - Updated user_id type inconsistency section to match reality
+--
+-- ============== PENDING MIGRATIONS (ej körda än — Linnea kör i SQL Editor) ==============
+-- 2026-02-25: Migration 1 — Index på user_id för 17+ tabeller (prestanda)
+-- 2026-02-25: Migration 2 — avoid_phrases JSONB → TEXT[] (typkonsistens med liked_phrases)
+-- 2026-02-25: Migration 3 — user_id TEXT → UUID för alla 17 tabeller (typstandardisering)
+-- 2026-02-25: Migration 4 — delete_user_data() uppdaterad (inga casts efter Migration 3)
+-- 2026-02-25: Migration 5 — RLS-policies på alla användartabeller (datasäkerhet)
