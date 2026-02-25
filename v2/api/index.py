@@ -7213,7 +7213,7 @@ async def enhance_chat(request: Request):
 
         lines.append("\n=== PROJEKT ===")
         for proj in projects:
-            lines.append(f"[ID:{proj.get('id')}] {proj.get('name', proj.get('title',''))} | {proj.get('description','')} | Tech: {proj.get('tech_stack','')}")
+            lines.append(f"[ID:{proj.get('id')}] {proj.get('project_name', proj.get('name',''))} | {proj.get('description','')} | Tech: {proj.get('tech_stack','')} | GitHub: {proj.get('github_url','')}")
         if not projects:
             lines.append("(inga)")
 
