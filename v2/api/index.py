@@ -2374,10 +2374,9 @@ async def delete_application(application_id: str, request: Request):
 
 
 @app.get("/api/aktivitetsrapport")
-async def generate_aktivitetsrapport(request: Request, month: str = None):
-    """Generate a monthly Aktivitetsrapport PDF for A-kassan/Arbetsförmedlingen.
-    ?month=2026-02 format. Defaults to current month."""
-    from fpdf import FPDF
+async def generate_aktivitetsrapport(request: Request, month: str = None, format: str = "pdf"):
+    """Generate a monthly Aktivitetsrapport (PDF or TXT) matching Arbetsförmedlingen format.
+    ?month=2026-02&format=pdf|txt. Defaults to current month, PDF."""
     from fastapi.responses import Response as RawResponse
 
     user_id = await get_user_id_from_request(request)
@@ -2404,85 +2403,145 @@ async def generate_aktivitetsrapport(request: Request, month: str = None):
     sender_name = "Namn"
     profiles = await db_request("GET", "user_profiles", params={"user_id": f"eq.{user_id}"})
     if profiles:
-        sender_name = _safe_pdf_text(profiles[0].get("full_name", sender_name))
+        sender_name = profiles[0].get("full_name", sender_name)
 
-    # Get sent applications for this month
+    # Get applications for this month (sent, interview, offer, rejected all count as "sökt")
     apps = await get_applications_from_db(user_id=user_id)
+    counted_statuses = {"sent", "interview", "offer", "rejected"}
     month_apps = []
     for a in apps:
-        if a.get("status") != "sent":
+        if a.get("status") not in counted_statuses:
             continue
-        d = (a.get("sent_at") or a.get("created_at") or "")[:7]
+        # Use apply_date first, then sent_at, then created_at
+        d = (a.get("apply_date") or a.get("sent_at") or a.get("created_at") or "")[:7]
         if d == month:
             month_apps.append(a)
 
     # Sort by date
-    month_apps.sort(key=lambda a: a.get("sent_at") or a.get("created_at") or "")
+    month_apps.sort(key=lambda a: a.get("apply_date") or a.get("sent_at") or a.get("created_at") or "")
 
-    # Build PDF
-    pdf = FPDF()
+    # Map app status to "Resulterade i" text (Arbetsförmedlingen style)
+    def get_result_text(status):
+        return {
+            "sent": "",
+            "interview": "Intervju",
+            "offer": "Erbjudande",
+            "rejected": "Avslag",
+        }.get(status, "")
+
+    # Build row data shared between PDF and TXT
+    rows = []
+    for a in month_apps:
+        raw_date = (a.get("apply_date") or a.get("sent_at") or a.get("created_at") or "")[:10]
+        try:
+            dt = datetime.fromisoformat(raw_date)
+            datum = dt.strftime("%Y-%m-%d")
+        except (ValueError, TypeError):
+            datum = raw_date
+
+        rows.append({
+            "datum": datum,
+            "aktivitet": "Sokt arbete",
+            "yrkesbenamning": (a.get("custom_title") or a.get("job_title") or "")[:40],
+            "arbetsgivare": (a.get("custom_company") or a.get("company") or "")[:35],
+            "omfattning": a.get("working_hours") or "Heltid",
+            "ort": (a.get("custom_location") or a.get("location") or "")[:25],
+            "resultat": get_result_text(a.get("status", "sent")),
+        })
+
+    # ---- TXT FORMAT ----
+    if format == "txt":
+        lines = []
+        lines.append(f"AKTIVITETSRAPPORT for {month_label} {year}")
+        lines.append(f"Namn: {sender_name}")
+        lines.append(f"Sokta jobb / Jobb med annons")
+        lines.append(f"Period: {month_label} {year}")
+        lines.append("")
+        lines.append("-" * 120)
+        header = f"{'Datum':<12} {'Aktivitet':<16} {'Yrkesbenamning':<30} {'Arbetsgivare':<28} {'Omfattning':<12} {'Ort':<20} {'Resultat'}"
+        lines.append(header)
+        lines.append("-" * 120)
+
+        for r in rows:
+            line = f"{r['datum']:<12} {r['aktivitet']:<16} {r['yrkesbenamning']:<30} {r['arbetsgivare']:<28} {r['omfattning']:<12} {r['ort']:<20} {r['resultat']}"
+            lines.append(line)
+
+        lines.append("-" * 120)
+        lines.append(f"Totalt: {len(rows)} ansokningar")
+        lines.append("")
+        lines.append(f"Genererad {datetime.now().strftime('%Y-%m-%d')}")
+
+        txt_content = "\n".join(lines)
+        filename = f"Aktivitetsrapport_{month_label.upper()}{year}.txt"
+        return RawResponse(
+            content=txt_content.encode("utf-8"),
+            media_type="text/plain; charset=utf-8",
+            headers={"Content-Disposition": f'attachment; filename="{filename}"'}
+        )
+
+    # ---- PDF FORMAT (Arbetsförmedlingen style) ----
+    from fpdf import FPDF
+
+    pdf = FPDF(orientation="L")  # Landscape for more columns
     pdf.set_auto_page_break(auto=True, margin=20)
     pdf.add_page()
 
-    # Title
-    pdf.set_font("Helvetica", "B", 16)
+    # Title block
+    pdf.set_font("Helvetica", "B", 14)
     pdf.set_text_color(30, 30, 30)
-    pdf.cell(0, 10, f"Aktivitetsrapport {month_label} {year}", new_x="LMARGIN", new_y="NEXT")
-    pdf.ln(2)
+    pdf.cell(0, 8, _safe_pdf_text(f"Aktivitetsrapport for {month_label} {year}"), new_x="LMARGIN", new_y="NEXT")
+    pdf.ln(1)
 
-    # Subtitle
-    pdf.set_font("Helvetica", "", 11)
+    pdf.set_font("Helvetica", "", 10)
     pdf.set_text_color(80, 80, 80)
-    pdf.cell(0, 6, f"Sokta jobb / Jobb med annons", new_x="LMARGIN", new_y="NEXT")
-    pdf.cell(0, 6, sender_name, new_x="LMARGIN", new_y="NEXT")
-    pdf.cell(0, 6, f"Period: {month_label} {year}", new_x="LMARGIN", new_y="NEXT")
+    pdf.cell(0, 5, _safe_pdf_text(f"Sokta jobb / Jobb med annons"), new_x="LMARGIN", new_y="NEXT")
+    pdf.cell(0, 5, _safe_pdf_text(sender_name), new_x="LMARGIN", new_y="NEXT")
+    pdf.cell(0, 5, _safe_pdf_text(f"Period: {month_label} {year}"), new_x="LMARGIN", new_y="NEXT")
     pdf.ln(4)
 
-    # Table header
-    col_widths = [25, 50, 45, 30, 40]
-    headers = ["Datum", "Yrkesroll", "Arbetsgivare", "Omfattning", "Ort"]
+    # Table header — Arbetsförmedlingen columns
+    col_widths = [24, 28, 55, 50, 26, 42, 32]
+    headers = ["Datum", "Aktivitet", "Yrkesbenamning", "Arbetsgivare", "Omfattning", "Ort", "Resulterade i"]
 
-    pdf.set_font("Helvetica", "B", 9)
-    pdf.set_fill_color(240, 240, 240)
+    pdf.set_font("Helvetica", "B", 8)
+    pdf.set_fill_color(230, 230, 230)
     pdf.set_text_color(30, 30, 30)
+    pdf.set_draw_color(180, 180, 180)
     for i, h in enumerate(headers):
-        pdf.cell(col_widths[i], 8, h, border=1, fill=True)
+        pdf.cell(col_widths[i], 7, h, border=1, fill=True)
     pdf.ln()
 
     # Table rows
-    pdf.set_font("Helvetica", "", 9)
+    pdf.set_font("Helvetica", "", 8)
     pdf.set_text_color(50, 50, 50)
-    for a in month_apps:
-        sent_date = (a.get("sent_at") or a.get("created_at") or "")[:10]
-        try:
-            dt = datetime.fromisoformat(sent_date)
-            datum = dt.strftime("%Y-%m-%d")
-        except (ValueError, TypeError):
-            datum = sent_date
+    for idx, r in enumerate(rows):
+        # Alternate row background
+        if idx % 2 == 1:
+            pdf.set_fill_color(248, 248, 248)
+            fill = True
+        else:
+            fill = False
 
-        yrkesroll = _safe_pdf_text((a.get("job_title") or "")[:30])
-        arbetsgivare = _safe_pdf_text((a.get("company") or "")[:25])
-        omfattning = _safe_pdf_text(a.get("working_hours") or "Heltid")
-        ort = _safe_pdf_text((a.get("location") or "")[:22])
-
-        pdf.cell(col_widths[0], 7, datum, border=1)
-        pdf.cell(col_widths[1], 7, yrkesroll, border=1)
-        pdf.cell(col_widths[2], 7, arbetsgivare, border=1)
-        pdf.cell(col_widths[3], 7, omfattning, border=1)
-        pdf.cell(col_widths[4], 7, ort, border=1)
+        pdf.cell(col_widths[0], 6, r["datum"], border=1, fill=fill)
+        pdf.cell(col_widths[1], 6, _safe_pdf_text(r["aktivitet"]), border=1, fill=fill)
+        pdf.cell(col_widths[2], 6, _safe_pdf_text(r["yrkesbenamning"]), border=1, fill=fill)
+        pdf.cell(col_widths[3], 6, _safe_pdf_text(r["arbetsgivare"]), border=1, fill=fill)
+        pdf.cell(col_widths[4], 6, _safe_pdf_text(r["omfattning"]), border=1, fill=fill)
+        pdf.cell(col_widths[5], 6, _safe_pdf_text(r["ort"]), border=1, fill=fill)
+        pdf.cell(col_widths[6], 6, _safe_pdf_text(r["resultat"]), border=1, fill=fill)
         pdf.ln()
 
     # Summary
     pdf.ln(4)
     pdf.set_font("Helvetica", "B", 10)
     pdf.set_text_color(30, 30, 30)
-    pdf.cell(0, 8, f"Totalt: {len(month_apps)} ansokningar", new_x="LMARGIN", new_y="NEXT")
+    pdf.cell(0, 7, f"Totalt: {len(rows)} ansokningar under {month_label} {year}", new_x="LMARGIN", new_y="NEXT")
 
     # Footer
     pdf.ln(6)
-    pdf.set_font("Helvetica", "I", 8)
+    pdf.set_font("Helvetica", "I", 7)
     pdf.set_text_color(150, 150, 150)
-    pdf.cell(0, 5, f"Genererad {datetime.now().strftime('%Y-%m-%d')} via Platsbanken AI", new_x="LMARGIN", new_y="NEXT")
+    pdf.cell(0, 5, f"Genererad {datetime.now().strftime('%Y-%m-%d')}", new_x="LMARGIN", new_y="NEXT")
 
     pdf_bytes = pdf.output()
     filename = f"Aktivitetsrapport_{month_label.upper()}{year}.pdf"

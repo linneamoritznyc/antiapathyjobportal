@@ -7963,9 +7963,9 @@
             });
             const sortedDates = Object.keys(appsByDate).sort().reverse();
 
-            const generateAktivitetsrapport = async () => {
+            const generateAktivitetsrapport = async (format = 'pdf') => {
                 try {
-                    const res = await authFetch(`/api/aktivitetsrapport?month=${reportMonth}`);
+                    const res = await authFetch(`/api/aktivitetsrapport?month=${reportMonth}&format=${format}`);
                     if (res.ok) {
                         const blob = await res.blob();
                         const url = URL.createObjectURL(blob);
@@ -7974,7 +7974,7 @@
                         const monthNames = ['januari','februari','mars','april','maj','juni','juli','augusti','september','oktober','november','december'];
                         const [rYear, rMonth] = reportMonth.split('-');
                         const monthLabel = monthNames[parseInt(rMonth) - 1];
-                        a.download = `Aktivitetsrapport_${monthLabel.toUpperCase()}${rYear}.pdf`;
+                        a.download = `Aktivitetsrapport_${monthLabel.toUpperCase()}${rYear}.${format}`;
                         a.click();
                         URL.revokeObjectURL(url);
                     } else {
@@ -8022,6 +8022,7 @@
                             <div className="flex justify-between items-center mb-3">
                                 <h3 className="text-sm font-semibold text-slate-700">Sökta jobb per dag</h3>
                                 <div className="flex items-center gap-2">
+                                    <span className="text-xs text-slate-500">Aktivitetsrapport:</span>
                                     <input
                                         type="month"
                                         value={reportMonth}
@@ -8029,11 +8030,19 @@
                                         className="px-2 py-1 border border-slate-200 rounded-lg text-sm"
                                     />
                                     <button
-                                        onClick={generateAktivitetsrapport}
-                                        className="px-3 py-1.5 bg-indigo-600 text-white rounded-lg text-sm hover:bg-indigo-700"
->
-                                    Ladda ner aktivitetsrapport
-                                </button>
+                                        onClick={() => generateAktivitetsrapport('pdf')}
+                                        className="px-3 py-1.5 bg-indigo-600 text-white rounded-lg text-sm hover:bg-indigo-700 flex items-center gap-1"
+                                        title="Ladda ner aktivitetsrapport som PDF"
+                                    >
+                                        <span>PDF</span>
+                                    </button>
+                                    <button
+                                        onClick={() => generateAktivitetsrapport('txt')}
+                                        className="px-3 py-1.5 bg-slate-600 text-white rounded-lg text-sm hover:bg-slate-700 flex items-center gap-1"
+                                        title="Ladda ner aktivitetsrapport som textfil"
+                                    >
+                                        <span>TXT</span>
+                                    </button>
                                 </div>
                             </div>
                             <div className="space-y-1">
