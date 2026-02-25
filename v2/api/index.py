@@ -1630,13 +1630,14 @@ Skriv ENDAST CV-texten, inget annat."""
 
 
 async def generate_all_bransch_cvs(master_cv: Dict, user_id: str) -> List[Dict]:
-    """Generate all bransch-CV versions for a user"""
+    """Generate all bransch-CV versions for a user.
+    Runs AI calls in parallel (batches of 4) to stay within Vercel 60s timeout."""
+    import asyncio as _asyncio
     generated_cvs = []
 
-    for bransch in CV_BRANSCHER:
+    async def generate_and_save(bransch):
         logger.info(f"Generating bransch-CV: {bransch['name']}...")
         cv_text = await generate_bransch_cv(master_cv, bransch)
-
         cv_data = {
             "user_id": user_id,
             "vibe_id": bransch["id"],
@@ -1645,13 +1646,14 @@ async def generate_all_bransch_cvs(master_cv: Dict, user_id: str) -> List[Dict]:
             "cv_text": cv_text,
             "created_at": datetime.now().isoformat()
         }
-
-        # Save to database (upsert — re-generating overwrites previous version)
         saved = await db_request("POST", "user_cvs", data=cv_data, on_conflict="user_id,vibe_id")
-        if saved:
-            generated_cvs.append(saved[0])
-        else:
-            generated_cvs.append(cv_data)
+        return saved[0] if saved else cv_data
+
+    # Run in batches of 4 to avoid rate limits but stay fast
+    for i in range(0, len(CV_BRANSCHER), 4):
+        batch = CV_BRANSCHER[i:i+4]
+        results = await _asyncio.gather(*[generate_and_save(b) for b in batch])
+        generated_cvs.extend(results)
 
     return generated_cvs
 
@@ -6703,44 +6705,39 @@ async def enhance_master_cv_from_upload(request: Request):
         "user_id": f"eq.{user_id}", "order": "sort_order.asc"
     }) or []
 
-    # Build context of what already exists
+    # Build compact context of what already exists (keep short to leave room for AI response)
     existing_summary = "BEFINTLIGA ERFARENHETER I MASTER CV:\n"
     for exp in existing_experiences:
-        existing_summary += f"- ID:{exp.get('id')} | {exp.get('company')} | {exp.get('title')} | {exp.get('start_date')}-{exp.get('end_date','')} | Beskrivning: {(exp.get('description') or '')[:100]}\n"
+        existing_summary += f"- ID:{exp.get('id')} | {exp.get('company')} | {exp.get('title')} | {exp.get('start_date')}-{exp.get('end_date','')}\n"
     existing_summary += "\nBEFINTLIG UTBILDNING:\n"
     for edu in existing_education:
-        existing_summary += f"- ID:{edu.get('id')} | {edu.get('school')} | {edu.get('degree')} | {edu.get('start_date')}-{edu.get('end_date','')}\n"
+        existing_summary += f"- ID:{edu.get('id')} | {edu.get('school')} | {edu.get('degree')}\n"
     existing_summary += "\nBEFINTLIGT VOLONTÄRARBETE:\n"
     for vol in existing_volunteer:
-        vol_desc = vol.get('description') or ''
-        vol_bullets = vol.get('bullets') or []
-        vol_text = vol_desc if vol_desc else '. '.join(vol_bullets) if vol_bullets else ''
-        has_desc = "✅" if vol_text.strip() else "❌ SAKNAR DESCRIPTION"
-        existing_summary += f"- ID:{vol.get('id')} | {vol.get('organization')} | {vol.get('title', '')} | {vol.get('dates','')} | {has_desc} | {vol_text[:120]}\n"
+        has_desc = "✅" if (vol.get('description') or '').strip() else "❌"
+        existing_summary += f"- ID:{vol.get('id')} | {vol.get('organization')} | {vol.get('title', '')} | {has_desc}\n"
     if not existing_volunteer:
-        existing_summary += "- (inga poster)\n"
+        existing_summary += "- (inga)\n"
     existing_summary += "\nBEFINTLIGA PROJEKT:\n"
     for proj in existing_projects:
-        existing_summary += f"- ID:{proj.get('id')} | {proj.get('name') or proj.get('title','')} | {(proj.get('description') or '')[:80]}\n"
+        existing_summary += f"- ID:{proj.get('id')} | {proj.get('name') or proj.get('title','')}\n"
     if not existing_projects:
-        existing_summary += "- (inga poster)\n"
+        existing_summary += "- (inga)\n"
     existing_summary += "\nBEFINTLIGA KOMPETENSER:\n"
     skill_texts = [s.get('skill_text','') for s in existing_skills]
-    existing_summary += ", ".join(skill_texts) if skill_texts else "(inga)"
+    existing_summary += ", ".join(skill_texts[:50]) if skill_texts else "(inga)"
     existing_summary += "\n\nBEFINTLIGA CERTIFIERINGAR:\n"
     for cert in existing_certifications:
-        cert_desc = cert.get('description') or ''
-        has_desc = "✅" if cert_desc.strip() else "❌ SAKNAR DESCRIPTION"
-        existing_summary += f"- ID:{cert.get('id')} | {cert.get('certification_name', '')} | Utfärdare: {cert.get('issuing_organization', '')} | {has_desc} | {cert_desc[:80]}\n"
+        has_desc = "✅" if (cert.get('description') or '').strip() else "❌"
+        existing_summary += f"- ID:{cert.get('id')} | {cert.get('certification_name', '')} | {has_desc}\n"
     if not existing_certifications:
-        existing_summary += "- (inga poster)\n"
+        existing_summary += "- (inga)\n"
     existing_summary += "\nBEFINTLIGA UTMÄRKELSER/AWARDS:\n"
     for award in existing_awards:
-        award_desc = award.get('description') or ''
-        has_desc = "✅" if award_desc.strip() else "❌ SAKNAR DESCRIPTION"
-        existing_summary += f"- ID:{award.get('id')} | {award.get('award_text', '')} | {has_desc} | {award_desc[:80]}\n"
+        has_desc = "✅" if (award.get('description') or '').strip() else "❌"
+        existing_summary += f"- ID:{award.get('id')} | {award.get('award_text', '')} | {has_desc}\n"
     if not existing_awards:
-        existing_summary += "- (inga poster)\n"
+        existing_summary += "- (inga)\n"
 
     if not ANTHROPIC_API_KEY:
         raise HTTPException(status_code=500, detail="AI ej konfigurerad")
@@ -6765,7 +6762,7 @@ FÖR VARJE SEKTION:
 {existing_summary}
 
 NYTT CV-DOKUMENT:
-{cv_text[:5000]}
+{cv_text[:8000]}
 
 Svara i EXAKT detta JSON-format (inga kommentarer, bara ren JSON):
 {{
@@ -6842,7 +6839,7 @@ KRITISKT — BESKRIVNINGAR ÄR OBLIGATORISKA:
                 },
                 json={
                     "model": "claude-sonnet-4-5-20250929",
-                    "max_tokens": 4096,
+                    "max_tokens": 8192,
                     "messages": [{"role": "user", "content": prompt}]
                 },
                 timeout=55
@@ -8448,8 +8445,10 @@ Regler:
                 current_avoid = existing[0].get("avoid_phrases") or []
                 current_phrases = existing[0].get("liked_phrases") or []
 
-            new_avoid = list(set(current_avoid + avoid_phrases))
-            new_phrases = list(set(current_phrases + like_phrases))
+            # Cap arrays at 150 entries to prevent unbounded growth
+            MAX_PHRASES = 150
+            new_avoid = list(set(current_avoid + avoid_phrases))[:MAX_PHRASES]
+            new_phrases = list(set(current_phrases + like_phrases))[:MAX_PHRASES]
 
             pref_data = {
                 "user_id": user_id,
@@ -8458,7 +8457,7 @@ Regler:
                 "updated_at": datetime.now().isoformat()
             }
             async with httpx.AsyncClient() as client:
-                await client.post(
+                resp = await client.post(
                     f"{SUPABASE_URL}/rest/v1/user_cover_letter_preferences",
                     headers={
                         "apikey": SUPABASE_KEY,
@@ -8468,6 +8467,8 @@ Regler:
                     },
                     json=pref_data
                 )
+                if resp.status_code >= 400:
+                    logger.error(f"Failed to save letter prefs: {resp.status_code} - {resp.text[:300]}")
         except Exception as e:
             logger.warning(f"Failed to update letter prefs from feedback: {e}")
 
@@ -9884,6 +9885,8 @@ async def update_letter_style_phrases(request: Request):
             current_list = []
 
         if action == "add" and phrase not in current_list:
+            if len(current_list) >= 150:
+                raise HTTPException(status_code=400, detail="Max 150 fraser per lista")
             current_list.append(phrase)
         elif action == "remove":
             current_list = [p for p in current_list if p != phrase]
