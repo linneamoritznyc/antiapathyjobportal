@@ -3717,25 +3717,23 @@
                 setGeneratingSingle(null);
             };
 
-            const handleDownloadMasterCV = async () => {
+            const handleDownloadMasterCV = async (format = 'pdf') => {
                 if (!localStorage.getItem('auth_token')) return;
 
+                const endpoint = format === 'txt' ? '/api/master-cv/download-txt' : '/api/master-cv/download-pdf';
                 try {
-                    const res = await authFetch('/api/master-cv/download-pdf');
+                    const res = await authFetch(endpoint);
                     if (!res.ok) {
                         const errData = await res.json().catch(() => ({}));
                         throw new Error(errData.detail || 'Servern returnerade ett fel');
                     }
                     const blob = await res.blob();
-                    if (blob.type && !blob.type.includes('pdf')) {
-                        throw new Error('Svaret var inte en PDF');
-                    }
                     const url = window.URL.createObjectURL(blob);
                     const a = document.createElement('a');
                     a.href = url;
                     const disposition = res.headers.get('Content-Disposition') || '';
                     const match = disposition.match(/filename="?([^"]+)"?/);
-                    a.download = match ? match[1] : 'Master_CV.pdf';
+                    a.download = match ? match[1] : (format === 'txt' ? 'Master_CV.txt' : 'Master_CV.pdf');
                     a.click();
                     window.URL.revokeObjectURL(url);
                 } catch (err) {
@@ -3928,12 +3926,20 @@
                                 <span className="text-sm text-green-600 bg-green-50 px-3 py-1 rounded-full">{enhanceResult}</span>
                             )}
                         </div>
-                        <button
-                            onClick={handleDownloadMasterCV}
-                            className="bg-slate-700 text-white px-6 py-2 rounded-lg hover:bg-slate-800 transition"
-                        >
-                            📥 Ladda ner Master CV som PDF
-                        </button>
+                        <div className="flex gap-2">
+                            <button
+                                onClick={() => handleDownloadMasterCV('pdf')}
+                                className="bg-slate-700 text-white px-6 py-2 rounded-lg hover:bg-slate-800 transition"
+                            >
+                                📥 Ladda ner PDF
+                            </button>
+                            <button
+                                onClick={() => handleDownloadMasterCV('txt')}
+                                className="bg-slate-500 text-white px-4 py-2 rounded-lg hover:bg-slate-600 transition"
+                            >
+                                📄 Ladda ner TXT
+                            </button>
+                        </div>
                     </div>
 
                     {/* Chat about CV changes */}
