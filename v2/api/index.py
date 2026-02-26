@@ -31,6 +31,7 @@ SUPABASE_URL = os.getenv("SUPABASE_URL")
 SUPABASE_KEY = os.getenv("SUPABASE_SERVICE_ROLE_KEY") or os.getenv("SUPABASE_ANON_KEY")
 SUPABASE_ANON_KEY = os.getenv("SUPABASE_ANON_KEY")  # For client-side auth
 ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY")
+GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
 HUGGINGFACE_API_KEY = os.getenv("HUGGINGFACE_API_KEY")
 
 # ── Swedish Language Rules (Svenska Skrivregler) ──────────────────────────
@@ -399,31 +400,60 @@ def get_supabase_headers(prefer: str = "return=representation") -> dict:
 
 
 async def call_claude_api(prompt: str, model: str = "claude-haiku-4-5-20251001", max_tokens: int = 600, timeout: int = 25) -> Optional[str]:
-    """Call Claude API and return the response text, or None on failure."""
-    if not ANTHROPIC_API_KEY:
+    """Call Claude API and return the response text. Falls back to Gemini if Anthropic fails."""
+    if ANTHROPIC_API_KEY:
+        try:
+            async with httpx.AsyncClient() as client:
+                response = await client.post(
+                    "https://api.anthropic.com/v1/messages",
+                    headers={
+                        "x-api-key": ANTHROPIC_API_KEY,
+                        "anthropic-version": "2023-06-01",
+                        "content-type": "application/json"
+                    },
+                    json={
+                        "model": model,
+                        "max_tokens": max_tokens,
+                        "messages": [{"role": "user", "content": prompt}]
+                    },
+                    timeout=timeout
+                )
+                if response.status_code == 200:
+                    return response.json()["content"][0]["text"].strip()
+                else:
+                    logger.warning(f"Claude API error: {response.status_code} - {response.text[:200]}")
+        except Exception as e:
+            logger.warning(f"Error calling Claude API: {e}")
+    # Fallback to Gemini
+    gemini_result = await call_gemini_api(prompt, max_tokens=max_tokens, timeout=timeout)
+    if gemini_result:
+        logger.info("call_claude_api succeeded via Gemini fallback")
+        return gemini_result
+    return None
+
+
+async def call_gemini_api(prompt: str, model: str = "gemini-2.0-flash", max_tokens: int = 4000, timeout: int = 55, system_prompt: str = None) -> Optional[str]:
+    """Call Google Gemini API as fallback when Anthropic is unavailable. Returns response text or None."""
+    if not GEMINI_API_KEY:
         return None
     try:
+        url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={GEMINI_API_KEY}"
+        body = {
+            "contents": [{"parts": [{"text": prompt}]}],
+            "generationConfig": {"maxOutputTokens": max_tokens}
+        }
+        if system_prompt:
+            body["systemInstruction"] = {"parts": [{"text": system_prompt}]}
         async with httpx.AsyncClient() as client:
-            response = await client.post(
-                "https://api.anthropic.com/v1/messages",
-                headers={
-                    "x-api-key": ANTHROPIC_API_KEY,
-                    "anthropic-version": "2023-06-01",
-                    "content-type": "application/json"
-                },
-                json={
-                    "model": model,
-                    "max_tokens": max_tokens,
-                    "messages": [{"role": "user", "content": prompt}]
-                },
-                timeout=timeout
-            )
+            response = await client.post(url, json=body, timeout=timeout)
             if response.status_code == 200:
-                return response.json()["content"][0]["text"].strip()
+                data = response.json()
+                text = data.get("candidates", [{}])[0].get("content", {}).get("parts", [{}])[0].get("text", "")
+                return text.strip() if text else None
             else:
-                logger.error(f"Claude API error: {response.status_code} - {response.text[:200]}")
+                logger.warning(f"Gemini API error: {response.status_code} - {response.text[:200]}")
     except Exception as e:
-        logger.error(f"Error calling Claude API: {e}")
+        logger.warning(f"Gemini API exception: {e}")
     return None
 
 
@@ -1658,7 +1688,16 @@ Skriv ENDAST det färdiga brevet, inget annat."""
                         return letter_text
                 except Exception as fallback_err:
                     logger.error(f"Haiku fallback also failed: {fallback_err}")
-                # Both failed — show template with error details
+                # Anthropic failed — try Gemini as final fallback
+                try:
+                    gemini_letter = await call_gemini_api(prompt, max_tokens=1500, timeout=55)
+                    if gemini_letter:
+                        gemini_letter = re.sub(r'^#+\s+', '', gemini_letter, flags=re.MULTILINE)
+                        logger.info("Cover letter generated with Gemini fallback")
+                        return gemini_letter
+                except Exception as gemini_err:
+                    logger.error(f"Gemini fallback also failed: {gemini_err}")
+                # All failed — show template with error details
                 error_note = f"[AI-brevet kunde inte genereras (API-fel {response.status_code}: {error_body[:100]}). Nedan är en mall — redigera den!]\n\n"
                 return error_note + generate_template_letter(job)
 
@@ -1911,6 +1950,13 @@ Skriv ENDAST CV-texten, inget annat."""
                         logger.warning(f"Bransch CV {model_name} failed: {response.status_code} - {response.text[:200]}")
                 except Exception as model_err:
                     logger.warning(f"Bransch CV {model_name} exception: {model_err}")
+
+        # If Anthropic failed, try Gemini
+        logger.info("Anthropic models failed for bransch CV, trying Gemini")
+        gemini_result = await call_gemini_api(prompt, max_tokens=4000, timeout=55)
+        if gemini_result:
+            logger.info("Bransch CV generation succeeded with Gemini fallback")
+            return gemini_result
 
     except Exception as e:
         logger.error(f"Error generating CV: {e}")
@@ -7904,7 +7950,7 @@ KRITISKT — BESKRIVNINGAR ÄR OBLIGATORISKA (detta är den viktigaste regeln!):
     ai_text = ""
     try:
         async with httpx.AsyncClient() as client:
-            # Try Sonnet first, fall back to Haiku on failure
+            # Try Anthropic models first (Sonnet → Haiku), then Gemini as final fallback
             models_to_try = ["claude-sonnet-4-5-20250929", "claude-haiku-4-5-20251001"]
             response = None
             last_error = ""
@@ -7931,19 +7977,27 @@ KRITISKT — BESKRIVNINGAR ÄR OBLIGATORISKA (detta är den viktigaste regeln!):
                     else:
                         last_error = response.text[:500]
                         logger.warning(f"Enhance-master {model_name} failed: {response.status_code} - {last_error}")
-                        response = None  # Reset so we try next model
+                        response = None
                 except Exception as model_err:
                     last_error = str(model_err)
                     logger.warning(f"Enhance-master {model_name} exception: {model_err}")
                     response = None
 
+            # If Anthropic failed, try Gemini as final fallback
             if response is None or response.status_code != 200:
-                error_detail = last_error[:300] if last_error else "Alla AI-modeller misslyckades"
-                logger.error(f"All models failed for enhance-master. Last error: {error_detail}")
-                raise HTTPException(status_code=500, detail=f"AI-fel: {error_detail}")
+                logger.info("Anthropic models failed, trying Gemini fallback for enhance-master")
+                gemini_result = await call_gemini_api(prompt, max_tokens=8192, timeout=55)
+                if gemini_result:
+                    ai_text = gemini_result
+                    logger.info("Enhance-master succeeded with Gemini fallback")
+                else:
+                    error_detail = last_error[:300] if last_error else "Alla AI-modeller misslyckades"
+                    logger.error(f"All models failed for enhance-master. Last error: {error_detail}")
+                    raise HTTPException(status_code=500, detail=f"AI-fel: {error_detail}")
 
-            result = response.json()
-            ai_text = result["content"][0]["text"].strip()
+            if not ai_text:
+                result = response.json()
+                ai_text = result["content"][0]["text"].strip()
 
             # Parse JSON from AI response (handle markdown code blocks)
             if "```json" in ai_text:
@@ -8559,12 +8613,21 @@ REGLER:
                     logger.warning(f"Enhance-chat {model_name} exception: {model_err}")
                     response = None
 
+            # If Anthropic failed, try Gemini as final fallback
             if response is None or response.status_code != 200:
-                error_detail = last_error[:300] if last_error else "Alla AI-modeller misslyckades"
-                raise HTTPException(status_code=500, detail=f"AI-fel: {error_detail}")
-
-            result = response.json()
-            answer = result["content"][0]["text"].strip()
+                logger.info("Anthropic models failed, trying Gemini fallback for enhance-chat")
+                # Build a single prompt from system + conversation for Gemini
+                chat_text = "\n".join([f"{'Användare' if m['role']=='user' else 'Assistent'}: {m['content']}" for m in messages])
+                gemini_result = await call_gemini_api(chat_text, max_tokens=2000, timeout=45, system_prompt=system_prompt)
+                if gemini_result:
+                    answer = gemini_result
+                    logger.info("Enhance-chat succeeded with Gemini fallback")
+                else:
+                    error_detail = last_error[:300] if last_error else "Alla AI-modeller misslyckades"
+                    raise HTTPException(status_code=500, detail=f"AI-fel: {error_detail}")
+            else:
+                result = response.json()
+                answer = result["content"][0]["text"].strip()
     except HTTPException:
         raise
     except Exception as e:
@@ -8694,6 +8757,18 @@ Svara ENDAST med JSON-arrayen, inget annat."""
                         logger.warning(f"CV analysis {model_name} failed: {response.status_code} - {response.text[:200]}")
                 except Exception as model_err:
                     logger.warning(f"CV analysis {model_name} exception: {model_err}")
+
+        # If Anthropic failed, try Gemini
+        logger.info("Anthropic models failed for CV analysis, trying Gemini")
+        gemini_text = await call_gemini_api(prompt, max_tokens=1000, timeout=30)
+        if gemini_text:
+            import json
+            start = gemini_text.find('[')
+            end = gemini_text.rfind(']') + 1
+            if start >= 0 and end > start:
+                recommendations = json.loads(gemini_text[start:end])
+                logger.info("CV analysis succeeded with Gemini fallback")
+                return recommendations
 
     except Exception as e:
         logger.error(f"AI analysis error: {e}")
