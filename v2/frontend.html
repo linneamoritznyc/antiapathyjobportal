@@ -3699,15 +3699,20 @@
                         method: 'POST',
                         body: JSON.stringify({})
                     });
-                    const data = await res.json();
-                    if (data.success) {
+                    let data;
+                    try { data = await res.json(); } catch { data = {}; }
+
+                    if (!res.ok) {
+                        alert(data.detail || `Serverfel (${res.status}). Vercel-timeout? Försök igen.`);
+                    } else if (data.success) {
                         await fetchBranschCVs();
+                        alert(data.message || 'CV genererat!');
                     } else {
-                        alert(data.message || data.detail || 'Kunde inte generera CV.');
+                        alert(data.message || data.detail || 'AI kunde inte generera CV. Försök igen om en stund.');
                     }
                 } catch (err) {
                     console.error('Generate single CV error:', err);
-                    alert('Något gick fel vid genereringen.');
+                    alert('Nätverksfel eller timeout vid generering. Försök igen.');
                 }
                 setGeneratingSingle(null);
             };
@@ -4097,7 +4102,7 @@
                     {/* Section 3: Bransch-CVs Grid */}
                     <div className="bg-white rounded-xl p-6 border border-slate-200">
                         <div className="flex justify-between items-center mb-2">
-                            <h3 className="text-xl font-bold">Bransch-CVs (8 mallar)</h3>
+                            <h3 className="text-xl font-bold">Bransch-CVs ({branschCVs.length} mallar)</h3>
                             <button
                                 onClick={handleGenerateAllCVs}
                                 disabled={generatingAll}
