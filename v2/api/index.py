@@ -356,6 +356,9 @@ CV_BRANSCHER = [
     {"id": "content", "name": "Content & Moderation", "emoji": "📱",
      "focus": "innehållsgranskning, trust & safety, riktlinjer, datahantering",
      "keywords": ["content", "moderat", "trust", "safety", "granskning"]},
+    {"id": "cemetery", "name": "Kyrkogård & Begravning", "emoji": "⛪",
+     "focus": "utomhusarbete, trädgårdsskötsel, respekt, fysiskt arbete, noggrannhet, gravskötsel",
+     "keywords": ["kyrkogård", "begravning", "gravskötsel", "krematorium", "församling", "kyrka", "kyrkogårdsarbetare", "gravgrävning"]},
 ]
 
 
@@ -1936,6 +1939,8 @@ def match_job_to_bransch(job_title: str, job_description: str) -> str:
         "hotel":             ["hotell", "hotel", "reception", "receptionist", "gäst", "bokning", "concierge", "incheckning", "lobby", "roomservice"],
         "content":           ["moderator", "content moderation", "trust and safety", "granskning", "recensioner", "online safety"],
         "art":               ["konst", "kultur", "galleri", "utställning", "kreativ", "illustration", "foto", "film", "musik", "teater"],
+        "cemetery":          ["kyrkogård", "begravning", "gravskötsel", "krematorium", "församling", "kyrka", "kyrkogårdsarbetare", "gravgrävning",
+                              "begravningsbyrå", "jordfästning", "minneslund", "gravvård", "kyrklig"],
     }
 
     scores = {bransch: sum(1 for kw in kws if word_match(kw, text)) for bransch, kws in bransch_keywords.items()}
@@ -1954,6 +1959,7 @@ CV_FILE_MAP = {
     "hotel":             "CV_Linnea_Moritz_Hotell_Reception.pdf",
     "content":           "CV_Linnea_Moritz_Content_Moderation.pdf",
     "art":               "CV_Linnea_Moritz_Konst_Kultur.pdf",
+    "cemetery":          "CV_Linnea_Moritz_Kyrkogard_Begravning.pdf",
 }
 CV_FILES_DIR = pathlib.Path(__file__).parent / "cv_files"
 
@@ -1963,6 +1969,7 @@ BRANSCH_FALLBACK = {
     "art": "customerservice",
     "industry": "customerservice",
     "content": "tech",
+    "cemetery": "industry",
 }
 
 
@@ -7489,7 +7496,7 @@ VIKTIGT:
 - profile_updates.languages: Lista ALLA språk som nämns i CVt. Inkludera även befintliga språk. Null om inga hittas.
 - Bara inkludera poster som verkligen behöver skapas eller uppdateras
 - Om inget behöver ändras i en sektion, returnera tom array för den
-- Kategorier för erfarenheter: restaurant, retail, tech, healthcare, customerservice, content, industry, art, hotel
+- Kategorier för erfarenheter: restaurant, retail, tech, healthcare, customerservice, content, industry, art, hotel, cemetery
 - skill_type: "technical" (programmeringsspråk, verktyg), "language" (svenska, engelska), "certificate" (körkort, etc.)
 - Datum i format "Aug 2024" eller "2024"
 - Beskrivningar på svenska, korta och informativa

@@ -201,9 +201,16 @@ Hantera Master CV + 9 branschanpassade versioner.
 - **"Ladda ner Master CV"** → `GET /api/master-cv/download-pdf`
 - Statistik: antal erfarenheter, utbildningar, utmärkelser, projekt, språk
 
-### CV-uppladdning med AI-parsning
+### CV-uppladdning med AI-parsning (enhance-master)
 - Ladda upp befintligt CV (PDF/DOCX/TXT) → `POST /api/cv/enhance-master`
-- AI extraherar: erfarenheter, utbildning, skills
+- AI extraherar **ALLT**: erfarenheter, utbildning, volontärarbete, projekt, skills, certifieringar, utmärkelser, **+ språk + om mig-text**
+- Sparar nya språk till `user_profiles.languages` (mergar med befintliga, dedup case-insensitive)
+- Sparar professionell sammanfattning till `user_profiles.about_me` (uppdaterar om längre/bättre)
+- **Dubblett-prevention** på alla sektioner: erfarenheter (företag+titel), utbildning (skola+examen), volontärarbete (organisation), projekt (namn), certifieringar (namn), utmärkelser (text), skills (text)
+- **Auth-fix**: token refresh vid 401 (FormData-uploads använde raw fetch utan retry)
+- **Bättre felmeddelanden**: specifika tips vid skannad PDF, nätverksfel, etc.
+- Parallella DB-hämtningar (snabbare)
+- CV-textgräns höjd till 12 000 tecken (var 8 000)
 - **AI-chatt** efter uppladdning: `POST /api/cv/enhance-chat`
 - **v2.6 fix**: `enhance-master` hade för liten max_tokens (3000→8192) och komprimerad prompt. Vid 90+ befintliga poster trunkerades AI-svaret.
 - **v2.6 fix**: `enhance-chat` visade inte description-fält för volontärarbete, utmärkelser eller certifieringar — AI kunde inte se eller redigera dem. Fixat: alla fält skickas nu i AI-kontexten.
