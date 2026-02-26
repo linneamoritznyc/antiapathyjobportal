@@ -3563,6 +3563,14 @@ def _build_master_cv_pdf(profile: Dict, experiences: list, education: list, volu
         pdf.set_text_color(100, 100, 100)
         pdf.cell(0, 5, "  |  ".join(extras), new_x="LMARGIN", new_y="NEXT")
 
+    # About me / professional summary
+    about_me = (profile.get("about_me") or "").strip()
+    if about_me:
+        pdf.ln(2)
+        pdf.set_font("Helvetica", "", 10)
+        pdf.set_text_color(60, 60, 60)
+        pdf.multi_cell(0, 5, _safe_pdf_text(about_me))
+
     pdf.ln(4)
 
     # Divider line
@@ -7337,33 +7345,37 @@ async def enhance_master_cv_from_upload(request: Request):
         cv_text = body.get("cv_text", "")
 
     if not cv_text or len(cv_text) < 50:
-        raise HTTPException(status_code=400, detail="CV-text är för kort eller saknas")
+        raise HTTPException(status_code=400, detail="CV-text är för kort eller saknas. Om det är en skannad PDF (bild), testa att ladda upp som DOCX eller TXT istället.")
 
-    # Fetch existing Master CV data
-    existing_experiences = await db_request("GET", "user_experiences", params={
-        "user_id": f"eq.{user_id}", "order": "sort_order.asc"
-    }) or []
-    existing_education = await db_request("GET", "user_education", params={
-        "user_id": f"eq.{user_id}", "order": "sort_order.asc"
-    }) or []
-    existing_volunteer = await db_request("GET", "user_volunteer", params={
-        "user_id": f"eq.{user_id}", "order": "sort_order.asc"
-    }) or []
-    existing_projects = await db_request("GET", "tech_projects", params={
-        "user_id": f"eq.{user_id}", "order": "sort_order.asc"
-    }) or []
-    existing_skills = await db_request("GET", "user_skills", params={
-        "user_id": f"eq.{user_id}"
-    }) or []
-    existing_certifications = await db_request("GET", "user_certifications", params={
-        "user_id": f"eq.{user_id}", "order": "sort_order.asc"
-    }) or []
-    existing_awards = await db_request("GET", "user_awards", params={
-        "user_id": f"eq.{user_id}", "order": "sort_order.asc"
-    }) or []
+    # Fetch existing Master CV data (parallel for speed)
+    import asyncio as _asyncio
+    (existing_experiences, existing_education, existing_volunteer, existing_projects,
+     existing_skills, existing_certifications, existing_awards, existing_profile_list) = await _asyncio.gather(
+        db_request("GET", "user_experiences", params={"user_id": f"eq.{user_id}", "order": "sort_order.asc"}),
+        db_request("GET", "user_education", params={"user_id": f"eq.{user_id}", "order": "sort_order.asc"}),
+        db_request("GET", "user_volunteer", params={"user_id": f"eq.{user_id}", "order": "sort_order.asc"}),
+        db_request("GET", "tech_projects", params={"user_id": f"eq.{user_id}", "order": "sort_order.asc"}),
+        db_request("GET", "user_skills", params={"user_id": f"eq.{user_id}"}),
+        db_request("GET", "user_certifications", params={"user_id": f"eq.{user_id}", "order": "sort_order.asc"}),
+        db_request("GET", "user_awards", params={"user_id": f"eq.{user_id}", "order": "sort_order.asc"}),
+        db_request("GET", "user_profiles", params={"user_id": f"eq.{user_id}"}),
+    )
+    existing_experiences = existing_experiences or []
+    existing_education = existing_education or []
+    existing_volunteer = existing_volunteer or []
+    existing_projects = existing_projects or []
+    existing_skills = existing_skills or []
+    existing_certifications = existing_certifications or []
+    existing_awards = existing_awards or []
+    existing_profile = existing_profile_list[0] if existing_profile_list else {}
 
     # Build compact context of what already exists (keep short to leave room for AI response)
-    existing_summary = "BEFINTLIGA ERFARENHETER I MASTER CV:\n"
+    existing_summary = "BEFINTLIG PROFIL:\n"
+    existing_summary += f"- Namn: {existing_profile.get('full_name', '(ej satt)')}\n"
+    existing_summary += f"- Om mig: {(existing_profile.get('about_me') or '(tomt)')[:200]}\n"
+    existing_langs = existing_profile.get('languages') or []
+    existing_summary += f"- Språk: {', '.join(existing_langs) if existing_langs else '(inga)'}\n"
+    existing_summary += "\nBEFINTLIGA ERFARENHETER I MASTER CV:\n"
     for exp in existing_experiences:
         existing_summary += f"- ID:{exp.get('id')} | {exp.get('company')} | {exp.get('title')} | {exp.get('start_date')}-{exp.get('end_date','')}\n"
     existing_summary += "\nBEFINTLIG UTBILDNING:\n"
@@ -7403,6 +7415,8 @@ async def enhance_master_cv_from_upload(request: Request):
     prompt = f"""Jag har ett Master CV med befintliga poster. Jag har precis laddat upp ett nytt CV-dokument.
 
 UPPGIFT: Analysera ALLA sektioner i det nya dokumentet och jämför med mina befintliga poster. Det nya CVt kan innehålla:
+- Professionell sammanfattning / "Om mig" (profil-text)
+- Språk (svenska, engelska, etc.)
 - Arbetslivserfarenheter (jobb, praktik, anställningar)
 - Utbildningar (skola, kurser, program)
 - Volontärarbete / ideellt arbete
@@ -7419,10 +7433,14 @@ FÖR VARJE SEKTION:
 {existing_summary}
 
 NYTT CV-DOKUMENT:
-{cv_text[:8000]}
+{cv_text[:12000]}
 
 Svara i EXAKT detta JSON-format (inga kommentarer, bara ren JSON):
 {{
+    "profile_updates": {{
+        "about_me": "Professionell sammanfattning/om mig-text extraherad från CVt (null om inget hittas)",
+        "languages": ["Svenska", "Engelska", "etc — ALLA språk som nämns i CVt"]
+    }},
     "new_experiences": [
         {{"company": "...", "title": "...", "location": "...", "start_date": "...", "end_date": "...", "description": "...", "categories": ["..."]}}
     ],
@@ -7466,7 +7484,9 @@ Svara i EXAKT detta JSON-format (inga kommentarer, bara ren JSON):
 }}
 
 VIKTIGT:
-- Analysera HELA dokumentet — missa inte volontärarbete, projekt, kompetenser, certifieringar eller utmärkelser/awards
+- Analysera HELA dokumentet — missa inte profil/om mig, språk, volontärarbete, projekt, kompetenser, certifieringar eller utmärkelser/awards
+- profile_updates.about_me: Extrahera sammanfattning/profiltext. Om befintlig about_me redan är bra, sätt null.
+- profile_updates.languages: Lista ALLA språk som nämns i CVt. Inkludera även befintliga språk. Null om inga hittas.
 - Bara inkludera poster som verkligen behöver skapas eller uppdateras
 - Om inget behöver ändras i en sektion, returnera tom array för den
 - Kategorier för erfarenheter: restaurant, retail, tech, healthcare, customerservice, content, industry, art, hotel
@@ -7530,6 +7550,36 @@ KRITISKT — BESKRIVNINGAR ÄR OBLIGATORISKA:
     # Apply changes to database
     added = 0
     updated = 0
+
+    # Update profile (about_me + languages) if AI found new info
+    profile_updates = changes.get("profile_updates") or {}
+    profile_patch = {}
+    new_about_me = profile_updates.get("about_me")
+    if new_about_me and isinstance(new_about_me, str) and len(new_about_me) > 10:
+        # Only update if current about_me is empty or shorter
+        current_about = existing_profile.get("about_me") or ""
+        if not current_about or len(new_about_me) > len(current_about):
+            profile_patch["about_me"] = new_about_me
+    new_languages = profile_updates.get("languages")
+    if new_languages and isinstance(new_languages, list) and len(new_languages) > 0:
+        # Merge: keep existing + add new (deduplicate case-insensitive)
+        current_langs = existing_profile.get("languages") or []
+        seen = {l.lower() for l in current_langs}
+        merged = list(current_langs)
+        for lang in new_languages:
+            if isinstance(lang, str) and lang.strip() and lang.lower() not in seen:
+                merged.append(lang.strip())
+                seen.add(lang.lower())
+        if len(merged) > len(current_langs):
+            profile_patch["languages"] = merged
+    if profile_patch:
+        try:
+            await db_request("PATCH", "user_profiles", data=profile_patch,
+                             params={"user_id": f"eq.{user_id}"})
+            updated += 1
+            logger.info(f"Updated profile: {list(profile_patch.keys())}")
+        except Exception as e:
+            logger.warning(f"Failed to update profile: {e}")
 
     # Create new experiences (skip duplicates by company+title)
     existing_exp_keys = {(e.get("company", "").lower().strip() + "|" + e.get("title", "").lower().strip()) for e in existing_experiences}

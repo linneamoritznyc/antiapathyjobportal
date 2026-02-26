@@ -3758,23 +3758,37 @@
                 try {
                     const formData = new FormData();
                     formData.append('file', file);
-                    const token = localStorage.getItem('auth_token');
-                    const res = await fetch('/api/cv/enhance-master', {
-                        method: 'POST',
-                        headers: token ? { 'Authorization': `Bearer ${token}` } : {},
-                        body: formData
-                    });
-                    const data = await res.json();
-                    if (data.success) {
+
+                    // Helper: make the fetch with current token (FormData — no Content-Type header!)
+                    const doFetch = async (tok) => {
+                        const hdrs = {};
+                        if (tok) hdrs['Authorization'] = `Bearer ${tok}`;
+                        return fetch('/api/cv/enhance-master', { method: 'POST', headers: hdrs, body: formData });
+                    };
+
+                    let res = await doFetch(localStorage.getItem('auth_token'));
+
+                    // Auto-refresh on 401 and retry once
+                    if (res.status === 401 && localStorage.getItem('refresh_token')) {
+                        const newToken = await _tryRefreshToken();
+                        if (newToken) res = await doFetch(newToken);
+                    }
+
+                    let data;
+                    try { data = await res.json(); } catch { data = {}; }
+
+                    if (!res.ok) {
+                        alert(data.detail || `Serverfel (${res.status}). Försök igen.`);
+                    } else if (data.success) {
                         setEnhanceResult(data.summary);
                         setEnhanceChanges(JSON.stringify(data.changes || {}, null, 2));
                         fetchMasterCVData();
                     } else {
-                        alert(data.detail || 'Kunde inte analysera CV');
+                        alert(data.detail || 'Kunde inte analysera CV. Kontrollera att filen inte är en skannad bild.');
                     }
                 } catch (err) {
                     console.error('Enhance error:', err);
-                    alert('Fel vid uppladdning');
+                    alert('Nätverksfel vid uppladdning. Kontrollera din internetanslutning.');
                 }
                 setEnhancing(false);
                 if (fileInputRef.current) fileInputRef.current.value = '';
