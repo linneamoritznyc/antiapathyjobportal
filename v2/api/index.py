@@ -1883,26 +1883,34 @@ Skriv ENDAST CV-texten, inget annat."""
 
     try:
         async with httpx.AsyncClient() as client:
-            response = await client.post(
-                "https://api.anthropic.com/v1/messages",
-                headers={
-                    "x-api-key": ANTHROPIC_API_KEY,
-                    "anthropic-version": "2023-06-01",
-                    "content-type": "application/json"
-                },
-                json={
-                    "model": "claude-sonnet-4-5-20250929",
-                    "max_tokens": 4000,
-                    "messages": [{"role": "user", "content": prompt}]
-                },
-                timeout=55
-            )
+            # Try Sonnet first, fall back to Haiku
+            models_to_try = ["claude-sonnet-4-5-20250929", "claude-haiku-4-5-20251001"]
 
-            if response.status_code == 200:
-                result = response.json()
-                return result["content"][0]["text"].strip()
-            else:
-                logger.error(f"Claude API error: {response.status_code}")
+            for model_name in models_to_try:
+                try:
+                    response = await client.post(
+                        "https://api.anthropic.com/v1/messages",
+                        headers={
+                            "x-api-key": ANTHROPIC_API_KEY,
+                            "anthropic-version": "2023-06-01",
+                            "content-type": "application/json"
+                        },
+                        json={
+                            "model": model_name,
+                            "max_tokens": 4000,
+                            "messages": [{"role": "user", "content": prompt}]
+                        },
+                        timeout=55
+                    )
+
+                    if response.status_code == 200:
+                        result = response.json()
+                        logger.info(f"Bransch CV generation succeeded with model: {model_name}")
+                        return result["content"][0]["text"].strip()
+                    else:
+                        logger.warning(f"Bransch CV {model_name} failed: {response.status_code} - {response.text[:200]}")
+                except Exception as model_err:
+                    logger.warning(f"Bransch CV {model_name} exception: {model_err}")
 
     except Exception as e:
         logger.error(f"Error generating CV: {e}")
@@ -7893,27 +7901,46 @@ KRITISKT — BESKRIVNINGAR ÄR OBLIGATORISKA (detta är den viktigaste regeln!):
 - VARJE post i new_volunteer, new_awards, new_certifications, new_projects MÅSTE ha "description" med riktig text. Poster med tom description accepteras INTE."""
 
     import json as json_module
+    ai_text = ""
     try:
         async with httpx.AsyncClient() as client:
-            response = await client.post(
-                "https://api.anthropic.com/v1/messages",
-                headers={
-                    "x-api-key": ANTHROPIC_API_KEY,
-                    "anthropic-version": "2023-06-01",
-                    "content-type": "application/json"
-                },
-                json={
-                    "model": "claude-sonnet-4-5-20250929",
-                    "max_tokens": 8192,
-                    "messages": [{"role": "user", "content": prompt}]
-                },
-                timeout=55
-            )
+            # Try Sonnet first, fall back to Haiku on failure
+            models_to_try = ["claude-sonnet-4-5-20250929", "claude-haiku-4-5-20251001"]
+            response = None
+            last_error = ""
 
-            if response.status_code != 200:
-                error_body = response.text[:500]
-                logger.error(f"Claude API error in enhance: {response.status_code} - {error_body}")
-                raise HTTPException(status_code=500, detail=f"AI-fel: {response.status_code} — {error_body[:200]}")
+            for model_name in models_to_try:
+                try:
+                    response = await client.post(
+                        "https://api.anthropic.com/v1/messages",
+                        headers={
+                            "x-api-key": ANTHROPIC_API_KEY,
+                            "anthropic-version": "2023-06-01",
+                            "content-type": "application/json"
+                        },
+                        json={
+                            "model": model_name,
+                            "max_tokens": 8192,
+                            "messages": [{"role": "user", "content": prompt}]
+                        },
+                        timeout=55
+                    )
+                    if response.status_code == 200:
+                        logger.info(f"Enhance-master succeeded with model: {model_name}")
+                        break
+                    else:
+                        last_error = response.text[:500]
+                        logger.warning(f"Enhance-master {model_name} failed: {response.status_code} - {last_error}")
+                        response = None  # Reset so we try next model
+                except Exception as model_err:
+                    last_error = str(model_err)
+                    logger.warning(f"Enhance-master {model_name} exception: {model_err}")
+                    response = None
+
+            if response is None or response.status_code != 200:
+                error_detail = last_error[:300] if last_error else "Alla AI-modeller misslyckades"
+                logger.error(f"All models failed for enhance-master. Last error: {error_detail}")
+                raise HTTPException(status_code=500, detail=f"AI-fel: {error_detail}")
 
             result = response.json()
             ai_text = result["content"][0]["text"].strip()
@@ -8498,24 +8525,44 @@ REGLER:
 
     try:
         async with httpx.AsyncClient() as client:
-            response = await client.post(
-                "https://api.anthropic.com/v1/messages",
-                headers={
-                    "x-api-key": ANTHROPIC_API_KEY,
-                    "anthropic-version": "2023-06-01",
-                    "content-type": "application/json"
-                },
-                json={
-                    "model": "claude-sonnet-4-5-20250929",
-                    "max_tokens": 2000,
-                    "system": system_prompt,
-                    "messages": messages
-                },
-                timeout=45
-            )
-            if response.status_code != 200:
-                logger.error(f"Enhance chat Claude error: {response.status_code} - {response.text[:200]}")
-                raise HTTPException(status_code=500, detail="AI-fel")
+            # Try Sonnet first, fall back to Haiku
+            models_to_try = ["claude-sonnet-4-5-20250929", "claude-haiku-4-5-20251001"]
+            response = None
+            last_error = ""
+
+            for model_name in models_to_try:
+                try:
+                    response = await client.post(
+                        "https://api.anthropic.com/v1/messages",
+                        headers={
+                            "x-api-key": ANTHROPIC_API_KEY,
+                            "anthropic-version": "2023-06-01",
+                            "content-type": "application/json"
+                        },
+                        json={
+                            "model": model_name,
+                            "max_tokens": 2000,
+                            "system": system_prompt,
+                            "messages": messages
+                        },
+                        timeout=45
+                    )
+                    if response.status_code == 200:
+                        logger.info(f"Enhance-chat succeeded with model: {model_name}")
+                        break
+                    else:
+                        last_error = response.text[:300]
+                        logger.warning(f"Enhance-chat {model_name} failed: {response.status_code} - {last_error}")
+                        response = None
+                except Exception as model_err:
+                    last_error = str(model_err)
+                    logger.warning(f"Enhance-chat {model_name} exception: {model_err}")
+                    response = None
+
+            if response is None or response.status_code != 200:
+                error_detail = last_error[:300] if last_error else "Alla AI-modeller misslyckades"
+                raise HTTPException(status_code=500, detail=f"AI-fel: {error_detail}")
+
             result = response.json()
             answer = result["content"][0]["text"].strip()
     except HTTPException:
@@ -8611,32 +8658,42 @@ Svara ENDAST med JSON-arrayen, inget annat."""
 
     try:
         async with httpx.AsyncClient() as client:
-            response = await client.post(
-                "https://api.anthropic.com/v1/messages",
-                headers={
-                    "x-api-key": ANTHROPIC_API_KEY,
-                    "anthropic-version": "2023-06-01",
-                    "content-type": "application/json"
-                },
-                json={
-                    "model": "claude-sonnet-4-5-20250929",
-                    "max_tokens": 1000,
-                    "messages": [{"role": "user", "content": prompt}]
-                },
-                timeout=30
-            )
+            # Try Sonnet first, fall back to Haiku
+            models_to_try = ["claude-sonnet-4-5-20250929", "claude-haiku-4-5-20251001"]
 
-            if response.status_code == 200:
-                result = response.json()
-                text = result["content"][0]["text"].strip()
-                # Parse JSON from response
-                import json
-                # Find JSON array in response
-                start = text.find('[')
-                end = text.rfind(']') + 1
-                if start >= 0 and end > start:
-                    recommendations = json.loads(text[start:end])
-                    return recommendations
+            for model_name in models_to_try:
+                try:
+                    response = await client.post(
+                        "https://api.anthropic.com/v1/messages",
+                        headers={
+                            "x-api-key": ANTHROPIC_API_KEY,
+                            "anthropic-version": "2023-06-01",
+                            "content-type": "application/json"
+                        },
+                        json={
+                            "model": model_name,
+                            "max_tokens": 1000,
+                            "messages": [{"role": "user", "content": prompt}]
+                        },
+                        timeout=30
+                    )
+
+                    if response.status_code == 200:
+                        result = response.json()
+                        text = result["content"][0]["text"].strip()
+                        # Parse JSON from response
+                        import json
+                        # Find JSON array in response
+                        start = text.find('[')
+                        end = text.rfind(']') + 1
+                        if start >= 0 and end > start:
+                            recommendations = json.loads(text[start:end])
+                            logger.info(f"CV analysis succeeded with model: {model_name}")
+                            return recommendations
+                    else:
+                        logger.warning(f"CV analysis {model_name} failed: {response.status_code} - {response.text[:200]}")
+                except Exception as model_err:
+                    logger.warning(f"CV analysis {model_name} exception: {model_err}")
 
     except Exception as e:
         logger.error(f"AI analysis error: {e}")
