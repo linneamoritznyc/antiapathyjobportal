@@ -209,6 +209,37 @@ When you write code that references a table or column:
 
 ---
 
+## Environment Variables (Vercel)
+
+All env vars are set in Vercel Dashboard → Settings → Environment Variables (All Environments).
+
+| Variable | Purpose | Free tier? |
+|----------|---------|------------|
+| `ANTHROPIC_API_KEY` | Primary AI — Claude Sonnet/Haiku for cover letters, CV analysis, etc. | $5 free credits |
+| `GEMINI_API_KEY` | Fallback AI — Google Gemini 2.0 Flash | Yes (generous) |
+| `GROQ_API_KEY` | Fallback AI — Groq (Llama models, fast inference) | Yes |
+| `HUGGINGFACE_API_KEY` | GPT-SW3 Swedish grammar check | Yes |
+| `SUPABASE_URL` | Supabase project URL | — |
+| `SUPABASE_ANON_KEY` | Supabase anonymous/public key | — |
+| `SUPABASE_SERVICE_ROLE_KEY` | Supabase admin key (server-side only) | — |
+| `NEXT_PUBLIC_SUPABASE_URL` | Supabase URL (client-side) | — |
+| `NEXT_PUBLIC_SUPABASE_ANON_KEY` | Supabase anon key (client-side) | — |
+| `APP_URL` | App base URL for OAuth callbacks | — |
+| `GOOGLE_CLIENT_ID` | Google OAuth client ID (for login) | — |
+| `GOOGLE_CLIENT_SECRET` | Google OAuth client secret (for login) | — |
+
+### AI fallback chain
+
+All AI endpoints use this fallback order:
+1. **Anthropic Sonnet** (best quality)
+2. **Anthropic Haiku** (faster, cheaper)
+3. **Google Gemini** (free fallback)
+4. **Groq** (planned — not yet integrated in code)
+
+If Anthropic hits rate/spend limits, Gemini kicks in automatically.
+
+---
+
 ## Architecture
 
 ```
