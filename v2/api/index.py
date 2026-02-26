@@ -3721,39 +3721,69 @@ def _build_master_cv_pdf(profile: Dict, experiences: list, education: list, volu
 async def download_master_cv_pdf(request: Request):
     """Generate and download Master CV as PDF"""
     from fastapi.responses import Response
+    import asyncio as _asyncio
     user_id = await get_user_id_from_request(request, required=True)
 
-    # Fetch profile
-    profiles = await db_request("GET", "user_profiles", params={"user_id": f"eq.{user_id}"})
-    profile = profiles[0] if profiles else {"full_name": "", "email": "", "phone": "", "location": ""}
+    # Fetch all sections in parallel
+    profile_r, exp_r, edu_r, vol_r, awards_r, skills_r, proj_r, cert_r = await _asyncio.gather(
+        db_request("GET", "user_profiles", params={"user_id": f"eq.{user_id}"}),
+        db_request("GET", "user_experiences", params={"user_id": f"eq.{user_id}", "order": "sort_order.asc"}),
+        db_request("GET", "user_education", params={"user_id": f"eq.{user_id}", "order": "sort_order.asc"}),
+        db_request("GET", "user_volunteer", params={"user_id": f"eq.{user_id}", "order": "sort_order.asc"}),
+        db_request("GET", "user_awards", params={"user_id": f"eq.{user_id}", "order": "sort_order.asc"}),
+        db_request("GET", "user_skills", params={"user_id": f"eq.{user_id}"}),
+        db_request("GET", "tech_projects", params={"user_id": f"eq.{user_id}", "order": "sort_order.asc"}),
+        db_request("GET", "user_certifications", params={"user_id": f"eq.{user_id}", "order": "sort_order.asc"}),
+    )
+    profile = profile_r[0] if profile_r else {"full_name": "", "email": "", "phone": "", "location": ""}
+    experiences = exp_r or []
+    education = edu_r or []
+    volunteer = vol_r or []
+    awards = awards_r or []
+    skills = skills_r or []
+    projects = proj_r or []
+    certifications = cert_r or []
 
-    # Fetch all sections
-    experiences = await db_request("GET", "user_experiences", params={
-        "user_id": f"eq.{user_id}", "order": "sort_order.asc"
-    }) or []
-    education = await db_request("GET", "user_education", params={
-        "user_id": f"eq.{user_id}", "order": "sort_order.asc"
-    }) or []
-    volunteer = await db_request("GET", "user_volunteer", params={
-        "user_id": f"eq.{user_id}", "order": "sort_order.asc"
-    }) or []
-    awards = await db_request("GET", "user_awards", params={
-        "user_id": f"eq.{user_id}", "order": "sort_order.asc"
-    }) or []
-    skills = await db_request("GET", "user_skills", params={
-        "user_id": f"eq.{user_id}"
-    }) or []
-    projects = await db_request("GET", "tech_projects", params={
-        "user_id": f"eq.{user_id}", "order": "sort_order.asc"
-    }) or []
-    certifications = await db_request("GET", "user_certifications", params={
-        "user_id": f"eq.{user_id}", "order": "sort_order.asc"
-    }) or []
+    # Normalize bullets: ensure they're always lists (DB may store as JSON string or null)
+    for exp in experiences:
+        b = exp.get("bullets")
+        if b is None:
+            exp["bullets"] = []
+        elif isinstance(b, str):
+            try:
+                import json as _j
+                exp["bullets"] = _j.loads(b)
+            except Exception:
+                exp["bullets"] = [s.strip() for s in b.split("\n") if s.strip()]
+    for edu in education:
+        b = edu.get("bullets")
+        if b is None:
+            edu["bullets"] = []
+        elif isinstance(b, str):
+            try:
+                import json as _j
+                edu["bullets"] = _j.loads(b)
+            except Exception:
+                edu["bullets"] = [s.strip() for s in b.split("\n") if s.strip()]
+    for vol in volunteer:
+        b = vol.get("bullets")
+        if b is None:
+            vol["bullets"] = []
+        elif isinstance(b, str):
+            try:
+                import json as _j
+                vol["bullets"] = _j.loads(b)
+            except Exception:
+                vol["bullets"] = [s.strip() for s in b.split("\n") if s.strip()]
 
-    pdf_bytes = _build_master_cv_pdf(profile, experiences, education, volunteer, awards, skills, projects, certifications)
+    try:
+        pdf_bytes = _build_master_cv_pdf(profile, experiences, education, volunteer, awards, skills, projects, certifications)
+    except Exception as e:
+        logger.error(f"Master CV PDF generation failed: {e}")
+        raise HTTPException(status_code=500, detail=f"Kunde inte skapa PDF: {str(e)[:200]}")
 
     # Build filename from user's name
-    name = (profile.get("full_name") or "CV").replace(" ", "_")
+    name = _safe_pdf_text((profile.get("full_name") or "CV")).replace(" ", "_")
     filename = f"Master_CV_{name}.pdf"
 
     return Response(
@@ -4226,6 +4256,300 @@ async def review_swedish(request: Request):
     except Exception as e:
         logger.error(f"Swedish review error: {e}")
         return {"success": True, "reviewed_text": text, "fixes": 0, "changes": []}
+
+
+# ============== TAILORED CV GENERATION ==============
+
+def _build_tailored_cv_pdf(profile: Dict, cv_data: Dict) -> bytes:
+    """Build a job-tailored CV PDF and return raw bytes."""
+    from fpdf import FPDF
+
+    class CVPDF(FPDF):
+        def header(self):
+            pass
+        def footer(self):
+            pass
+
+    pdf = CVPDF()
+    pdf.set_auto_page_break(auto=True, margin=20)
+    pdf.add_page()
+
+    # -- Header: Name --
+    name = _safe_pdf_text(profile.get("full_name") or "Namn")
+    pdf.set_font("Helvetica", "B", 20)
+    pdf.set_text_color(30, 30, 30)
+    pdf.cell(0, 10, name, new_x="LMARGIN", new_y="NEXT")
+
+    # -- Contact line: Ort | Telefon | E-post | Körkort --
+    contact_parts = []
+    if profile.get("location"):
+        contact_parts.append(_safe_pdf_text(profile["location"]))
+    if profile.get("phone"):
+        contact_parts.append(_safe_pdf_text(profile["phone"]))
+    if profile.get("email"):
+        contact_parts.append(_safe_pdf_text(profile["email"]))
+    if profile.get("drivers_license"):
+        contact_parts.append("B-korkort")
+    if contact_parts:
+        pdf.set_font("Helvetica", "", 10)
+        pdf.set_text_color(80, 80, 80)
+        pdf.cell(0, 6, " | ".join(contact_parts), new_x="LMARGIN", new_y="NEXT")
+
+    pdf.ln(2)
+    pdf.set_draw_color(180, 180, 180)
+    pdf.line(10, pdf.get_y(), 200, pdf.get_y())
+    pdf.ln(4)
+
+    def section_heading(title: str):
+        pdf.set_font("Helvetica", "B", 12)
+        pdf.set_text_color(30, 30, 30)
+        pdf.cell(0, 8, _safe_pdf_text(title.upper()), new_x="LMARGIN", new_y="NEXT")
+        pdf.ln(1)
+
+    # -- PROFIL --
+    profile_text = cv_data.get("profile", "")
+    if profile_text:
+        section_heading("Profil")
+        pdf.set_font("Helvetica", "", 10)
+        pdf.set_text_color(50, 50, 50)
+        pdf.multi_cell(0, 5, _safe_pdf_text(profile_text))
+        pdf.ln(4)
+
+    # -- ARBETSLIVSERFARENHET --
+    experiences = cv_data.get("experiences", [])
+    if experiences:
+        section_heading("Arbetslivserfarenhet")
+        for exp in experiences:
+            # Title
+            pdf.set_font("Helvetica", "B", 11)
+            pdf.set_text_color(30, 30, 30)
+            pdf.cell(0, 6, _safe_pdf_text(exp.get("title", "")), new_x="LMARGIN", new_y="NEXT")
+            # Company + dates
+            meta_parts = []
+            if exp.get("company"):
+                meta_parts.append(_safe_pdf_text(exp["company"]))
+            if exp.get("dates"):
+                meta_parts.append(_safe_pdf_text(exp["dates"]))
+            if meta_parts:
+                pdf.set_font("Helvetica", "I", 9)
+                pdf.set_text_color(100, 100, 100)
+                pdf.cell(0, 5, " | ".join(meta_parts), new_x="LMARGIN", new_y="NEXT")
+            # Bullets
+            bullets = exp.get("bullets", [])
+            if bullets:
+                pdf.set_font("Helvetica", "", 9)
+                pdf.set_text_color(60, 60, 60)
+                for b in bullets:
+                    bt = _safe_pdf_text(b).strip()
+                    if bt:
+                        x_start = pdf.get_x()
+                        pdf.cell(5)
+                        pdf.multi_cell(0, 4.5, f"- {bt}")
+            pdf.ln(2)
+
+    # -- UTBILDNING --
+    education = cv_data.get("education", [])
+    if education:
+        section_heading("Utbildning")
+        for edu in education:
+            pdf.set_font("Helvetica", "B", 11)
+            pdf.set_text_color(30, 30, 30)
+            degree = _safe_pdf_text(edu.get("degree", ""))
+            pdf.cell(0, 6, degree, new_x="LMARGIN", new_y="NEXT")
+            meta_parts = []
+            if edu.get("school"):
+                meta_parts.append(_safe_pdf_text(edu["school"]))
+            if edu.get("dates"):
+                meta_parts.append(_safe_pdf_text(edu["dates"]))
+            if meta_parts:
+                pdf.set_font("Helvetica", "I", 9)
+                pdf.set_text_color(100, 100, 100)
+                pdf.cell(0, 5, " | ".join(meta_parts), new_x="LMARGIN", new_y="NEXT")
+            bullets = edu.get("bullets", [])
+            if bullets:
+                pdf.set_font("Helvetica", "", 9)
+                pdf.set_text_color(60, 60, 60)
+                for b in bullets:
+                    bt = _safe_pdf_text(b).strip()
+                    if bt:
+                        pdf.cell(5)
+                        pdf.multi_cell(0, 4.5, f"- {bt}")
+            pdf.ln(2)
+
+    # -- FÄRDIGHETER & ÖVRIGT --
+    skills = cv_data.get("skills", [])
+    if skills:
+        section_heading("Fardigheter & Ovrigt")
+        pdf.set_font("Helvetica", "", 10)
+        pdf.set_text_color(50, 50, 50)
+        for s in skills:
+            st = _safe_pdf_text(s).strip()
+            if st:
+                pdf.cell(5)
+                pdf.multi_cell(0, 5, f"- {st}")
+        pdf.ln(2)
+
+    return pdf.output()
+
+
+@app.post("/api/jobs/{job_id}/generate-cv")
+async def generate_tailored_cv(job_id: str, request: Request):
+    """Generate a job-tailored CV PDF based on Master CV data + job description."""
+    from fastapi.responses import Response as RawResponse
+    import json as _json
+
+    user_id = await get_user_id_from_request(request, required=True)
+
+    # Fetch job
+    jobs = await db_request("GET", "jobs", params={"id": f"eq.{job_id}"})
+    if not jobs:
+        raise HTTPException(status_code=404, detail="Jobbet hittades inte")
+    job = jobs[0]
+
+    # Fetch all Master CV data in parallel
+    import asyncio as _asyncio
+    profile_r, exp_r, edu_r, vol_r, skills_r, cert_r, awards_r = await _asyncio.gather(
+        db_request("GET", "user_profiles", params={"user_id": f"eq.{user_id}"}),
+        db_request("GET", "user_experiences", params={"user_id": f"eq.{user_id}", "order": "sort_order.asc"}),
+        db_request("GET", "user_education", params={"user_id": f"eq.{user_id}", "order": "sort_order.asc"}),
+        db_request("GET", "user_volunteer", params={"user_id": f"eq.{user_id}", "order": "sort_order.asc"}),
+        db_request("GET", "user_skills", params={"user_id": f"eq.{user_id}"}),
+        db_request("GET", "user_certifications", params={"user_id": f"eq.{user_id}", "order": "sort_order.asc"}),
+        db_request("GET", "user_awards", params={"user_id": f"eq.{user_id}", "order": "sort_order.asc"}),
+    )
+    profile = profile_r[0] if profile_r else {}
+    experiences = exp_r or []
+    education = edu_r or []
+    volunteer = vol_r or []
+    skills = skills_r or []
+    certifications = cert_r or []
+    awards = awards_r or []
+
+    if not experiences and not education:
+        raise HTTPException(status_code=400, detail="Du behover fylla i ditt Master CV forst (erfarenheter och utbildning).")
+
+    # Build Master CV context for AI
+    exp_text = ""
+    for i, exp in enumerate(experiences, 1):
+        bullets = exp.get("bullets", [])
+        bullet_str = "\n".join(f"  - {b}" for b in bullets) if bullets else ""
+        exp_text += f"\n{i}. {exp.get('title', '')} @ {exp.get('company', '')} ({exp.get('location', '')}, {exp.get('dates', '')})\n{bullet_str}"
+
+    vol_text = ""
+    for vol in volunteer:
+        bullets = vol.get("bullets", [])
+        bullet_str = "\n".join(f"  - {b}" for b in bullets) if bullets else ""
+        vol_text += f"\n- {vol.get('role', '')} @ {vol.get('organization', '')} ({vol.get('dates', '')})\n{bullet_str}"
+
+    edu_text = ""
+    for edu in education:
+        bullets = edu.get("bullets", [])
+        bullet_str = "\n".join(f"  - {b}" for b in bullets) if bullets else ""
+        edu_text += f"\n- {edu.get('degree', '')} @ {edu.get('school', '')} ({edu.get('location', '')}, {edu.get('dates', '')})\n{bullet_str}"
+
+    skills_text = ", ".join(s.get("skill_text", "") for s in skills if s.get("skill_text"))
+    cert_text = ", ".join(c.get("certification_name", "") or c.get("name", "") for c in certifications if c.get("certification_name") or c.get("name"))
+    awards_text = ", ".join(a.get("award_text", "") for a in awards if a.get("award_text"))
+
+    # Profile extras
+    has_license = "Ja (B-korkort)" if profile.get("drivers_license") else "Nej"
+    languages = profile.get("languages") or []
+    lang_text = ", ".join(languages) if languages else ""
+
+    job_title = job.get("title", "")
+    company = job.get("company", "")
+    job_desc = job.get("full_description") or job.get("description", "")
+    if len(job_desc) > 4000:
+        job_desc = job_desc[:4000]
+
+    prompt = f"""Du ar en svensk CV-expert. Skapa ett skraddarsytt CV for detta jobb baserat pa anvandardens Master CV-data.
+
+JOBBET:
+Titel: {job_title}
+Foretag: {company}
+Beskrivning: {job_desc}
+
+ANVANDARDENS MASTER CV:
+
+Erfarenheter:{exp_text}
+
+Volontararbete:{vol_text}
+
+Utbildning:{edu_text}
+
+Skills: {skills_text}
+Certifieringar: {cert_text}
+Utmarkelser: {awards_text}
+Korkort: {has_license}
+Sprak: {lang_text}
+
+INSTRUKTIONER:
+1. Skriv en PROFIL-sektion (3-5 meningar) specifikt anpassad for detta jobb. Lyft fram det mest relevanta.
+2. Valj de MEST RELEVANTA erfarenheterna (max 6). Inkludera aven volontararbete om det ar relevant. Ordna efter relevans for jobbet (inte kronologisk ordning). Skriv om bullet points sa de framhaver det relevanta for jobbet.
+3. Valj relevant utbildning (max 3). Anpassa bullets for relevans.
+4. Skapa en FARDIGHETER & OVRIGT-lista med relevanta skills, korkort, sprak, certifieringar, utmarkelser.
+
+VIKTIGT:
+- CV:t ska vara pa SVENSKA
+- Skriv naturlig, professionell svenska (inga AI-klischeer)
+- Behall faktiska uppgifter (foretag, datum, skolor) — hitta INTE pa nagt
+- Skriv om bullets och profil for att vara relevanta for jobbet
+- Max 1 sida langd — var koncis
+
+Svara BARA med JSON (inget annat):
+{{
+  "profile": "Profiltext har...",
+  "experiences": [
+    {{
+      "title": "Jobbtitel",
+      "company": "Foretag, Ort",
+      "dates": "2020 - 2022",
+      "bullets": ["Punkt 1", "Punkt 2"]
+    }}
+  ],
+  "education": [
+    {{
+      "degree": "Examen",
+      "school": "Skola, Ort",
+      "dates": "2017 - 2021",
+      "bullets": ["Punkt 1"]
+    }}
+  ],
+  "skills": [
+    "Tradgardsarbete: grasklippning, ograsrensning...",
+    "B-korkort",
+    "Sprak: Svenska (modersmal), Engelska (flytande)"
+  ]
+}}"""
+
+    result = await call_claude_api(prompt, max_tokens=3000, timeout=45)
+    if not result:
+        raise HTTPException(status_code=500, detail="Kunde inte generera CV just nu. Forsok igen.")
+
+    # Parse JSON
+    try:
+        cleaned = result.strip()
+        if cleaned.startswith("```"):
+            cleaned = re.sub(r'^```(?:json)?\s*', '', cleaned)
+            cleaned = re.sub(r'\s*```$', '', cleaned)
+        cv_data = _json.loads(cleaned)
+    except _json.JSONDecodeError:
+        logger.error(f"Failed to parse tailored CV JSON: {result[:500]}")
+        raise HTTPException(status_code=500, detail="Kunde inte tolka CV-datan. Forsok igen.")
+
+    # Build PDF
+    pdf_bytes = _build_tailored_cv_pdf(profile, cv_data)
+
+    # Filename
+    safe_name = (profile.get("full_name") or "CV").replace(" ", "_")
+    safe_company = re.sub(r'[^\w\s-]', '', company).strip().replace(' ', '_') if company else "Jobb"
+    filename = f"CV_{safe_name}_{safe_company}.pdf"
+
+    return RawResponse(
+        content=pdf_bytes,
+        media_type="application/pdf",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'}
+    )
 
 
 @app.post("/api/jobs/{job_id}/cover-letter-pdf")
@@ -7207,9 +7531,14 @@ KRITISKT — BESKRIVNINGAR ÄR OBLIGATORISKA:
     added = 0
     updated = 0
 
-    # Create new experiences
+    # Create new experiences (skip duplicates by company+title)
+    existing_exp_keys = {(e.get("company", "").lower().strip() + "|" + e.get("title", "").lower().strip()) for e in existing_experiences}
     for exp in changes.get("new_experiences", []):
         try:
+            key = (exp.get("company", "").lower().strip() + "|" + exp.get("title", "").lower().strip())
+            if key in existing_exp_keys:
+                logger.info(f"Skipped duplicate experience: {exp.get('title')} @ {exp.get('company')}")
+                continue
             await db_request("POST", "user_experiences", data={
                 "user_id": user_id,
                 "company": exp.get("company", ""),
@@ -7221,6 +7550,7 @@ KRITISKT — BESKRIVNINGAR ÄR OBLIGATORISKA:
                 "categories": exp.get("categories", []),
                 "sort_order": len(existing_experiences) + added
             })
+            existing_exp_keys.add(key)
             added += 1
         except Exception as e:
             logger.warning(f"Failed to add experience: {e}")
@@ -7250,9 +7580,14 @@ KRITISKT — BESKRIVNINGAR ÄR OBLIGATORISKA:
             except Exception as e:
                 logger.warning(f"Failed to update experience {exp_id}: {e}")
 
-    # Create new education
+    # Create new education (skip duplicates by school+degree)
+    existing_edu_keys = {(e.get("school", "").lower().strip() + "|" + e.get("degree", "").lower().strip()) for e in existing_education}
     for edu in changes.get("new_education", []):
         try:
+            key = (edu.get("school", "").lower().strip() + "|" + edu.get("degree", "").lower().strip())
+            if key in existing_edu_keys:
+                logger.info(f"Skipped duplicate education: {edu.get('degree')} @ {edu.get('school')}")
+                continue
             await db_request("POST", "user_education", data={
                 "user_id": user_id,
                 "school": edu.get("school", ""),
@@ -7263,6 +7598,7 @@ KRITISKT — BESKRIVNINGAR ÄR OBLIGATORISKA:
                 "end_date": edu.get("end_date", ""),
                 "sort_order": len(existing_education) + added
             })
+            existing_edu_keys.add(key)
             added += 1
         except Exception as e:
             logger.warning(f"Failed to add education: {e}")
@@ -7292,9 +7628,14 @@ KRITISKT — BESKRIVNINGAR ÄR OBLIGATORISKA:
             except Exception as e:
                 logger.warning(f"Failed to update education {edu_id}: {e}")
 
-    # Create new volunteer entries
+    # Create new volunteer entries (skip duplicates by organization)
+    existing_vol_keys = {(v.get("organization", "").lower().strip()) for v in existing_volunteer}
     for vol in changes.get("new_volunteer", []):
         try:
+            key = vol.get("organization", "").lower().strip()
+            if key and key in existing_vol_keys:
+                logger.info(f"Skipped duplicate volunteer: {vol.get('organization')}")
+                continue
             desc = vol.get("description", "")
             bullets = [s.strip() for s in desc.split(".") if s.strip()] if desc else []
             await db_request("POST", "user_volunteer", data={
@@ -7306,6 +7647,7 @@ KRITISKT — BESKRIVNINGAR ÄR OBLIGATORISKA:
                 "bullets": bullets,
                 "sort_order": len(existing_volunteer) + added
             })
+            existing_vol_keys.add(key)
             added += 1
         except Exception as e:
             logger.warning(f"Failed to add volunteer: {e}")
@@ -7339,17 +7681,23 @@ KRITISKT — BESKRIVNINGAR ÄR OBLIGATORISKA:
             except Exception as e:
                 logger.warning(f"Failed to update volunteer {vol_id}: {e}")
 
-    # Create new projects (DB column is project_name, not name)
+    # Create new projects (skip duplicates by project_name)
+    existing_proj_keys = {(p.get("project_name") or p.get("name") or "").lower().strip() for p in existing_projects}
     for proj in changes.get("new_projects", []):
         try:
+            pname = proj.get("name") or proj.get("project_name", "")
+            if pname.lower().strip() in existing_proj_keys:
+                logger.info(f"Skipped duplicate project: {pname}")
+                continue
             await db_request("POST", "tech_projects", data={
                 "user_id": user_id,
-                "project_name": proj.get("name") or proj.get("project_name", ""),
+                "project_name": pname,
                 "description": proj.get("description", ""),
                 "tech_stack": proj.get("tech_stack", ""),
                 "github_url": proj.get("url") or proj.get("github_url", ""),
                 "sort_order": len(existing_projects) + added
             })
+            existing_proj_keys.add(pname.lower().strip())
             added += 1
         except Exception as e:
             logger.warning(f"Failed to add project: {e}")
@@ -7398,11 +7746,12 @@ KRITISKT — BESKRIVNINGAR ÄR OBLIGATORISKA:
         except Exception as e:
             logger.warning(f"Failed to add skill: {e}")
 
-    # Create new certifications
+    # Create new certifications (skip duplicates by name)
+    existing_cert_names = {(c.get("certification_name") or "").lower().strip() for c in existing_certifications}
     for cert in changes.get("new_certifications", []):
         try:
             cert_name = (cert.get("certification_name") or cert.get("name", "")).strip()
-            if cert_name:
+            if cert_name and cert_name.lower() not in existing_cert_names:
                 await db_request("POST", "user_certifications", data={
                     "user_id": user_id,
                     "certification_name": cert_name,
@@ -7411,7 +7760,10 @@ KRITISKT — BESKRIVNINGAR ÄR OBLIGATORISKA:
                     "issue_date": cert.get("issue_date") or cert.get("date", ""),
                     "sort_order": len(existing_certifications) + added
                 })
+                existing_cert_names.add(cert_name.lower())
                 added += 1
+            elif cert_name:
+                logger.info(f"Skipped duplicate certification: {cert_name}")
         except Exception as e:
             logger.warning(f"Failed to add certification: {e}")
 
@@ -7440,18 +7792,22 @@ KRITISKT — BESKRIVNINGAR ÄR OBLIGATORISKA:
             except Exception as e:
                 logger.warning(f"Failed to update certification {cert_id}: {e}")
 
-    # Create new awards
+    # Create new awards (skip duplicates by award_text)
+    existing_award_keys = {(a.get("award_text", "").lower().strip()) for a in existing_awards}
     for award in changes.get("new_awards", []):
         try:
             award_text = (award.get("award_text", "")).strip()
-            if award_text:
+            if award_text and award_text.lower() not in existing_award_keys:
                 await db_request("POST", "user_awards", data={
                     "user_id": user_id,
                     "award_text": award_text,
                     "description": award.get("description", ""),
                     "sort_order": len(existing_awards) + added
                 })
+                existing_award_keys.add(award_text.lower())
                 added += 1
+            elif award_text:
+                logger.info(f"Skipped duplicate award: {award_text}")
         except Exception as e:
             logger.warning(f"Failed to add award: {e}")
 
