@@ -223,6 +223,10 @@ class SaveJobRequest(BaseModel):
     notes: Optional[str] = None
 
 
+class UrlJobRequest(BaseModel):
+    url: str
+
+
 # ============== AUTH MODELS ==============
 
 class SignUpRequest(BaseModel):
@@ -907,6 +911,146 @@ async def scrape_platsbanken(keyword: str, max_jobs: int = 15, municipality_ids:
     return jobs
 
 
+# ============== URL JOB SCRAPER ==============
+
+async def scrape_job_from_url(url: str) -> Dict:
+    """Fetch a job posting URL and use Claude to extract structured job data."""
+    import hashlib
+    import uuid
+
+    # Fetch the page HTML
+    try:
+        async with httpx.AsyncClient(follow_redirects=True) as client:
+            response = await client.get(
+                url,
+                headers={
+                    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+                    "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+                    "Accept-Language": "sv-SE,sv;q=0.9,en;q=0.8",
+                },
+                timeout=15,
+            )
+            if response.status_code >= 400:
+                raise HTTPException(status_code=400, detail=f"Kunde inte hämta sidan (HTTP {response.status_code})")
+            html = response.text
+    except httpx.TimeoutException:
+        raise HTTPException(status_code=400, detail="Sidan svarade inte (timeout). Försök igen.")
+    except httpx.RequestError as e:
+        raise HTTPException(status_code=400, detail=f"Kunde inte ansluta till sidan: {str(e)[:100]}")
+
+    # Strip HTML tags to get plain text
+    text = re.sub(r'<script[^>]*>.*?</script>', ' ', html, flags=re.DOTALL)
+    text = re.sub(r'<style[^>]*>.*?</style>', ' ', text, flags=re.DOTALL)
+    text = re.sub(r'<[^>]+>', ' ', text)
+    text = re.sub(r'\s+', ' ', text).strip()
+
+    # Truncate to avoid token limits (keep first ~8000 chars)
+    text = text[:8000]
+
+    if len(text) < 50:
+        raise HTTPException(status_code=400, detail="Sidan verkar inte innehålla tillräckligt med text. Kanske kräver den inloggning?")
+
+    # Use Claude to extract structured job data
+    extraction_prompt = f"""Du får texten från en jobbannons-sida. Extrahera följande information och svara som JSON (inget annat, bara JSON):
+
+{{
+  "title": "Jobbtitel",
+  "company": "Företagsnamn",
+  "location": "Arbetsort/plats",
+  "description": "Hela jobbbeskrivningen — allt relevant om tjänsten, krav, ansvarsområden, etc. Behåll så mycket detalj som möjligt.",
+  "contact_email": "Kontaktpersonens e-post (eller null om ej hittat)",
+  "contact_name": "Kontaktpersonens namn (eller null om ej hittat)",
+  "deadline": "Sista ansökningsdag i format YYYY-MM-DD (eller null om ej hittat)",
+  "working_hours": "Heltid/Deltid/etc (eller null)",
+  "employment_type": "Tillsvidare/Vikariat/etc (eller null)",
+  "apply_url": "URL för att ansöka om det finns en annan länk (eller null)"
+}}
+
+VIKTIGT:
+- Svara BARA med JSON, inget annat
+- description ska vara utförlig — inkludera alla krav, arbetsuppgifter, och annan relevant info
+- Om du inte hittar ett fält, använd null
+- Om sidan inte verkar vara en jobbannons, sätt title till null
+
+Sidans text:
+{text}"""
+
+    result = await call_claude_api(extraction_prompt, model="claude-haiku-4-5-20251001", max_tokens=2000, timeout=30)
+    if not result:
+        raise HTTPException(status_code=500, detail="Kunde inte analysera sidan just nu. Försök igen.")
+
+    # Parse JSON response
+    import json
+    try:
+        # Strip markdown code blocks if Claude wrapped it
+        cleaned = result.strip()
+        if cleaned.startswith("```"):
+            cleaned = re.sub(r'^```(?:json)?\s*', '', cleaned)
+            cleaned = re.sub(r'\s*```$', '', cleaned)
+        job_data = json.loads(cleaned)
+    except json.JSONDecodeError:
+        logger.error(f"Failed to parse Claude extraction: {result[:300]}")
+        raise HTTPException(status_code=500, detail="Kunde inte tolka jobbinformationen. Försök med en annan länk.")
+
+    if not job_data.get("title"):
+        raise HTTPException(status_code=400, detail="Sidan verkar inte vara en jobbannons. Inget jobb hittades.")
+
+    # Generate a stable ID from the URL
+    job_id = "url_" + hashlib.md5(url.encode()).hexdigest()[:16]
+
+    # Build the job dict matching the DB schema
+    job = {
+        "id": job_id,
+        "title": job_data.get("title"),
+        "company": job_data.get("company") or "Okänt företag",
+        "location": job_data.get("location"),
+        "description": job_data.get("description", ""),
+        "url": url,
+        "contact_email": job_data.get("contact_email"),
+        "contact_name": job_data.get("contact_name"),
+        "source": "manual_url",
+        "scraped_at": datetime.now().isoformat(),
+        "link_status": "active",
+        "priority": "normal",
+    }
+
+    # Handle deadline
+    deadline = job_data.get("deadline")
+    if deadline:
+        try:
+            datetime.strptime(deadline, "%Y-%m-%d")
+            job["deadline"] = deadline
+        except ValueError:
+            pass
+
+    # Store full description + generate summary for UI
+    full_description = job_data.get("description", "")
+    if full_description:
+        job["full_description"] = full_description[:6000]
+        # Short summary for the UI card
+        summary = full_description[:400]
+        if len(full_description) > 400:
+            summary = summary[:summary.rfind(' ')] + '...'
+        job["description_summary"] = summary
+
+    # Add extras to description text
+    extras = []
+    if job_data.get("working_hours"):
+        extras.append(f"Omfattning: {job_data['working_hours']}")
+        job["working_hours"] = job_data["working_hours"]
+    if job_data.get("employment_type"):
+        extras.append(f"Anställningsform: {job_data['employment_type']}")
+        job["employment_type"] = job_data["employment_type"]
+    if extras and full_description:
+        job["description"] = "\n".join(extras) + "\n\n" + full_description
+
+    # Extra fields for UI (not stored in DB but returned in response)
+    if job_data.get("apply_url"):
+        job["apply_url"] = job_data["apply_url"]
+
+    return job
+
+
 # ============== COVER LETTER GENERATION ==============
 
 # Default experience sections (used if no CV provided)
@@ -1050,9 +1194,9 @@ async def generate_cover_letter(job: Dict, user_cv_text: Optional[str] = None, u
     # If no bransch-CV text, try to fetch master CV experiences for richer content
     if not experience and user_id:
         try:
-            master_exps = await db_request("GET", "master_cv_experiences", params={
+            master_exps = await db_request("GET", "user_experiences", params={
                 "user_id": f"eq.{user_id}",
-                "order": "start_date.desc",
+                "order": "sort_order",
                 "limit": "10"
             })
             if master_exps:
@@ -1999,6 +2143,54 @@ async def scrape_jobs(request: JobSearchRequest = None, req: Request = None):
         "jobs_found": len(unique_jobs),
         "jobs_saved": saved_count,
         "jobs": unique_jobs
+    }
+
+
+@app.post("/api/jobs/from-url")
+async def create_job_from_url(request: UrlJobRequest, req: Request = None):
+    """Scrape a job posting from any URL and save it to the database."""
+    url = request.url.strip()
+    if not url.startswith("http"):
+        url = "https://" + url
+
+    # Scrape and extract job data
+    job = await scrape_job_from_url(url)
+
+    # Save to database (upsert so re-pasting same URL just updates)
+    db_columns = {"id", "title", "company", "location", "municipality", "county",
+                  "description", "description_summary", "url", "deadline", "priority",
+                  "contact_email", "contact_name", "source", "scraped_at", "link_status"}
+    db_job = {k: v for k, v in job.items() if k in db_columns}
+
+    # description = full text for cover letters, description_summary = short for UI
+    if job.get("full_description"):
+        db_job["description"] = job["full_description"]
+        if job.get("description_summary"):
+            db_job["description_summary"] = job["description_summary"]
+
+    # Add extras (working_hours, employment_type) to stored description
+    extras = []
+    if job.get("working_hours"):
+        extras.append(f"Omfattning: {job['working_hours']}")
+    if job.get("employment_type"):
+        extras.append(f"Anställningsform: {job['employment_type']}")
+    if extras and db_job.get("description"):
+        db_job["description"] = "\n".join(extras) + "\n\n" + db_job["description"]
+
+    result = await db_request("POST", "jobs", data=db_job)
+    if not result:
+        logger.warning(f"Failed to save URL job to DB, returning data anyway")
+
+    # Return the full job object (including fields not in DB) for immediate UI use
+    # Ensure description shown in UI is the summary, and full_description is available
+    response_job = {**job}
+    if job.get("description_summary"):
+        response_job["description"] = job["description_summary"]
+    response_job["full_description"] = job.get("full_description", job.get("description", ""))
+
+    return {
+        "success": True,
+        "job": response_job
     }
 
 
@@ -3566,12 +3758,12 @@ async def qualification_check(job_id: str, request: Request):
         # Get actual education (not hardcoded "Gymnasium")
         education = await db_request("GET", "user_education", params={
             "user_id": f"eq.{user_id}",
-            "select": "school_name,degree,field_of_study",
+            "select": "school,degree,field_of_study",
             "order": "start_date.desc"
         })
         if education:
             edu_summary = ", ".join([
-                f"{e.get('degree', '')} {e.get('field_of_study', '')} ({e.get('school_name', '')})"
+                f"{e.get('degree', '')} {e.get('field_of_study', '')} ({e.get('school', '')})"
                 for e in education
             ])
 
@@ -6105,8 +6297,8 @@ async def save_user_profile(request: Request, profile: UserProfile):
         "full_name": profile.full_name,
         "email": profile.email or user.get("email"),
         "phone": profile.phone,
-        "linkedin_url": profile.linkedin_url,
-        "summary": profile.summary,
+        "linkedin": profile.linkedin_url,
+        "about_me": profile.summary,
         "updated_at": datetime.now().isoformat()
     }
 
@@ -6128,7 +6320,7 @@ async def save_user_profile(request: Request, profile: UserProfile):
         for skill in skills_list:
             skill_data = {
                 "user_id": user_id,
-                "skill_name": skill
+                "skill_text": skill
             }
             async with httpx.AsyncClient() as client:
                 await client.post(
@@ -7006,30 +7198,32 @@ KRITISKT — BESKRIVNINGAR ÄR OBLIGATORISKA:
             except Exception as e:
                 logger.warning(f"Failed to update volunteer {vol_id}: {e}")
 
-    # Create new projects
+    # Create new projects (DB column is project_name, not name)
     for proj in changes.get("new_projects", []):
         try:
             await db_request("POST", "tech_projects", data={
                 "user_id": user_id,
-                "name": proj.get("name", ""),
+                "project_name": proj.get("name") or proj.get("project_name", ""),
                 "description": proj.get("description", ""),
                 "tech_stack": proj.get("tech_stack", ""),
-                "url": proj.get("url", ""),
+                "github_url": proj.get("url") or proj.get("github_url", ""),
                 "sort_order": len(existing_projects) + added
             })
             added += 1
         except Exception as e:
             logger.warning(f"Failed to add project: {e}")
 
-    # Update existing projects
+    # Update existing projects (map AI field names to DB column names)
     for proj in changes.get("updated_projects", []):
         proj_id = proj.get("id")
         if not proj_id:
             continue
         update_data = {}
-        for field in ["name", "description", "tech_stack", "url"]:
-            if proj.get(field):
-                update_data[field] = proj[field]
+        # Map AI names → DB column names
+        field_map = {"name": "project_name", "project_name": "project_name", "description": "description", "tech_stack": "tech_stack", "url": "github_url", "github_url": "github_url"}
+        for ai_field, db_field in field_map.items():
+            if proj.get(ai_field):
+                update_data[db_field] = proj[ai_field]
         if update_data:
             try:
                 async with httpx.AsyncClient() as client:
@@ -7211,7 +7405,7 @@ async def enhance_chat(request: Request):
 
         lines.append("\n=== PROJEKT ===")
         for proj in projects:
-            lines.append(f"[ID:{proj.get('id')}] {proj.get('name', proj.get('title',''))} | {proj.get('description','')} | Tech: {proj.get('tech_stack','')}")
+            lines.append(f"[ID:{proj.get('id')}] {proj.get('project_name', proj.get('name',''))} | {proj.get('description','')} | Tech: {proj.get('tech_stack','')} | GitHub: {proj.get('github_url','')}")
         if not projects:
             lines.append("(inga)")
 
@@ -7272,7 +7466,7 @@ FORMAT FÖR ÄNDRINGAR — lägg JSON-blocket i slutet av ditt svar, inuti ```ac
 ```actions
 [
   {{"action": "update", "table": "user_experiences", "id": "uuid-här", "data": {{"description": "ny text", "categories": ["tech", "customerservice"]}}}},
-  {{"action": "update", "table": "tech_projects", "id": "uuid-här", "data": {{"name": "nytt namn", "description": "ny beskrivning"}}}},
+  {{"action": "update", "table": "tech_projects", "id": "uuid-här", "data": {{"project_name": "nytt namn", "description": "ny beskrivning"}}}},
   {{"action": "create", "table": "user_volunteer", "data": {{"organization": "...", "title": "...", "dates": "...", "description": "vad personen gjorde", "bullets": ["..."]}}}},
   {{"action": "update", "table": "user_volunteer", "id": "uuid-här", "data": {{"description": "ny beskrivning", "title": "uppdaterad titel"}}}},
   {{"action": "update", "table": "user_awards", "id": "uuid-här", "data": {{"description": "bakgrund/kontext för utmärkelsen"}}}},
@@ -7285,7 +7479,7 @@ FORMAT FÖR ÄNDRINGAR — lägg JSON-blocket i slutet av ditt svar, inuti ```ac
 TABELLER DU KAN ÄNDRA:
 - user_experiences: company, title, location, start_date, end_date, description, categories (array)
 - user_education: school, degree, field_of_study, location, start_date, end_date
-- tech_projects: name, description, tech_stack, url
+- tech_projects: project_name, description, tech_stack, github_url
 - user_volunteer: organization, title, dates, description, bullets (array)
 - user_skills: skill_text, skill_type (technical/language/certificate), category
 - user_awards: award_text, description
