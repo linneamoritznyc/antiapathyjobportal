@@ -455,6 +455,32 @@
                 setDownloadingPdf(false);
             };
 
+            const [generatingTailoredCv, setGeneratingTailoredCv] = useState(false);
+            const downloadTailoredCv = async () => {
+                setGeneratingTailoredCv(true);
+                try {
+                    const res = await authFetch(`/api/jobs/${job.id}/generate-cv`, {
+                        method: 'POST'
+                    });
+                    if (res.ok) {
+                        const blob = await res.blob();
+                        const url = URL.createObjectURL(blob);
+                        const a = document.createElement('a');
+                        a.href = url;
+                        a.download = `CV_${(job.company || 'Jobb').replace(/[^\p{L}\p{N}\s_-]/gu, '').replace(/\s+/g, '_')}.pdf`;
+                        a.click();
+                        URL.revokeObjectURL(url);
+                    } else {
+                        const err = await res.json().catch(() => ({}));
+                        alert(err.detail || 'Kunde inte generera CV. Försök igen.');
+                    }
+                } catch (e) {
+                    console.error('CV generation error:', e);
+                    alert('Kunde inte generera CV.');
+                }
+                setGeneratingTailoredCv(false);
+            };
+
             // Load user's actual experiences + anecdotes + education when modal opens
             useEffect(() => {
                 if (isOpen && localStorage.getItem('auth_token')) {
@@ -1006,6 +1032,13 @@
                                     className="px-4 py-2.5 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 disabled:opacity-50"
                                 >
                                     {downloadingPdf ? '⏳ Skapar PDF...' : '📥 Ladda ner PDF'}
+                                </button>
+                                <button
+                                    onClick={downloadTailoredCv}
+                                    disabled={generatingTailoredCv}
+                                    className="px-4 py-2.5 bg-amber-600 text-white rounded-lg hover:bg-amber-700 disabled:opacity-50"
+                                >
+                                    {generatingTailoredCv ? '⏳ Skapar CV...' : '📄 Generera CV'}
                                 </button>
                                 {!job?.contact_email && (job?.apply_url || job?.url) && (
                                     <a

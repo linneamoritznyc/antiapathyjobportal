@@ -4228,6 +4228,300 @@ async def review_swedish(request: Request):
         return {"success": True, "reviewed_text": text, "fixes": 0, "changes": []}
 
 
+# ============== TAILORED CV GENERATION ==============
+
+def _build_tailored_cv_pdf(profile: Dict, cv_data: Dict) -> bytes:
+    """Build a job-tailored CV PDF and return raw bytes."""
+    from fpdf import FPDF
+
+    class CVPDF(FPDF):
+        def header(self):
+            pass
+        def footer(self):
+            pass
+
+    pdf = CVPDF()
+    pdf.set_auto_page_break(auto=True, margin=20)
+    pdf.add_page()
+
+    # -- Header: Name --
+    name = _safe_pdf_text(profile.get("full_name") or "Namn")
+    pdf.set_font("Helvetica", "B", 20)
+    pdf.set_text_color(30, 30, 30)
+    pdf.cell(0, 10, name, new_x="LMARGIN", new_y="NEXT")
+
+    # -- Contact line: Ort | Telefon | E-post | Körkort --
+    contact_parts = []
+    if profile.get("location"):
+        contact_parts.append(_safe_pdf_text(profile["location"]))
+    if profile.get("phone"):
+        contact_parts.append(_safe_pdf_text(profile["phone"]))
+    if profile.get("email"):
+        contact_parts.append(_safe_pdf_text(profile["email"]))
+    if profile.get("drivers_license"):
+        contact_parts.append("B-korkort")
+    if contact_parts:
+        pdf.set_font("Helvetica", "", 10)
+        pdf.set_text_color(80, 80, 80)
+        pdf.cell(0, 6, " | ".join(contact_parts), new_x="LMARGIN", new_y="NEXT")
+
+    pdf.ln(2)
+    pdf.set_draw_color(180, 180, 180)
+    pdf.line(10, pdf.get_y(), 200, pdf.get_y())
+    pdf.ln(4)
+
+    def section_heading(title: str):
+        pdf.set_font("Helvetica", "B", 12)
+        pdf.set_text_color(30, 30, 30)
+        pdf.cell(0, 8, _safe_pdf_text(title.upper()), new_x="LMARGIN", new_y="NEXT")
+        pdf.ln(1)
+
+    # -- PROFIL --
+    profile_text = cv_data.get("profile", "")
+    if profile_text:
+        section_heading("Profil")
+        pdf.set_font("Helvetica", "", 10)
+        pdf.set_text_color(50, 50, 50)
+        pdf.multi_cell(0, 5, _safe_pdf_text(profile_text))
+        pdf.ln(4)
+
+    # -- ARBETSLIVSERFARENHET --
+    experiences = cv_data.get("experiences", [])
+    if experiences:
+        section_heading("Arbetslivserfarenhet")
+        for exp in experiences:
+            # Title
+            pdf.set_font("Helvetica", "B", 11)
+            pdf.set_text_color(30, 30, 30)
+            pdf.cell(0, 6, _safe_pdf_text(exp.get("title", "")), new_x="LMARGIN", new_y="NEXT")
+            # Company + dates
+            meta_parts = []
+            if exp.get("company"):
+                meta_parts.append(_safe_pdf_text(exp["company"]))
+            if exp.get("dates"):
+                meta_parts.append(_safe_pdf_text(exp["dates"]))
+            if meta_parts:
+                pdf.set_font("Helvetica", "I", 9)
+                pdf.set_text_color(100, 100, 100)
+                pdf.cell(0, 5, " | ".join(meta_parts), new_x="LMARGIN", new_y="NEXT")
+            # Bullets
+            bullets = exp.get("bullets", [])
+            if bullets:
+                pdf.set_font("Helvetica", "", 9)
+                pdf.set_text_color(60, 60, 60)
+                for b in bullets:
+                    bt = _safe_pdf_text(b).strip()
+                    if bt:
+                        x_start = pdf.get_x()
+                        pdf.cell(5)
+                        pdf.multi_cell(0, 4.5, f"- {bt}")
+            pdf.ln(2)
+
+    # -- UTBILDNING --
+    education = cv_data.get("education", [])
+    if education:
+        section_heading("Utbildning")
+        for edu in education:
+            pdf.set_font("Helvetica", "B", 11)
+            pdf.set_text_color(30, 30, 30)
+            degree = _safe_pdf_text(edu.get("degree", ""))
+            pdf.cell(0, 6, degree, new_x="LMARGIN", new_y="NEXT")
+            meta_parts = []
+            if edu.get("school"):
+                meta_parts.append(_safe_pdf_text(edu["school"]))
+            if edu.get("dates"):
+                meta_parts.append(_safe_pdf_text(edu["dates"]))
+            if meta_parts:
+                pdf.set_font("Helvetica", "I", 9)
+                pdf.set_text_color(100, 100, 100)
+                pdf.cell(0, 5, " | ".join(meta_parts), new_x="LMARGIN", new_y="NEXT")
+            bullets = edu.get("bullets", [])
+            if bullets:
+                pdf.set_font("Helvetica", "", 9)
+                pdf.set_text_color(60, 60, 60)
+                for b in bullets:
+                    bt = _safe_pdf_text(b).strip()
+                    if bt:
+                        pdf.cell(5)
+                        pdf.multi_cell(0, 4.5, f"- {bt}")
+            pdf.ln(2)
+
+    # -- FÄRDIGHETER & ÖVRIGT --
+    skills = cv_data.get("skills", [])
+    if skills:
+        section_heading("Fardigheter & Ovrigt")
+        pdf.set_font("Helvetica", "", 10)
+        pdf.set_text_color(50, 50, 50)
+        for s in skills:
+            st = _safe_pdf_text(s).strip()
+            if st:
+                pdf.cell(5)
+                pdf.multi_cell(0, 5, f"- {st}")
+        pdf.ln(2)
+
+    return pdf.output()
+
+
+@app.post("/api/jobs/{job_id}/generate-cv")
+async def generate_tailored_cv(job_id: str, request: Request):
+    """Generate a job-tailored CV PDF based on Master CV data + job description."""
+    from fastapi.responses import Response as RawResponse
+    import json as _json
+
+    user_id = await get_user_id_from_request(request, required=True)
+
+    # Fetch job
+    jobs = await db_request("GET", "jobs", params={"id": f"eq.{job_id}"})
+    if not jobs:
+        raise HTTPException(status_code=404, detail="Jobbet hittades inte")
+    job = jobs[0]
+
+    # Fetch all Master CV data in parallel
+    import asyncio as _asyncio
+    profile_r, exp_r, edu_r, vol_r, skills_r, cert_r, awards_r = await _asyncio.gather(
+        db_request("GET", "user_profiles", params={"user_id": f"eq.{user_id}"}),
+        db_request("GET", "user_experiences", params={"user_id": f"eq.{user_id}", "order": "sort_order.asc"}),
+        db_request("GET", "user_education", params={"user_id": f"eq.{user_id}", "order": "sort_order.asc"}),
+        db_request("GET", "user_volunteer", params={"user_id": f"eq.{user_id}", "order": "sort_order.asc"}),
+        db_request("GET", "user_skills", params={"user_id": f"eq.{user_id}"}),
+        db_request("GET", "user_certifications", params={"user_id": f"eq.{user_id}", "order": "sort_order.asc"}),
+        db_request("GET", "user_awards", params={"user_id": f"eq.{user_id}", "order": "sort_order.asc"}),
+    )
+    profile = profile_r[0] if profile_r else {}
+    experiences = exp_r or []
+    education = edu_r or []
+    volunteer = vol_r or []
+    skills = skills_r or []
+    certifications = cert_r or []
+    awards = awards_r or []
+
+    if not experiences and not education:
+        raise HTTPException(status_code=400, detail="Du behover fylla i ditt Master CV forst (erfarenheter och utbildning).")
+
+    # Build Master CV context for AI
+    exp_text = ""
+    for i, exp in enumerate(experiences, 1):
+        bullets = exp.get("bullets", [])
+        bullet_str = "\n".join(f"  - {b}" for b in bullets) if bullets else ""
+        exp_text += f"\n{i}. {exp.get('title', '')} @ {exp.get('company', '')} ({exp.get('location', '')}, {exp.get('dates', '')})\n{bullet_str}"
+
+    vol_text = ""
+    for vol in volunteer:
+        bullets = vol.get("bullets", [])
+        bullet_str = "\n".join(f"  - {b}" for b in bullets) if bullets else ""
+        vol_text += f"\n- {vol.get('role', '')} @ {vol.get('organization', '')} ({vol.get('dates', '')})\n{bullet_str}"
+
+    edu_text = ""
+    for edu in education:
+        bullets = edu.get("bullets", [])
+        bullet_str = "\n".join(f"  - {b}" for b in bullets) if bullets else ""
+        edu_text += f"\n- {edu.get('degree', '')} @ {edu.get('school', '')} ({edu.get('location', '')}, {edu.get('dates', '')})\n{bullet_str}"
+
+    skills_text = ", ".join(s.get("skill_text", "") for s in skills if s.get("skill_text"))
+    cert_text = ", ".join(c.get("certification_name", "") or c.get("name", "") for c in certifications if c.get("certification_name") or c.get("name"))
+    awards_text = ", ".join(a.get("award_text", "") for a in awards if a.get("award_text"))
+
+    # Profile extras
+    has_license = "Ja (B-korkort)" if profile.get("drivers_license") else "Nej"
+    languages = profile.get("languages") or []
+    lang_text = ", ".join(languages) if languages else ""
+
+    job_title = job.get("title", "")
+    company = job.get("company", "")
+    job_desc = job.get("full_description") or job.get("description", "")
+    if len(job_desc) > 4000:
+        job_desc = job_desc[:4000]
+
+    prompt = f"""Du ar en svensk CV-expert. Skapa ett skraddarsytt CV for detta jobb baserat pa anvandardens Master CV-data.
+
+JOBBET:
+Titel: {job_title}
+Foretag: {company}
+Beskrivning: {job_desc}
+
+ANVANDARDENS MASTER CV:
+
+Erfarenheter:{exp_text}
+
+Volontararbete:{vol_text}
+
+Utbildning:{edu_text}
+
+Skills: {skills_text}
+Certifieringar: {cert_text}
+Utmarkelser: {awards_text}
+Korkort: {has_license}
+Sprak: {lang_text}
+
+INSTRUKTIONER:
+1. Skriv en PROFIL-sektion (3-5 meningar) specifikt anpassad for detta jobb. Lyft fram det mest relevanta.
+2. Valj de MEST RELEVANTA erfarenheterna (max 6). Inkludera aven volontararbete om det ar relevant. Ordna efter relevans for jobbet (inte kronologisk ordning). Skriv om bullet points sa de framhaver det relevanta for jobbet.
+3. Valj relevant utbildning (max 3). Anpassa bullets for relevans.
+4. Skapa en FARDIGHETER & OVRIGT-lista med relevanta skills, korkort, sprak, certifieringar, utmarkelser.
+
+VIKTIGT:
+- CV:t ska vara pa SVENSKA
+- Skriv naturlig, professionell svenska (inga AI-klischeer)
+- Behall faktiska uppgifter (foretag, datum, skolor) — hitta INTE pa nagt
+- Skriv om bullets och profil for att vara relevanta for jobbet
+- Max 1 sida langd — var koncis
+
+Svara BARA med JSON (inget annat):
+{{
+  "profile": "Profiltext har...",
+  "experiences": [
+    {{
+      "title": "Jobbtitel",
+      "company": "Foretag, Ort",
+      "dates": "2020 - 2022",
+      "bullets": ["Punkt 1", "Punkt 2"]
+    }}
+  ],
+  "education": [
+    {{
+      "degree": "Examen",
+      "school": "Skola, Ort",
+      "dates": "2017 - 2021",
+      "bullets": ["Punkt 1"]
+    }}
+  ],
+  "skills": [
+    "Tradgardsarbete: grasklippning, ograsrensning...",
+    "B-korkort",
+    "Sprak: Svenska (modersmal), Engelska (flytande)"
+  ]
+}}"""
+
+    result = await call_claude_api(prompt, max_tokens=3000, timeout=45)
+    if not result:
+        raise HTTPException(status_code=500, detail="Kunde inte generera CV just nu. Forsok igen.")
+
+    # Parse JSON
+    try:
+        cleaned = result.strip()
+        if cleaned.startswith("```"):
+            cleaned = re.sub(r'^```(?:json)?\s*', '', cleaned)
+            cleaned = re.sub(r'\s*```$', '', cleaned)
+        cv_data = _json.loads(cleaned)
+    except _json.JSONDecodeError:
+        logger.error(f"Failed to parse tailored CV JSON: {result[:500]}")
+        raise HTTPException(status_code=500, detail="Kunde inte tolka CV-datan. Forsok igen.")
+
+    # Build PDF
+    pdf_bytes = _build_tailored_cv_pdf(profile, cv_data)
+
+    # Filename
+    safe_name = (profile.get("full_name") or "CV").replace(" ", "_")
+    safe_company = re.sub(r'[^\w\s-]', '', company).strip().replace(' ', '_') if company else "Jobb"
+    filename = f"CV_{safe_name}_{safe_company}.pdf"
+
+    return RawResponse(
+        content=pdf_bytes,
+        media_type="application/pdf",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'}
+    )
+
+
 @app.post("/api/jobs/{job_id}/cover-letter-pdf")
 async def download_cover_letter_pdf(request: Request, job_id: str):
     """Generate and return a formatted cover letter PDF for download."""
