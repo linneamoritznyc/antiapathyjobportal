@@ -3721,39 +3721,69 @@ def _build_master_cv_pdf(profile: Dict, experiences: list, education: list, volu
 async def download_master_cv_pdf(request: Request):
     """Generate and download Master CV as PDF"""
     from fastapi.responses import Response
+    import asyncio as _asyncio
     user_id = await get_user_id_from_request(request, required=True)
 
-    # Fetch profile
-    profiles = await db_request("GET", "user_profiles", params={"user_id": f"eq.{user_id}"})
-    profile = profiles[0] if profiles else {"full_name": "", "email": "", "phone": "", "location": ""}
+    # Fetch all sections in parallel
+    profile_r, exp_r, edu_r, vol_r, awards_r, skills_r, proj_r, cert_r = await _asyncio.gather(
+        db_request("GET", "user_profiles", params={"user_id": f"eq.{user_id}"}),
+        db_request("GET", "user_experiences", params={"user_id": f"eq.{user_id}", "order": "sort_order.asc"}),
+        db_request("GET", "user_education", params={"user_id": f"eq.{user_id}", "order": "sort_order.asc"}),
+        db_request("GET", "user_volunteer", params={"user_id": f"eq.{user_id}", "order": "sort_order.asc"}),
+        db_request("GET", "user_awards", params={"user_id": f"eq.{user_id}", "order": "sort_order.asc"}),
+        db_request("GET", "user_skills", params={"user_id": f"eq.{user_id}"}),
+        db_request("GET", "tech_projects", params={"user_id": f"eq.{user_id}", "order": "sort_order.asc"}),
+        db_request("GET", "user_certifications", params={"user_id": f"eq.{user_id}", "order": "sort_order.asc"}),
+    )
+    profile = profile_r[0] if profile_r else {"full_name": "", "email": "", "phone": "", "location": ""}
+    experiences = exp_r or []
+    education = edu_r or []
+    volunteer = vol_r or []
+    awards = awards_r or []
+    skills = skills_r or []
+    projects = proj_r or []
+    certifications = cert_r or []
 
-    # Fetch all sections
-    experiences = await db_request("GET", "user_experiences", params={
-        "user_id": f"eq.{user_id}", "order": "sort_order.asc"
-    }) or []
-    education = await db_request("GET", "user_education", params={
-        "user_id": f"eq.{user_id}", "order": "sort_order.asc"
-    }) or []
-    volunteer = await db_request("GET", "user_volunteer", params={
-        "user_id": f"eq.{user_id}", "order": "sort_order.asc"
-    }) or []
-    awards = await db_request("GET", "user_awards", params={
-        "user_id": f"eq.{user_id}", "order": "sort_order.asc"
-    }) or []
-    skills = await db_request("GET", "user_skills", params={
-        "user_id": f"eq.{user_id}"
-    }) or []
-    projects = await db_request("GET", "tech_projects", params={
-        "user_id": f"eq.{user_id}", "order": "sort_order.asc"
-    }) or []
-    certifications = await db_request("GET", "user_certifications", params={
-        "user_id": f"eq.{user_id}", "order": "sort_order.asc"
-    }) or []
+    # Normalize bullets: ensure they're always lists (DB may store as JSON string or null)
+    for exp in experiences:
+        b = exp.get("bullets")
+        if b is None:
+            exp["bullets"] = []
+        elif isinstance(b, str):
+            try:
+                import json as _j
+                exp["bullets"] = _j.loads(b)
+            except Exception:
+                exp["bullets"] = [s.strip() for s in b.split("\n") if s.strip()]
+    for edu in education:
+        b = edu.get("bullets")
+        if b is None:
+            edu["bullets"] = []
+        elif isinstance(b, str):
+            try:
+                import json as _j
+                edu["bullets"] = _j.loads(b)
+            except Exception:
+                edu["bullets"] = [s.strip() for s in b.split("\n") if s.strip()]
+    for vol in volunteer:
+        b = vol.get("bullets")
+        if b is None:
+            vol["bullets"] = []
+        elif isinstance(b, str):
+            try:
+                import json as _j
+                vol["bullets"] = _j.loads(b)
+            except Exception:
+                vol["bullets"] = [s.strip() for s in b.split("\n") if s.strip()]
 
-    pdf_bytes = _build_master_cv_pdf(profile, experiences, education, volunteer, awards, skills, projects, certifications)
+    try:
+        pdf_bytes = _build_master_cv_pdf(profile, experiences, education, volunteer, awards, skills, projects, certifications)
+    except Exception as e:
+        logger.error(f"Master CV PDF generation failed: {e}")
+        raise HTTPException(status_code=500, detail=f"Kunde inte skapa PDF: {str(e)[:200]}")
 
     # Build filename from user's name
-    name = (profile.get("full_name") or "CV").replace(" ", "_")
+    name = _safe_pdf_text((profile.get("full_name") or "CV")).replace(" ", "_")
     filename = f"Master_CV_{name}.pdf"
 
     return Response(
@@ -7501,9 +7531,14 @@ KRITISKT — BESKRIVNINGAR ÄR OBLIGATORISKA:
     added = 0
     updated = 0
 
-    # Create new experiences
+    # Create new experiences (skip duplicates by company+title)
+    existing_exp_keys = {(e.get("company", "").lower().strip() + "|" + e.get("title", "").lower().strip()) for e in existing_experiences}
     for exp in changes.get("new_experiences", []):
         try:
+            key = (exp.get("company", "").lower().strip() + "|" + exp.get("title", "").lower().strip())
+            if key in existing_exp_keys:
+                logger.info(f"Skipped duplicate experience: {exp.get('title')} @ {exp.get('company')}")
+                continue
             await db_request("POST", "user_experiences", data={
                 "user_id": user_id,
                 "company": exp.get("company", ""),
@@ -7515,6 +7550,7 @@ KRITISKT — BESKRIVNINGAR ÄR OBLIGATORISKA:
                 "categories": exp.get("categories", []),
                 "sort_order": len(existing_experiences) + added
             })
+            existing_exp_keys.add(key)
             added += 1
         except Exception as e:
             logger.warning(f"Failed to add experience: {e}")
@@ -7544,9 +7580,14 @@ KRITISKT — BESKRIVNINGAR ÄR OBLIGATORISKA:
             except Exception as e:
                 logger.warning(f"Failed to update experience {exp_id}: {e}")
 
-    # Create new education
+    # Create new education (skip duplicates by school+degree)
+    existing_edu_keys = {(e.get("school", "").lower().strip() + "|" + e.get("degree", "").lower().strip()) for e in existing_education}
     for edu in changes.get("new_education", []):
         try:
+            key = (edu.get("school", "").lower().strip() + "|" + edu.get("degree", "").lower().strip())
+            if key in existing_edu_keys:
+                logger.info(f"Skipped duplicate education: {edu.get('degree')} @ {edu.get('school')}")
+                continue
             await db_request("POST", "user_education", data={
                 "user_id": user_id,
                 "school": edu.get("school", ""),
@@ -7557,6 +7598,7 @@ KRITISKT — BESKRIVNINGAR ÄR OBLIGATORISKA:
                 "end_date": edu.get("end_date", ""),
                 "sort_order": len(existing_education) + added
             })
+            existing_edu_keys.add(key)
             added += 1
         except Exception as e:
             logger.warning(f"Failed to add education: {e}")
@@ -7586,9 +7628,14 @@ KRITISKT — BESKRIVNINGAR ÄR OBLIGATORISKA:
             except Exception as e:
                 logger.warning(f"Failed to update education {edu_id}: {e}")
 
-    # Create new volunteer entries
+    # Create new volunteer entries (skip duplicates by organization)
+    existing_vol_keys = {(v.get("organization", "").lower().strip()) for v in existing_volunteer}
     for vol in changes.get("new_volunteer", []):
         try:
+            key = vol.get("organization", "").lower().strip()
+            if key and key in existing_vol_keys:
+                logger.info(f"Skipped duplicate volunteer: {vol.get('organization')}")
+                continue
             desc = vol.get("description", "")
             bullets = [s.strip() for s in desc.split(".") if s.strip()] if desc else []
             await db_request("POST", "user_volunteer", data={
@@ -7600,6 +7647,7 @@ KRITISKT — BESKRIVNINGAR ÄR OBLIGATORISKA:
                 "bullets": bullets,
                 "sort_order": len(existing_volunteer) + added
             })
+            existing_vol_keys.add(key)
             added += 1
         except Exception as e:
             logger.warning(f"Failed to add volunteer: {e}")
@@ -7633,17 +7681,23 @@ KRITISKT — BESKRIVNINGAR ÄR OBLIGATORISKA:
             except Exception as e:
                 logger.warning(f"Failed to update volunteer {vol_id}: {e}")
 
-    # Create new projects (DB column is project_name, not name)
+    # Create new projects (skip duplicates by project_name)
+    existing_proj_keys = {(p.get("project_name") or p.get("name") or "").lower().strip() for p in existing_projects}
     for proj in changes.get("new_projects", []):
         try:
+            pname = proj.get("name") or proj.get("project_name", "")
+            if pname.lower().strip() in existing_proj_keys:
+                logger.info(f"Skipped duplicate project: {pname}")
+                continue
             await db_request("POST", "tech_projects", data={
                 "user_id": user_id,
-                "project_name": proj.get("name") or proj.get("project_name", ""),
+                "project_name": pname,
                 "description": proj.get("description", ""),
                 "tech_stack": proj.get("tech_stack", ""),
                 "github_url": proj.get("url") or proj.get("github_url", ""),
                 "sort_order": len(existing_projects) + added
             })
+            existing_proj_keys.add(pname.lower().strip())
             added += 1
         except Exception as e:
             logger.warning(f"Failed to add project: {e}")
@@ -7692,11 +7746,12 @@ KRITISKT — BESKRIVNINGAR ÄR OBLIGATORISKA:
         except Exception as e:
             logger.warning(f"Failed to add skill: {e}")
 
-    # Create new certifications
+    # Create new certifications (skip duplicates by name)
+    existing_cert_names = {(c.get("certification_name") or "").lower().strip() for c in existing_certifications}
     for cert in changes.get("new_certifications", []):
         try:
             cert_name = (cert.get("certification_name") or cert.get("name", "")).strip()
-            if cert_name:
+            if cert_name and cert_name.lower() not in existing_cert_names:
                 await db_request("POST", "user_certifications", data={
                     "user_id": user_id,
                     "certification_name": cert_name,
@@ -7705,7 +7760,10 @@ KRITISKT — BESKRIVNINGAR ÄR OBLIGATORISKA:
                     "issue_date": cert.get("issue_date") or cert.get("date", ""),
                     "sort_order": len(existing_certifications) + added
                 })
+                existing_cert_names.add(cert_name.lower())
                 added += 1
+            elif cert_name:
+                logger.info(f"Skipped duplicate certification: {cert_name}")
         except Exception as e:
             logger.warning(f"Failed to add certification: {e}")
 
@@ -7734,18 +7792,22 @@ KRITISKT — BESKRIVNINGAR ÄR OBLIGATORISKA:
             except Exception as e:
                 logger.warning(f"Failed to update certification {cert_id}: {e}")
 
-    # Create new awards
+    # Create new awards (skip duplicates by award_text)
+    existing_award_keys = {(a.get("award_text", "").lower().strip()) for a in existing_awards}
     for award in changes.get("new_awards", []):
         try:
             award_text = (award.get("award_text", "")).strip()
-            if award_text:
+            if award_text and award_text.lower() not in existing_award_keys:
                 await db_request("POST", "user_awards", data={
                     "user_id": user_id,
                     "award_text": award_text,
                     "description": award.get("description", ""),
                     "sort_order": len(existing_awards) + added
                 })
+                existing_award_keys.add(award_text.lower())
                 added += 1
+            elif award_text:
+                logger.info(f"Skipped duplicate award: {award_text}")
         except Exception as e:
             logger.warning(f"Failed to add award: {e}")
 
