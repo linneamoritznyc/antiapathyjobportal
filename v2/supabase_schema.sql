@@ -198,7 +198,7 @@ CREATE TABLE IF NOT EXISTS user_volunteer (
     organization TEXT NOT NULL,
     title TEXT,
     dates TEXT,
-    description TEXT,
+    description TEXT,                     -- REQUIRED by enhance-master: what the person did (2-3 sentences). Auto-generated fallback if AI returns empty.
     bullets TEXT[] DEFAULT ARRAY[]::TEXT[],
     sort_order INT DEFAULT 0,
     created_at TIMESTAMPTZ DEFAULT NOW()
@@ -209,7 +209,7 @@ CREATE TABLE IF NOT EXISTS user_awards (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     user_id TEXT NOT NULL,
     award_text TEXT NOT NULL,             -- Full award line like '1:a pris Stockholms Konstsalong 2024 - ...'
-    description TEXT,                     -- Optional backstory/context for the award (added 2026-02-25)
+    description TEXT,                     -- REQUIRED by enhance-master: backstory/context for the award. Auto-generated fallback if AI returns empty.
     sort_order INT DEFAULT 0,
     created_at TIMESTAMPTZ DEFAULT NOW()
 );
@@ -220,7 +220,7 @@ CREATE TABLE IF NOT EXISTS user_certifications (
     user_id TEXT NOT NULL,
     certification_name TEXT NOT NULL,
     issuing_organization TEXT,
-    description TEXT,                     -- Context/details about the certification
+    description TEXT,                     -- REQUIRED by enhance-master: what the certification means. Auto-generated fallback if AI returns empty.
     issue_date TEXT,
     expiry_date TEXT,
     sort_order INT DEFAULT 0,

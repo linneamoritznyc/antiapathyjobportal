@@ -7528,13 +7528,14 @@ VIKTIGT:
 - Certifieringar: använd certification_name (inte name), issuing_organization (inte issuer), issue_date (inte date)
 - Awards/utmärkelser: award_text = hela texten (t.ex. "1:a pris Stockholms Konstsalong 2024"), description = valfri bakgrund
 
-KRITISKT — BESKRIVNINGAR ÄR OBLIGATORISKA:
-- VARJE volontärpost MÅSTE ha en description — beskriv vad personen gjorde, vilka uppgifter, vad de lärde sig (2-3 meningar)
-- VARJE award/utmärkelse MÅSTE ha en description — förklara sammanhanget, varför det är imponerande, vad det innebar
-- VARJE certifiering MÅSTE ha en description — beskriv vad certifieringen innebär, hur den är relevant
-- VARJE projekt MÅSTE ha en description — beskriv projektets syfte, teknologier, resultat
-- Om det nya CV-dokumentet inte ger detaljer, skriv en rimlig kort beskrivning baserat på titeln/organisationen
-- Uppdatera ÄVEN befintliga poster som har tom/saknad description — lägg till description via updated_volunteer, updated_awards, updated_certifications"""
+KRITISKT — BESKRIVNINGAR ÄR OBLIGATORISKA (detta är den viktigaste regeln!):
+- VARJE volontärpost MÅSTE ha en description med minst 15 ord — beskriv vad personen gjorde, vilka uppgifter, vad de lärde sig. ALDRIG tom/null!
+- VARJE award/utmärkelse MÅSTE ha en description med minst 10 ord — förklara sammanhanget, varför det är imponerande, vad det innebar. ALDRIG tom/null!
+- VARJE certifiering MÅSTE ha en description med minst 10 ord — beskriv vad certifieringen innebär, hur den är relevant. ALDRIG tom/null!
+- VARJE projekt MÅSTE ha en description med minst 15 ord — beskriv projektets syfte, teknologier, resultat. ALDRIG tom/null!
+- Om det nya CV-dokumentet inte ger detaljer, HITTA PÅ en rimlig kort beskrivning baserat på titeln/organisationen/kontexten. Skriv ALLTID något meningsfullt, ALDRIG tom sträng.
+- Uppdatera ÄVEN befintliga poster som har tom/saknad description (markerade med ❌) — lägg till description via updated_volunteer, updated_awards, updated_certifications
+- VARJE post i new_volunteer, new_awards, new_certifications, new_projects MÅSTE ha "description" med riktig text. Poster med tom description accepteras INTE."""
 
     try:
         async with httpx.AsyncClient() as client:
@@ -7709,15 +7710,36 @@ KRITISKT — BESKRIVNINGAR ÄR OBLIGATORISKA:
             except Exception as e:
                 logger.warning(f"Failed to update education {edu_id}: {e}")
 
-    # Create new volunteer entries (skip duplicates by organization)
-    existing_vol_keys = {(v.get("organization", "").lower().strip()) for v in existing_volunteer}
+    # Build lookup: org name → existing volunteer entry (for updating duplicates)
+    existing_vol_by_org = {}
+    for v in existing_volunteer:
+        org_key = (v.get("organization") or "").lower().strip()
+        if org_key:
+            existing_vol_by_org[org_key] = v
+
+    # Create new volunteer entries (or update existing if duplicate has new description)
     for vol in changes.get("new_volunteer", []):
         try:
             key = vol.get("organization", "").lower().strip()
-            if key and key in existing_vol_keys:
-                logger.info(f"Skipped duplicate volunteer: {vol.get('organization')}")
+            new_desc = (vol.get("description") or "").strip()
+            if key and key in existing_vol_by_org:
+                # Duplicate — but if it has a description and existing doesn't, update existing
+                existing = existing_vol_by_org[key]
+                existing_desc = (existing.get("description") or "").strip()
+                if new_desc and not existing_desc:
+                    bullets = [s.strip() for s in new_desc.split(".") if s.strip()]
+                    update_data = {"description": new_desc, "bullets": bullets}
+                    for field in ["title", "dates"]:
+                        if vol.get(field) and not existing.get(field):
+                            update_data[field] = vol[field]
+                    await db_request("PATCH", "user_volunteer", data=update_data,
+                                     params={"id": f"eq.{existing['id']}", "user_id": f"eq.{user_id}"})
+                    updated += 1
+                    logger.info(f"Updated existing volunteer description: {vol.get('organization')}")
+                else:
+                    logger.info(f"Skipped duplicate volunteer: {vol.get('organization')}")
                 continue
-            desc = vol.get("description", "")
+            desc = new_desc
             bullets = [s.strip() for s in desc.split(".") if s.strip()] if desc else []
             await db_request("POST", "user_volunteer", data={
                 "user_id": user_id,
@@ -7728,15 +7750,21 @@ KRITISKT — BESKRIVNINGAR ÄR OBLIGATORISKA:
                 "bullets": bullets,
                 "sort_order": len(existing_volunteer) + added
             })
-            existing_vol_keys.add(key)
+            existing_vol_by_org[key] = vol
             added += 1
         except Exception as e:
-            logger.warning(f"Failed to add volunteer: {e}")
+            logger.warning(f"Failed to add/update volunteer: {e}")
 
-    # Update existing volunteer entries
+    # Update existing volunteer entries (by id or by org name fallback)
     for vol in changes.get("updated_volunteer", []):
         vol_id = vol.get("id")
+        # Fallback: if AI didn't include id, find by organization name
         if not vol_id:
+            org_key = (vol.get("organization") or "").lower().strip()
+            if org_key and org_key in existing_vol_by_org:
+                vol_id = existing_vol_by_org[org_key].get("id")
+        if not vol_id:
+            logger.warning(f"Skipped volunteer update — no id and no org match: {vol}")
             continue
         update_data = {}
         desc = vol.get("description")
@@ -7748,16 +7776,8 @@ KRITISKT — BESKRIVNINGAR ÄR OBLIGATORISKA:
                 update_data[field] = vol[field]
         if update_data:
             try:
-                async with httpx.AsyncClient() as client:
-                    await client.patch(
-                        f"{SUPABASE_URL}/rest/v1/user_volunteer?id=eq.{vol_id}&user_id=eq.{user_id}",
-                        headers={
-                            "apikey": SUPABASE_KEY,
-                            "Authorization": f"Bearer {SUPABASE_KEY}",
-                            "Content-Type": "application/json"
-                        },
-                        json=update_data
-                    )
+                await db_request("PATCH", "user_volunteer", data=update_data,
+                                 params={"id": f"eq.{vol_id}", "user_id": f"eq.{user_id}"})
                 updated += 1
             except Exception as e:
                 logger.warning(f"Failed to update volunteer {vol_id}: {e}")
@@ -7827,31 +7847,61 @@ KRITISKT — BESKRIVNINGAR ÄR OBLIGATORISKA:
         except Exception as e:
             logger.warning(f"Failed to add skill: {e}")
 
-    # Create new certifications (skip duplicates by name)
-    existing_cert_names = {(c.get("certification_name") or "").lower().strip() for c in existing_certifications}
+    # Build lookup: cert name → existing certification entry
+    existing_cert_by_name = {}
+    for c in existing_certifications:
+        cname_key = (c.get("certification_name") or "").lower().strip()
+        if cname_key:
+            existing_cert_by_name[cname_key] = c
+
+    # Create new certifications (or update existing if duplicate has new description)
     for cert in changes.get("new_certifications", []):
         try:
             cert_name = (cert.get("certification_name") or cert.get("name", "")).strip()
-            if cert_name and cert_name.lower() not in existing_cert_names:
+            cert_key = cert_name.lower() if cert_name else ""
+            new_desc = (cert.get("description") or "").strip()
+            if cert_key and cert_key in existing_cert_by_name:
+                # Duplicate — but if it has a description and existing doesn't, update existing
+                existing = existing_cert_by_name[cert_key]
+                existing_desc = (existing.get("description") or "").strip()
+                if new_desc and not existing_desc:
+                    update_data = {"description": new_desc}
+                    for field in ["issuing_organization", "issue_date"]:
+                        val = cert.get(field) or cert.get({"issuing_organization": "issuer", "issue_date": "date"}.get(field, ""))
+                        if val and not existing.get(field):
+                            update_data[field] = val
+                    await db_request("PATCH", "user_certifications", data=update_data,
+                                     params={"id": f"eq.{existing['id']}", "user_id": f"eq.{user_id}"})
+                    updated += 1
+                    logger.info(f"Updated existing certification description: {cert_name}")
+                else:
+                    logger.info(f"Skipped duplicate certification: {cert_name}")
+                continue
+            if cert_name:
+                cert_desc = new_desc
+                issuing_org = cert.get("issuing_organization") or cert.get("issuer", "")
                 await db_request("POST", "user_certifications", data={
                     "user_id": user_id,
                     "certification_name": cert_name,
-                    "issuing_organization": cert.get("issuing_organization") or cert.get("issuer", ""),
-                    "description": cert.get("description", ""),
+                    "issuing_organization": issuing_org,
+                    "description": cert_desc,
                     "issue_date": cert.get("issue_date") or cert.get("date", ""),
                     "sort_order": len(existing_certifications) + added
                 })
-                existing_cert_names.add(cert_name.lower())
+                existing_cert_by_name[cert_key] = cert
                 added += 1
-            elif cert_name:
-                logger.info(f"Skipped duplicate certification: {cert_name}")
         except Exception as e:
-            logger.warning(f"Failed to add certification: {e}")
+            logger.warning(f"Failed to add/update certification: {e}")
 
-    # Update existing certifications
+    # Update existing certifications (by id or by name fallback)
     for cert in changes.get("updated_certifications", []):
         cert_id = cert.get("id")
         if not cert_id:
+            cname_key = (cert.get("certification_name") or "").lower().strip()
+            if cname_key and cname_key in existing_cert_by_name:
+                cert_id = existing_cert_by_name[cname_key].get("id")
+        if not cert_id:
+            logger.warning(f"Skipped cert update — no id and no name match: {cert}")
             continue
         update_data = {}
         for field in ["certification_name", "issuing_organization", "description", "issue_date", "expiry_date"]:
@@ -7859,43 +7909,59 @@ KRITISKT — BESKRIVNINGAR ÄR OBLIGATORISKA:
                 update_data[field] = cert[field]
         if update_data:
             try:
-                async with httpx.AsyncClient() as client:
-                    await client.patch(
-                        f"{SUPABASE_URL}/rest/v1/user_certifications?id=eq.{cert_id}&user_id=eq.{user_id}",
-                        headers={
-                            "apikey": SUPABASE_KEY,
-                            "Authorization": f"Bearer {SUPABASE_KEY}",
-                            "Content-Type": "application/json"
-                        },
-                        json=update_data
-                    )
+                await db_request("PATCH", "user_certifications", data=update_data,
+                                 params={"id": f"eq.{cert_id}", "user_id": f"eq.{user_id}"})
                 updated += 1
             except Exception as e:
                 logger.warning(f"Failed to update certification {cert_id}: {e}")
 
-    # Create new awards (skip duplicates by award_text)
-    existing_award_keys = {(a.get("award_text", "").lower().strip()) for a in existing_awards}
+    # Build lookup: award text → existing award entry
+    existing_award_by_text = {}
+    for a in existing_awards:
+        atext_key = (a.get("award_text") or "").lower().strip()
+        if atext_key:
+            existing_award_by_text[atext_key] = a
+
+    # Create new awards (or update existing if duplicate has new description)
     for award in changes.get("new_awards", []):
         try:
             award_text = (award.get("award_text", "")).strip()
-            if award_text and award_text.lower() not in existing_award_keys:
+            award_key = award_text.lower() if award_text else ""
+            new_desc = (award.get("description") or "").strip()
+            if award_key and award_key in existing_award_by_text:
+                # Duplicate — but if it has a description and existing doesn't, update existing
+                existing = existing_award_by_text[award_key]
+                existing_desc = (existing.get("description") or "").strip()
+                if new_desc and not existing_desc:
+                    await db_request("PATCH", "user_awards", data={"description": new_desc},
+                                     params={"id": f"eq.{existing['id']}", "user_id": f"eq.{user_id}"})
+                    updated += 1
+                    logger.info(f"Updated existing award description: {award_text}")
+                else:
+                    logger.info(f"Skipped duplicate award: {award_text}")
+                continue
+            if award_text:
+                award_desc = new_desc
                 await db_request("POST", "user_awards", data={
                     "user_id": user_id,
                     "award_text": award_text,
-                    "description": award.get("description", ""),
+                    "description": award_desc,
                     "sort_order": len(existing_awards) + added
                 })
-                existing_award_keys.add(award_text.lower())
+                existing_award_by_text[award_key] = award
                 added += 1
-            elif award_text:
-                logger.info(f"Skipped duplicate award: {award_text}")
         except Exception as e:
-            logger.warning(f"Failed to add award: {e}")
+            logger.warning(f"Failed to add/update award: {e}")
 
-    # Update existing awards
+    # Update existing awards (by id or by award_text fallback)
     for award in changes.get("updated_awards", []):
         award_id = award.get("id")
         if not award_id:
+            atext_key = (award.get("award_text") or "").lower().strip()
+            if atext_key and atext_key in existing_award_by_text:
+                award_id = existing_award_by_text[atext_key].get("id")
+        if not award_id:
+            logger.warning(f"Skipped award update — no id and no text match: {award}")
             continue
         update_data = {}
         for field in ["award_text", "description"]:
@@ -7903,16 +7969,8 @@ KRITISKT — BESKRIVNINGAR ÄR OBLIGATORISKA:
                 update_data[field] = award[field]
         if update_data:
             try:
-                async with httpx.AsyncClient() as client:
-                    await client.patch(
-                        f"{SUPABASE_URL}/rest/v1/user_awards?id=eq.{award_id}&user_id=eq.{user_id}",
-                        headers={
-                            "apikey": SUPABASE_KEY,
-                            "Authorization": f"Bearer {SUPABASE_KEY}",
-                            "Content-Type": "application/json"
-                        },
-                        json=update_data
-                    )
+                await db_request("PATCH", "user_awards", data=update_data,
+                                 params={"id": f"eq.{award_id}", "user_id": f"eq.{user_id}"})
                 updated += 1
             except Exception as e:
                 logger.warning(f"Failed to update award {award_id}: {e}")
