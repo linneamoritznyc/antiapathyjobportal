@@ -1931,7 +1931,7 @@ def _build_bransch_cv_pdf(cv_text: str, profile_name: str = "") -> bytes:
 
     # Parse the CV text into sections
     lines = cv_text.split("\n")
-    for line in lines:
+    for idx, line in enumerate(lines):
         stripped = line.strip()
         if not stripped:
             pdf.ln(3)
@@ -1958,16 +1958,16 @@ def _build_bransch_cv_pdf(cv_text: str, profile_name: str = "") -> bytes:
             bullet_text = _safe_pdf_text(stripped[2:].strip())
             pdf.cell(5)
             pdf.multi_cell(0, 4.5, f"  {bullet_text}")
-        elif lines.index(line) == 0 or (lines.index(line) <= 2 and len(stripped) < 50 and not any(c in stripped for c in ['|', '-', '@'])):
-            # First few lines are likely name/contact — bold them
-            if lines.index(line) == 0:
-                pdf.set_font("Helvetica", "B", 18)
-                pdf.set_text_color(30, 30, 30)
-                pdf.cell(0, 10, safe_line, new_x="LMARGIN", new_y="NEXT")
-            else:
-                pdf.set_font("Helvetica", "", 10)
-                pdf.set_text_color(80, 80, 80)
-                pdf.cell(0, 5, safe_line, new_x="LMARGIN", new_y="NEXT")
+        elif idx == 0:
+            # First line is likely name — bold and large
+            pdf.set_font("Helvetica", "B", 18)
+            pdf.set_text_color(30, 30, 30)
+            pdf.cell(0, 10, safe_line, new_x="LMARGIN", new_y="NEXT")
+        elif idx <= 2 and len(stripped) < 50 and not any(c in stripped for c in ['|', '-', '@']):
+            # Contact/meta lines
+            pdf.set_font("Helvetica", "", 10)
+            pdf.set_text_color(80, 80, 80)
+            pdf.cell(0, 5, safe_line, new_x="LMARGIN", new_y="NEXT")
         else:
             # Regular text line
             pdf.set_font("Helvetica", "", 9)
@@ -7892,6 +7892,7 @@ KRITISKT — BESKRIVNINGAR ÄR OBLIGATORISKA (detta är den viktigaste regeln!):
 - Uppdatera ÄVEN befintliga poster som har tom/saknad description (markerade med ❌) — lägg till description via updated_volunteer, updated_awards, updated_certifications
 - VARJE post i new_volunteer, new_awards, new_certifications, new_projects MÅSTE ha "description" med riktig text. Poster med tom description accepteras INTE."""
 
+    import json as json_module
     try:
         async with httpx.AsyncClient() as client:
             response = await client.post(
@@ -7922,7 +7923,6 @@ KRITISKT — BESKRIVNINGAR ÄR OBLIGATORISKA (detta är den viktigaste regeln!):
             elif "```" in ai_text:
                 ai_text = ai_text.split("```")[1].split("```")[0].strip()
 
-            import json as json_module
             changes = json_module.loads(ai_text)
 
     except json_module.JSONDecodeError as e:
@@ -7968,38 +7968,13 @@ KRITISKT — BESKRIVNINGAR ÄR OBLIGATORISKA (detta är den viktigaste regeln!):
         except Exception as e:
             logger.warning(f"Failed to update profile: {e}")
 
-    # Create new experiences (skip duplicates by company+title, but update missing fields)
-    existing_exp_by_key = {}
-    for e in existing_experiences:
-        ekey = (e.get("company", "").lower().strip() + "|" + e.get("title", "").lower().strip())
-        if ekey:
-            existing_exp_by_key[ekey] = e
-    existing_exp_keys = set(existing_exp_by_key.keys())
+    # Create new experiences (skip duplicates by company+title)
+    existing_exp_keys = {(e.get("company", "").lower().strip() + "|" + e.get("title", "").lower().strip()) for e in existing_experiences}
     for exp in changes.get("new_experiences", []):
         try:
             key = (exp.get("company", "").lower().strip() + "|" + exp.get("title", "").lower().strip())
             if key in existing_exp_keys:
-                # Duplicate — but check if new entry has data the existing one lacks
-                existing = existing_exp_by_key[key]
-                update_data = {}
-                new_desc = (exp.get("description") or "").strip()
-                existing_desc = (existing.get("description") or "").strip()
-                if new_desc and not existing_desc:
-                    update_data["description"] = new_desc
-                new_cats = exp.get("categories") or []
-                existing_cats = existing.get("categories") or []
-                if new_cats and not existing_cats:
-                    update_data["categories"] = new_cats
-                for field in ["location", "start_date", "end_date"]:
-                    if exp.get(field) and not existing.get(field):
-                        update_data[field] = exp[field]
-                if update_data:
-                    await db_request("PATCH", "user_experiences", data=update_data,
-                                     params={"id": f"eq.{existing['id']}", "user_id": f"eq.{user_id}"})
-                    updated += 1
-                    logger.info(f"Updated existing experience with missing fields: {exp.get('title')} @ {exp.get('company')}")
-                else:
-                    logger.info(f"Skipped duplicate experience: {exp.get('title')} @ {exp.get('company')}")
+                logger.info(f"Skipped duplicate experience: {exp.get('title')} @ {exp.get('company')}")
                 continue
             await db_request("POST", "user_experiences", data={
                 "user_id": user_id,
@@ -8042,30 +8017,13 @@ KRITISKT — BESKRIVNINGAR ÄR OBLIGATORISKA (detta är den viktigaste regeln!):
             except Exception as e:
                 logger.warning(f"Failed to update experience {exp_id}: {e}")
 
-    # Create new education (skip duplicates by school+degree, but update missing fields)
-    existing_edu_by_key = {}
-    for e in existing_education:
-        ekey = (e.get("school", "").lower().strip() + "|" + e.get("degree", "").lower().strip())
-        if ekey:
-            existing_edu_by_key[ekey] = e
-    existing_edu_keys = set(existing_edu_by_key.keys())
+    # Create new education (skip duplicates by school+degree)
+    existing_edu_keys = {(e.get("school", "").lower().strip() + "|" + e.get("degree", "").lower().strip()) for e in existing_education}
     for edu in changes.get("new_education", []):
         try:
             key = (edu.get("school", "").lower().strip() + "|" + edu.get("degree", "").lower().strip())
             if key in existing_edu_keys:
-                # Duplicate — but check if new entry has data the existing one lacks
-                existing = existing_edu_by_key[key]
-                update_data = {}
-                for field in ["field_of_study", "location", "start_date", "end_date"]:
-                    if edu.get(field) and not existing.get(field):
-                        update_data[field] = edu[field]
-                if update_data:
-                    await db_request("PATCH", "user_education", data=update_data,
-                                     params={"id": f"eq.{existing['id']}", "user_id": f"eq.{user_id}"})
-                    updated += 1
-                    logger.info(f"Updated existing education with missing fields: {edu.get('degree')} @ {edu.get('school')}")
-                else:
-                    logger.info(f"Skipped duplicate education: {edu.get('degree')} @ {edu.get('school')}")
+                logger.info(f"Skipped duplicate education: {edu.get('degree')} @ {edu.get('school')}")
                 continue
             await db_request("POST", "user_education", data={
                 "user_id": user_id,
@@ -8179,40 +8137,13 @@ KRITISKT — BESKRIVNINGAR ÄR OBLIGATORISKA (detta är den viktigaste regeln!):
             except Exception as e:
                 logger.warning(f"Failed to update volunteer {vol_id}: {e}")
 
-    # Create new projects (skip duplicates by project_name, but update missing fields)
-    existing_proj_by_key = {}
-    for p in existing_projects:
-        pkey = (p.get("project_name") or p.get("name") or "").lower().strip()
-        if pkey:
-            existing_proj_by_key[pkey] = p
-    existing_proj_keys = set(existing_proj_by_key.keys())
+    # Create new projects (skip duplicates by project_name)
+    existing_proj_keys = {(p.get("project_name") or p.get("name") or "").lower().strip() for p in existing_projects}
     for proj in changes.get("new_projects", []):
         try:
             pname = proj.get("name") or proj.get("project_name", "")
-            pkey = pname.lower().strip()
-            if pkey in existing_proj_keys:
-                # Duplicate — but check if new entry has data the existing one lacks
-                existing = existing_proj_by_key[pkey]
-                update_data = {}
-                new_desc = (proj.get("description") or "").strip()
-                existing_desc = (existing.get("description") or "").strip()
-                if new_desc and not existing_desc:
-                    update_data["description"] = new_desc
-                new_stack = (proj.get("tech_stack") or "").strip()
-                existing_stack = (existing.get("tech_stack") or "").strip()
-                if new_stack and not existing_stack:
-                    update_data["tech_stack"] = new_stack
-                new_url = (proj.get("url") or proj.get("github_url") or "").strip()
-                existing_url = (existing.get("github_url") or "").strip()
-                if new_url and not existing_url:
-                    update_data["github_url"] = new_url
-                if update_data:
-                    await db_request("PATCH", "tech_projects", data=update_data,
-                                     params={"id": f"eq.{existing['id']}", "user_id": f"eq.{user_id}"})
-                    updated += 1
-                    logger.info(f"Updated existing project with missing fields: {pname}")
-                else:
-                    logger.info(f"Skipped duplicate project: {pname}")
+            if pname.lower().strip() in existing_proj_keys:
+                logger.info(f"Skipped duplicate project: {pname}")
                 continue
             await db_request("POST", "tech_projects", data={
                 "user_id": user_id,
@@ -8339,26 +8270,12 @@ KRITISKT — BESKRIVNINGAR ÄR OBLIGATORISKA (detta är den viktigaste regeln!):
             except Exception as e:
                 logger.warning(f"Failed to update certification {cert_id}: {e}")
 
-    # Build lookup: award text → existing award entry (exact + fuzzy first-30-chars)
+    # Build lookup: award text → existing award entry
     existing_award_by_text = {}
-    existing_award_by_prefix = {}
     for a in existing_awards:
         atext_key = (a.get("award_text") or "").lower().strip()
         if atext_key:
             existing_award_by_text[atext_key] = a
-            # Also index by first 30 chars for fuzzy matching
-            prefix = atext_key[:30]
-            if prefix:
-                existing_award_by_prefix[prefix] = a
-
-    def _find_existing_award(award_key: str):
-        """Find existing award by exact match or fuzzy first-30-chars match."""
-        if award_key in existing_award_by_text:
-            return existing_award_by_text[award_key]
-        prefix = award_key[:30]
-        if prefix and prefix in existing_award_by_prefix:
-            return existing_award_by_prefix[prefix]
-        return None
 
     # Create new awards (or update existing if duplicate has new description)
     for award in changes.get("new_awards", []):
@@ -8366,8 +8283,9 @@ KRITISKT — BESKRIVNINGAR ÄR OBLIGATORISKA (detta är den viktigaste regeln!):
             award_text = (award.get("award_text", "")).strip()
             award_key = award_text.lower() if award_text else ""
             new_desc = (award.get("description") or "").strip()
-            existing = _find_existing_award(award_key) if award_key else None
-            if existing:
+            if award_key and award_key in existing_award_by_text:
+                # Duplicate — but if it has a description and existing doesn't, update existing
+                existing = existing_award_by_text[award_key]
                 existing_desc = (existing.get("description") or "").strip()
                 if new_desc and not existing_desc:
                     await db_request("PATCH", "user_awards", data={"description": new_desc},
@@ -8390,14 +8308,13 @@ KRITISKT — BESKRIVNINGAR ÄR OBLIGATORISKA (detta är den viktigaste regeln!):
         except Exception as e:
             logger.warning(f"Failed to add/update award: {e}")
 
-    # Update existing awards (by id or by award_text fallback with fuzzy matching)
+    # Update existing awards (by id or by award_text fallback)
     for award in changes.get("updated_awards", []):
         award_id = award.get("id")
         if not award_id:
             atext_key = (award.get("award_text") or "").lower().strip()
-            match = _find_existing_award(atext_key) if atext_key else None
-            if match:
-                award_id = match.get("id")
+            if atext_key and atext_key in existing_award_by_text:
+                award_id = existing_award_by_text[atext_key].get("id")
         if not award_id:
             logger.warning(f"Skipped award update — no id and no text match: {award}")
             continue
