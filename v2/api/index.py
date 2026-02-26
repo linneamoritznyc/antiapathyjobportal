@@ -3693,15 +3693,29 @@ def _safe_pdf_text(text) -> str:
     text = str(text)
     replacements = {
         '\u2013': '-', '\u2014': '-',    # en/em dash
+        '\u2015': '-',                    # horizontal bar
         '\u2018': "'", '\u2019': "'",    # curly single quotes
         '\u201c': '"', '\u201d': '"',    # curly double quotes
         '\u2026': '...', '\u00a0': ' ',  # ellipsis, nbsp
         '\u2022': '-', '\u2023': '-',    # bullet chars
+        '\u2024': '.', '\u2027': '-',    # one dot leader, hyphenation point
+        '\u2032': "'", '\u2033': '"',    # prime, double prime
+        '\u2039': '<', '\u203a': '>',    # single angle quotes
+        '\u2010': '-', '\u2011': '-',    # hyphen, non-breaking hyphen
+        '\u2012': '-',                    # figure dash
         '\u200b': '', '\u200c': '', '\u200d': '',  # zero-width chars
         '\ufeff': '',  # BOM
+        '\u2192': '->', '\u2190': '<-',  # arrows
+        '\u2714': 'x', '\u2716': 'x',   # check/cross marks
+        '\u25cf': '-', '\u25cb': '-',    # circle bullets
+        '\u25aa': '-', '\u25ab': '-',    # square bullets
+        '\u2212': '-',                    # minus sign
+        '\u00ad': '',                     # soft hyphen
     }
     for old, new in replacements.items():
         text = text.replace(old, new)
+    # Also replace any remaining em/en dashes that might be literal in source
+    text = text.replace('\u2014', '-').replace('\u2013', '-')
     return text.encode('latin-1', errors='replace').decode('latin-1')
 
 
@@ -3800,7 +3814,7 @@ def _build_master_cv_pdf(profile: Dict, experiences: list, education: list, volu
             pdf.set_text_color(30, 30, 30)
             title = safe_text(exp.get("title", ""))
             company = safe_text(exp.get("company", ""))
-            pdf.cell(0, 6, f"{title} — {company}", new_x="LMARGIN", new_y="NEXT")
+            pdf.cell(0, 6, f"{title} - {company}", new_x="LMARGIN", new_y="NEXT")
 
             meta_parts = []
             if exp.get("location"):
@@ -3820,7 +3834,7 @@ def _build_master_cv_pdf(profile: Dict, experiences: list, education: list, volu
                     bt = safe_text(b).strip()
                     if bt:
                         pdf.cell(5)
-                        pdf.multi_cell(0, 4.5, f"• {bt}")
+                        pdf.multi_cell(0, 4.5, f"- {bt}")
             pdf.ln(3)
 
     # -- Education --
@@ -3831,7 +3845,7 @@ def _build_master_cv_pdf(profile: Dict, experiences: list, education: list, volu
             pdf.set_text_color(30, 30, 30)
             degree = safe_text(edu.get("degree", ""))
             school = safe_text(edu.get("school", ""))
-            pdf.cell(0, 6, f"{degree} — {school}", new_x="LMARGIN", new_y="NEXT")
+            pdf.cell(0, 6, f"{degree} - {school}", new_x="LMARGIN", new_y="NEXT")
 
             meta_parts = []
             if edu.get("location"):
@@ -3851,7 +3865,7 @@ def _build_master_cv_pdf(profile: Dict, experiences: list, education: list, volu
                     bt = safe_text(b).strip()
                     if bt:
                         pdf.cell(5)
-                        pdf.multi_cell(0, 4.5, f"• {bt}")
+                        pdf.multi_cell(0, 4.5, f"- {bt}")
             pdf.ln(3)
 
     # -- Projects --
@@ -3880,7 +3894,7 @@ def _build_master_cv_pdf(profile: Dict, experiences: list, education: list, volu
             dates = safe_text(vol.get("dates", ""))
             heading = org
             if title:
-                heading = f"{title} — {org}"
+                heading = f"{title} - {org}"
             if dates:
                 heading += f" ({dates})"
             pdf.cell(0, 6, heading, new_x="LMARGIN", new_y="NEXT")
@@ -3894,7 +3908,7 @@ def _build_master_cv_pdf(profile: Dict, experiences: list, education: list, volu
                     bt = safe_text(b).strip()
                     if bt:
                         pdf.cell(5)
-                        pdf.multi_cell(0, 4.5, f"• {bt}")
+                        pdf.multi_cell(0, 4.5, f"- {bt}")
             elif desc:
                 pdf.set_font("Helvetica", "", 9)
                 pdf.set_text_color(60, 60, 60)
@@ -3912,9 +3926,9 @@ def _build_master_cv_pdf(profile: Dict, experiences: list, education: list, volu
                 issuer = safe_text(cert.get("issuing_organization", ""))
                 line = cname
                 if issuer:
-                    line += f" — {issuer}"
+                    line += f" - {issuer}"
                 pdf.cell(5)
-                pdf.cell(0, 5, f"• {line}", new_x="LMARGIN", new_y="NEXT")
+                pdf.cell(0, 5, f"- {line}", new_x="LMARGIN", new_y="NEXT")
                 cdesc = (cert.get("description") or "").strip()
                 if cdesc:
                     pdf.set_font("Helvetica", "", 9)
@@ -3932,7 +3946,7 @@ def _build_master_cv_pdf(profile: Dict, experiences: list, education: list, volu
                 pdf.set_font("Helvetica", "B", 10)
                 pdf.set_text_color(30, 30, 30)
                 pdf.cell(5)
-                pdf.cell(0, 5, f"• {award_text}", new_x="LMARGIN", new_y="NEXT")
+                pdf.cell(0, 5, f"- {award_text}", new_x="LMARGIN", new_y="NEXT")
                 adesc = ((a.get("description") or "").strip() if isinstance(a, dict) else "")
                 if adesc:
                     pdf.set_font("Helvetica", "", 9)
@@ -3948,7 +3962,7 @@ def _build_master_cv_pdf(profile: Dict, experiences: list, education: list, volu
         pdf.set_text_color(60, 60, 60)
         skill_texts = [safe_text(s.get("skill_text", "")) for s in skills if s.get("skill_text")]
         if skill_texts:
-            pdf.multi_cell(0, 5, "  •  ".join(skill_texts))
+            pdf.multi_cell(0, 5, "  |  ".join(skill_texts))
         pdf.ln(2)
 
     return pdf.output()
@@ -7848,10 +7862,10 @@ async def enhance_master_cv_from_upload(request: Request):
     if not existing_awards:
         existing_summary += "- (inga)\n"
 
-    if not ANTHROPIC_API_KEY:
-        raise HTTPException(status_code=500, detail="AI ej konfigurerad")
+    if not ANTHROPIC_API_KEY and not GEMINI_API_KEY:
+        raise HTTPException(status_code=500, detail="AI ej konfigurerad (varken ANTHROPIC_API_KEY eller GEMINI_API_KEY)")
 
-    # Ask Claude to compare and find improvements
+    # Ask AI to compare and find improvements
     prompt = f"""Jag har ett Master CV med befintliga poster. Jag har precis laddat upp ett nytt CV-dokument.
 
 UPPGIFT: Analysera ALLA sektioner i det nya dokumentet och jämför med mina befintliga poster. Det nya CVt kan innehålla:
@@ -7932,19 +7946,23 @@ VIKTIGT:
 - Kategorier för erfarenheter: restaurant, retail, tech, healthcare, customerservice, content, industry, art, hotel, cemetery
 - skill_type: "technical" (programmeringsspråk, verktyg), "language" (svenska, engelska), "certificate" (körkort, etc.)
 - Datum i format "Aug 2024" eller "2024"
-- Beskrivningar på svenska, korta och informativa
+- Beskrivningar på svenska, LÅNGA och DETALJERADE — ett Master CV ska ha maximal kontext
 - Dubblera INTE kompetenser som redan finns i listan
 - Certifieringar: använd certification_name (inte name), issuing_organization (inte issuer), issue_date (inte date)
 - Awards/utmärkelser: award_text = hela texten (t.ex. "1:a pris Stockholms Konstsalong 2024"), description = valfri bakgrund
 
-KRITISKT — BESKRIVNINGAR ÄR OBLIGATORISKA (detta är den viktigaste regeln!):
-- VARJE volontärpost MÅSTE ha en description med minst 15 ord — beskriv vad personen gjorde, vilka uppgifter, vad de lärde sig. ALDRIG tom/null!
-- VARJE award/utmärkelse MÅSTE ha en description med minst 10 ord — förklara sammanhanget, varför det är imponerande, vad det innebar. ALDRIG tom/null!
-- VARJE certifiering MÅSTE ha en description med minst 10 ord — beskriv vad certifieringen innebär, hur den är relevant. ALDRIG tom/null!
-- VARJE projekt MÅSTE ha en description med minst 15 ord — beskriv projektets syfte, teknologier, resultat. ALDRIG tom/null!
-- Om det nya CV-dokumentet inte ger detaljer, HITTA PÅ en rimlig kort beskrivning baserat på titeln/organisationen/kontexten. Skriv ALLTID något meningsfullt, ALDRIG tom sträng.
-- Uppdatera ÄVEN befintliga poster som har tom/saknad description (markerade med ❌) — lägg till description via updated_volunteer, updated_awards, updated_certifications
-- VARJE post i new_volunteer, new_awards, new_certifications, new_projects MÅSTE ha "description" med riktig text. Poster med tom description accepteras INTE."""
+KRITISKT — BESKRIVNINGAR SKA VARA LÅNGA OCH DETALJERADE (detta är den viktigaste regeln!):
+Poängen med ett Master CV är att ha MAXIMAL KONTEXT om varje erfarenhet. Ju mer detaljer, desto bättre.
+
+- VARJE arbetslivserfarenhet MÅSTE ha en description med minst 50 ord — beskriv dagliga uppgifter, ansvarsområden, verktyg/system som användes, vad personen lärde sig, specifika resultat/prestationer. Var KONKRET och DETALJERAD.
+- VARJE volontärpost MÅSTE ha en description med minst 40 ord — beskriv vad personen gjorde, vilka uppgifter, vilken påverkan arbetet hade, vad de lärde sig, konkreta resultat. ALDRIG tom/null!
+- VARJE award/utmärkelse MÅSTE ha en description med minst 30 ord — förklara sammanhanget, hur tävlingen/urvalet gick till, varför det är imponerande, vad det innebar för personens karriär. ALDRIG tom/null!
+- VARJE certifiering MÅSTE ha en description med minst 25 ord — beskriv vad certifieringen innebär, vilka kunskaper den visar, hur den är relevant för arbetslivet. ALDRIG tom/null!
+- VARJE projekt MÅSTE ha en description med minst 50 ord — beskriv projektets syfte, vilka problem det löser, teknologier och arkitektur, resultat/användarantal, vad som gör det unikt. ALDRIG tom/null!
+- Om det nya CV-dokumentet inte ger tillräckliga detaljer, EXPANDERA baserat på titeln/organisationen/kontexten — skriv en rik och trovärdig beskrivning.
+- Uppdatera ÄVEN befintliga poster som har kort/saknad description (markerade med ❌) — lägg till UTFÖRLIG description via updated_volunteer, updated_awards, updated_certifications, updated_experiences
+- VARJE post MÅSTE ha "description" med riktig, detaljerad text. Korta generiska beskrivningar accepteras INTE.
+- Tänk: "Om jag läser denna description om 2 år — har jag tillräckligt med kontext för att skriva ett bra personligt brev baserat på den?" Om inte → skriv mer."""
 
     import json as json_module
     ai_text = ""
