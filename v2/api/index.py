@@ -4258,18 +4258,25 @@ async def download_bransch_cv_pdf(cv_id: str, request: Request):
     from fpdf import FPDF
     user_id = await get_user_id_from_request(request, required=True)
 
-    # Fetch the specific Bransch-CV
-    cv_result = await db_request("GET", "bransch_cvs", params={
+    # Fetch the specific Bransch-CV — try user_cvs first (primary table), then bransch_cvs as fallback
+    cv_result = await db_request("GET", "user_cvs", params={
         "id": f"eq.{cv_id}",
         "user_id": f"eq.{user_id}"
     })
+
+    if not cv_result or len(cv_result) == 0:
+        # Fallback: try bransch_cvs table
+        cv_result = await db_request("GET", "bransch_cvs", params={
+            "id": f"eq.{cv_id}",
+            "user_id": f"eq.{user_id}"
+        })
 
     if not cv_result or len(cv_result) == 0:
         raise HTTPException(status_code=404, detail="Bransch-CV hittades inte")
 
     cv = cv_result[0]
     cv_text = cv.get("cv_text", "")
-    category = cv.get("category", "CV")
+    category = cv.get("vibe_name") or cv.get("category") or cv.get("vibe_id") or "CV"
 
     # Fetch profile for header
     profiles = await db_request("GET", "user_profiles", params={"user_id": f"eq.{user_id}"})
@@ -5139,8 +5146,7 @@ INSTRUKTIONER:
 2. 50-150 ord, kärnfullt och personligt
 3. Referera till specifika delar av jobbeskrivningen som visar varför sökanden passar
 4. Naturlig, varm svenska — inte krystad eller generisk
-5. ALDRIG nämn konst, målning, utställningar eller Shopify
-6. Svaret ska kunna klistras in direkt i ett webbformulär
+5. Svaret ska kunna klistras in direkt i ett webbformulär
 
 {SWEDISH_LANGUAGE_RULES}"""
 
