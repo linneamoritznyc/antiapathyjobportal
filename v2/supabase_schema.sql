@@ -555,6 +555,17 @@ CREATE TABLE IF NOT EXISTS user_photos (
     created_at TIMESTAMPTZ DEFAULT NOW()
 );
 
+-- User pasted URLs — logs every URL a user pastes, even if scraping fails or they don't apply
+CREATE TABLE IF NOT EXISTS user_pasted_urls (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    user_id UUID,                          -- NULL if not logged in
+    url TEXT NOT NULL,
+    job_id TEXT,                           -- Populated if scraping succeeded and job was saved
+    status TEXT DEFAULT 'pending',         -- pending, success, failed
+    error_message TEXT,                    -- Why scraping failed (if applicable)
+    created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
 -- Indexes for performance
 CREATE INDEX IF NOT EXISTS idx_jobs_scraped_at ON jobs(scraped_at DESC);
 CREATE INDEX IF NOT EXISTS idx_jobs_contact_email ON jobs(contact_email) WHERE contact_email IS NOT NULL;
@@ -570,6 +581,7 @@ CREATE INDEX IF NOT EXISTS idx_user_ai_feedback_user ON user_ai_feedback(user_id
 CREATE INDEX IF NOT EXISTS idx_user_experience_tags_user ON user_experience_tags(user_id);
 CREATE INDEX IF NOT EXISTS idx_user_experience_tags_bransch ON user_experience_tags(bransch_id);
 CREATE INDEX IF NOT EXISTS idx_user_certifications_user ON user_certifications(user_id);
+CREATE INDEX IF NOT EXISTS idx_user_pasted_urls_user ON user_pasted_urls(user_id);
 
 -- Row Level Security (enable when you add auth)
 -- ALTER TABLE user_profiles ENABLE ROW LEVEL SECURITY;

@@ -1,6 +1,6 @@
 # Platsbanken-ai — Funktioner & UX per sida
 
-> Uppdaterad: 25 feb 2026 (v2.6 — full DB-audit, 6 bugfixar, aktivitetsrapport AF-format, schema synkad mot live DB)
+> Uppdaterad: 26 feb 2026 (v2.7 — klistra in jobb-URL, user_pasted_urls-tabell, fix # i personliga brev)
 
 AI-driven jobbportal för neurodivergenta jobbsökare i Sverige. Skrapar Platsbanken, genererar personliga brev via Claude, skapar Gmail-utkast med bransch-CV.
 
@@ -91,6 +91,14 @@ Visar jobb som skrapats från Platsbanken och som har **kontakt-e-post** (= kan 
 - **Ingen cron/schema** — ingen automatisk scraping i bakgrunden. **Ska byggas ut i framtiden?** Needs a decision: daglig cron, scrape vid login, eller manuellt för alltid?
 - **Volym per scrape**: upp till 5 sökord × 15 jobb + 2 breda sökningar × 20 jobb = ~95 jobb, deduplicerade på jobb-ID
 
+### Klistra in jobb-URL
+- **Input-fält** — "Klistra in en länk till en jobbannons..." med rosa styling
+- **"🔗 Hämta jobb"**-knapp → `POST /api/jobs/from-url`
+- Skrapar valfri jobbannons-URL, extraherar strukturerad data via Claude AI
+- Sparar jobbet i `jobs`-tabellen med `source='manual_url'`
+- Loggar varje inklistrad URL i `user_pasted_urls`-tabellen (status: pending → success/failed)
+- Vid lyckat skrape → öppnar ansökningsmodalen direkt
+
 ### Toppsektion
 - **Sökfält** — filtrerar på titel, företag, plats (klientside)
 - **Prioritetsfilter** — dropdown: Alla / Akut / Snart / Normal
@@ -149,6 +157,7 @@ Varje kort visar:
 | `user_ai_feedback` | ✅ | ✅ | Sparar + hämtar feedback om brev (smart endpoint uppdaterar preferences) |
 | `user_cvs` / `bransch_cvs` | ✅ | | Hämtar bransch-CV PDF för bilaga |
 | `user_google_credentials` | ✅ | | Gmail OAuth-tokens för att skapa utkast |
+| `user_pasted_urls` | | ✅ | Loggar varje inklistrad URL (status, job_id, error) |
 
 ---
 
@@ -717,6 +726,7 @@ Personuppgifter och kontoinställningar.
 | `user_training_letters` | Uppladdade träningsbrev | Personligt brev |
 | `user_cv_uploads` | Uppladdade CV-filer | Mina CV |
 | `user_job_interactions` | Visad/hoppat/avslagen/sparad | Jobb, Extern |
+| `user_pasted_urls` | Loggar inklistrade jobb-URLer (status, job_id, error) | Jobb |
 | `user_photos` | Portfolio-/gallerifoton (ej profilbild) — **⚠️ Tabell finns i DB, inget UI/API ännu** | — |
 
 ### Specialtabeller
@@ -842,3 +852,12 @@ Personuppgifter och kontoinställningar.
 - **`user_cv_versions`** — tabell finns, populeras aldrig. Ingen versionshistorik eller restore.
 - **`cv_industry_templates`** — 4 mallar seedade, appen hårdkodar "traditional".
 - **GDPR Storage-filer** — filer i buckets raderas inte vid kontoborttagning.
+
+### v2.7 — 26 feb 2026
+
+**Bugfixar:**
+- **Personligt brev startade med `# Hej!`** — Claude genererade ibland markdown-headings i brev. Fixat med (1) explicit "ingen markdown"-instruktion i prompten och (2) post-processing som strippar `#`-tecken från brevets början. Gäller både Sonnet- och Haiku-fallback-vägen.
+
+**Nya features:**
+- **Klistra in jobb-URL** — Användare kan klistra in valfri jobbannons-URL direkt på Jobb-sidan. Jobbet skrapas via Claude AI, sparas i `jobs`-tabellen med `source='manual_url'`, och ansökningsmodalen öppnas direkt. Stöd för alla svenska jobbsajter (Platsbanken, Indeed, LinkedIn, etc).
+- **`user_pasted_urls`-tabell** — Ny Supabase-tabell som loggar varje inklistrad URL med status (pending → success/failed), user_id, job_id, och eventuellt felmeddelande. Möjliggör spårning av alla URL-försök oavsett om skrapningen lyckas.
