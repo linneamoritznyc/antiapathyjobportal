@@ -1,6 +1,6 @@
 # Platsbanken-ai — Funktioner & UX per sida
 
-> Uppdaterad: 26 feb 2026 (v2.7 — klistra in jobb-URL, user_pasted_urls-tabell, fix # i personliga brev)
+> Uppdaterad: 26 feb 2026 (v2.8 — Gemini AI-fallback, PDF Unicode-fix, bransch-CV upload fix)
 
 AI-driven jobbportal för neurodivergenta jobbsökare i Sverige. Skrapar Platsbanken, genererar personliga brev via Claude, skapar Gmail-utkast med bransch-CV.
 
@@ -695,8 +695,9 @@ Personuppgifter och kontoinställningar.
 | Frontend | React + Tailwind CSS (single-page, CDN) |
 | Backend | FastAPI (Python, Vercel serverless, 60s timeout) |
 | Databas | Supabase PostgreSQL + Storage (3 buckets) |
-| AI Brev | Claude Sonnet (fallback: Haiku → mall) |
-| AI CV-chatt | Claude Haiku |
+| AI Brev | Claude Sonnet → Haiku → Gemini → mall (triple fallback) |
+| AI CV-analys | Claude Sonnet → Haiku → Gemini (triple fallback) |
+| AI CV-chatt | Claude Sonnet → Haiku → Gemini |
 | AI Feedback-tolkning | Claude (smart endpoint) |
 | Grammatik | LanguageTool API (bara säkra rättningar) |
 | Svenska grammatik | GPT-SW3 via HuggingFace (post-generation check) |
@@ -868,3 +869,16 @@ Personuppgifter och kontoinställningar.
 **Nya features:**
 - **Klistra in jobb-URL** — Användare kan klistra in valfri jobbannons-URL direkt på Jobb-sidan. Jobbet skrapas via Claude AI, sparas i `jobs`-tabellen med `source='manual_url'`, och ansökningsmodalen öppnas direkt. Stöd för alla svenska jobbsajter (Platsbanken, Indeed, LinkedIn, etc).
 - **`user_pasted_urls`-tabell** — Ny Supabase-tabell som loggar varje inklistrad URL med status (pending → success/failed), user_id, job_id, och eventuellt felmeddelande. Möjliggör spårning av alla URL-försök oavsett om skrapningen lyckas.
+
+### v2.8 — 26 feb 2026
+
+**Nya features:**
+- **Google Gemini AI-fallback** — Alla AI-endpoints har nu triple fallback: Anthropic Sonnet → Anthropic Haiku → Google Gemini 2.0 Flash. Om Anthropic når rate/spend-limit tar Gemini över automatiskt. Ny env var: `GEMINI_API_KEY`. Gratis tier.
+- **Groq API-stöd förberett** — `GROQ_API_KEY` env var tillagd i Vercel (ej ännu integrerad i kod).
+- **Längre Master CV-beskrivningar** — AI-prompten kräver nu minst 50 ord per erfarenhet/projekt, 40 per volontärarbete, 30 per award, 25 per certifiering. Master CV ska ha maximal kontext.
+
+**Bugfixar:**
+- **Master CV PDF kraschade på Unicode** — Hårdkodade em dashes (`—`) och bullet-tecken (`•`) i PDF-koden gick inte genom `_safe_pdf_text()`. Alla ersatta med ASCII (`-`). Dessutom `_safe_pdf_text()` utökad med 30+ extra Unicode-teckenersättningar som säkerhetsnät.
+- **"CV för undefined uppladdad!"** — Bransch-CV upload använde `cv.category` (som inte existerade) istället för `cv.vibe_name`. Fixat.
+- **AI-fel visade inte orsak** — Felmeddelanden från Claude API (t.ex. "rate limit reached") var trunkerade eller dolda. Nu visas hela felmeddelandet så användaren förstår vad som händer.
+- **Enhance-master blockades utan Anthropic-nyckel** — Endpointen krävde `ANTHROPIC_API_KEY` även om `GEMINI_API_KEY` fanns. Nu räcker det med antingen/eller.
