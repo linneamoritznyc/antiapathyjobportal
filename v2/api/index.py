@@ -1910,15 +1910,119 @@ Skriv ENDAST CV-texten, inget annat."""
     return f"[Kunde inte generera CV för {bransch['name']}]"
 
 
+def _build_bransch_cv_pdf(cv_text: str, profile_name: str = "") -> bytes:
+    """Build a PDF from AI-generated bransch CV text. Uses simple text rendering
+    matching the existing CV design style (Helvetica, clean layout)."""
+    from fpdf import FPDF
+
+    class BranschPDF(FPDF):
+        def header(self):
+            pass
+        def footer(self):
+            self.set_y(-15)
+            self.set_font("Helvetica", "I", 8)
+            self.set_text_color(150, 150, 150)
+            self.cell(0, 10, f"Sida {self.page_no()}/{{nb}}", align="C")
+
+    pdf = BranschPDF()
+    pdf.alias_nb_pages()
+    pdf.set_auto_page_break(auto=True, margin=20)
+    pdf.add_page()
+
+    # Parse the CV text into sections
+    lines = cv_text.split("\n")
+    for line in lines:
+        stripped = line.strip()
+        if not stripped:
+            pdf.ln(3)
+            continue
+
+        safe_line = _safe_pdf_text(stripped)
+
+        # Detect section headings (ALL CAPS lines like PROFIL, ERFARENHET, etc.)
+        is_heading = (stripped.isupper() and len(stripped) > 2 and len(stripped) < 60
+                      and not stripped.startswith("-") and not stripped.startswith("*"))
+
+        if is_heading:
+            pdf.ln(2)
+            pdf.set_font("Helvetica", "B", 12)
+            pdf.set_text_color(40, 40, 40)
+            pdf.cell(0, 7, safe_line, new_x="LMARGIN", new_y="NEXT")
+            pdf.set_draw_color(60, 130, 200)
+            pdf.line(10, pdf.get_y(), 70, pdf.get_y())
+            pdf.ln(2)
+        elif stripped.startswith("- ") or stripped.startswith("* "):
+            # Bullet point
+            pdf.set_font("Helvetica", "", 9)
+            pdf.set_text_color(60, 60, 60)
+            bullet_text = _safe_pdf_text(stripped[2:].strip())
+            pdf.cell(5)
+            pdf.multi_cell(0, 4.5, f"  {bullet_text}")
+        elif lines.index(line) == 0 or (lines.index(line) <= 2 and len(stripped) < 50 and not any(c in stripped for c in ['|', '-', '@'])):
+            # First few lines are likely name/contact — bold them
+            if lines.index(line) == 0:
+                pdf.set_font("Helvetica", "B", 18)
+                pdf.set_text_color(30, 30, 30)
+                pdf.cell(0, 10, safe_line, new_x="LMARGIN", new_y="NEXT")
+            else:
+                pdf.set_font("Helvetica", "", 10)
+                pdf.set_text_color(80, 80, 80)
+                pdf.cell(0, 5, safe_line, new_x="LMARGIN", new_y="NEXT")
+        else:
+            # Regular text line
+            pdf.set_font("Helvetica", "", 9)
+            pdf.set_text_color(60, 60, 60)
+            pdf.multi_cell(0, 4.5, safe_line)
+
+    return pdf.output()
+
+
+async def _upload_bransch_cv_pdf(user_id: str, bransch_id: str, pdf_bytes: bytes) -> Optional[str]:
+    """Upload a bransch CV PDF to Supabase Storage (cv-files bucket). Returns public URL or None."""
+    file_path = f"{user_id}/{bransch_id}_cv.pdf"
+    try:
+        async with httpx.AsyncClient() as client:
+            resp = await client.post(
+                f"{SUPABASE_URL}/storage/v1/object/cv-files/{file_path}",
+                headers={
+                    "Authorization": f"Bearer {SUPABASE_KEY}",
+                    "Content-Type": "application/pdf",
+                    "x-upsert": "true"
+                },
+                content=pdf_bytes,
+                timeout=30
+            )
+            if resp.status_code in [200, 201]:
+                pdf_url = f"{SUPABASE_URL}/storage/v1/object/public/cv-files/{file_path}"
+                logger.info(f"Uploaded bransch CV PDF: {pdf_url}")
+                return pdf_url
+            else:
+                logger.error(f"Failed to upload bransch CV PDF: {resp.status_code} - {resp.text[:200]}")
+    except Exception as e:
+        logger.error(f"Error uploading bransch CV PDF: {e}")
+    return None
+
+
 async def generate_all_bransch_cvs(master_cv: Dict, user_id: str) -> List[Dict]:
     """Generate all bransch-CV versions for a user.
     Runs AI calls in parallel (batches of 4) to stay within Vercel 60s timeout."""
     import asyncio as _asyncio
     generated_cvs = []
+    profile_name = (master_cv.get("profile") or {}).get("full_name", "")
 
     async def generate_and_save(bransch):
         logger.info(f"Generating bransch-CV: {bransch['name']}...")
         cv_text = await generate_bransch_cv(master_cv, bransch)
+
+        # Generate PDF from the CV text and upload to Supabase Storage
+        pdf_url = None
+        if cv_text and not cv_text.startswith("[Kunde inte") and not cv_text.startswith("[CV för"):
+            try:
+                pdf_bytes = _build_bransch_cv_pdf(cv_text, profile_name)
+                pdf_url = await _upload_bransch_cv_pdf(user_id, bransch["id"], pdf_bytes)
+            except Exception as e:
+                logger.warning(f"Failed to generate/upload PDF for {bransch['name']}: {e}")
+
         cv_data = {
             "user_id": user_id,
             "vibe_id": bransch["id"],
@@ -1927,6 +2031,8 @@ async def generate_all_bransch_cvs(master_cv: Dict, user_id: str) -> List[Dict]:
             "cv_text": cv_text,
             "created_at": datetime.now().isoformat()
         }
+        if pdf_url:
+            cv_data["pdf_url"] = pdf_url
         saved = await db_request("POST", "user_cvs", data=cv_data, on_conflict="user_id,vibe_id")
         return saved[0] if saved else cv_data
 
@@ -3379,6 +3485,15 @@ async def generate_single_cv(bransch_id: str, request: Request):
         logger.error(f"CV generation failed for {bransch['name']}: {cv_text[:100]}")
         return {"success": False, "message": f"AI kunde inte generera CV för {bransch['name']}. Försök igen om en stund."}
 
+    # Generate PDF from the CV text and upload to Supabase Storage
+    pdf_url = None
+    profile_name = (profiles[0] if profiles else {}).get("full_name", "")
+    try:
+        pdf_bytes = _build_bransch_cv_pdf(cv_text, profile_name)
+        pdf_url = await _upload_bransch_cv_pdf(user_id, bransch["id"], pdf_bytes)
+    except Exception as e:
+        logger.warning(f"Failed to generate/upload PDF for {bransch['name']}: {e}")
+
     cv_data = {
         "user_id": user_id,
         "vibe_id": bransch["id"],
@@ -3387,6 +3502,8 @@ async def generate_single_cv(bransch_id: str, request: Request):
         "cv_text": cv_text,
         "created_at": datetime.now().isoformat()
     }
+    if pdf_url:
+        cv_data["pdf_url"] = pdf_url
 
     saved = await db_request("POST", "user_cvs", data=cv_data, on_conflict="user_id,vibe_id")
     return {
@@ -3705,9 +3822,16 @@ def _build_master_cv_pdf(profile: Dict, experiences: list, education: list, volu
             pdf.set_font("Helvetica", "B", 11)
             pdf.set_text_color(30, 30, 30)
             org = safe_text(vol.get("organization", ""))
+            title = safe_text(vol.get("title", ""))
             dates = safe_text(vol.get("dates", ""))
-            pdf.cell(0, 6, f"{org}" + (f" ({dates})" if dates else ""), new_x="LMARGIN", new_y="NEXT")
+            heading = org
+            if title:
+                heading = f"{title} — {org}"
+            if dates:
+                heading += f" ({dates})"
+            pdf.cell(0, 6, heading, new_x="LMARGIN", new_y="NEXT")
 
+            desc = (vol.get("description") or "").strip()
             bullets = vol.get("bullets") or []
             if bullets:
                 pdf.set_font("Helvetica", "", 9)
@@ -3717,30 +3841,50 @@ def _build_master_cv_pdf(profile: Dict, experiences: list, education: list, volu
                     if bt:
                         pdf.cell(5)
                         pdf.multi_cell(0, 4.5, f"• {bt}")
+            elif desc:
+                pdf.set_font("Helvetica", "", 9)
+                pdf.set_text_color(60, 60, 60)
+                pdf.multi_cell(0, 4.5, safe_text(desc))
             pdf.ln(2)
 
     # -- Certifications --
     if certifications:
         section_heading("Certifieringar")
-        pdf.set_font("Helvetica", "", 10)
-        pdf.set_text_color(60, 60, 60)
         for cert in certifications:
             cname = safe_text(cert.get("certification_name") or cert.get("name") or cert.get("title", ""))
             if cname:
+                pdf.set_font("Helvetica", "B", 10)
+                pdf.set_text_color(30, 30, 30)
+                issuer = safe_text(cert.get("issuing_organization", ""))
+                line = cname
+                if issuer:
+                    line += f" — {issuer}"
                 pdf.cell(5)
-                pdf.cell(0, 5, f"• {cname}", new_x="LMARGIN", new_y="NEXT")
+                pdf.cell(0, 5, f"• {line}", new_x="LMARGIN", new_y="NEXT")
+                cdesc = (cert.get("description") or "").strip()
+                if cdesc:
+                    pdf.set_font("Helvetica", "", 9)
+                    pdf.set_text_color(80, 80, 80)
+                    pdf.cell(10)
+                    pdf.multi_cell(0, 4.5, safe_text(cdesc))
         pdf.ln(2)
 
     # -- Awards --
     if awards:
         section_heading("Utmarkelser")
-        pdf.set_font("Helvetica", "", 10)
-        pdf.set_text_color(60, 60, 60)
         for a in awards:
             award_text = safe_text(a.get("award_text") if isinstance(a, dict) else a)
             if award_text:
+                pdf.set_font("Helvetica", "B", 10)
+                pdf.set_text_color(30, 30, 30)
                 pdf.cell(5)
                 pdf.cell(0, 5, f"• {award_text}", new_x="LMARGIN", new_y="NEXT")
+                adesc = ((a.get("description") or "").strip() if isinstance(a, dict) else "")
+                if adesc:
+                    pdf.set_font("Helvetica", "", 9)
+                    pdf.set_text_color(80, 80, 80)
+                    pdf.cell(10)
+                    pdf.multi_cell(0, 4.5, safe_text(adesc))
         pdf.ln(2)
 
     # -- Skills --
@@ -3828,6 +3972,213 @@ async def download_master_cv_pdf(request: Request):
     return Response(
         content=pdf_bytes,
         media_type="application/pdf",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'}
+    )
+
+
+@app.get("/api/master-cv/download-txt")
+async def download_master_cv_txt(request: Request):
+    """Generate and download Master CV as plain text file"""
+    from fastapi.responses import Response
+    import asyncio as _asyncio
+    user_id = await get_user_id_from_request(request, required=True)
+
+    profile_r, exp_r, edu_r, vol_r, awards_r, skills_r, proj_r, cert_r = await _asyncio.gather(
+        db_request("GET", "user_profiles", params={"user_id": f"eq.{user_id}"}),
+        db_request("GET", "user_experiences", params={"user_id": f"eq.{user_id}", "order": "sort_order.asc"}),
+        db_request("GET", "user_education", params={"user_id": f"eq.{user_id}", "order": "sort_order.asc"}),
+        db_request("GET", "user_volunteer", params={"user_id": f"eq.{user_id}", "order": "sort_order.asc"}),
+        db_request("GET", "user_awards", params={"user_id": f"eq.{user_id}", "order": "sort_order.asc"}),
+        db_request("GET", "user_skills", params={"user_id": f"eq.{user_id}"}),
+        db_request("GET", "tech_projects", params={"user_id": f"eq.{user_id}", "order": "sort_order.asc"}),
+        db_request("GET", "user_certifications", params={"user_id": f"eq.{user_id}", "order": "sort_order.asc"}),
+    )
+    profile = profile_r[0] if profile_r else {}
+    experiences = exp_r or []
+    education = edu_r or []
+    volunteer = vol_r or []
+    awards = awards_r or []
+    skills = skills_r or []
+    projects = proj_r or []
+    certifications = cert_r or []
+
+    lines = []
+    name = profile.get("full_name") or "Namn saknas"
+    lines.append(name.upper())
+    contact = []
+    if profile.get("email"):
+        contact.append(profile["email"])
+    if profile.get("phone"):
+        contact.append(profile["phone"])
+    if profile.get("location"):
+        contact.append(profile["location"])
+    if contact:
+        lines.append(" | ".join(contact))
+    langs = profile.get("languages") or []
+    if langs:
+        lines.append(f"Sprak: {', '.join(langs)}")
+    if profile.get("drivers_license"):
+        lines.append("Korkort: Ja")
+    about = (profile.get("about_me") or "").strip()
+    if about:
+        lines.append("")
+        lines.append(about)
+    lines.append("")
+
+    if experiences:
+        lines.append("=" * 50)
+        lines.append("ARBETSLIVSERFARENHET")
+        lines.append("=" * 50)
+        for exp in experiences:
+            title = exp.get("title", "")
+            company = exp.get("company", "")
+            lines.append(f"\n{title} — {company}")
+            meta = []
+            if exp.get("location"):
+                meta.append(exp["location"])
+            dates = ""
+            if exp.get("start_date"):
+                dates = exp["start_date"]
+                if exp.get("end_date"):
+                    dates += f" - {exp['end_date']}"
+            if dates:
+                meta.append(dates)
+            if meta:
+                lines.append("  ".join(meta))
+            desc = (exp.get("description") or "").strip()
+            if desc:
+                lines.append(desc)
+            bullets = exp.get("bullets") or []
+            if isinstance(bullets, str):
+                try:
+                    import json as _j
+                    bullets = _j.loads(bullets)
+                except Exception:
+                    bullets = [s.strip() for s in bullets.split("\n") if s.strip()]
+            for b in (bullets or []):
+                if b and b.strip():
+                    lines.append(f"  * {b.strip()}")
+
+    if education:
+        lines.append("")
+        lines.append("=" * 50)
+        lines.append("UTBILDNING")
+        lines.append("=" * 50)
+        for edu in education:
+            degree = edu.get("degree", "")
+            school = edu.get("school", "")
+            lines.append(f"\n{degree} — {school}")
+            meta = []
+            if edu.get("location"):
+                meta.append(edu["location"])
+            if edu.get("field_of_study"):
+                meta.append(edu["field_of_study"])
+            dates = ""
+            if edu.get("start_date"):
+                dates = edu["start_date"]
+                if edu.get("end_date"):
+                    dates += f" - {edu['end_date']}"
+            if dates:
+                meta.append(dates)
+            if meta:
+                lines.append("  ".join(meta))
+            bullets = edu.get("bullets") or []
+            if isinstance(bullets, str):
+                try:
+                    import json as _j
+                    bullets = _j.loads(bullets)
+                except Exception:
+                    bullets = [s.strip() for s in bullets.split("\n") if s.strip()]
+            for b in (bullets or []):
+                if b and b.strip():
+                    lines.append(f"  * {b.strip()}")
+
+    if volunteer:
+        lines.append("")
+        lines.append("=" * 50)
+        lines.append("IDEELLT ARBETE")
+        lines.append("=" * 50)
+        for vol in volunteer:
+            org = vol.get("organization", "")
+            title = vol.get("title", "")
+            heading = f"{title} — {org}" if title else org
+            dates = vol.get("dates", "")
+            if dates:
+                heading += f" ({dates})"
+            lines.append(f"\n{heading}")
+            desc = (vol.get("description") or "").strip()
+            if desc:
+                lines.append(desc)
+            bullets = vol.get("bullets") or []
+            if isinstance(bullets, str):
+                try:
+                    import json as _j
+                    bullets = _j.loads(bullets)
+                except Exception:
+                    bullets = [s.strip() for s in bullets.split("\n") if s.strip()]
+            for b in (bullets or []):
+                if b and b.strip():
+                    lines.append(f"  * {b.strip()}")
+
+    if projects:
+        lines.append("")
+        lines.append("=" * 50)
+        lines.append("PROJEKT")
+        lines.append("=" * 50)
+        for proj in projects:
+            pname = proj.get("project_name") or proj.get("name") or proj.get("title", "")
+            lines.append(f"\n{pname}")
+            desc = (proj.get("description") or "").strip()
+            if desc:
+                lines.append(desc)
+            stack = (proj.get("tech_stack") or "").strip()
+            if stack:
+                lines.append(f"Tech: {stack}")
+
+    if certifications:
+        lines.append("")
+        lines.append("=" * 50)
+        lines.append("CERTIFIERINGAR")
+        lines.append("=" * 50)
+        for cert in certifications:
+            cname = cert.get("certification_name") or cert.get("name", "")
+            issuer = cert.get("issuing_organization", "")
+            line = f"\n* {cname}"
+            if issuer:
+                line += f" — {issuer}"
+            lines.append(line)
+            cdesc = (cert.get("description") or "").strip()
+            if cdesc:
+                lines.append(f"  {cdesc}")
+
+    if awards:
+        lines.append("")
+        lines.append("=" * 50)
+        lines.append("UTMARKELSER")
+        lines.append("=" * 50)
+        for a in awards:
+            atext = a.get("award_text", "") if isinstance(a, dict) else str(a)
+            lines.append(f"\n* {atext}")
+            adesc = ((a.get("description") or "").strip() if isinstance(a, dict) else "")
+            if adesc:
+                lines.append(f"  {adesc}")
+
+    if skills:
+        lines.append("")
+        lines.append("=" * 50)
+        lines.append("KOMPETENSER")
+        lines.append("=" * 50)
+        skill_texts = [s.get("skill_text", "") for s in skills if s.get("skill_text")]
+        if skill_texts:
+            lines.append(", ".join(skill_texts))
+
+    txt_content = "\n".join(lines)
+    name_safe = (profile.get("full_name") or "CV").replace(" ", "_")
+    filename = f"Master_CV_{name_safe}.txt"
+
+    return Response(
+        content=txt_content.encode("utf-8"),
+        media_type="text/plain; charset=utf-8",
         headers={"Content-Disposition": f'attachment; filename="{filename}"'}
     )
 
@@ -4825,45 +5176,49 @@ async def save_gmail_draft_with_attachments(request: Request, job_id: str):
     except Exception as e:
         logger.error(f"Cover letter PDF generation failed: {e}")
 
-    # 2. Matching CV PDF — try disk file first, then generate from DB bransch-CV
-    cv_pdf_bytes = get_cv_pdf_bytes(bransch)
-    cv_filename_used = get_cv_pdf_filename(bransch)
-    cv_source = "file"
+    # 2. Matching CV PDF — priority: Supabase Storage → generate from cv_text → local disk fallback
+    cv_pdf_bytes = None
+    name_clean = sender_name.replace(' ', '_')
+    bransch_label = next((b["name"] for b in CV_BRANSCHER if b["id"] == bransch), bransch)
+    bransch_clean = re.sub(r'[^\w\s]', '', bransch_label).strip().replace(' ', '_')
+    cv_filename_used = f"CV_{name_clean}_{bransch_clean}.pdf"
+    cv_source = "none"
 
-    if not cv_pdf_bytes:
-        # No PDF on disk — try to build one from the user's bransch-CV in database
-        logger.info(f"No CV PDF on disk for bransch '{bransch}', trying dynamic generation from DB")
-        try:
-            bransch_cv = await db_request("GET", "user_cvs", params={
-                "user_id": f"eq.{user_id}",
-                "vibe_id": f"eq.{bransch}",
-                "select": "cv_text"
-            })
-            if bransch_cv and bransch_cv[0].get("cv_text"):
-                # Build PDF from master CV data (full professional layout)
-                profiles_data, exp_data, edu_data, vol_data, awards_data, skills_data, proj_data, cert_data = await _asyncio.gather(
-                    db_request("GET", "user_profiles", params={"user_id": f"eq.{user_id}"}),
-                    db_request("GET", "user_experiences", params={"user_id": f"eq.{user_id}", "order": "sort_order.asc"}),
-                    db_request("GET", "user_education", params={"user_id": f"eq.{user_id}", "order": "sort_order.asc"}),
-                    db_request("GET", "user_volunteer", params={"user_id": f"eq.{user_id}", "order": "sort_order.asc"}),
-                    db_request("GET", "user_awards", params={"user_id": f"eq.{user_id}", "order": "sort_order.asc"}),
-                    db_request("GET", "user_skills", params={"user_id": f"eq.{user_id}"}),
-                    db_request("GET", "tech_projects", params={"user_id": f"eq.{user_id}", "order": "sort_order.asc"}),
-                    db_request("GET", "user_certifications", params={"user_id": f"eq.{user_id}", "order": "sort_order.asc"})
-                )
-                cv_pdf_bytes = _build_master_cv_pdf(
-                    profiles_data[0] if profiles_data else {},
-                    exp_data or [], edu_data or [], vol_data or [],
-                    awards_data or [], skills_data or [], proj_data or [], cert_data or []
-                )
-                name_clean = sender_name.replace(' ', '_')
-                bransch_label = next((b["name"] for b in CV_BRANSCHER if b["id"] == bransch), bransch)
-                bransch_clean = re.sub(r'[^\w\s]', '', bransch_label).strip().replace(' ', '_')
-                cv_filename_used = f"CV_{name_clean}_{bransch_clean}.pdf"
+    # Strategy 1: Fetch from Supabase Storage (pdf_url in user_cvs)
+    try:
+        bransch_cv = await db_request("GET", "user_cvs", params={
+            "user_id": f"eq.{user_id}",
+            "vibe_id": f"eq.{bransch}",
+            "select": "cv_text,pdf_url"
+        })
+        cv_record = bransch_cv[0] if bransch_cv else {}
+
+        if cv_record.get("pdf_url"):
+            # Download PDF from Supabase Storage
+            async with httpx.AsyncClient() as client:
+                pdf_resp = await client.get(cv_record["pdf_url"], timeout=15)
+                if pdf_resp.status_code == 200:
+                    cv_pdf_bytes = pdf_resp.content
+                    cv_source = "storage"
+                    logger.info(f"Fetched CV PDF from Supabase Storage for bransch '{bransch}'")
+
+        # Strategy 2: Generate PDF from cv_text in database
+        if not cv_pdf_bytes and cv_record.get("cv_text"):
+            cv_text = cv_record["cv_text"]
+            if not cv_text.startswith("[Kunde inte") and not cv_text.startswith("[CV för"):
+                cv_pdf_bytes = _build_bransch_cv_pdf(cv_text, sender_name)
                 cv_source = "generated"
-                logger.info(f"Generated CV PDF dynamically for bransch '{bransch}'")
-        except Exception as e:
-            logger.warning(f"Dynamic CV PDF generation failed for '{bransch}': {e}")
+                logger.info(f"Generated CV PDF from cv_text for bransch '{bransch}'")
+    except Exception as e:
+        logger.warning(f"Supabase CV PDF fetch/generation failed for '{bransch}': {e}")
+
+    # Strategy 3: Local disk fallback (legacy — for pre-generated static PDFs)
+    if not cv_pdf_bytes:
+        cv_pdf_bytes = get_cv_pdf_bytes(bransch)
+        if cv_pdf_bytes:
+            cv_filename_used = get_cv_pdf_filename(bransch)
+            cv_source = "file"
+            logger.info(f"Using local disk CV PDF for bransch '{bransch}'")
 
     if cv_pdf_bytes:
         attachments.append({
@@ -7613,13 +7968,38 @@ KRITISKT — BESKRIVNINGAR ÄR OBLIGATORISKA (detta är den viktigaste regeln!):
         except Exception as e:
             logger.warning(f"Failed to update profile: {e}")
 
-    # Create new experiences (skip duplicates by company+title)
-    existing_exp_keys = {(e.get("company", "").lower().strip() + "|" + e.get("title", "").lower().strip()) for e in existing_experiences}
+    # Create new experiences (skip duplicates by company+title, but update missing fields)
+    existing_exp_by_key = {}
+    for e in existing_experiences:
+        ekey = (e.get("company", "").lower().strip() + "|" + e.get("title", "").lower().strip())
+        if ekey:
+            existing_exp_by_key[ekey] = e
+    existing_exp_keys = set(existing_exp_by_key.keys())
     for exp in changes.get("new_experiences", []):
         try:
             key = (exp.get("company", "").lower().strip() + "|" + exp.get("title", "").lower().strip())
             if key in existing_exp_keys:
-                logger.info(f"Skipped duplicate experience: {exp.get('title')} @ {exp.get('company')}")
+                # Duplicate — but check if new entry has data the existing one lacks
+                existing = existing_exp_by_key[key]
+                update_data = {}
+                new_desc = (exp.get("description") or "").strip()
+                existing_desc = (existing.get("description") or "").strip()
+                if new_desc and not existing_desc:
+                    update_data["description"] = new_desc
+                new_cats = exp.get("categories") or []
+                existing_cats = existing.get("categories") or []
+                if new_cats and not existing_cats:
+                    update_data["categories"] = new_cats
+                for field in ["location", "start_date", "end_date"]:
+                    if exp.get(field) and not existing.get(field):
+                        update_data[field] = exp[field]
+                if update_data:
+                    await db_request("PATCH", "user_experiences", data=update_data,
+                                     params={"id": f"eq.{existing['id']}", "user_id": f"eq.{user_id}"})
+                    updated += 1
+                    logger.info(f"Updated existing experience with missing fields: {exp.get('title')} @ {exp.get('company')}")
+                else:
+                    logger.info(f"Skipped duplicate experience: {exp.get('title')} @ {exp.get('company')}")
                 continue
             await db_request("POST", "user_experiences", data={
                 "user_id": user_id,
@@ -7662,13 +8042,30 @@ KRITISKT — BESKRIVNINGAR ÄR OBLIGATORISKA (detta är den viktigaste regeln!):
             except Exception as e:
                 logger.warning(f"Failed to update experience {exp_id}: {e}")
 
-    # Create new education (skip duplicates by school+degree)
-    existing_edu_keys = {(e.get("school", "").lower().strip() + "|" + e.get("degree", "").lower().strip()) for e in existing_education}
+    # Create new education (skip duplicates by school+degree, but update missing fields)
+    existing_edu_by_key = {}
+    for e in existing_education:
+        ekey = (e.get("school", "").lower().strip() + "|" + e.get("degree", "").lower().strip())
+        if ekey:
+            existing_edu_by_key[ekey] = e
+    existing_edu_keys = set(existing_edu_by_key.keys())
     for edu in changes.get("new_education", []):
         try:
             key = (edu.get("school", "").lower().strip() + "|" + edu.get("degree", "").lower().strip())
             if key in existing_edu_keys:
-                logger.info(f"Skipped duplicate education: {edu.get('degree')} @ {edu.get('school')}")
+                # Duplicate — but check if new entry has data the existing one lacks
+                existing = existing_edu_by_key[key]
+                update_data = {}
+                for field in ["field_of_study", "location", "start_date", "end_date"]:
+                    if edu.get(field) and not existing.get(field):
+                        update_data[field] = edu[field]
+                if update_data:
+                    await db_request("PATCH", "user_education", data=update_data,
+                                     params={"id": f"eq.{existing['id']}", "user_id": f"eq.{user_id}"})
+                    updated += 1
+                    logger.info(f"Updated existing education with missing fields: {edu.get('degree')} @ {edu.get('school')}")
+                else:
+                    logger.info(f"Skipped duplicate education: {edu.get('degree')} @ {edu.get('school')}")
                 continue
             await db_request("POST", "user_education", data={
                 "user_id": user_id,
@@ -7782,13 +8179,40 @@ KRITISKT — BESKRIVNINGAR ÄR OBLIGATORISKA (detta är den viktigaste regeln!):
             except Exception as e:
                 logger.warning(f"Failed to update volunteer {vol_id}: {e}")
 
-    # Create new projects (skip duplicates by project_name)
-    existing_proj_keys = {(p.get("project_name") or p.get("name") or "").lower().strip() for p in existing_projects}
+    # Create new projects (skip duplicates by project_name, but update missing fields)
+    existing_proj_by_key = {}
+    for p in existing_projects:
+        pkey = (p.get("project_name") or p.get("name") or "").lower().strip()
+        if pkey:
+            existing_proj_by_key[pkey] = p
+    existing_proj_keys = set(existing_proj_by_key.keys())
     for proj in changes.get("new_projects", []):
         try:
             pname = proj.get("name") or proj.get("project_name", "")
-            if pname.lower().strip() in existing_proj_keys:
-                logger.info(f"Skipped duplicate project: {pname}")
+            pkey = pname.lower().strip()
+            if pkey in existing_proj_keys:
+                # Duplicate — but check if new entry has data the existing one lacks
+                existing = existing_proj_by_key[pkey]
+                update_data = {}
+                new_desc = (proj.get("description") or "").strip()
+                existing_desc = (existing.get("description") or "").strip()
+                if new_desc and not existing_desc:
+                    update_data["description"] = new_desc
+                new_stack = (proj.get("tech_stack") or "").strip()
+                existing_stack = (existing.get("tech_stack") or "").strip()
+                if new_stack and not existing_stack:
+                    update_data["tech_stack"] = new_stack
+                new_url = (proj.get("url") or proj.get("github_url") or "").strip()
+                existing_url = (existing.get("github_url") or "").strip()
+                if new_url and not existing_url:
+                    update_data["github_url"] = new_url
+                if update_data:
+                    await db_request("PATCH", "tech_projects", data=update_data,
+                                     params={"id": f"eq.{existing['id']}", "user_id": f"eq.{user_id}"})
+                    updated += 1
+                    logger.info(f"Updated existing project with missing fields: {pname}")
+                else:
+                    logger.info(f"Skipped duplicate project: {pname}")
                 continue
             await db_request("POST", "tech_projects", data={
                 "user_id": user_id,
@@ -7915,12 +8339,26 @@ KRITISKT — BESKRIVNINGAR ÄR OBLIGATORISKA (detta är den viktigaste regeln!):
             except Exception as e:
                 logger.warning(f"Failed to update certification {cert_id}: {e}")
 
-    # Build lookup: award text → existing award entry
+    # Build lookup: award text → existing award entry (exact + fuzzy first-30-chars)
     existing_award_by_text = {}
+    existing_award_by_prefix = {}
     for a in existing_awards:
         atext_key = (a.get("award_text") or "").lower().strip()
         if atext_key:
             existing_award_by_text[atext_key] = a
+            # Also index by first 30 chars for fuzzy matching
+            prefix = atext_key[:30]
+            if prefix:
+                existing_award_by_prefix[prefix] = a
+
+    def _find_existing_award(award_key: str):
+        """Find existing award by exact match or fuzzy first-30-chars match."""
+        if award_key in existing_award_by_text:
+            return existing_award_by_text[award_key]
+        prefix = award_key[:30]
+        if prefix and prefix in existing_award_by_prefix:
+            return existing_award_by_prefix[prefix]
+        return None
 
     # Create new awards (or update existing if duplicate has new description)
     for award in changes.get("new_awards", []):
@@ -7928,9 +8366,8 @@ KRITISKT — BESKRIVNINGAR ÄR OBLIGATORISKA (detta är den viktigaste regeln!):
             award_text = (award.get("award_text", "")).strip()
             award_key = award_text.lower() if award_text else ""
             new_desc = (award.get("description") or "").strip()
-            if award_key and award_key in existing_award_by_text:
-                # Duplicate — but if it has a description and existing doesn't, update existing
-                existing = existing_award_by_text[award_key]
+            existing = _find_existing_award(award_key) if award_key else None
+            if existing:
                 existing_desc = (existing.get("description") or "").strip()
                 if new_desc and not existing_desc:
                     await db_request("PATCH", "user_awards", data={"description": new_desc},
@@ -7953,13 +8390,14 @@ KRITISKT — BESKRIVNINGAR ÄR OBLIGATORISKA (detta är den viktigaste regeln!):
         except Exception as e:
             logger.warning(f"Failed to add/update award: {e}")
 
-    # Update existing awards (by id or by award_text fallback)
+    # Update existing awards (by id or by award_text fallback with fuzzy matching)
     for award in changes.get("updated_awards", []):
         award_id = award.get("id")
         if not award_id:
             atext_key = (award.get("award_text") or "").lower().strip()
-            if atext_key and atext_key in existing_award_by_text:
-                award_id = existing_award_by_text[atext_key].get("id")
+            match = _find_existing_award(atext_key) if atext_key else None
+            if match:
+                award_id = match.get("id")
         if not award_id:
             logger.warning(f"Skipped award update — no id and no text match: {award}")
             continue
