@@ -7911,8 +7911,9 @@ KRITISKT — BESKRIVNINGAR ÄR OBLIGATORISKA (detta är den viktigaste regeln!):
             )
 
             if response.status_code != 200:
-                logger.error(f"Claude API error in enhance: {response.status_code}")
-                raise HTTPException(status_code=500, detail=f"AI-fel: {response.status_code}")
+                error_body = response.text[:500]
+                logger.error(f"Claude API error in enhance: {response.status_code} - {error_body}")
+                raise HTTPException(status_code=500, detail=f"AI-fel: {response.status_code} — {error_body[:200]}")
 
             result = response.json()
             ai_text = result["content"][0]["text"].strip()
