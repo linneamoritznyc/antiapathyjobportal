@@ -3846,8 +3846,9 @@
                 input.onchange = async (e) => {
                     const file = e.target.files[0];
                     if (!file) return;
-                    const branschId = categoryToBranschId[cv.category] || cv.vibe_id || 'customerservice';
-                    setUploadingBransch(cv.id || cv.category);
+                    const branschId = cv.vibe_id || categoryToBranschId[cv.category] || 'customerservice';
+                    const branschName = cv.vibe_name || cv.category || branschId;
+                    setUploadingBransch(cv.id || cv.vibe_id || cv.category);
                     try {
                         const token = localStorage.getItem('auth_token');
                         const formData = new FormData();
@@ -3859,7 +3860,7 @@
                         });
                         const data = await res.json();
                         if (data.success) {
-                            alert(`CV för ${cv.category} uppladdad!`);
+                            alert(`CV för ${branschName} uppladdad!`);
                             fetchBranschCVs();
                         } else {
                             alert(data.detail || 'Kunde inte ladda upp CV');
