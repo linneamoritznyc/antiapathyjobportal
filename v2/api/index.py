@@ -7528,13 +7528,14 @@ VIKTIGT:
 - Certifieringar: använd certification_name (inte name), issuing_organization (inte issuer), issue_date (inte date)
 - Awards/utmärkelser: award_text = hela texten (t.ex. "1:a pris Stockholms Konstsalong 2024"), description = valfri bakgrund
 
-KRITISKT — BESKRIVNINGAR ÄR OBLIGATORISKA:
-- VARJE volontärpost MÅSTE ha en description — beskriv vad personen gjorde, vilka uppgifter, vad de lärde sig (2-3 meningar)
-- VARJE award/utmärkelse MÅSTE ha en description — förklara sammanhanget, varför det är imponerande, vad det innebar
-- VARJE certifiering MÅSTE ha en description — beskriv vad certifieringen innebär, hur den är relevant
-- VARJE projekt MÅSTE ha en description — beskriv projektets syfte, teknologier, resultat
-- Om det nya CV-dokumentet inte ger detaljer, skriv en rimlig kort beskrivning baserat på titeln/organisationen
-- Uppdatera ÄVEN befintliga poster som har tom/saknad description — lägg till description via updated_volunteer, updated_awards, updated_certifications"""
+KRITISKT — BESKRIVNINGAR ÄR OBLIGATORISKA (detta är den viktigaste regeln!):
+- VARJE volontärpost MÅSTE ha en description med minst 15 ord — beskriv vad personen gjorde, vilka uppgifter, vad de lärde sig. ALDRIG tom/null!
+- VARJE award/utmärkelse MÅSTE ha en description med minst 10 ord — förklara sammanhanget, varför det är imponerande, vad det innebar. ALDRIG tom/null!
+- VARJE certifiering MÅSTE ha en description med minst 10 ord — beskriv vad certifieringen innebär, hur den är relevant. ALDRIG tom/null!
+- VARJE projekt MÅSTE ha en description med minst 15 ord — beskriv projektets syfte, teknologier, resultat. ALDRIG tom/null!
+- Om det nya CV-dokumentet inte ger detaljer, HITTA PÅ en rimlig kort beskrivning baserat på titeln/organisationen/kontexten. Skriv ALLTID något meningsfullt, ALDRIG tom sträng.
+- Uppdatera ÄVEN befintliga poster som har tom/saknad description (markerade med ❌) — lägg till description via updated_volunteer, updated_awards, updated_certifications
+- VARJE post i new_volunteer, new_awards, new_certifications, new_projects MÅSTE ha "description" med riktig text. Poster med tom description accepteras INTE."""
 
     try:
         async with httpx.AsyncClient() as client:
@@ -7717,7 +7718,13 @@ KRITISKT — BESKRIVNINGAR ÄR OBLIGATORISKA:
             if key and key in existing_vol_keys:
                 logger.info(f"Skipped duplicate volunteer: {vol.get('organization')}")
                 continue
-            desc = vol.get("description", "")
+            desc = (vol.get("description") or "").strip()
+            # Fallback: auto-generate description if AI returned empty
+            if not desc:
+                org = vol.get("organization", "")
+                title = vol.get("title", "")
+                desc = f"Volontärarbete som {title} hos {org}." if title and org else f"Ideellt engagemang hos {org or title}."
+                logger.info(f"Auto-generated volunteer description for {org}")
             bullets = [s.strip() for s in desc.split(".") if s.strip()] if desc else []
             await db_request("POST", "user_volunteer", data={
                 "user_id": user_id,
@@ -7833,11 +7840,17 @@ KRITISKT — BESKRIVNINGAR ÄR OBLIGATORISKA:
         try:
             cert_name = (cert.get("certification_name") or cert.get("name", "")).strip()
             if cert_name and cert_name.lower() not in existing_cert_names:
+                cert_desc = (cert.get("description") or "").strip()
+                issuing_org = cert.get("issuing_organization") or cert.get("issuer", "")
+                # Fallback: auto-generate description if AI returned empty
+                if not cert_desc:
+                    cert_desc = f"Certifiering i {cert_name}" + (f" utfärdad av {issuing_org}." if issuing_org else ".")
+                    logger.info(f"Auto-generated certification description for {cert_name}")
                 await db_request("POST", "user_certifications", data={
                     "user_id": user_id,
                     "certification_name": cert_name,
-                    "issuing_organization": cert.get("issuing_organization") or cert.get("issuer", ""),
-                    "description": cert.get("description", ""),
+                    "issuing_organization": issuing_org,
+                    "description": cert_desc,
                     "issue_date": cert.get("issue_date") or cert.get("date", ""),
                     "sort_order": len(existing_certifications) + added
                 })
@@ -7879,10 +7892,15 @@ KRITISKT — BESKRIVNINGAR ÄR OBLIGATORISKA:
         try:
             award_text = (award.get("award_text", "")).strip()
             if award_text and award_text.lower() not in existing_award_keys:
+                award_desc = (award.get("description") or "").strip()
+                # Fallback: auto-generate description if AI returned empty
+                if not award_desc:
+                    award_desc = f"Utmärkelse: {award_text}."
+                    logger.info(f"Auto-generated award description for {award_text}")
                 await db_request("POST", "user_awards", data={
                     "user_id": user_id,
                     "award_text": award_text,
-                    "description": award.get("description", ""),
+                    "description": award_desc,
                     "sort_order": len(existing_awards) + added
                 })
                 existing_award_keys.add(award_text.lower())
