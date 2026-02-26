@@ -1488,6 +1488,7 @@ EXTRA REGLER FÖR PERSONLIGT BREV:
 - PROPORTIONER: 80% på vad du KAN. Max 20% på saker du inte gjort.
 - Skriv som en RIKTIG person — inte en AI som försöker imponera.
 - TESTFRÅGA: Skulle en 25-åring säga det här högt? Om inte → skriv om.
+- Använd ALDRIG markdown-formatering som #, ##, **, ``` eller liknande. Skriv BARA ren text med radbrytningar.
 
 Skriv ENDAST det färdiga brevet, inget annat."""
 
@@ -1511,6 +1512,8 @@ Skriv ENDAST det färdiga brevet, inget annat."""
             if response.status_code == 200:
                 result = response.json()
                 letter_text = result["content"][0]["text"].strip()
+                # Strip markdown heading markers if Claude added them
+                letter_text = re.sub(r'^#+\s+', '', letter_text, flags=re.MULTILINE)
                 # Run GPT-SW3 Swedish grammar check (non-blocking — returns original on failure)
                 letter_text = await check_swedish_with_gpt_sw3(letter_text)
                 return letter_text
@@ -1536,6 +1539,8 @@ Skriv ENDAST det färdiga brevet, inget annat."""
                     if fallback_resp.status_code == 200:
                         result = fallback_resp.json()
                         letter_text = result["content"][0]["text"].strip()
+                        # Strip markdown heading markers if Claude added them
+                        letter_text = re.sub(r'^#+\s+', '', letter_text, flags=re.MULTILINE)
                         letter_text = await check_swedish_with_gpt_sw3(letter_text)
                         return letter_text
                 except Exception as fallback_err:
@@ -2153,45 +2158,71 @@ async def create_job_from_url(request: UrlJobRequest, req: Request = None):
     if not url.startswith("http"):
         url = "https://" + url
 
-    # Scrape and extract job data
-    job = await scrape_job_from_url(url)
+    # Get user_id for URL logging (optional — works for anonymous too)
+    user_id = await get_user_id_from_request(req) if req else None
 
-    # Save to database (upsert so re-pasting same URL just updates)
-    db_columns = {"id", "title", "company", "location", "municipality", "county",
-                  "description", "description_summary", "url", "deadline", "priority",
-                  "contact_email", "contact_name", "source", "scraped_at", "link_status"}
-    db_job = {k: v for k, v in job.items() if k in db_columns}
-
-    # description = full text for cover letters, description_summary = short for UI
-    if job.get("full_description"):
-        db_job["description"] = job["full_description"]
-        if job.get("description_summary"):
-            db_job["description_summary"] = job["description_summary"]
-
-    # Add extras (working_hours, employment_type) to stored description
-    extras = []
-    if job.get("working_hours"):
-        extras.append(f"Omfattning: {job['working_hours']}")
-    if job.get("employment_type"):
-        extras.append(f"Anställningsform: {job['employment_type']}")
-    if extras and db_job.get("description"):
-        db_job["description"] = "\n".join(extras) + "\n\n" + db_job["description"]
-
-    result = await db_request("POST", "jobs", data=db_job)
-    if not result:
-        logger.warning(f"Failed to save URL job to DB, returning data anyway")
-
-    # Return the full job object (including fields not in DB) for immediate UI use
-    # Ensure description shown in UI is the summary, and full_description is available
-    response_job = {**job}
-    if job.get("description_summary"):
-        response_job["description"] = job["description_summary"]
-    response_job["full_description"] = job.get("full_description", job.get("description", ""))
-
-    return {
-        "success": True,
-        "job": response_job
+    # Log the pasted URL immediately (status=pending)
+    url_log_entry = {
+        "url": url,
+        "status": "pending",
+        "created_at": datetime.now().isoformat()
     }
+    if user_id:
+        url_log_entry["user_id"] = user_id
+    url_log = await db_request("POST", "user_pasted_urls", data=url_log_entry)
+    url_log_id = url_log[0]["id"] if url_log and isinstance(url_log, list) else None
+
+    try:
+        # Scrape and extract job data
+        job = await scrape_job_from_url(url)
+
+        # Save to database (upsert so re-pasting same URL just updates)
+        db_columns = {"id", "title", "company", "location", "municipality", "county",
+                      "description", "description_summary", "url", "deadline", "priority",
+                      "contact_email", "contact_name", "source", "scraped_at", "link_status"}
+        db_job = {k: v for k, v in job.items() if k in db_columns}
+
+        # description = full text for cover letters, description_summary = short for UI
+        if job.get("full_description"):
+            db_job["description"] = job["full_description"]
+            if job.get("description_summary"):
+                db_job["description_summary"] = job["description_summary"]
+
+        # Add extras (working_hours, employment_type) to stored description
+        extras = []
+        if job.get("working_hours"):
+            extras.append(f"Omfattning: {job['working_hours']}")
+        if job.get("employment_type"):
+            extras.append(f"Anställningsform: {job['employment_type']}")
+        if extras and db_job.get("description"):
+            db_job["description"] = "\n".join(extras) + "\n\n" + db_job["description"]
+
+        result = await db_request("POST", "jobs", data=db_job)
+        if not result:
+            logger.warning(f"Failed to save URL job to DB, returning data anyway")
+
+        # Update URL log: success + job_id
+        if url_log_id:
+            await db_request("PATCH", f"user_pasted_urls?id=eq.{url_log_id}",
+                             data={"status": "success", "job_id": job.get("id")})
+
+        # Return the full job object (including fields not in DB) for immediate UI use
+        # Ensure description shown in UI is the summary, and full_description is available
+        response_job = {**job}
+        if job.get("description_summary"):
+            response_job["description"] = job["description_summary"]
+        response_job["full_description"] = job.get("full_description", job.get("description", ""))
+
+        return {
+            "success": True,
+            "job": response_job
+        }
+    except Exception as e:
+        # Update URL log: failed + error message
+        if url_log_id:
+            await db_request("PATCH", f"user_pasted_urls?id=eq.{url_log_id}",
+                             data={"status": "failed", "error_message": str(e)[:500]})
+        raise
 
 
 @app.get("/api/jobs")
