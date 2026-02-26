@@ -7719,12 +7719,6 @@ KRITISKT — BESKRIVNINGAR ÄR OBLIGATORISKA (detta är den viktigaste regeln!):
                 logger.info(f"Skipped duplicate volunteer: {vol.get('organization')}")
                 continue
             desc = (vol.get("description") or "").strip()
-            # Fallback: auto-generate description if AI returned empty
-            if not desc:
-                org = vol.get("organization", "")
-                title = vol.get("title", "")
-                desc = f"Volontärarbete som {title} hos {org}." if title and org else f"Ideellt engagemang hos {org or title}."
-                logger.info(f"Auto-generated volunteer description for {org}")
             bullets = [s.strip() for s in desc.split(".") if s.strip()] if desc else []
             await db_request("POST", "user_volunteer", data={
                 "user_id": user_id,
@@ -7842,10 +7836,6 @@ KRITISKT — BESKRIVNINGAR ÄR OBLIGATORISKA (detta är den viktigaste regeln!):
             if cert_name and cert_name.lower() not in existing_cert_names:
                 cert_desc = (cert.get("description") or "").strip()
                 issuing_org = cert.get("issuing_organization") or cert.get("issuer", "")
-                # Fallback: auto-generate description if AI returned empty
-                if not cert_desc:
-                    cert_desc = f"Certifiering i {cert_name}" + (f" utfärdad av {issuing_org}." if issuing_org else ".")
-                    logger.info(f"Auto-generated certification description for {cert_name}")
                 await db_request("POST", "user_certifications", data={
                     "user_id": user_id,
                     "certification_name": cert_name,
@@ -7893,10 +7883,6 @@ KRITISKT — BESKRIVNINGAR ÄR OBLIGATORISKA (detta är den viktigaste regeln!):
             award_text = (award.get("award_text", "")).strip()
             if award_text and award_text.lower() not in existing_award_keys:
                 award_desc = (award.get("description") or "").strip()
-                # Fallback: auto-generate description if AI returned empty
-                if not award_desc:
-                    award_desc = f"Utmärkelse: {award_text}."
-                    logger.info(f"Auto-generated award description for {award_text}")
                 await db_request("POST", "user_awards", data={
                     "user_id": user_id,
                     "award_text": award_text,
