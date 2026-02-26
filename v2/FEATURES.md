@@ -1,6 +1,6 @@
 # Platsbanken-ai — Funktioner & UX per sida
 
-> Uppdaterad: 26 feb 2026 (v2.8 — Gemini AI-fallback, PDF Unicode-fix, bransch-CV upload fix)
+> Uppdaterad: 26 feb 2026 (v2.8 — Gemini AI-fallback, PDF Unicode-fix, bransch-CV upload fix, features-audit)
 
 AI-driven jobbportal för neurodivergenta jobbsökare i Sverige. Skrapar Platsbanken, genererar personliga brev via Claude, skapar Gmail-utkast med bransch-CV.
 
@@ -168,10 +168,10 @@ Visar jobb från Platsbanken som **saknar kontakt-e-post** — användaren ansö
 ### Layout
 Tvådelad: jobblista till vänster, detaljer till höger.
 
-### Höger panel — tre flikar:
-1. **Beskrivning** — full jobbannons, utfällbar
-2. **Brev** — generera personligt brev (samma flöde som Jobb-modalen)
-3. **Q&A** — ställ frågor om jobbet → `POST /api/jobs/{id}/answer-question`
+### Vänster panel — tre flikar:
+1. **📋 Jobbannons** — full jobbannons, utfällbar
+2. **✍️ Personligt brev** — generera personligt brev (samma flöde som Jobb-modalen)
+3. **💬 Frågor (Q&A)** — ställ frågor om jobbet → `POST /api/jobs/{id}/answer-question`
    - AI:n svarar baserat på **både jobbannonsen OCH ditt CV/profil**: namn, ort, bästa CV-text (från `user_cvs`), ton och avoid-fraser (från `user_cover_letter_preferences`), plus jobbets titel/företag/beskrivning (max 2000 tecken).
    - Svar: 50–150 ord, refererar till specifika delar av annonsen och väver in din erfarenhet.
    - Snabbknappar för vanliga frågor ("Varför vill du jobba hos oss?" etc) + fritext.
@@ -193,13 +193,19 @@ Tvådelad: jobblista till vänster, detaljer till höger.
 
 ## 📄 Mina CV
 
-Hantera Master CV + 9 branschanpassade versioner.
+Hantera Master CV + branschanpassade versioner.
+
+**Notera:** Backend definierar 10 branscher (`CV_BRANSCHER` i `index.py`), men frontend (`BRANSCH_DISPLAY`) visar bara 8 kort (hotel och cemetery saknas i frontend). Marketing-text nämner "8+ branschanpassade CV:n".
 
 ### Master CV-sektion
-- **"Redigera Master CV"**-knapp — öppnar fullständig redigeringsmodal
-- **"Generera alla CV"**-knapp → `POST /api/cv/generate-branscher` — **regenererar ALLA 9 bransch-CV varje gång** (upsert med `on_conflict=user_id,vibe_id`). Kollar inte om CV redan finns — full omskrivning. Kräver att Master CV (erfarenheter/utbildning) finns. **v2.6 fix**: Ändrat från sekventiell (8×~8s = timeout) till parallella batchar om 4 — klarar Vercels 60s-gräns.
-- **"Ladda ner Master CV"** → `GET /api/master-cv/download-pdf`
+- **"Redigera Master CV"**-knapp — öppnar fullständig redigeringsmodal (7 flikar)
+- **"📄 Ladda upp CV och förbättra Master CV"** → `POST /api/cv/enhance-master` — AI-parsning av uppladdat CV
+- **"📥 Ladda ner PDF"** → `GET /api/master-cv/download-pdf`
+- **"📄 Ladda ner TXT"** → `GET /api/master-cv/download-txt`
 - Statistik: antal erfarenheter, utbildningar, utmärkelser, projekt, språk
+- **💬 AI-chatt efter uppladdning** — fråga om ändringarna, be AI justera → `POST /api/cv/enhance-chat`
+
+**"Generera alla CV"-knapp** (under bransch-sektionen) → `POST /api/cv/generate-branscher` — **regenererar ALLA bransch-CV varje gång** (upsert med `on_conflict=user_id,vibe_id`). Kollar inte om CV redan finns — full omskrivning. Kräver att Master CV (erfarenheter/utbildning) finns. **v2.6 fix**: Ändrat från sekventiell (8×~8s = timeout) till parallella batchar om 4 — klarar Vercels 60s-gräns.
 
 ### CV-uppladdning med AI-parsning (enhance-master)
 - Ladda upp befintligt CV (PDF/DOCX/TXT) → `POST /api/cv/enhance-master`
@@ -215,36 +221,47 @@ Hantera Master CV + 9 branschanpassade versioner.
 - **v2.6 fix**: `enhance-master` hade för liten max_tokens (3000→8192) och komprimerad prompt. Vid 90+ befintliga poster trunkerades AI-svaret.
 - **v2.6 fix**: `enhance-chat` visade inte description-fält för volontärarbete, utmärkelser eller certifieringar — AI kunde inte se eller redigera dem. Fixat: alla fält skickas nu i AI-kontexten.
 
-### Master CV Editor (modal)
+### Master CV Editor (modal — 7 flikar)
 - **Erfarenheter** — titel, företag, datum, bullets
 - **Utbildning** — skola, examen, datum
 - **Skills** — kompetenser, typ (teknisk/bransch/språk)
+- **Profil** — om mig-text, språk, profilbild
+- **Anekdoter** — personliga berättelser + hobbys
+- **LinkedIn Import** — importera från LinkedIn CSV-export (Positions.csv, Education.csv, Skills.csv). Instruktioner för hur man exporterar från LinkedIn finns i UI.
 - **Projekt** — namn, beskrivning, GitHub/live-länkar
 - **Certifieringar** — körkort, kassahantering, etc
 - **Volontärarbete** — organisation, datum, bullets
 - **Utmärkelser**
 
-### Bransch-CV-kort (9 kort i grid)
+### Bransch-CV-kort (8 kort i grid — `BranschCVCardSimple`)
 - Emoji + branschnamn
-- Fokusområde
-- Statusbadge — "✓ CV finns" / "Inte skapat"
-- **"📤 Ladda upp CV"** → `POST /api/upload/cv/{bransch_id}`
-- **"📄 Visa fil"** — länk till uppladdad PDF
-- **"✏️ Redigera"** — öppnar en **fritext-textarea** (monospace-font, `h-64`). Ingen strukturerad editor med bullets/sektioner — bara ren text. Huvudsakliga arbetssättet är att ladda upp PDF eller omgenerera från Master CV, inte redigera inline.
+- Statusbadge — "✓ Genererad" (grön) / "Ej genererad" (grå)
+- "PDF uppladdad" badge (blå, visas om pdf_url finns)
+- **"Visa CV"** — öppnar `BranschCVPreviewModal` med CV-text + nedladdningsknapp (visas bara om CV är genererad)
+- **"✨ Generera CV" / "✨ Omgenerera"** — `POST /api/cv/generate-branscher` per enskild bransch
+- **"📤 Ladda upp PDF"** → `POST /api/upload/cv/{bransch_id}`
+- **"Visa PDF"** — länk till uppladdad PDF i Supabase Storage (visas bara om pdf_url finns)
+- **Nedladdning** sker via preview-modalen: **"📥 Ladda ner PDF"** → `GET /api/bransch-cvs/{cv_id}/download-pdf`
 
-**De 9 branscherna:**
+**Branscher i frontend (8 st — `BRANSCH_DISPLAY`):**
 
 | Bransch | Emoji | Fokus |
 |---------|-------|-------|
-| Restaurang & Cafe | 🍽️ | Kundkontakt, service, stresshantering |
+| Restaurang & Café | 🍽️ | Kundkontakt, service, stresshantering |
 | Butik & Kassa | 🛍️ | Försäljning, kassaarbete, lager |
-| Kundtjänst & Support | 📞 | Kommunikation, problemlösning |
+| Kundtjänst | 📞 | Kommunikation, problemlösning |
 | Tech & Kontor | 💻 | Tekniska projekt, struktur |
 | Vård & Omsorg | 🏥 | Omtanke, patientsäkerhet |
 | Industri & Trädgård | 🔧 | Fysiskt arbete, maskiner |
-| Hotell & Reception | 🏨 | Gästservice, bokning | **⚠️ PDF saknas** — ingen `CV_Linnea_Moritz_Hotell_Reception.pdf` finns i cv_files/. Faller tillbaka till kundtjänst-CV. |
-| Content & Moderation | 🛡️ | Digitalt innehåll, riktlinjer |
+| Content Moderation | 🛡️ | Digitalt innehåll, riktlinjer |
 | Konst & Kultur | 🎨 | Kreativitet, evenemang |
+
+**Extra branscher i backend (finns i `CV_BRANSCHER` men INTE i frontend-UI):**
+
+| Bransch | ID | Status |
+|---------|-----|--------|
+| Hotell & Reception | `hotel` | **⚠️ PDF saknas** på disk — faller tillbaka till kundtjänst-CV. Nämns i quiz + marketing men inget kort i Mina CV. |
+| Kyrkogård & Begravning | `cemetery` | **⚠️ PDF saknas** på disk — faller tillbaka till industri-CV. Inget kort i Mina CV. |
 
 **Supabase-koppling:**
 
@@ -600,29 +617,28 @@ Koppla ditt Gmail-konto för att skapa utkast direkt från appen.
 
 Steg-för-steg-guide för nya användare.
 
-### Frågor (15+ steg)
+### Frågor (17 steg)
 
-**Personuppgifter:**
-1. Namn
-2. Telefonnummer
-3. Var bor du?
-4. Ålder (16-19 / 20-25 / 26-35 / 36-50 / 50+)
-5. Körkort? (Manuell / Automat / Nej)
-6. Egen bil?
-7. Egen dator?
-8. Tidigaste startdatum?
-9. Utbildningsnivå?
-10. LinkedIn-profil?
-11. Portfolio/webbsida?
+**Personuppgifter (11 frågor):**
+1. Namn (`full_name`)
+2. Telefonnummer (`phone`)
+3. Var bor du? (`home_location`)
+4. Ålder (`age`) — 16-19 / 20-25 / 26-35 / 36-50 / 50+
+5. Körkort? (`drivers_license`) — Manuell / Automat / Nej
+6. Egen bil? (`own_car`)
+7. Egen dator? (`own_computer`) — Stationär / Laptop / Både / Nej
+8. Tidigaste startdatum? (`earliest_start`)
+9. LinkedIn-profil? (`linkedin`) — valfritt
+10. Portfolio/webbsida? (`portfolio_url`) — valfritt
+11. Utbildningsnivå? (`education_level`)
 
-**Jobbpreferenser:**
-12. Vad söker du? (multi-select chips)
-13. Fritextsökning (kommaseparerade sökord)
-14. Arbetstid
-15. Anställningsform
-16. Längd
-17. Lön
-18. Dealbreakers
+**Jobbpreferenser (6 frågor):**
+12. Vad vill du jobba med? (`search_terms`) — freetext + chips (Servering, Kundtjänst, Butik, Lager, Kontor, IT/Tech, Vård, Hotell, Barn, Skola, Trädgård, Städ)
+13. Arbetstid (`working_hours`) — multi: Heltid / Deltid / Både / Extra
+14. Anställningsform (`employment_form`) — multi: Tillsvidare / Tidsbegränsad / Behov / Sommar / Spelar ingen roll
+15. Längd (`duration`) — single: Tillsvidare / 6+ mån / 3-6 / Under 3 / Spelar ingen roll
+16. Lön (`salary`) — single: Fast / Provision / Spelar ingen roll
+17. Dealbreakers (`dealbreakers`) — multi: Nattarbete / Helgarbete / Telefonförsäljning / Tunga lyft / Utomhusarbete / Ingen
 
 ### Dataflöde
 ```
@@ -668,6 +684,10 @@ Personuppgifter och kontoinställningar.
 ### E-postsignatur
 - Textarea → `PATCH /api/profile/signature`
 
+### Exempel-personligt brev (på Profil-sidan)
+- **"📤 Ladda upp personligt brev"** — samma funktion som träningsbrev i Personligt brev-fliken
+- AI analyserar skrivstil från uppladdade brev
+
 ### Platsbaser (per region)
 - Regionala adresser — om jobbet är i Stockholm, använd Stockholmsadress i brevet
 - **Manuell input** — användaren anger ort i quiz (`home_location`) + väljer kommuner i Platser-sidan
@@ -675,8 +695,8 @@ Personuppgifter och kontoinställningar.
 - **Ingen geocoding/GPS** — all platsdata manuell
 
 ### GDPR
-- **Exportera all data** — JSON
-- **Radera konto** — `delete_account()` raderar 14 DB-tabeller + Supabase Auth-användaren
+- **Backend finns**: `delete_account()` (line ~8938 i index.py) raderar 14 DB-tabeller + Supabase Auth-användaren
+- **⚠️ INGET UI** — Det finns INGEN "Radera konto"-knapp eller "Exportera data"-knapp i frontend. Funktionerna finns bara i backend men saknar frontend-koppling.
 - **⚠️ BUG: Storage-filer raderas INTE** — filer i `training-letters/{user_id}/*`, `profile-photos/{user_id}/*` och eventuella `cv-files/{user_id}/*` blir kvar som orphans efter kontoborttagning. Behöver fixas för full GDPR-compliance.
 
 **Supabase-koppling:**
@@ -695,15 +715,19 @@ Personuppgifter och kontoinställningar.
 | Frontend | React + Tailwind CSS (single-page, CDN) |
 | Backend | FastAPI (Python, Vercel serverless, 60s timeout) |
 | Databas | Supabase PostgreSQL + Storage (3 buckets) |
-| AI Brev | Claude Sonnet → Haiku → Gemini → mall (triple fallback) |
-| AI CV-analys | Claude Sonnet → Haiku → Gemini (triple fallback) |
-| AI CV-chatt | Claude Sonnet → Haiku → Gemini |
+| AI Brev | Claude Sonnet 4.5 (`claude-sonnet-4-5-20250929`) → Haiku 4.5 (`claude-haiku-4-5-20251001`) → Gemini 2.0 Flash (triple fallback) |
+| AI CV-analys | Samma triple fallback (Sonnet → Haiku → Gemini) |
+| AI CV-chatt | Samma triple fallback |
+| AI Kvalifikationskontroll | Haiku (billig + snabb) |
 | AI Feedback-tolkning | Claude (smart endpoint) |
+| AI Jobb-URL skrapning | Claude (extraherar strukturerad jobbdata) |
 | Grammatik | LanguageTool API (bara säkra rättningar) |
-| Svenska grammatik | GPT-SW3 via HuggingFace (post-generation check) |
-| Jobbkälla | Platsbanken API (Arbetsförmedlingen) |
+| Svenska grammatik | GPT-SW3 via HuggingFace Inference API (`AI-Sweden-Models/gpt-sw3-6.7b-v2-instruct`) |
+| Jobbkälla | Platsbanken API (Arbetsförmedlingen) + manuell URL-inkling |
 | E-post | Gmail API (användarens egna OAuth) |
+| PDF-generering | fpdf2 (CV:er, aktivitetsrapport) + ReportLab (personliga brev) |
 | Deploy | Vercel Pro |
+| AI Groq | **⚠️ Env var finns** (`GROQ_API_KEY` i Vercel) men **ej integrerad i kod** |
 
 ---
 
@@ -759,6 +783,31 @@ Personuppgifter och kontoinställningar.
 | `profile-photos` | image/jpeg, png, webp | 10 MB | Profilbilder |
 | `training-letters` | pdf, docx, doc, txt | 50 MB | Träningsbrev |
 | `cv-files` | pdf, docx, doc, txt, rtf, odt | 50 MB | Bransch-CV PDF:er |
+
+### CV-filer på disk (`v2/api/cv_files/` — 8 filer)
+
+Dessa PDF:er används som bilagor i Gmail-utkast. Om PDF saknas för en bransch, används fallback-branschens PDF.
+
+| Bransch | Fil | Status |
+|---------|-----|--------|
+| restaurant | `CV_Linnea_Moritz_Restaurang_Cafe.pdf` | ✅ |
+| retail | `CV_Linnea_Moritz_Butik_Kassa.pdf` | ✅ |
+| customerservice | `CV_Linnea_Moritz_Kundtjanst.pdf` | ✅ |
+| tech | `CV_Linnea_Moritz_Tech_Kontor.pdf` | ✅ |
+| healthcare | `CV_Linnea_Moritz_Vard_Omsorg.pdf` | ✅ |
+| industry | `CV_Linnea_Moritz_Industri_Tradgard.pdf` | ✅ |
+| content | `CV_Linnea_Moritz_Content_Moderation.pdf` | ✅ |
+| art | `CV_Linnea_Moritz_Konst_Kultur.pdf` | ✅ |
+| hotel | `CV_Linnea_Moritz_Hotell_Reception.pdf` | ❌ Saknas — fallback: customerservice |
+| cemetery | `CV_Linnea_Moritz_Kyrkogard_Begravning.pdf` | ❌ Saknas — fallback: industry |
+
+**Fallback-kedja (`BRANSCH_FALLBACK`):**
+- hotel → customerservice
+- art → customerservice
+- industry → customerservice
+- content → tech
+- cemetery → industry
+- Alla andra → customerservice (default)
 
 ---
 
