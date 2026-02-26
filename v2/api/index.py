@@ -1714,18 +1714,37 @@ async def generate_bransch_cv(master_cv: Dict, bransch: Dict) -> str:
     if isinstance(profile, list) and len(profile) > 0:
         profile = profile[0]
 
-    # Format experiences as text
+    # Format experiences — prioritize relevant ones, then include rest as brief list
     experiences = master_cv.get('experiences', [])
-    experience_text = ""
+    bransch_id = bransch.get('id', '')
+    relevant_exps = []
+    other_exps = []
     for exp in experiences:
         if isinstance(exp, dict):
-            company = exp.get('company', '')
+            cats = exp.get('categories', [])
+            if bransch_id in cats or not cats:
+                relevant_exps.append(exp)
+            else:
+                other_exps.append(exp)
+
+    experience_text = ""
+    # Full detail for relevant experiences (max 15)
+    for exp in (relevant_exps + other_exps)[:15]:
+        company = exp.get('company', '')
+        title = exp.get('title', '')
+        location = exp.get('location', '')
+        dates = exp.get('dates', '') or f"{exp.get('start_date', '')} - {exp.get('end_date', 'Nuvarande')}"
+        description = exp.get('description', '')
+        experience_text += f"\n{title} - {company} ({location})\n{dates}\n{description}\n"
+    # Brief list for remaining experiences (title + company only)
+    remaining = (relevant_exps + other_exps)[15:]
+    if remaining:
+        experience_text += "\nÖVRIGA ERFARENHETER (kortformat):\n"
+        for exp in remaining:
             title = exp.get('title', '')
-            location = exp.get('location', '')
-            dates = exp.get('dates', '') or f"{exp.get('start_date', '')} - {exp.get('end_date', 'Nuvarande')}"
-            description = exp.get('description', '')
-            categories = exp.get('categories', [])
-            experience_text += f"\n{title} - {company} ({location})\n{dates}\n{description}\nKategorier: {', '.join(categories) if categories else 'Alla'}\n"
+            company = exp.get('company', '')
+            dates = exp.get('dates', '') or f"{exp.get('start_date', '')} - {exp.get('end_date', '')}"
+            experience_text += f"- {title} @ {company} ({dates})\n"
 
     # Format education as text
     education_list = master_cv.get('education', [])
@@ -1856,7 +1875,7 @@ INSTRUKTIONER:
    FÄRDIGHETER
    [Lista]
 
-KRITISKT - Du MÅSTE inkludera VARJE jobb som listas ovan. Räkna jobben. Om det finns 5 jobb ovan måste det finnas 5 jobb i CV:t. INGA undantag. FILTRERA INTE.
+KRITISKT - Inkludera de mest relevanta erfarenheterna för {bransch['name']}. Inkludera MINST 10 jobb (alla om det är färre). Övriga erfarenheter i kortformat kan listas kort. Filtrera aldrig bort utbildning, certifieringar eller volontärarbete.
 
 {SWEDISH_LANGUAGE_RULES}
 
@@ -1873,10 +1892,10 @@ Skriv ENDAST CV-texten, inget annat."""
                 },
                 json={
                     "model": "claude-sonnet-4-5-20250929",
-                    "max_tokens": 2500,
+                    "max_tokens": 4000,
                     "messages": [{"role": "user", "content": prompt}]
                 },
-                timeout=60
+                timeout=55
             )
 
             if response.status_code == 200:
@@ -3354,6 +3373,11 @@ async def generate_single_cv(bransch_id: str, request: Request):
 
     logger.info(f"Generating single bransch-CV: {bransch['name']} for user {user_id[:8]}")
     cv_text = await generate_bransch_cv(master_cv, bransch)
+
+    # Detect AI failure (returns error string like "[Kunde inte generera CV...]")
+    if not cv_text or cv_text.startswith("[Kunde inte") or cv_text.startswith("[CV för"):
+        logger.error(f"CV generation failed for {bransch['name']}: {cv_text[:100]}")
+        return {"success": False, "message": f"AI kunde inte generera CV för {bransch['name']}. Försök igen om en stund."}
 
     cv_data = {
         "user_id": user_id,
