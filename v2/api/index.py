@@ -1931,7 +1931,7 @@ def _build_bransch_cv_pdf(cv_text: str, profile_name: str = "") -> bytes:
 
     # Parse the CV text into sections
     lines = cv_text.split("\n")
-    for line in lines:
+    for idx, line in enumerate(lines):
         stripped = line.strip()
         if not stripped:
             pdf.ln(3)
@@ -1958,16 +1958,16 @@ def _build_bransch_cv_pdf(cv_text: str, profile_name: str = "") -> bytes:
             bullet_text = _safe_pdf_text(stripped[2:].strip())
             pdf.cell(5)
             pdf.multi_cell(0, 4.5, f"  {bullet_text}")
-        elif lines.index(line) == 0 or (lines.index(line) <= 2 and len(stripped) < 50 and not any(c in stripped for c in ['|', '-', '@'])):
-            # First few lines are likely name/contact — bold them
-            if lines.index(line) == 0:
-                pdf.set_font("Helvetica", "B", 18)
-                pdf.set_text_color(30, 30, 30)
-                pdf.cell(0, 10, safe_line, new_x="LMARGIN", new_y="NEXT")
-            else:
-                pdf.set_font("Helvetica", "", 10)
-                pdf.set_text_color(80, 80, 80)
-                pdf.cell(0, 5, safe_line, new_x="LMARGIN", new_y="NEXT")
+        elif idx == 0:
+            # First line is likely name — bold and large
+            pdf.set_font("Helvetica", "B", 18)
+            pdf.set_text_color(30, 30, 30)
+            pdf.cell(0, 10, safe_line, new_x="LMARGIN", new_y="NEXT")
+        elif idx <= 2 and len(stripped) < 50 and not any(c in stripped for c in ['|', '-', '@']):
+            # Contact/meta lines
+            pdf.set_font("Helvetica", "", 10)
+            pdf.set_text_color(80, 80, 80)
+            pdf.cell(0, 5, safe_line, new_x="LMARGIN", new_y="NEXT")
         else:
             # Regular text line
             pdf.set_font("Helvetica", "", 9)
@@ -7892,6 +7892,7 @@ KRITISKT — BESKRIVNINGAR ÄR OBLIGATORISKA (detta är den viktigaste regeln!):
 - Uppdatera ÄVEN befintliga poster som har tom/saknad description (markerade med ❌) — lägg till description via updated_volunteer, updated_awards, updated_certifications
 - VARJE post i new_volunteer, new_awards, new_certifications, new_projects MÅSTE ha "description" med riktig text. Poster med tom description accepteras INTE."""
 
+    import json as json_module
     try:
         async with httpx.AsyncClient() as client:
             response = await client.post(
@@ -7922,7 +7923,6 @@ KRITISKT — BESKRIVNINGAR ÄR OBLIGATORISKA (detta är den viktigaste regeln!):
             elif "```" in ai_text:
                 ai_text = ai_text.split("```")[1].split("```")[0].strip()
 
-            import json as json_module
             changes = json_module.loads(ai_text)
 
     except json_module.JSONDecodeError as e:
