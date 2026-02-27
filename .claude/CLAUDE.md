@@ -110,7 +110,7 @@ Both methods store tokens in localStorage (`auth_token`, `refresh_token`, `user`
 ## Key constraints
 
 - All UI text in Swedish
-- Never mention art, painting, exhibitions, or Shopify in generated content
+- Content filtering (what to include/exclude in generated CVs and cover letters) is controlled by user preferences in Supabase (`user_cover_letter_preferences.never_mention`, `avoid_phrases`), NOT hardcoded. Don't hardcode content restrictions.
 - CV bransch detection must match: `restaurant`, `retail`, `industry`, `healthcare`, `tech`, `customerservice`, `content`, `hotel`, `art`
 - Gmail OAuth connected via Supabase (user connects Gmail in Profile tab)
 
