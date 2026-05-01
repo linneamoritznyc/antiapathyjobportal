@@ -3570,9 +3570,7 @@ async def generate_single_cv(bransch_id: str, request: Request):
 @app.get("/api/cv/all")
 async def get_user_cvs(request: Request):
     """Get all user's generated CV versions"""
-    user_id = await get_user_id_from_request(request)
-    if not user_id:
-        return {"success": True, "cvs": [], "message": "Ej inloggad"}
+    user_id = await get_user_id_from_request(request, required=True)
 
     cvs = await db_request("GET", "user_cvs", params={
         "user_id": f"eq.{user_id}",
@@ -3622,9 +3620,7 @@ async def update_cv(bransch_id: str, request: Request, cv_text: str = None):
 @app.get("/api/master-cv")
 async def get_full_master_cv(request: Request):
     """Get complete Master CV data including all sections (experiences, education, projects, certifications, awards, volunteer, skills)"""
-    user_id = await get_user_id_from_request(request)
-    if not user_id:
-        return {"success": False, "message": "Ej inloggad"}
+    user_id = await get_user_id_from_request(request, required=True)
 
     # Fetch all data from Supabase
     experiences = await db_request("GET", "user_experiences", params={
