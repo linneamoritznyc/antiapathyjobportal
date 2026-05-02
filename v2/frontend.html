@@ -3442,10 +3442,10 @@
 
         // Bransch-CV Card Component (simple version for MinaCVPage)
         const BranschCVCardSimple = ({ cv, onView, onUpload, uploading, onGenerate, generating }) => {
-            const name = cv.vibe_name || cv.category || cv.vibe_id || 'CV';
-            const emoji = cv.vibe_emoji || '📄';
+            const name = cv.bransch_name || cv.category || cv.bransch_id || 'CV';
+            const emoji = cv.bransch_emoji || '📄';
             const hasText = cv.cv_text && cv.cv_text.length > 20 && !cv.cv_text.startsWith('[Kunde inte');
-            const branschId = cv.vibe_id || cv.id;
+            const branschId = cv.bransch_id || cv.id;
 
             return (
                 <div className={`bg-gradient-to-br from-white to-slate-50 rounded-xl p-4 border-2 transition ${hasText ? 'border-green-200 hover:border-green-400' : 'border-slate-200 hover:border-indigo-400'}`}>
@@ -3531,9 +3531,9 @@
                         {/* Header */}
                         <div className="flex justify-between items-center p-6 border-b">
                             <div className="flex items-center gap-3">
-                                <span className="text-4xl">{cv.vibe_emoji || iconMap[cv.category] || '📄'}</span>
+                                <span className="text-4xl">{cv.bransch_emoji || iconMap[cv.category] || '📄'}</span>
                                 <div>
-                                    <h2 className="text-2xl font-bold">{cv.vibe_name || cv.category}</h2>
+                                    <h2 className="text-2xl font-bold">{cv.bransch_name || cv.category}</h2>
                                     <p className="text-sm text-slate-500">
                                         {cv.created_at ? `Genererad ${new Date(cv.created_at).toLocaleDateString('sv-SE')}` : ''}
                                     </p>
@@ -3657,11 +3657,11 @@
 
                     // Build full list: existing CVs + empty placeholders for missing branscher
                     const cvMap = {};
-                    existingCVs.forEach(cv => { cvMap[cv.vibe_id] = cv; });
+                    existingCVs.forEach(cv => { cvMap[cv.bransch_id] = cv; });
                     const merged = allBranscher.map(b => cvMap[b.id] || {
-                        vibe_id: b.id,
-                        vibe_name: b.name,
-                        vibe_emoji: b.emoji,
+                        bransch_id: b.id,
+                        bransch_name: b.name,
+                        bransch_emoji: b.emoji,
                         cv_text: '',
                         pdf_url: null
                     });
@@ -3846,9 +3846,9 @@
                 input.onchange = async (e) => {
                     const file = e.target.files[0];
                     if (!file) return;
-                    const branschId = cv.vibe_id || categoryToBranschId[cv.category] || 'customerservice';
-                    const branschName = cv.vibe_name || cv.category || branschId;
-                    setUploadingBransch(cv.id || cv.vibe_id || cv.category);
+                    const branschId = cv.bransch_id || categoryToBranschId[cv.category] || 'customerservice';
+                    const branschName = cv.bransch_name || cv.category || branschId;
+                    setUploadingBransch(cv.id || cv.bransch_id || cv.category);
                     try {
                         const token = localStorage.getItem('auth_token');
                         const formData = new FormData();
@@ -4132,7 +4132,7 @@
                                         onUpload={handleUploadBranschCV}
                                         uploading={uploadingBransch === (cv.id || cv.category)}
                                         onGenerate={handleGenerateSingleCV}
-                                        generating={generatingSingle === (cv.vibe_id || cv.id)}
+                                        generating={generatingSingle === (cv.bransch_id || cv.id)}
                                     />
                                 ))}
                             </div>
@@ -7895,7 +7895,7 @@
 
                 <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-4">
                     {branscher.map(bransch => {
-                        const userCV = userCVs.find(cv => cv.vibe_id === bransch.id);
+                        const userCV = userCVs.find(cv => cv.bransch_id === bransch.id);
                         return (
                             <BranschCVCard
                                 key={bransch.id}
@@ -9087,7 +9087,7 @@
 
             const handleSaveCV = async (branschId, text) => {
                 // Save or update CV
-                const existingCV = userCVs.find(cv => cv.vibe_id === branschId);
+                const existingCV = userCVs.find(cv => cv.bransch_id === branschId);
 
                 if (existingCV) {
                     // Update
@@ -9099,9 +9099,9 @@
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
                         body: JSON.stringify({
-                            vibe_id: branschId,
-                            vibe_name: bransch?.name,
-                            vibe_emoji: bransch?.emoji,
+                            bransch_id: branschId,
+                            bransch_name: bransch?.name,
+                            bransch_emoji: bransch?.emoji,
                             cv_text: text
                         })
                     });
