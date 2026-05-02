@@ -357,6 +357,9 @@ CV_BRANSCHER = [
     {"id": "content", "name": "Content & Moderation", "emoji": "📱",
      "focus": "innehållsgranskning, trust & safety, riktlinjer, datahantering",
      "keywords": ["content", "moderat", "trust", "safety", "granskning"]},
+    {"id": "art", "name": "Konst & Kultur", "emoji": "🎨",
+     "focus": "kreativitet, konstnärlig kompetens, utställningar, kulturprojekt",
+     "keywords": ["konst", "kultur", "galleri", "utställning", "kreativ", "illustration", "foto", "film", "musik", "teater"]},
     {"id": "cemetery", "name": "Kyrkogård & Begravning", "emoji": "⛪",
      "focus": "utomhusarbete, trädgårdsskötsel, respekt, fysiskt arbete, noggrannhet, gravskötsel",
      "keywords": ["kyrkogård", "begravning", "gravskötsel", "krematorium", "församling", "kyrka", "kyrkogårdsarbetare", "gravgrävning"]},
@@ -3338,13 +3341,29 @@ async def export_cv_for_bransch(bransch_id: str, request: Request):
     Returns structured data ready for PDF template.
     """
     user_id = await get_user_id_from_request(request, required=True)
-    # Get master CV
-    master_cv_response = await get_master_cv(user_id)
-    if not master_cv_response.get("master_cv"):
+
+    import asyncio as _asyncio
+    profiles, experiences, education, skills, awards, volunteer = await _asyncio.gather(
+        db_request("GET", "user_profiles", params={"user_id": f"eq.{user_id}"}),
+        db_request("GET", "user_experiences", params={"user_id": f"eq.{user_id}", "order": "sort_order.asc"}),
+        db_request("GET", "user_education", params={"user_id": f"eq.{user_id}", "order": "sort_order.asc"}),
+        db_request("GET", "user_skills", params={"user_id": f"eq.{user_id}"}),
+        db_request("GET", "user_awards", params={"user_id": f"eq.{user_id}", "order": "sort_order.asc"}),
+        db_request("GET", "user_volunteer", params={"user_id": f"eq.{user_id}", "order": "sort_order.asc"}),
+    )
+
+    profile = profiles[0] if profiles else None
+    if not profile:
         raise HTTPException(status_code=404, detail="No Master CV found")
 
-    master = master_cv_response["master_cv"]
-    profile = master["profile"]
+    master = {
+        "profile": profile,
+        "experiences": experiences or [],
+        "education": education or [],
+        "skills": skills or [],
+        "awards": [a.get("award_text") if isinstance(a, dict) else a for a in (awards or [])],
+        "volunteer": volunteer or [],
+    }
 
     # Filter experiences by bransch category
     all_experiences = master.get("experiences", [])
