@@ -2232,10 +2232,10 @@ async def save_jobs_to_db(jobs: List[Dict]) -> int:
     if not SUPABASE_URL:
         return 0
 
-    # Only send columns that exist in the jobs table
+    # Columns that exist in the jobs table
     db_columns = {"id", "title", "company", "location", "municipality", "county", "description", "description_summary",
                   "url", "deadline", "priority", "contact_email", "contact_name",
-                  "source", "scraped_at", "link_status"}
+                  "source", "scraped_at", "link_status", "working_hours"}
 
     saved = 0
     for job in jobs:
@@ -2244,21 +2244,14 @@ async def save_jobs_to_db(jobs: List[Dict]) -> int:
         if job.get("full_description"):
             db_job["description"] = job["full_description"]
             db_job["description_summary"] = job.get("description", "")
-        # Store extra fields in description as fallback
-        extras = []
-        if job.get("employment_type"):
-            extras.append(f"Anstallningsform: {job['employment_type']}")
-        if job.get("working_hours"):
-            extras.append(f"Omfattning: {job['working_hours']}")
-        if job.get("duration"):
-            extras.append(f"Varaktighet: {job['duration']}")
-        if job.get("contact_phone"):
-            extras.append(f"Telefon: {job['contact_phone']}")
-        if job.get("salary_description"):
-            extras.append(f"Lon: {job['salary_description']}")
-        if extras and db_job.get("description"):
-            db_job["description"] = "\n".join(extras) + "\n\n" + db_job["description"]
-        result = await db_request("POST", "jobs", data=db_job)
+        # Store flexible fields in metadata JSONB (no schema change needed for new fields)
+        metadata = {}
+        for field in ("employment_type", "duration", "contact_phone", "salary_description"):
+            if job.get(field):
+                metadata[field] = job[field]
+        if metadata:
+            db_job["metadata"] = metadata
+        result = await db_request("POST", "jobs", data=db_job, on_conflict="id")
         if result:
             saved += 1
     return saved
