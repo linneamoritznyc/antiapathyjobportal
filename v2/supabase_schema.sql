@@ -20,7 +20,8 @@ CREATE TABLE IF NOT EXISTS jobs (
     contact_name TEXT,
     source TEXT,                         -- No default in live DB; backend sets 'platsbanken' on insert
     scraped_at TIMESTAMPTZ DEFAULT NOW(),
-    link_status TEXT                     -- No default in live DB; backend sets 'active' on insert
+    link_status TEXT,                    -- No default in live DB; backend sets 'active' on insert
+    metadata JSONB DEFAULT '{}'::jsonb   -- Flexible extra fields: employment_type, duration, contact_phone, salary_description
 );
 
 -- User profiles (personal info + photo)
