@@ -2261,11 +2261,14 @@ async def save_jobs_to_db(jobs: List[Dict]) -> int:
 
 
 async def get_jobs_from_db(limit: int = 50, offset: int = 0) -> List[Dict]:
-    """Get jobs from database. Returns description_summary + full_description for UI."""
+    """Get jobs from database. Returns description_summary + full_description for UI.
+    Excludes jobs where deadline has passed."""
+    today = datetime.now().strftime("%Y-%m-%d")
     jobs = await db_request("GET", "jobs", params={
         "order": "scraped_at.desc",
         "limit": str(limit),
-        "offset": str(offset)
+        "offset": str(offset),
+        "or": f"(deadline.is.null,deadline.gte.{today})"
     })
     if jobs:
         for job in jobs:
