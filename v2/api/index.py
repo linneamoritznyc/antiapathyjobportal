@@ -357,6 +357,9 @@ CV_BRANSCHER = [
     {"id": "content", "name": "Content & Moderation", "emoji": "📱",
      "focus": "innehållsgranskning, trust & safety, riktlinjer, datahantering",
      "keywords": ["content", "moderat", "trust", "safety", "granskning"]},
+    {"id": "art", "name": "Konst & Kultur", "emoji": "🎨",
+     "focus": "kreativitet, konstnärlig kompetens, utställningar, kulturprojekt",
+     "keywords": ["konst", "kultur", "galleri", "utställning", "kreativ", "illustration", "foto", "film", "musik", "teater"]},
     {"id": "cemetery", "name": "Kyrkogård & Begravning", "emoji": "⛪",
      "focus": "utomhusarbete, trädgårdsskötsel, respekt, fysiskt arbete, noggrannhet, gravskötsel",
      "keywords": ["kyrkogård", "begravning", "gravskötsel", "krematorium", "församling", "kyrka", "kyrkogårdsarbetare", "gravgrävning"]},
@@ -2079,15 +2082,15 @@ async def generate_all_bransch_cvs(master_cv: Dict, user_id: str) -> List[Dict]:
 
         cv_data = {
             "user_id": user_id,
-            "vibe_id": bransch["id"],
-            "vibe_name": bransch["name"],
-            "vibe_emoji": bransch["emoji"],
+            "bransch_id": bransch["id"],
+            "bransch_name": bransch["name"],
+            "bransch_emoji": bransch["emoji"],
             "cv_text": cv_text,
             "created_at": datetime.now().isoformat()
         }
         if pdf_url:
             cv_data["pdf_url"] = pdf_url
-        saved = await db_request("POST", "user_cvs", data=cv_data, on_conflict="user_id,vibe_id")
+        saved = await db_request("POST", "user_cvs", data=cv_data, on_conflict="user_id,bransch_id")
         return saved[0] if saved else cv_data
 
     # Run in batches of 4 to avoid rate limits but stay fast
@@ -2258,11 +2261,14 @@ async def save_jobs_to_db(jobs: List[Dict]) -> int:
 
 
 async def get_jobs_from_db(limit: int = 50, offset: int = 0) -> List[Dict]:
-    """Get jobs from database. Returns description_summary + full_description for UI."""
+    """Get jobs from database. Returns description_summary + full_description for UI.
+    Excludes jobs where deadline has passed."""
+    today = datetime.now().strftime("%Y-%m-%d")
     jobs = await db_request("GET", "jobs", params={
         "order": "scraped_at.desc",
         "limit": str(limit),
-        "offset": str(offset)
+        "offset": str(offset),
+        "or": f"(deadline.is.null,deadline.gte.{today})"
     })
     if jobs:
         for job in jobs:
@@ -3338,13 +3344,29 @@ async def export_cv_for_bransch(bransch_id: str, request: Request):
     Returns structured data ready for PDF template.
     """
     user_id = await get_user_id_from_request(request, required=True)
-    # Get master CV
-    master_cv_response = await get_master_cv(user_id)
-    if not master_cv_response.get("master_cv"):
+
+    import asyncio as _asyncio
+    profiles, experiences, education, skills, awards, volunteer = await _asyncio.gather(
+        db_request("GET", "user_profiles", params={"user_id": f"eq.{user_id}"}),
+        db_request("GET", "user_experiences", params={"user_id": f"eq.{user_id}", "order": "sort_order.asc"}),
+        db_request("GET", "user_education", params={"user_id": f"eq.{user_id}", "order": "sort_order.asc"}),
+        db_request("GET", "user_skills", params={"user_id": f"eq.{user_id}"}),
+        db_request("GET", "user_awards", params={"user_id": f"eq.{user_id}", "order": "sort_order.asc"}),
+        db_request("GET", "user_volunteer", params={"user_id": f"eq.{user_id}", "order": "sort_order.asc"}),
+    )
+
+    profile = profiles[0] if profiles else None
+    if not profile:
         raise HTTPException(status_code=404, detail="No Master CV found")
 
-    master = master_cv_response["master_cv"]
-    profile = master["profile"]
+    master = {
+        "profile": profile,
+        "experiences": experiences or [],
+        "education": education or [],
+        "skills": skills or [],
+        "awards": [a.get("award_text") if isinstance(a, dict) else a for a in (awards or [])],
+        "volunteer": volunteer or [],
+    }
 
     # Filter experiences by bransch category
     all_experiences = master.get("experiences", [])
@@ -3543,16 +3565,16 @@ async def generate_single_cv(bransch_id: str, request: Request):
 
     cv_data = {
         "user_id": user_id,
-        "vibe_id": bransch["id"],
-        "vibe_name": bransch["name"],
-        "vibe_emoji": bransch["emoji"],
+        "bransch_id": bransch["id"],
+        "bransch_name": bransch["name"],
+        "bransch_emoji": bransch["emoji"],
         "cv_text": cv_text,
         "created_at": datetime.now().isoformat()
     }
     if pdf_url:
         cv_data["pdf_url"] = pdf_url
 
-    saved = await db_request("POST", "user_cvs", data=cv_data, on_conflict="user_id,vibe_id")
+    saved = await db_request("POST", "user_cvs", data=cv_data, on_conflict="user_id,bransch_id")
     return {
         "success": True,
         "message": f"CV för {bransch['name']} genererat!",
@@ -3567,7 +3589,7 @@ async def get_user_cvs(request: Request):
 
     cvs = await db_request("GET", "user_cvs", params={
         "user_id": f"eq.{user_id}",
-        "order": "vibe_id.asc"
+        "order": "bransch_id.asc"
     })
 
     return {"success": True, "cvs": cvs or [], "user_id": user_id}
@@ -3579,7 +3601,7 @@ async def get_cv_by_bransch(bransch_id: str, request: Request):
     user_id = await get_user_id_from_request(request, required=True)
     cvs = await db_request("GET", "user_cvs", params={
         "user_id": f"eq.{user_id}",
-        "vibe_id": f"eq.{bransch_id}"
+        "bransch_id": f"eq.{bransch_id}"
     })
 
     if cvs and len(cvs) > 0:
@@ -3599,7 +3621,7 @@ async def update_cv(bransch_id: str, request: Request, cv_text: str = None):
         raise HTTPException(status_code=400, detail="cv_text krävs")
     result = await db_request("PATCH", "user_cvs",
         data={"cv_text": cv_text, "updated_at": datetime.now().isoformat()},
-        params={"user_id": f"eq.{user_id}", "vibe_id": f"eq.{bransch_id}"}
+        params={"user_id": f"eq.{user_id}", "bransch_id": f"eq.{bransch_id}"}
     )
 
     if result:
@@ -4265,7 +4287,7 @@ async def download_bransch_cv_pdf(cv_id: str, request: Request):
 
     cv = cv_result[0]
     cv_text = cv.get("cv_text", "")
-    category = cv.get("vibe_name") or cv.get("category") or cv.get("vibe_id") or "CV"
+    category = cv.get("bransch_name") or cv.get("category") or cv.get("bransch_id") or "CV"
 
     # Fetch profile for header
     profiles = await db_request("GET", "user_profiles", params={"user_id": f"eq.{user_id}"})
@@ -4502,7 +4524,7 @@ async def apply_with_cv(request: Request, job_id: str):
     if user_id:
         import asyncio as _asyncio
         cvs_result, profiles_result = await _asyncio.gather(
-            db_request("GET", "user_cvs", params={"user_id": f"eq.{user_id}", "vibe_id": f"eq.{best_bransch}"}),
+            db_request("GET", "user_cvs", params={"user_id": f"eq.{user_id}", "bransch_id": f"eq.{best_bransch}"}),
             db_request("GET", "user_profiles", params={"user_id": f"eq.{user_id}"})
         )
         cv = cvs_result[0] if cvs_result else None
@@ -5251,7 +5273,7 @@ async def save_gmail_draft_with_attachments(request: Request, job_id: str):
     try:
         bransch_cv = await db_request("GET", "user_cvs", params={
             "user_id": f"eq.{user_id}",
-            "vibe_id": f"eq.{bransch}",
+            "bransch_id": f"eq.{bransch}",
             "select": "cv_text,pdf_url"
         })
         cv_record = bransch_cv[0] if bransch_cv else {}
@@ -5823,7 +5845,7 @@ async def migrate_user_data(request: Request):
     ]
 
     CV_VERSIONS = [
-        {"user_id": user_id, "vibe_id": "restaurant", "vibe_name": "Restaurang & Cafe", "vibe_emoji": "", "cv_text": """Linnea Moritz
+        {"user_id": user_id, "bransch_id": "restaurant", "bransch_name": "Restaurang & Cafe", "bransch_emoji": "", "cv_text": """Linnea Moritz
 Innehar B-Körkort | Sollentuna | 0761166109 | linneamoritzcv@gmail.com
 
 UTBILDNING
@@ -5917,7 +5939,7 @@ UTMÄRKELSER
 ● Tredje pris Chinese Bridge - Nationell tävling i kinesiskt språk, Bergen 2016.
 ● Röda Korsets diplom - Guldutmärkelse för teamwork och ledarskap (100+ volontärtimmar).
 ● Minerva University Award for Initiative 2018."""},
-        {"user_id": user_id, "vibe_id": "retail", "vibe_name": "Butik & Kassa", "vibe_emoji": "", "cv_text": """Linnea Moritz
+        {"user_id": user_id, "bransch_id": "retail", "bransch_name": "Butik & Kassa", "bransch_emoji": "", "cv_text": """Linnea Moritz
 Innehar B-Körkort | Sollentuna | 0761166109 | linneamoritzcv@gmail.com
 
 UTBILDNING
@@ -6013,7 +6035,7 @@ UTMÄRKELSER
 ● Tredje pris Chinese Bridge - Nationell tävling i kinesiskt språk, Bergen 2016.
 ● Röda Korsets diplom - Guldutmärkelse för teamwork och ledarskap (100+ volontärtimmar).
 ● Minerva University Award for Initiative 2018."""},
-        {"user_id": user_id, "vibe_id": "customerservice", "vibe_name": "Kundtjanst & Support", "vibe_emoji": "", "cv_text": """Linnea Moritz
+        {"user_id": user_id, "bransch_id": "customerservice", "bransch_name": "Kundtjanst & Support", "bransch_emoji": "", "cv_text": """Linnea Moritz
 Innehar B-Körkort | Sollentuna | 0761166109 | linneamoritzcv@gmail.com
 
 UTBILDNING
@@ -6117,7 +6139,7 @@ UTMÄRKELSER
 ● Tredje pris Chinese Bridge - Nationell tävling i kinesiskt språk, Bergen 2016.
 ● Röda Korsets diplom - Guldutmärkelse för teamwork och ledarskap (100+ volontärtimmar).
 ● Minerva University Award for Initiative 2018."""},
-        {"user_id": user_id, "vibe_id": "content", "vibe_name": "Content & Moderation", "vibe_emoji": "", "cv_text": """Linnea Moritz
+        {"user_id": user_id, "bransch_id": "content", "bransch_name": "Content & Moderation", "bransch_emoji": "", "cv_text": """Linnea Moritz
 Innehar B-Körkort | Sollentuna | 0761166109 | linneamoritzcv@gmail.com
 
 UTBILDNING
@@ -6223,7 +6245,7 @@ UTMÄRKELSER
 ● Tredje pris Chinese Bridge - Nationell tävling i kinesiskt språk, Bergen 2016.
 ● Röda Korsets diplom - Guldutmärkelse för teamwork och ledarskap (100+ volontärtimmar).
 ● Minerva University Award for Initiative 2018."""},
-        {"user_id": user_id, "vibe_id": "tech", "vibe_name": "Tech & Kontor", "vibe_emoji": "", "cv_text": """Linnea Moritz
+        {"user_id": user_id, "bransch_id": "tech", "bransch_name": "Tech & Kontor", "bransch_emoji": "", "cv_text": """Linnea Moritz
 Innehar B-Körkort | Sollentuna | 0761166109 | linneamoritzcv@gmail.com
 
 UTBILDNING
@@ -6329,7 +6351,7 @@ UTMÄRKELSER
 ● Tredje pris Chinese Bridge - Nationell tävling i kinesiskt språk, Bergen 2016.
 ● Röda Korsets diplom - Guldutmärkelse för teamwork och ledarskap (100+ volontärtimmar).
 ● Minerva University Award for Initiative 2018."""},
-        {"user_id": user_id, "vibe_id": "industry", "vibe_name": "Industri & Tradgard", "vibe_emoji": "", "cv_text": """Linnea Moritz
+        {"user_id": user_id, "bransch_id": "industry", "bransch_name": "Industri & Tradgard", "bransch_emoji": "", "cv_text": """Linnea Moritz
 Innehar B-Körkort | Sollentuna | 0761166109 | linneamoritzcv@gmail.com
 
 UTBILDNING
@@ -6430,7 +6452,7 @@ UTMÄRKELSER
 ● Tredje pris Chinese Bridge - Nationell tävling i kinesiskt språk, Bergen 2016.
 ● Röda Korsets diplom - Guldutmärkelse för teamwork och ledarskap (100+ volontärtimmar).
 ● Minerva University Award for Initiative 2018."""},
-        {"user_id": user_id, "vibe_id": "healthcare", "vibe_name": "Vard & Omsorg", "vibe_emoji": "", "cv_text": """Linnea Moritz
+        {"user_id": user_id, "bransch_id": "healthcare", "bransch_name": "Vard & Omsorg", "bransch_emoji": "", "cv_text": """Linnea Moritz
 Innehar B-Körkort | Sollentuna | 0761166109 | linneamoritzcv@gmail.com
 
 UTBILDNING
@@ -6528,7 +6550,7 @@ UTMÄRKELSER
 ● Tredje pris Chinese Bridge - Nationell tävling i kinesiskt språk, Bergen 2016.
 ● Röda Korsets diplom - Guldutmärkelse för teamwork och ledarskap (100+ volontärtimmar).
 ● Minerva University Award for Initiative 2018."""},
-        {"user_id": user_id, "vibe_id": "art", "vibe_name": "Konst & Kultur", "vibe_emoji": "", "cv_text": """Linnea Moritz
+        {"user_id": user_id, "bransch_id": "art", "bransch_name": "Konst & Kultur", "bransch_emoji": "", "cv_text": """Linnea Moritz
 Innehar B-Körkort | Sollentuna | 0761166109 | linneamoritzcv@gmail.com
 
 UTBILDNING
@@ -9937,7 +9959,7 @@ async def admin_user_data(email: str):
             "education": len(education),
             "skills": len(skills),
             "cvs": len(cvs),
-            "cv_branscher": [cv.get("vibe_id") for cv in cvs],
+            "cv_branscher": [cv.get("bransch_id") for cv in cvs],
             "branscher": len(branscher),
             "cover_letter_prefs": len(cover_prefs),
             "job_prefs": len(job_prefs),
@@ -9949,7 +9971,7 @@ async def admin_user_data(email: str):
         "experiences": experiences,
         "education": education,
         "skills": skills,
-        "cvs": [{"vibe_id": cv.get("vibe_id"), "vibe_name": cv.get("vibe_name"), "text_length": len(cv.get("cv_text", ""))} for cv in cvs],
+        "cvs": [{"bransch_id": cv.get("bransch_id"), "bransch_name": cv.get("bransch_name"), "text_length": len(cv.get("cv_text", ""))} for cv in cvs],
         "branscher": branscher,
         "cover_letter_prefs": cover_prefs,
         "job_prefs": job_prefs,
@@ -9973,12 +9995,12 @@ async def admin_migration_status():
     experiences = await db_request("GET", "user_experiences", params={"user_id": f"eq.{user_id}", "select": "company"}) or []
     education = await db_request("GET", "user_education", params={"user_id": f"eq.{user_id}", "select": "school"}) or []
     skills = await db_request("GET", "user_skills", params={"user_id": f"eq.{user_id}", "select": "skill_text"}) or []
-    cvs = await db_request("GET", "user_cvs", params={"user_id": f"eq.{user_id}", "select": "vibe_id"}) or []
+    cvs = await db_request("GET", "user_cvs", params={"user_id": f"eq.{user_id}", "select": "bransch_id"}) or []
     volunteer = await db_request("GET", "user_volunteer", params={"user_id": f"eq.{user_id}", "select": "organization"}) or []
     awards = await db_request("GET", "user_awards", params={"user_id": f"eq.{user_id}", "select": "award_text"}) or []
 
     expected_cvs = {"restaurant", "retail", "customerservice", "content", "tech", "industry", "healthcare", "art"}
-    actual_cvs = {cv.get("vibe_id") for cv in cvs}
+    actual_cvs = {cv.get("bransch_id") for cv in cvs}
     missing_cvs = expected_cvs - actual_cvs
 
     expected_companies = {
@@ -10138,7 +10160,7 @@ async def upload_cv(bransch_id: str, request: Request):
     update_result = await db_request(
         "PATCH",
         "user_cvs",
-        params={"user_id": f"eq.{user_id}", "vibe_id": f"eq.{bransch_id}"},
+        params={"user_id": f"eq.{user_id}", "bransch_id": f"eq.{bransch_id}"},
         data={
             "pdf_url": pdf_url,
             "cv_text": cv_text[:50000] if cv_text else None  # Limit text size
@@ -10163,8 +10185,8 @@ async def upload_cv(bransch_id: str, request: Request):
             "user_cvs",
             data={
                 "user_id": user_id,
-                "vibe_id": bransch_id,
-                "vibe_name": bransch_names.get(bransch_id, bransch_id),
+                "bransch_id": bransch_id,
+                "bransch_name": bransch_names.get(bransch_id, bransch_id),
                 "pdf_url": pdf_url,
                 "cv_text": cv_text[:50000] if cv_text else None
             }
