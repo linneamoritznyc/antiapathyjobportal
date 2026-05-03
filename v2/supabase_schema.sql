@@ -1,6 +1,6 @@
 -- Anti-Apathy Job Portal v2 - Database Schema
 -- Source of truth for Supabase PostgreSQL structure.
--- Last verified against live DB: 25 feb 2026 (full column-level audit).
+-- Last verified against live DB: 2026-05-02 (full schema export from Supabase).
 
 -- Jobs table (scraped from Platsbanken)
 CREATE TABLE IF NOT EXISTS jobs (
@@ -859,6 +859,20 @@ CREATE INDEX IF NOT EXISTS idx_user_anecdotes_user ON user_anecdotes(user_id);
 
 COMMENT ON TABLE user_anecdotes IS 'Personal anecdotes and hobbies for AI cover letter personalization (max 30 per user)';
 
+-- ============== FK CONSTRAINTS IN LIVE DB (documentation only — not re-runnable) ==============
+-- These FKs exist in live DB but were added implicitly via Supabase.
+-- They are not in the CREATE TABLE statements above because they were added post-hoc.
+--
+-- applications.user_id              → auth.users(id)
+-- user_cover_letter_preferences.user_id → auth.users(id)
+-- user_education.user_id            → auth.users(id)
+-- user_experiences.user_id          → auth.users(id)
+-- user_skills.user_id               → auth.users(id)
+-- user_profiles.user_id             → auth.users(id)
+-- user_training_letters.user_id     → auth.users(id)
+-- user_cv_versions.cv_id            → user_cvs(id)
+-- user_cv_creation_conversations.cv_id → user_cvs(id)
+
 -- ============== MIGRATIONS APPLIED ==============
 -- 2026-02-19: user_job_preferences.quiz_answers JSONB — LIVE
 -- 2026-02-21: jobs.description_summary TEXT — LIVE
@@ -898,6 +912,15 @@ COMMENT ON TABLE user_anecdotes IS 'Personal anecdotes and hobbies for AI cover 
 --   - Fixed jobs.title: nullable (was NOT NULL)
 --   - Fixed jobs.priority/source/link_status: no default (backend sets them on insert)
 --   - Updated delete_user_data() with UUID casts for UUID-typed tables
+-- 2026-05-02: Full schema re-export from Supabase — confirmed schema matches live DB
+--   - jobs.metadata JSONB confirmed present in live DB (no migration needed)
+--   - jobs.working_hours confirmed present (added to db_columns in backend)
+--   - jobs INSERT changed to UPSERT (on_conflict="id") — fixes silent save failures
+--   - /api/cv/all and /api/master-cv changed to return 401 (was 200 empty) when token expired
+--   - Documented FK constraints that exist in live DB (see section above)
+--   - RLS enabled on: applications, user_job_preferences, user_job_interactions,
+--     user_ai_feedback, user_google_credentials, user_cv_versions,
+--     user_cv_creation_conversations, user_photos (run SQL from chat 2026-05-02)
 --   - Updated user_id type inconsistency section to match reality
 --
 -- ============== PENDING MIGRATIONS (ej körda än — Linnea kör i SQL Editor) ==============
