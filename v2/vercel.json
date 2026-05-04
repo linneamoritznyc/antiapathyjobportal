@@ -13,7 +13,8 @@
           "integritetspolicy.html",
           "cv_template.html",
           "lan-data.js",
-          "linkedin-parser.js"
+          "linkedin-parser.js",
+          "manifest.json"
         ]
       }
     }

@@ -33,6 +33,7 @@ SUPABASE_ANON_KEY = os.getenv("SUPABASE_ANON_KEY")  # For client-side auth
 ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY")
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
 HUGGINGFACE_API_KEY = os.getenv("HUGGINGFACE_API_KEY")
+APP_URL = os.getenv("APP_URL", "").rstrip("/")
 
 # ── Swedish Language Rules (Svenska Skrivregler) ──────────────────────────
 # Used in all AI text generation: cover letters, CVs, application answers
@@ -1383,6 +1384,103 @@ Bot:
     return text
 
 
+# Common English loanwords (svengelska) → preferred Swedish equivalents
+# For ambiguous ones, KBLab BERT fill-mask picks the best word in context.
+_SVENGELSKA_STATIC = [
+    (r'\bchallenges\b', 'utmaningar'),
+    (r'\bfeedback\b', 'återkoppling'),
+    (r'\bdeadlines?\b', 'tidsgränser'),
+    (r'\bteam ?player\b', 'lagspelare'),
+    (r'\bskills\b', 'kompetenser'),
+    (r'\bmeetings?\b', 'möten'),
+    (r'\bfollow-?up\b', 'uppföljning'),
+    (r'\bonboarding\b', 'introduktionsprocess'),
+    (r'\bstakeholders?\b', 'intressenter'),
+    (r'\boutcome[sd]?\b', 'resultat'),
+    (r'\bmindset\b', 'tankesätt'),
+    (r'\bnetworking\b', 'nätverkande'),
+    (r'\bperformance\b', 'prestation'),
+    (r'\bdeliverables?\b', 'leveranser'),
+    (r'\bsupportive\b', 'stöttande'),
+    (r'\boutstanding\b', 'enastående'),
+]
+
+# Words where context matters — BERT fill-mask resolves the best Swedish word
+_SVENGELSKA_AMBIGUOUS = {
+    'approach': ['tillvägagångssätt', 'metod', 'strategi'],
+    'commitment': ['engagemang', 'åtagande', 'dedikation'],
+    'impact': ['påverkan', 'genomslag', 'effekt'],
+    'dedicated': ['hängiven', 'engagerad', 'dedikerad'],
+}
+
+
+async def fix_svengelska_with_kblab(text: str) -> str:
+    """
+    Detect and replace svengelska (Swedish-English mix) in cover letter text.
+    Step 1: Apply static dictionary replacements (clear-cut cases).
+    Step 2: For ambiguous words, use KBLab/bert-base-swedish-cased fill-mask
+            via HuggingFace Inference API to pick the best Swedish word in context.
+    Returns corrected text, or original on failure.
+    """
+    if not text:
+        return text
+
+    corrected = text
+
+    # Step 1: static replacements (case-insensitive, preserve word boundaries)
+    for pattern, replacement in _SVENGELSKA_STATIC:
+        corrected = re.sub(pattern, replacement, corrected, flags=re.IGNORECASE)
+
+    if not HUGGINGFACE_API_KEY:
+        return corrected
+
+    # Step 2: context-aware replacement for ambiguous words via BERT fill-mask
+    try:
+        async with httpx.AsyncClient(timeout=15) as client:
+            for english_word, candidates in _SVENGELSKA_AMBIGUOUS.items():
+                pattern = re.compile(r'\b' + re.escape(english_word) + r'\b', re.IGNORECASE)
+                matches = list(pattern.finditer(corrected))
+                if not matches:
+                    continue
+
+                for match in matches:
+                    start, end = match.start(), match.end()
+                    # Build masked sentence (take up to 100 chars around the word for context)
+                    ctx_start = max(0, start - 60)
+                    ctx_end = min(len(corrected), end + 60)
+                    masked = corrected[ctx_start:start] + '[MASK]' + corrected[end:ctx_end]
+
+                    resp = await client.post(
+                        "https://api-inference.huggingface.co/models/KBLab/bert-base-swedish-cased",
+                        headers={"Authorization": f"Bearer {HUGGINGFACE_API_KEY}"},
+                        json={"inputs": masked}
+                    )
+
+                    if resp.status_code == 200:
+                        predictions = resp.json()
+                        if isinstance(predictions, list):
+                            # Pick the candidate with the highest BERT score
+                            best_word = None
+                            best_score = -1.0
+                            for pred in predictions[:10]:
+                                token = pred.get("token_str", "").strip()
+                                score = pred.get("score", 0.0)
+                                if token.lower() in [c.lower() for c in candidates] and score > best_score:
+                                    best_score = score
+                                    best_word = token
+                            if best_word:
+                                corrected = corrected[:start] + best_word + corrected[end:]
+                                logger.info(f"KBLab BERT: replaced '{english_word}' → '{best_word}' (score {best_score:.2f})")
+                    elif resp.status_code == 503:
+                        logger.info("KBLab BERT model cold-starting, skipping fill-mask step")
+                        break
+
+    except Exception as e:
+        logger.warning(f"KBLab BERT svengelska check failed (non-blocking): {e}")
+
+    return corrected
+
+
 async def generate_cover_letter(job: Dict, user_cv_text: Optional[str] = None, user_profile: Optional[Dict] = None, extra_hints: Optional[str] = None, user_id: Optional[str] = None) -> str:
     """Generate personalized cover letter using Claude"""
 
@@ -1727,6 +1825,8 @@ Skriv ENDAST det färdiga brevet, inget annat."""
                 letter_text = re.sub(r'^#+\s+', '', letter_text, flags=re.MULTILINE)
                 # Run GPT-SW3 Swedish grammar check (non-blocking — returns original on failure)
                 letter_text = await check_swedish_with_gpt_sw3(letter_text)
+                # Run KBLab BERT svengelska fix (non-blocking)
+                letter_text = await fix_svengelska_with_kblab(letter_text)
                 return letter_text
             else:
                 error_body = response.text[:300]
@@ -1753,6 +1853,7 @@ Skriv ENDAST det färdiga brevet, inget annat."""
                         # Strip markdown heading markers if Claude added them
                         letter_text = re.sub(r'^#+\s+', '', letter_text, flags=re.MULTILINE)
                         letter_text = await check_swedish_with_gpt_sw3(letter_text)
+                        letter_text = await fix_svengelska_with_kblab(letter_text)
                         return letter_text
                 except Exception as fallback_err:
                     logger.error(f"Haiku fallback also failed: {fallback_err}")
@@ -5557,7 +5658,7 @@ async def google_auth():
     """Redirect user to Google Sign-In via Supabase OAuth."""
     if not SUPABASE_URL or not SUPABASE_ANON_KEY:
         raise HTTPException(status_code=500, detail="Supabase not configured")
-    redirect_to = "https://platsbanken-ai.vercel.app/login"
+    redirect_to = f"{APP_URL}/login"
     url = (
         f"{SUPABASE_URL}/auth/v1/authorize?provider=google"
         f"&redirect_to={redirect_to}"
@@ -5587,7 +5688,7 @@ async def sign_up(request: SignUpRequest):
                 "password": request.password,
                 "data": {"full_name": request.full_name} if request.full_name else {},
                 "options": {
-                    "email_redirect_to": "https://platsbanken-ai.vercel.app/login"
+                    "email_redirect_to": f"{APP_URL}/login"
                 }
             }
         )
@@ -5628,7 +5729,7 @@ async def resend_verification(request: ResendVerificationRequest):
                 "type": "signup",
                 "email": request.email,
                 "options": {
-                    "email_redirect_to": "https://platsbanken-ai.vercel.app/login"
+                    "email_redirect_to": f"{APP_URL}/login"
                 }
             }
         )
@@ -9272,7 +9373,7 @@ async def get_gmail_auth_url(request: Request, redirect_uri: str = None):
     if not user_creds:
         raise HTTPException(status_code=400, detail="Gmail-kopplingen är inte konfigurerad. Kontakta support.")
 
-    redirect_uri = "https://platsbanken-ai.vercel.app/api/gmail/callback"
+    redirect_uri = f"{APP_URL}/api/gmail/callback"
 
     params = {
         "client_id": user_creds["client_id"],
@@ -9298,7 +9399,7 @@ async def gmail_oauth_callback(code: str, state: str = ""):
     if not user_creds:
         raise HTTPException(status_code=400, detail="Gmail-kopplingen är inte konfigurerad.")
 
-    redirect_uri = "https://platsbanken-ai.vercel.app/api/gmail/callback"
+    redirect_uri = f"{APP_URL}/api/gmail/callback"
 
     async with httpx.AsyncClient() as client:
         response = await client.post(
@@ -9726,6 +9827,18 @@ async def serve_static_js(filename: str):
         raise HTTPException(status_code=404, detail=f"{filename} not found")
     content = file_path.read_text(encoding='utf-8')
     return Response(content=content, media_type="application/javascript",
+                    headers={"Cache-Control": "public, max-age=86400"})
+
+
+@app.get("/manifest.json")
+async def serve_manifest():
+    """Serve PWA web app manifest."""
+    from fastapi.responses import Response
+    manifest_path = pathlib.Path(__file__).parent.parent / "manifest.json"
+    if not manifest_path.exists():
+        raise HTTPException(status_code=404, detail="manifest.json not found")
+    content = manifest_path.read_text(encoding='utf-8')
+    return Response(content=content, media_type="application/manifest+json",
                     headers={"Cache-Control": "public, max-age=86400"})
 
 
