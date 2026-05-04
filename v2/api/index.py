@@ -2538,6 +2538,8 @@ async def get_jobs_from_db(
 
 async def get_applications_from_db(user_id: str = None) -> List[Dict]:
     """Get applications with job details, optionally filtered by user_id"""
+    if not SUPABASE_URL or not SUPABASE_KEY:
+        return []
     headers = {
         "apikey": SUPABASE_KEY,
         "Authorization": f"Bearer {SUPABASE_KEY}"
@@ -5694,12 +5696,14 @@ def get_frontend_html():
 async def debug_env():
     """Debug endpoint to check if environment variables are loaded"""
     return {
-        "supabase_url_exists": bool(SUPABASE_URL),
-        "supabase_url_length": len(SUPABASE_URL) if SUPABASE_URL else 0,
-        "supabase_anon_key_exists": bool(SUPABASE_ANON_KEY),
-        "supabase_anon_key_length": len(SUPABASE_ANON_KEY) if SUPABASE_ANON_KEY else 0,
-        "anthropic_key_exists": bool(ANTHROPIC_API_KEY),
-        "all_env_vars": list(os.environ.keys())[:10]  # First 10 env var names
+        "supabase_url_exists": bool(os.environ.get("SUPABASE_URL")),
+        "supabase_anon_key_exists": bool(os.environ.get("SUPABASE_ANON_KEY")),
+        "anthropic_key_exists": bool(os.environ.get("ANTHROPIC_API_KEY")),
+        "google_client_id_exists": bool(os.environ.get("GOOGLE_CLIENT_ID")),
+        "google_client_secret_exists": bool(os.environ.get("GOOGLE_CLIENT_SECRET")),
+        "huggingface_key_exists": bool(os.environ.get("HUGGINGFACE_API_KEY")),
+        "app_base_url": get_app_base_url(),
+        "gmail_redirect_uri": f"{get_app_base_url()}/api/gmail/callback",
     }
 
 @app.get("/api/auth/google")
@@ -9377,9 +9381,9 @@ async def get_user_gmail_credentials(user_id: str) -> Optional[dict]:
     creds = await db_request("GET", "user_google_credentials", params={"user_id": f"eq.{user_id}"})
     if creds and creds[0].get("client_id") and creds[0].get("client_secret"):
         return creds[0]
-    # Fall back to app-level credentials from environment variables
-    app_client_id = os.getenv("GOOGLE_CLIENT_ID", "")
-    app_client_secret = os.getenv("GOOGLE_CLIENT_SECRET", "")
+    # Fall back to app-level credentials — read live from os.environ so newly added secrets are picked up
+    app_client_id = os.environ.get("GOOGLE_CLIENT_ID", "")
+    app_client_secret = os.environ.get("GOOGLE_CLIENT_SECRET", "")
     if app_client_id and app_client_secret:
         return {"user_id": user_id, "client_id": app_client_id, "client_secret": app_client_secret}
     return None
@@ -9509,8 +9513,9 @@ async def gmail_oauth_callback(request: Request, code: str, state: str = ""):
 async def get_gmail_status(request: Request):
     """Check if user has Gmail connected"""
     user_id = await get_user_id_from_request(request)
+    app_configured = bool(os.environ.get("GOOGLE_CLIENT_ID") and os.environ.get("GOOGLE_CLIENT_SECRET"))
     if not user_id:
-        return {"connected": False, "gmail_address": None, "app_configured": False}
+        return {"connected": False, "gmail_address": None, "app_configured": app_configured}
     creds = await db_request("GET", "user_google_credentials", params={"user_id": f"eq.{user_id}"})
 
     # Auto-migrate: if no creds under real user_id, check for legacy "default_user" creds
@@ -9522,8 +9527,8 @@ async def get_gmail_status(request: Request):
             logger.info(f"Migrated Gmail credentials from default_user to {user_id}")
             creds = await db_request("GET", "user_google_credentials", params={"user_id": f"eq.{user_id}"})
 
-    # Check for app-level credentials as fallback
-    app_configured = bool(os.getenv("GOOGLE_CLIENT_ID") and os.getenv("GOOGLE_CLIENT_SECRET"))
+    # Check for app-level credentials as fallback — read live from os.environ
+    app_configured = bool(os.environ.get("GOOGLE_CLIENT_ID") and os.environ.get("GOOGLE_CLIENT_SECRET"))
 
     if not creds:
         return {"connected": False, "gmail_address": None, "app_configured": app_configured}
