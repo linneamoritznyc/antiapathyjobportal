@@ -5962,7 +5962,12 @@ async def reset_password(request: ResetPasswordRequest):
                 "apikey": SUPABASE_ANON_KEY,
                 "Content-Type": "application/json"
             },
-            json={"email": request.email}
+            json={
+                "email": request.email,
+                "options": {
+                    "redirect_to": f"{get_app_base_url()}/login"
+                }
+            }
         )
 
         # Always return success to prevent email enumeration
