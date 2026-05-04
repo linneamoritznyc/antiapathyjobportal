@@ -540,6 +540,36 @@ def calculate_priority(deadline: Optional[str]) -> str:
 _muni_label_cache: Dict[str, str] = {}
 _muni_cache_fetched_at: float = 0
 
+# ============== USER INTERACTION CACHE (reduces DB calls for /api/jobs) ==============
+# Short-lived cache (60s TTL) for user interactions to avoid repeated DB queries
+# Key: user_id, Value: (timestamp, set of excluded job IDs)
+_user_interactions_cache: Dict[str, tuple] = {}
+_USER_CACHE_TTL = 60  # seconds
+
+def get_cached_user_interactions(user_id: str) -> Optional[set]:
+    """Get cached user interactions if still valid (< 60s old)."""
+    if user_id in _user_interactions_cache:
+        cached_at, job_ids = _user_interactions_cache[user_id]
+        if time.time() - cached_at < _USER_CACHE_TTL:
+            return job_ids
+    return None
+
+def cache_user_interactions(user_id: str, job_ids: set):
+    """Cache user's excluded job IDs for 60 seconds."""
+    _user_interactions_cache[user_id] = (time.time(), job_ids)
+    # Cleanup old entries (keep cache small)
+    if len(_user_interactions_cache) > 1000:
+        now = time.time()
+        expired = [uid for uid, (ts, _) in _user_interactions_cache.items() if now - ts > _USER_CACHE_TTL]
+        for uid in expired:
+            del _user_interactions_cache[uid]
+
+# ============== SCRAPE RESULTS CACHE (avoids re-scraping same keywords) ==============
+# Short-lived cache (5 min TTL) for scrape results
+# Key: (keyword, municipality_ids tuple), Value: (timestamp, jobs list)
+_scrape_cache: Dict[tuple, tuple] = {}
+_SCRAPE_CACHE_TTL = 300  # 5 minutes
+
 # Kommun ID → county (län) name mapping, built from lan-data.js
 _kommun_to_county: Dict[str, str] = {}
 
@@ -725,12 +755,38 @@ Inga rubriker, inga bullet points, bara löpande text per jobb.
 # ============== PLATSBANKEN SCRAPER ==============
 
 
+async def _fetch_job_detail(client: httpx.AsyncClient, job_id: str) -> Optional[Dict]:
+    """Fetch detailed job info from Platsbanken API (for parallel execution)."""
+    try:
+        detail_res = await client.get(
+            f"https://platsbanken-api.arbetsformedlingen.se/jobs/v1/job/{job_id}",
+            headers={"Content-Type": "application/json"},
+            timeout=8
+        )
+        if detail_res.status_code == 200:
+            return detail_res.json()
+    except Exception as e:
+        logger.debug(f"Detail fetch failed for {job_id}: {e}")
+    return None
+
+
 async def scrape_platsbanken(keyword: str, max_jobs: int = 15, municipality_ids: List[str] = None) -> List[Dict]:
     """
-    Scrape jobs from Platsbanken API.
+    Scrape jobs from Platsbanken API with PARALLEL detail fetches for performance.
+    OPTIMIZED: Uses 5-minute cache to avoid re-scraping identical searches.
     When municipality_ids is set, adds geographic filters to the search request
     and post-filters by municipality name as a safety net.
     """
+    import asyncio
+    
+    # OPTIMIZATION: Check scrape cache first
+    cache_key = (keyword.lower(), tuple(sorted(municipality_ids)) if municipality_ids else ())
+    if cache_key in _scrape_cache:
+        cached_at, cached_jobs = _scrape_cache[cache_key]
+        if time.time() - cached_at < _SCRAPE_CACHE_TTL:
+            logger.info(f"Scrape cache HIT for '{keyword}' ({len(cached_jobs)} jobs)")
+            return cached_jobs[:max_jobs]
+    
     jobs = []
     max_records = 50
 
@@ -796,10 +852,18 @@ async def scrape_platsbanken(keyword: str, max_jobs: int = 15, municipality_ids:
 
             logger.info(f"Found {len(ads)} ads for '{keyword}'")
 
-            for ad in ads:
-                if len(jobs) >= max_jobs:
-                    break
+            # Limit ads to max_jobs before fetching details
+            ads = ads[:max_jobs]
 
+            # OPTIMIZATION: Fetch all job details in PARALLEL (instead of sequential N+1)
+            job_ids = [str(ad.get("id", "")) for ad in ads if ad.get("id")]
+            logger.info(f"Fetching {len(job_ids)} job details in parallel...")
+            
+            detail_tasks = [_fetch_job_detail(client, job_id) for job_id in job_ids]
+            details = await asyncio.gather(*detail_tasks)
+            details_map = {job_ids[i]: details[i] for i in range(len(job_ids))}
+
+            for ad in ads:
                 job_id = str(ad.get("id", ""))
                 title = ad.get("title", "Okänd tjänst")
                 company = ad.get("workplaceName", "Okänt företag")
@@ -816,58 +880,49 @@ async def scrape_platsbanken(keyword: str, max_jobs: int = 15, municipality_ids:
                 salary_type = conditions.get("salaryType", "")
                 salary_description = conditions.get("salaryDescription", "")
 
-                # Always fetch full job detail — more reliable email + extra fields
+                # Use pre-fetched detail from parallel batch
                 number_of_positions = 1
                 municipality = ""
                 county = ""
                 occupation = ""
-                try:
-                    detail_res = await client.get(
-                        f"https://platsbanken-api.arbetsformedlingen.se/jobs/v1/job/{job_id}",
-                        headers={"Content-Type": "application/json"},
-                        timeout=8
-                    )
-                    if detail_res.status_code == 200:
-                        detail = detail_res.json()
-                        full_desc = detail.get("description", "") or ""
-                        if len(full_desc) > len(description):
-                            description = full_desc
+                app_details_email = None
+                apply_url = app_details.get("url", "")
+                contact_name = extract_contact_name(description)
+                contact_phone = app_details.get("phoneNumber", "")
 
-                        d_app = detail.get("applicationDetails", {}) or {}
-                        d_cond = detail.get("conditions", {}) or {}
-                        d_workplace = detail.get("workplace", {}) or {}
+                detail = details_map.get(job_id)
+                if detail:
+                    full_desc = detail.get("description", "") or ""
+                    if len(full_desc) > len(description):
+                        description = full_desc
 
-                        # applicationDetails.email is most reliable
-                        if d_app.get("email"):
-                            app_details_email = d_app["email"].lower()
-                        else:
-                            app_details_email = None
+                    d_app = detail.get("applicationDetails", {}) or {}
+                    d_cond = detail.get("conditions", {}) or {}
+                    d_workplace = detail.get("workplace", {}) or {}
 
-                        apply_url = d_app.get("url", "") or app_details.get("url", "")
-                        contact_name = d_app.get("name") or extract_contact_name(full_desc)
-                        contact_phone = d_app.get("phoneNumber", "")
+                    # applicationDetails.email is most reliable
+                    if d_app.get("email"):
+                        app_details_email = d_app["email"].lower()
 
-                        if not employment_type:
-                            employment_type = d_cond.get("employmentType", "")
-                        if not duration:
-                            duration = d_cond.get("duration", "")
-                        if not working_hours:
-                            working_hours = d_cond.get("workingHoursType", "")
-                        if not salary_type:
-                            salary_type = d_cond.get("salaryType", "")
-                        if not salary_description:
-                            salary_description = d_cond.get("salaryDescription", "")
+                    apply_url = d_app.get("url", "") or app_details.get("url", "")
+                    contact_name = d_app.get("name") or extract_contact_name(full_desc)
+                    contact_phone = d_app.get("phoneNumber", "")
 
-                        number_of_positions = detail.get("numberOfVacancies", 1) or 1
-                        municipality = d_workplace.get("municipality", "") or ""
-                        county = d_workplace.get("region", "") or ""
-                        occupation = detail.get("occupation", {}).get("label", "") if isinstance(detail.get("occupation"), dict) else ""
-                except Exception as e:
-                    logger.debug(f"Detail fetch failed for {job_id}: {e}")
-                    app_details_email = None
-                    apply_url = app_details.get("url", "")
-                    contact_name = extract_contact_name(description)
-                    contact_phone = app_details.get("phoneNumber", "")
+                    if not employment_type:
+                        employment_type = d_cond.get("employmentType", "")
+                    if not duration:
+                        duration = d_cond.get("duration", "")
+                    if not working_hours:
+                        working_hours = d_cond.get("workingHoursType", "")
+                    if not salary_type:
+                        salary_type = d_cond.get("salaryType", "")
+                    if not salary_description:
+                        salary_description = d_cond.get("salaryDescription", "")
+
+                    number_of_positions = detail.get("numberOfVacancies", 1) or 1
+                    municipality = d_workplace.get("municipality", "") or ""
+                    county = d_workplace.get("region", "") or ""
+                    occupation = detail.get("occupation", {}).get("label", "") if isinstance(detail.get("occupation"), dict) else ""
 
                 # Pick best contact email:
                 # Priority: applicationDetails.email → extract from full description
@@ -943,7 +998,17 @@ async def scrape_platsbanken(keyword: str, max_jobs: int = 15, municipality_ids:
     # AI-summarize descriptions for display (keeps full_description for cover letters)
     if jobs:
         jobs = await summarize_job_descriptions(jobs)
-
+    
+    # OPTIMIZATION: Store in scrape cache
+    if jobs:
+        _scrape_cache[cache_key] = (time.time(), jobs)
+        # Cleanup old cache entries
+        if len(_scrape_cache) > 100:
+            now = time.time()
+            expired = [k for k, (ts, _) in _scrape_cache.items() if now - ts > _SCRAPE_CACHE_TTL]
+            for k in expired:
+                del _scrape_cache[k]
+    
     return jobs
 
 
@@ -2260,17 +2325,58 @@ async def save_jobs_to_db(jobs: List[Dict]) -> int:
     return saved
 
 
-async def get_jobs_from_db(limit: int = 50, offset: int = 0) -> List[Dict]:
-    """Get jobs from database. Returns description_summary + full_description for UI.
-    Excludes jobs where deadline has passed."""
+async def get_jobs_from_db(
+    limit: int = 50, 
+    offset: int = 0,
+    exclude_job_ids: set = None,
+    municipality_filter: List[str] = None,
+    county_filter: List[str] = None
+) -> List[Dict]:
+    """Get jobs from database with server-side filtering.
+    
+    OPTIMIZED: Pushes filters to database level instead of fetching 500+ records
+    and filtering in Python.
+    
+    Args:
+        limit: Max jobs to return
+        offset: Pagination offset
+        exclude_job_ids: Set of job IDs to exclude (applied/rejected/skipped)
+        municipality_filter: List of municipality names to filter by (lowercase)
+        county_filter: List of county names to filter by (lowercase)
+    
+    Returns description_summary + full_description for UI.
+    Excludes jobs where deadline has passed.
+    """
     today = datetime.now().strftime("%Y-%m-%d")
-    jobs = await db_request("GET", "jobs", params={
-        "order": "scraped_at.desc",
+    
+    params = {
+        "order": "deadline.asc.nullslast,scraped_at.desc",  # Prioritize jobs by deadline
         "limit": str(limit),
         "offset": str(offset),
         "or": f"(deadline.is.null,deadline.gte.{today})"
-    })
+    }
+    
+    # Build combined filter for municipality/county at DB level
+    # PostgREST supports ilike for case-insensitive matching
+    if municipality_filter or county_filter:
+        geo_conditions = []
+        if municipality_filter:
+            for muni in municipality_filter:
+                geo_conditions.append(f"municipality.ilike.{muni}")
+        if county_filter:
+            for county in county_filter:
+                geo_conditions.append(f"county.ilike.{county}")
+        if geo_conditions:
+            # Create OR filter for geography
+            params["or"] = f"({','.join(geo_conditions)},deadline.is.null,deadline.gte.{today})"
+    
+    jobs = await db_request("GET", "jobs", params=params)
+    
     if jobs:
+        # Post-process: exclude specific job IDs (can't do NOT IN efficiently in PostgREST)
+        if exclude_job_ids:
+            jobs = [j for j in jobs if j["id"] not in exclude_job_ids]
+        
         for job in jobs:
             # Always expose full_description for cover letters and "Visa hela annonsen"
             job["full_description"] = job.get("description", "")
@@ -2522,58 +2628,82 @@ async def create_job_from_url(request: UrlJobRequest, req: Request = None):
 
 @app.get("/api/jobs")
 async def list_jobs(request: Request, limit: int = 50, offset: int = 0):
-    """List all jobs, filtered by user's location prefs and interaction history if logged in"""
+    """List all jobs, filtered by user's location prefs and interaction history if logged in.
+    
+    OPTIMIZED: 
+    - Uses 60-second cache for user interactions to reduce DB calls
+    - Fetches user preferences and interactions FIRST, then pushes filters
+      to the database query instead of fetching 500+ jobs and filtering in Python.
+    """
+    import asyncio as _asyncio
     user_id = await get_user_id_from_request(request)
-
-    # When logged in, fetch a bigger batch from DB since filtering
-    # (rejected/applied/skipped/location) will remove many jobs from the result.
-    # Fetch up to 500 from DB so the user sees enough after filtering.
-    db_limit = 500 if user_id else limit
-    jobs = await get_jobs_from_db(db_limit, offset)
-
-    if not jobs:
-        # Fallback: scrape live AND save to DB so apply-with-cv can find them
-        jobs = await scrape_platsbanken("jobb", max_jobs=limit)
-        if jobs:
-            await save_jobs_to_db(jobs)
-
-    if not jobs:
-        return {"success": True, "source": "empty", "jobs": []}
-
-    # If logged in, load user's interaction history and filter/score jobs
-    if user_id and jobs:
-        import asyncio as _asyncio
-        interactions_task = db_request("GET", "user_job_interactions", params={
-            "user_id": f"eq.{user_id}",
-            "select": "job_id,action"
-        })
-        # Also check applications table — belt-and-suspenders so applied/saved jobs
-        # are hidden even if the interaction log silently failed
-        applications_task = db_request("GET", "applications", params={
-            "user_id": f"eq.{user_id}",
-            "status": "in.(sent,draft,saved)",
-            "select": "job_id"
-        })
-        # Fetch user's preferred locations AND excluded keywords for server-side filtering
-        prefs_task = db_request("GET", "user_job_preferences", params={
-            "user_id": f"eq.{user_id}",
-            "select": "preferred_locations,excluded_keywords,quiz_answers"
-        })
-        # Also fetch AI feedback with exclude_jobs type
-        exclude_feedback_task = db_request("GET", "user_ai_feedback", params={
-            "user_id": f"eq.{user_id}",
-            "feedback_type": "eq.exclude_jobs",
-            "is_active": "eq.true",
-            "select": "feedback_text"
-        })
-        interactions, applied_applications, user_prefs, exclude_feedback = await _asyncio.gather(
-            interactions_task, applications_task, prefs_task, exclude_feedback_task
-        )
-        interactions = interactions or []
-        applied_applications = applied_applications or []
-
-        # --- SERVER-SIDE LOCATION FILTER ---
-        # Convert user's preferred kommun IDs to labels + county names, then filter jobs
+    
+    # Prepare filter variables
+    exclude_job_ids = set()
+    municipality_labels_lower = []
+    county_labels_lower = []
+    excluded_kw = []
+    
+    # OPTIMIZATION: Fetch user data in parallel BEFORE querying jobs
+    if user_id:
+        # Check cache first for user interactions
+        cached_exclude_ids = get_cached_user_interactions(user_id)
+        
+        if cached_exclude_ids is not None:
+            # Cache hit - only need to fetch preferences
+            exclude_job_ids = cached_exclude_ids
+            logger.info(f"User interaction cache HIT for {user_id[:8]} ({len(exclude_job_ids)} excluded)")
+            
+            prefs_task = db_request("GET", "user_job_preferences", params={
+                "user_id": f"eq.{user_id}",
+                "select": "preferred_locations,excluded_keywords,quiz_answers"
+            })
+            exclude_feedback_task = db_request("GET", "user_ai_feedback", params={
+                "user_id": f"eq.{user_id}",
+                "feedback_type": "eq.exclude_jobs",
+                "is_active": "eq.true",
+                "select": "feedback_text"
+            })
+            user_prefs, exclude_feedback = await _asyncio.gather(prefs_task, exclude_feedback_task)
+            interactions = []
+            applied_applications = []
+        else:
+            # Cache miss - fetch all data
+            interactions_task = db_request("GET", "user_job_interactions", params={
+                "user_id": f"eq.{user_id}",
+                "action": "in.(applied,rejected,skipped)",
+                "select": "job_id"
+            })
+            applications_task = db_request("GET", "applications", params={
+                "user_id": f"eq.{user_id}",
+                "status": "in.(sent,draft,saved)",
+                "select": "job_id"
+            })
+            prefs_task = db_request("GET", "user_job_preferences", params={
+                "user_id": f"eq.{user_id}",
+                "select": "preferred_locations,excluded_keywords,quiz_answers"
+            })
+            exclude_feedback_task = db_request("GET", "user_ai_feedback", params={
+                "user_id": f"eq.{user_id}",
+                "feedback_type": "eq.exclude_jobs",
+                "is_active": "eq.true",
+                "select": "feedback_text"
+            })
+            
+            interactions, applied_applications, user_prefs, exclude_feedback = await _asyncio.gather(
+                interactions_task, applications_task, prefs_task, exclude_feedback_task
+            )
+            interactions = interactions or []
+            applied_applications = applied_applications or []
+            
+            # Build exclude set from interactions
+            exclude_job_ids = {i["job_id"] for i in interactions}
+            exclude_job_ids |= {a["job_id"] for a in applied_applications}
+            
+            # Cache the interactions for 60 seconds
+            cache_user_interactions(user_id, exclude_job_ids)
+        
+        # Build location filters
         preferred_locs = []
         if user_prefs and len(user_prefs) > 0:
             preferred_locs = user_prefs[0].get("preferred_locations") or []
@@ -2585,31 +2715,18 @@ async def list_jobs(request: Request, limit: int = 50, offset: int = 0):
                     label_lookup[mid].lower() for mid in loc_ids if mid in label_lookup
                 ]
                 county_labels_lower = _get_county_labels_for_kommun_ids(loc_ids)
-                if municipality_labels_lower:
-                    before = len(jobs)
-                    jobs = [j for j in jobs if _job_in_municipalities(j, municipality_labels_lower, county_labels_lower)]
-                    logger.info(f"Server geo filter: {before} → {len(jobs)} jobs for user {user_id[:8]}")
-
-        # --- SERVER-SIDE EXCLUDED KEYWORDS FILTER ---
-        # Filter out jobs matching user's negative keywords (e.g., "militär" → also "försvar", "fmv")
-        KEYWORD_EXPANSIONS = {
-            "militär": ["försvar", "fmv", "försvarsmakten", "försvaret", "krigsmakten"],
-            "försvar": ["militär", "fmv", "försvarsmakten", "försvaret"],
-            "fmv": ["försvar", "försvarsmakten", "militär"],
-            "polis": ["polisen", "polismyndigheten"],
-        }
-        excluded_kw = []
+        
+        # Build excluded keywords list
         if user_prefs and len(user_prefs) > 0:
             excluded_kw = user_prefs[0].get("excluded_keywords") or []
-            # Also check quiz_answers.negative_keywords as backup
             if not excluded_kw:
                 qa = user_prefs[0].get("quiz_answers") or {}
                 excluded_kw = qa.get("negative_keywords") or []
-        # Also extract keywords from user_ai_feedback with feedback_type=exclude_jobs
+        
+        # Extract keywords from AI feedback
         exclude_feedback = exclude_feedback or []
         for fb in exclude_feedback:
             fb_text = (fb.get("feedback_text") or "").lower()
-            # Extract meaningful words from feedback text (skip common Swedish words)
             skip_words = {"jag", "vill", "inte", "att", "med", "på", "i", "för", "och", "eller", "av",
                           "en", "ett", "den", "det", "de", "som", "har", "kan", "ska", "om", "är",
                           "jobba", "arbeta", "söka", "jobb", "arbete", "inga", "ingen", "inget", "nej",
@@ -2617,59 +2734,97 @@ async def list_jobs(request: Request, limit: int = 50, offset: int = 0):
             words = [w.strip(".,!?:;()\"'") for w in fb_text.split() if len(w.strip(".,!?:;()\"'")) >= 3]
             meaningful = [w for w in words if w not in skip_words]
             excluded_kw.extend(meaningful)
-        if excluded_kw:
-            # Expand keywords for broader matching
-            expanded = set()
-            for kw in excluded_kw:
-                expanded.add(kw.lower())
-                for extra in KEYWORD_EXPANSIONS.get(kw.lower(), []):
-                    expanded.add(extra)
-            before = len(jobs)
-            jobs = [j for j in jobs if not any(
-                kw in (j.get("title", "") + " " + j.get("company", "") + " " + j.get("description", "")).lower()
-                for kw in expanded
-            )]
-            if before != len(jobs):
-                logger.info(f"Server keyword filter: {before} → {len(jobs)} jobs for user {user_id[:8]} (excluded: {excluded_kw})")
+    
+    # OPTIMIZED: Request only what we need with filters pushed to DB
+    # Request more than limit to account for keyword filtering (done in Python)
+    db_limit = limit * 3 if excluded_kw else limit + len(exclude_job_ids) if exclude_job_ids else limit
+    db_limit = min(db_limit, 200)  # Cap at 200 instead of 500
+    
+    jobs = await get_jobs_from_db(
+        limit=db_limit, 
+        offset=offset,
+        exclude_job_ids=exclude_job_ids,
+        municipality_filter=municipality_labels_lower if municipality_labels_lower else None,
+        county_filter=county_labels_lower if county_labels_lower else None
+    )
 
-        rejected_ids = {i["job_id"] for i in interactions if i["action"] == "rejected"}
-        applied_ids = {i["job_id"] for i in interactions if i["action"] == "applied"}
-        applied_ids |= {a["job_id"] for a in applied_applications}
-        skipped_ids = {i["job_id"] for i in interactions if i["action"] == "skipped"}
+    if not jobs:
+        # Fallback: scrape live AND save to DB so apply-with-cv can find them
+        jobs = await scrape_platsbanken("jobb", max_jobs=limit)
+        if jobs:
+            await save_jobs_to_db(jobs)
 
-        # Hard-filter: rejected, applied, AND skipped jobs are completely removed from feed
-        hidden_ids = rejected_ids | applied_ids | skipped_ids
-        active_jobs = [j for j in jobs if j["id"] not in hidden_ids]
+    if not jobs:
+        return {"success": True, "source": "empty", "jobs": []}
 
-        # Prioritize jobs with contact_email (direct apply) first
-        def has_email(j):
-            email = j.get("contact_email")
-            return bool(email and "@" in str(email))
+    # Apply keyword filtering (can't efficiently do text search at DB level via PostgREST)
+    if excluded_kw and user_id:
+        KEYWORD_EXPANSIONS = {
+            "militär": ["försvar", "fmv", "försvarsmakten", "försvaret", "krigsmakten"],
+            "försvar": ["militär", "fmv", "försvarsmakten", "försvaret"],
+            "fmv": ["försvar", "försvarsmakten", "militär"],
+            "polis": ["polisen", "polismyndigheten"],
+        }
+        expanded = set()
+        for kw in excluded_kw:
+            expanded.add(kw.lower())
+            for extra in KEYWORD_EXPANSIONS.get(kw.lower(), []):
+                expanded.add(extra)
+        before = len(jobs)
+        jobs = [j for j in jobs if not any(
+            kw in (j.get("title", "") + " " + j.get("company", "") + " " + j.get("description", "")).lower()
+            for kw in expanded
+        )]
+        if before != len(jobs):
+            logger.info(f"Keyword filter: {before} → {len(jobs)} jobs for user {user_id[:8]} (excluded: {excluded_kw})")
 
-        with_email = [j for j in active_jobs if has_email(j)]
-        without_email = [j for j in active_jobs if not has_email(j)]
+    # Prioritize jobs with contact_email (direct apply) first, then sort by deadline
+    def has_email(j):
+        email = j.get("contact_email")
+        return bool(email and "@" in str(email))
 
-        # Sort by deadline (soonest first)
-        def deadline_sort_key(j):
-            d = j.get("deadline")
-            if not d:
-                return "9999-12-31"
-            return d[:10]
+    def deadline_sort_key(j):
+        d = j.get("deadline")
+        if not d:
+            return "9999-12-31"
+        return d[:10]
 
-        with_email.sort(key=deadline_sort_key)
-        without_email.sort(key=deadline_sort_key)
+    with_email = sorted([j for j in jobs if has_email(j)], key=deadline_sort_key)
+    without_email = sorted([j for j in jobs if not has_email(j)], key=deadline_sort_key)
+    jobs = (with_email + without_email)[:limit]  # Final limit enforcement
 
-        jobs = with_email + without_email
+    # OPTIMIZATION: Strip full_description from list response to reduce payload
+    # Users can fetch full details via GET /api/jobs/{job_id} when needed
+    lightweight_jobs = []
+    for job in jobs:
+        lightweight_job = {k: v for k, v in job.items() if k != "full_description"}
+        # Keep a truncated version for preview (max 300 chars)
+        if job.get("full_description") and len(job.get("description", "")) < 100:
+            desc = job["full_description"][:300]
+            if len(job["full_description"]) > 300:
+                desc = desc.rsplit(' ', 1)[0] + '...'
+            lightweight_job["description"] = desc
+        lightweight_jobs.append(lightweight_job)
 
-    return {"success": True, "source": "database", "jobs": jobs}
+    return {"success": True, "source": "database", "jobs": lightweight_jobs}
 
 
 @app.get("/api/jobs/{job_id}")
 async def get_job(job_id: str):
-    """Get single job by ID"""
+    """Get single job by ID with full description.
+    
+    OPTIMIZED: This endpoint returns the complete job data including full_description,
+    which is omitted from the list endpoint to reduce payload size.
+    Use this when user clicks on a job to see details or generate cover letter.
+    """
     jobs = await db_request("GET", "jobs", params={"id": f"eq.{job_id}"})
     if jobs and len(jobs) > 0:
-        return {"success": True, "job": jobs[0]}
+        job = jobs[0]
+        # Ensure full_description is always available
+        job["full_description"] = job.get("description", "")
+        if job.get("description_summary"):
+            job["description"] = job["description_summary"]
+        return {"success": True, "job": job}
     raise HTTPException(status_code=404, detail="Job not found")
 
 
@@ -5918,7 +6073,7 @@ LEAF (Living Environment and Future) | 2016 - 2017
 ● Ledde elevgrupp för att utbilda skolan i miljötänk. Organiserade presentationer och kampanjer.
 ● Skapade modemagasin för att sponsra hållbart jordbruksprojekt i Ghana. Samlade in 30,000 kr.
 
-The Right Solution Project | Mars 2013 – April 2015
+The Right Solution Project | Mars 2013 ��� April 2015
 ● Tog initiativ att finansiera NGO för kvinnors utbildning vid 15 års ålder.
 ● Samlade in över 120,000 kr genom evenemang, konstutställningar och försäljning.
 ● Tillhandahöll 400+ vårdpaket med hygienprodukter till etiopiska skolor. Täcktes i media två gånger.
@@ -6175,7 +6330,7 @@ Konstnär och Egenföretagare | Jan 2024 – Pågående
 
 TikTok/ByteDance - Nashville, USA
 Kvalitetsgranskare - Amerikanska marknaden | Maj 2022 – Juni 2022
-● Granskade innehållsmoderatorernas arbete för att säkerställa att de följer riktlinjer.
+��� Granskade innehållsmoderatorernas arbete för att säkerställa att de följer riktlinjer.
 ● Kvalitetssäkrade moderering och bidrog till förbättrade processer.
 
 YouTube Ads (via Vaco) - San Francisco, USA
