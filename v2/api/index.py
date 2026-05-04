@@ -1437,6 +1437,18 @@ def analyze_swedish_vibe(text):
     return response.json()
 
 
+def fix_with_swedish_bert(text):
+    import requests
+    API_URL = "https://api-inference.huggingface.co/models/KBLab/bert-base-swedish-cased"
+    headers = {"Authorization": f"Bearer {os.environ.get('HUGGINGFACE_API_KEY')}"}
+    try:
+        response = requests.post(API_URL, headers=headers, json={"inputs": text})
+        return response.json()
+    except Exception as e:
+        print(f"BERT-fel: {e}")
+        return None
+
+
 async def check_svengelska_kblab(text: str) -> dict:
     """
     Detect svengelska (Swedish-English hybrid language) using KBLab/bert-base-swedish-cased
@@ -1908,6 +1920,15 @@ Skriv ENDAST det färdiga brevet, inget annat."""
                 letter_text = re.sub(r'^#+\s+', '', letter_text, flags=re.MULTILINE)
                 # Run GPT-SW3 Swedish grammar check (non-blocking — returns original on failure)
                 letter_text = await check_swedish_with_gpt_sw3(letter_text)
+                # Kör svensk vibe-check med KBLab BERT (loggar resultat, blockerar ej)
+                try:
+                    import asyncio as _asyncio
+                    swedish_analysis = await _asyncio.get_event_loop().run_in_executor(
+                        None, fix_with_swedish_bert, letter_text[:512]
+                    )
+                    print(f"Svensk analys klar: {swedish_analysis}")
+                except Exception as _bert_err:
+                    print(f"BERT-fel (ej kritiskt): {_bert_err}")
                 return letter_text
             else:
                 error_body = response.text[:300]
@@ -1934,6 +1955,15 @@ Skriv ENDAST det färdiga brevet, inget annat."""
                         # Strip markdown heading markers if Claude added them
                         letter_text = re.sub(r'^#+\s+', '', letter_text, flags=re.MULTILINE)
                         letter_text = await check_swedish_with_gpt_sw3(letter_text)
+                        # Kör svensk vibe-check med KBLab BERT (loggar resultat, blockerar ej)
+                        try:
+                            import asyncio as _asyncio
+                            swedish_analysis = await _asyncio.get_event_loop().run_in_executor(
+                                None, fix_with_swedish_bert, letter_text[:512]
+                            )
+                            print(f"Svensk analys klar: {swedish_analysis}")
+                        except Exception as _bert_err:
+                            print(f"BERT-fel (ej kritiskt): {_bert_err}")
                         return letter_text
                 except Exception as fallback_err:
                     logger.error(f"Haiku fallback also failed: {fallback_err}")
