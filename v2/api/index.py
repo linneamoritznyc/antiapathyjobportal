@@ -9361,15 +9361,30 @@ async def export_user_data(request: Request):
 # ============== GMAIL OAUTH (Per-user credentials from Supabase) ==============
 
 async def get_user_gmail_credentials(user_id: str) -> Optional[dict]:
-    """Fetch Gmail OAuth credentials. Falls back to app-level env vars if user has no per-user creds."""
+    """Fetch Gmail OAuth credentials for a user.
+
+    Priority order:
+    1. DB row that already has client_id + client_secret stored
+    2. DB row (any row) merged with app-level env var credentials
+    3. Just env vars (no DB row yet)
+    Returns None only if no client_id/secret can be found anywhere.
+    """
     creds = await db_request("GET", "user_google_credentials", params={"user_id": f"eq.{user_id}"})
-    if creds and creds[0].get("client_id") and creds[0].get("client_secret"):
-        return creds[0]
-    # Fall back to app-level credentials from environment variables
-    app_client_id = os.getenv("GOOGLE_CLIENT_ID", "")
-    app_client_secret = os.getenv("GOOGLE_CLIENT_SECRET", "")
+    app_client_id = os.getenv("GOOGLE_CLIENT_ID", "").strip()
+    app_client_secret = os.getenv("GOOGLE_CLIENT_SECRET", "").strip()
+
+    if creds:
+        row = creds[0]
+        row_client_id = row.get("client_id") or app_client_id
+        row_client_secret = row.get("client_secret") or app_client_secret
+        if row_client_id and row_client_secret:
+            # Merge env-var credentials into the row dict so callers always see client_id
+            return {**row, "client_id": row_client_id, "client_secret": row_client_secret}
+
+    # No DB row — return env-var creds only
     if app_client_id and app_client_secret:
         return {"user_id": user_id, "client_id": app_client_id, "client_secret": app_client_secret}
+
     return None
 
 
@@ -9463,6 +9478,13 @@ async def gmail_oauth_callback(code: str, state: str = ""):
 
     expires_at = datetime.now() + timedelta(seconds=tokens.get("expires_in", 3600))
 
+    # Determine the client_id/secret that was used so we can persist them.
+    # This is the critical step that was missing: without client_id in the DB
+    # the refresh_token can never be used after the access_token expires.
+    cred_source = await get_user_gmail_credentials(user_id)
+    used_client_id = (cred_source or {}).get("client_id") or os.getenv("GOOGLE_CLIENT_ID", "")
+    used_client_secret = (cred_source or {}).get("client_secret") or os.getenv("GOOGLE_CLIENT_SECRET", "")
+
     # Upsert — create or update
     existing = await db_request("GET", "user_google_credentials", params={"user_id": f"eq.{user_id}"})
     token_data = {
@@ -9473,21 +9495,41 @@ async def gmail_oauth_callback(code: str, state: str = ""):
         "is_connected": True,
         "updated_at": datetime.now().isoformat()
     }
+
+    # Always persist client_id/secret so future refreshes don't depend on env vars
+    if used_client_id:
+        token_data["client_id"] = used_client_id
+    if used_client_secret:
+        token_data["client_secret"] = used_client_secret
+
     # Only write refresh_token when Google actually returns one.
-    # On re-auth Google omits it if the grant still exists — keep the stored token.
+    # With prompt=consent + access_type=offline Google ALWAYS returns one on fresh auth.
     new_refresh_token = tokens.get("refresh_token")
     if new_refresh_token:
         token_data["refresh_token"] = new_refresh_token
+        logger.info(f"Gmail callback: new refresh_token received and saved for user {user_id[:8]}")
     elif existing:
-        # Preserve whatever is already in DB
         existing_rt = existing[0].get("refresh_token")
         if existing_rt:
             token_data["refresh_token"] = existing_rt
+
+    if not token_data.get("refresh_token"):
+        logger.error(
+            f"Gmail callback: NO refresh_token in Google response for user {user_id[:8]}. "
+            "This means the connection will break when the access_token expires in 1 hour. "
+            "Cause: prompt=consent was not honoured, or the user denied offline access."
+        )
 
     if existing:
         await db_request("PATCH", f"user_google_credentials?user_id=eq.{user_id}", data=token_data)
     else:
         await db_request("POST", "user_google_credentials", data=token_data)
+
+    logger.info(
+        f"Gmail connected: user={user_id[:8]} email={gmail_address} "
+        f"refresh_token={'saved' if token_data.get('refresh_token') else 'MISSING'} "
+        f"client_id={'saved' if token_data.get('client_id') else 'MISSING'}"
+    )
 
     return HTMLResponse(content=f"""
     <!DOCTYPE html>
@@ -9551,6 +9593,88 @@ async def get_gmail_status(request: Request):
     }
 
 
+@app.post("/api/gmail/repair")
+async def repair_gmail_connection(request: Request):
+    """
+    Self-heal a broken Gmail connection WITHOUT requiring full re-auth.
+
+    Does three things in order:
+    1. Writes GOOGLE_CLIENT_ID/SECRET from env vars into the DB row if missing
+    2. Forces a token refresh using the stored refresh_token
+    3. Returns the new connection status
+
+    Call this when: client_id was missing in DB, or access_token is stale but
+    refresh_token still exists. If refresh_token itself is revoked the user
+    must go through the full OAuth flow again (/api/gmail/auth-url).
+    """
+    user_id = await get_user_id_from_request(request, required=True)
+
+    app_client_id = os.getenv("GOOGLE_CLIENT_ID", "").strip()
+    app_client_secret = os.getenv("GOOGLE_CLIENT_SECRET", "").strip()
+
+    creds = await db_request("GET", "user_google_credentials", params={"user_id": f"eq.{user_id}"})
+    if not creds:
+        return {"success": False, "error": "Ingen Gmail-rad hittad. Koppla Gmail via Profil-fliken först."}
+
+    cred = creds[0]
+
+    # Step 1: persist client_id/secret if missing
+    needs_patch = {}
+    if not cred.get("client_id") and app_client_id:
+        needs_patch["client_id"] = app_client_id
+    if not cred.get("client_secret") and app_client_secret:
+        needs_patch["client_secret"] = app_client_secret
+    if needs_patch:
+        needs_patch["updated_at"] = datetime.now().isoformat()
+        await db_request("PATCH", f"user_google_credentials?user_id=eq.{user_id}", data=needs_patch)
+        logger.info(f"gmail/repair: wrote client_id/secret to DB for user {user_id[:8]}")
+
+    if not (cred.get("client_id") or app_client_id):
+        return {
+            "success": False,
+            "error": (
+                "GOOGLE_CLIENT_ID saknas i miljövariablerna. "
+                "Lägg till GOOGLE_CLIENT_ID och GOOGLE_CLIENT_SECRET i Replit Secrets och försök igen."
+            )
+        }
+
+    if not cred.get("refresh_token"):
+        return {
+            "success": False,
+            "error": (
+                "Ingen refresh_token lagrad. Du måste koppla om Gmail helt "
+                "via Profil → Gmail → Koppla Gmail."
+            )
+        }
+
+    # Step 2: force token refresh (re-read row so we have the patched client_id)
+    new_token = await refresh_gmail_token(user_id)
+    if not new_token:
+        return {
+            "success": False,
+            "error": (
+                "Token-refresh misslyckades. Refresh_token kan vara ogiltig (återkallad av Google). "
+                "Gå till Profil → Gmail → Koppla om Gmail för att skaffa en ny."
+            )
+        }
+
+    # Mark as connected (in case it was flagged as disconnected)
+    await db_request("PATCH", f"user_google_credentials?user_id=eq.{user_id}", data={
+        "is_connected": True,
+        "updated_at": datetime.now().isoformat()
+    })
+
+    updated = await db_request("GET", "user_google_credentials", params={"user_id": f"eq.{user_id}"})
+    gmail_address = (updated[0].get("gmail_address") if updated else None) or cred.get("gmail_address")
+
+    logger.info(f"gmail/repair: successfully refreshed token for user {user_id[:8]} ({gmail_address})")
+    return {
+        "success": True,
+        "message": f"Gmail-kopplingen är reparerad. {gmail_address} är aktiv igen.",
+        "gmail_address": gmail_address
+    }
+
+
 @app.post("/api/gmail/disconnect")
 async def disconnect_gmail(request: Request):
     """
@@ -9606,10 +9730,25 @@ async def refresh_gmail_token(user_id: str) -> Optional[str]:
     cred = creds[0]
 
     # OAuth credentials — prefer per-user rows, fall back to app-level env vars
-    client_id = cred.get("client_id") or os.getenv("GOOGLE_CLIENT_ID", "")
-    client_secret = cred.get("client_secret") or os.getenv("GOOGLE_CLIENT_SECRET", "")
+    client_id = cred.get("client_id") or os.getenv("GOOGLE_CLIENT_ID", "").strip()
+    client_secret = cred.get("client_secret") or os.getenv("GOOGLE_CLIENT_SECRET", "").strip()
     if not client_id or not client_secret:
+        logger.error(
+            f"refresh_gmail_token: cannot refresh for user {user_id[:8]} — "
+            "client_id/client_secret missing from both DB and GOOGLE_CLIENT_ID/GOOGLE_CLIENT_SECRET env vars. "
+            "Add GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET to Replit Secrets."
+        )
         return None
+
+    # Self-heal: if client_id came from env vars (not DB), persist it so future
+    # refreshes work even if the env var is later removed.
+    if not cred.get("client_id") and client_id:
+        await db_request("PATCH", f"user_google_credentials?user_id=eq.{user_id}", data={
+            "client_id": client_id,
+            "client_secret": client_secret,
+            "updated_at": datetime.now().isoformat()
+        })
+        logger.info(f"refresh_gmail_token: persisted client_id to DB for user {user_id[:8]}")
 
     # Return existing token if still valid (with 5-min buffer).
     # Normalise to UTC-aware to avoid TypeError when mixing naive/aware datetimes.
