@@ -5772,7 +5772,7 @@ async def google_auth():
     """Redirect user to Google Sign-In via Supabase OAuth."""
     if not SUPABASE_URL or not SUPABASE_ANON_KEY:
         raise HTTPException(status_code=500, detail="Supabase not configured")
-    redirect_to = "https://platsbanken-ai.vercel.app/login"
+    redirect_to = f"{get_app_base_url()}/login"
     url = (
         f"{SUPABASE_URL}/auth/v1/authorize?provider=google"
         f"&redirect_to={redirect_to}"
@@ -5802,7 +5802,7 @@ async def sign_up(request: SignUpRequest):
                 "password": request.password,
                 "data": {"full_name": request.full_name} if request.full_name else {},
                 "options": {
-                    "email_redirect_to": "https://platsbanken-ai.vercel.app/login"
+                    "email_redirect_to": f"{get_app_base_url()}/login"
                 }
             }
         )
@@ -5843,7 +5843,7 @@ async def resend_verification(request: ResendVerificationRequest):
                 "type": "signup",
                 "email": request.email,
                 "options": {
-                    "email_redirect_to": "https://platsbanken-ai.vercel.app/login"
+                    "email_redirect_to": f"{get_app_base_url()}/login"
                 }
             }
         )
