@@ -18,28 +18,14 @@
 <body class="bg-slate-50 min-h-screen">
     <div id="root"></div>
     <script>
-        // Handle Supabase OAuth callback — runs before React mounts so tokens
-        // are available immediately. Supabase appends #access_token=... to the
-        // redirect URL; we save it and strip the hash so the app loads cleanly.
+        // Handle Supabase OAuth callback — if #access_token lands on the root
+        // page, forward to /login which has the full token-processing logic.
         (function() {
             var hash = window.location.hash.substring(1);
             if (!hash) return;
-            var params = new URLSearchParams(hash);
-            var accessToken = params.get('access_token');
-            if (!accessToken) return;
-            // Save tokens to localStorage
-            localStorage.setItem('auth_token', accessToken);
-            var refreshToken = params.get('refresh_token');
-            if (refreshToken) localStorage.setItem('refresh_token', refreshToken);
-            // Decode email/id from JWT payload (no crypto verification needed here)
-            try {
-                var payload = JSON.parse(atob(accessToken.split('.')[1]));
-                if (payload.email) {
-                    localStorage.setItem('user', JSON.stringify({ email: payload.email, id: payload.sub }));
-                }
-            } catch(e) {}
-            // Clear the hash from the URL so it doesn't confuse the React app
-            history.replaceState(null, '', window.location.pathname);
+            if (new URLSearchParams(hash).get('access_token')) {
+                window.location.replace('/login' + window.location.hash);
+            }
         })();
     </script>
     <script>
