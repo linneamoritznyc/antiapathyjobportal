@@ -18,6 +18,31 @@
 <body class="bg-slate-50 min-h-screen">
     <div id="root"></div>
     <script>
+        // Handle Supabase OAuth callback — runs before React mounts so tokens
+        // are available immediately. Supabase appends #access_token=... to the
+        // redirect URL; we save it and strip the hash so the app loads cleanly.
+        (function() {
+            var hash = window.location.hash.substring(1);
+            if (!hash) return;
+            var params = new URLSearchParams(hash);
+            var accessToken = params.get('access_token');
+            if (!accessToken) return;
+            // Save tokens to localStorage
+            localStorage.setItem('auth_token', accessToken);
+            var refreshToken = params.get('refresh_token');
+            if (refreshToken) localStorage.setItem('refresh_token', refreshToken);
+            // Decode email/id from JWT payload (no crypto verification needed here)
+            try {
+                var payload = JSON.parse(atob(accessToken.split('.')[1]));
+                if (payload.email) {
+                    localStorage.setItem('user', JSON.stringify({ email: payload.email, id: payload.sub }));
+                }
+            } catch(e) {}
+            // Clear the hash from the URL so it doesn't confuse the React app
+            history.replaceState(null, '', window.location.pathname);
+        })();
+    </script>
+    <script>
         // Temporary error overlay — catches Babel parse errors and runtime crashes
         window.onerror = function(msg, url, line, col, err) {
             var el = document.createElement('div');
