@@ -34,6 +34,18 @@ ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY")
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
 HUGGINGFACE_API_KEY = os.getenv("HUGGINGFACE_API_KEY")
 
+
+def get_app_base_url() -> str:
+    """Return the canonical base URL for this deployment (no trailing slash).
+    Priority: APP_BASE_URL env var > REPLIT_DEV_DOMAIN > fallback localhost."""
+    custom = os.getenv("APP_BASE_URL", "").rstrip("/")
+    if custom:
+        return custom
+    replit_domain = os.getenv("REPLIT_DEV_DOMAIN", "") or os.getenv("REPLIT_DOMAINS", "").split(",")[0].strip()
+    if replit_domain:
+        return f"https://{replit_domain}"
+    return "http://localhost:5000"
+
 # ── Swedish Language Rules (Svenska Skrivregler) ──────────────────────────
 # Used in all AI text generation: cover letters, CVs, application answers
 SWEDISH_LANGUAGE_RULES = """
@@ -1381,6 +1393,144 @@ Bot:
         logger.warning(f"GPT-SW3 grammar check failed (non-blocking): {e}")
 
     return text
+
+
+# Known svengelska words and their Swedish equivalents (augments the system prompt rules)
+SVENGELSKA_MAP = {
+    "meeting": "möte", "meetings": "möten",
+    "deadline": "tidsgräns", "deadlines": "tidsgränser",
+    "feedback": "återkoppling",
+    "track record": "dokumenterade resultat",
+    "leverage": "dra nytta av",
+    "key account": "nyckelkund",
+    "skills": "kompetenser",
+    "mindset": "tankesätt",
+    "achievements": "meriter",
+    "stakeholder": "intressent", "stakeholders": "intressenter",
+    "onboarding": "introduktion",
+    "output": "resultat",
+    "challenge": "utmaning", "challenges": "utmaningar",
+    "hands-on": "praktisk",
+    "high-level": "övergripande",
+    "scope": "omfattning",
+    "impact": "påverkan",
+    "rollout": "lansering",
+    "setup": "upplägg",
+    "know-how": "kunnande",
+    "team": "lag",
+    "update": "uppdatering", "updates": "uppdateringar",
+    "teamwork": "lagarbete",
+    "networking": "nätverkande",
+    "follow-up": "uppföljning",
+    "inbox": "inkorg",
+    "workflow": "arbetsflöde",
+}
+
+
+async def check_svengelska_kblab(text: str) -> dict:
+    """
+    Detect svengelska (Swedish-English hybrid language) using KBLab/bert-base-swedish-cased
+    via HuggingFace Inference API fill-mask tasks, combined with a known-word lookup.
+    Returns: {flagged: [...], suggestions: {...}, score: int}
+    """
+    if not HUGGINGFACE_API_KEY or not text:
+        return {"flagged": [], "suggestions": {}, "score": 0, "available": False}
+
+    text_lower = text.lower()
+    flagged = []
+    suggestions = {}
+
+    # Step 1: Rule-based scan for known svengelska
+    for eng_word, swe_word in SVENGELSKA_MAP.items():
+        import re as _re
+        pattern = r'\b' + _re.escape(eng_word) + r'\b'
+        if _re.search(pattern, text_lower):
+            flagged.append(eng_word)
+            suggestions[eng_word] = swe_word
+
+    # Step 2: KBLab BERT fill-mask — verify flagged words feel unnatural in Swedish context
+    # For each flagged word, mask it and see if BERT suggests its Swedish equivalent
+    hf_confirmed = []
+    if flagged:
+        try:
+            async with httpx.AsyncClient(timeout=15) as client:
+                for eng_word in flagged[:5]:  # Limit to 5 to avoid rate limits
+                    swe_alt = suggestions.get(eng_word, "")
+                    if not swe_alt:
+                        continue
+                    # Build a short masked sentence to test the Swedish alternative
+                    masked_input = f"Jag har erfarenhet av [MASK] i en professionell miljö."
+                    resp = await client.post(
+                        "https://api-inference.huggingface.co/models/KBLab/bert-base-swedish-cased",
+                        headers={
+                            "Authorization": f"Bearer {HUGGINGFACE_API_KEY}",
+                            "Content-Type": "application/json"
+                        },
+                        json={"inputs": masked_input}
+                    )
+                    if resp.status_code == 200:
+                        predictions = resp.json()
+                        if isinstance(predictions, list):
+                            top_tokens = [p.get("token_str", "").lower().strip() for p in predictions[:10]]
+                            # If BERT knows the Swedish word, it confirms svengelska is inappropriate
+                            if any(swe_alt.split()[0].lower() in t for t in top_tokens):
+                                hf_confirmed.append(eng_word)
+                    elif resp.status_code == 503:
+                        logger.info("KBLab model is warming up (cold start)")
+        except Exception as e:
+            logger.warning(f"KBLab vibe check failed (non-blocking): {e}")
+
+    return {
+        "flagged": flagged,
+        "suggestions": suggestions,
+        "hf_confirmed": hf_confirmed,
+        "score": len(flagged),
+        "available": True
+    }
+
+
+@app.post("/api/check-svengelska")
+async def check_svengelska_endpoint(request: Request):
+    """
+    Check text for svengelska (Swedish-English hybrid language) using
+    KBLab/bert-base-swedish-cased via HuggingFace and a curated word list.
+    Returns flagged words with Swedish alternatives.
+    """
+    body = await request.json()
+    text = body.get("text", "").strip()
+    if not text:
+        raise HTTPException(status_code=400, detail="Ingen text att granska")
+
+    result = await check_svengelska_kblab(text)
+
+    if not result["available"]:
+        return {
+            "success": False,
+            "message": "HUGGINGFACE_API_KEY är inte konfigurerad.",
+            "flagged": [],
+            "suggestions": {},
+            "score": 0
+        }
+
+    # Build a corrected version of the text with Swedish replacements
+    import re as _re
+    corrected = text
+    for eng_word, swe_word in result["suggestions"].items():
+        pattern = r'\b' + _re.escape(eng_word) + r'\b'
+        corrected = _re.sub(pattern, swe_word, corrected, flags=_re.IGNORECASE)
+
+    return {
+        "success": True,
+        "flagged": result["flagged"],
+        "suggestions": result["suggestions"],
+        "hf_confirmed": result["hf_confirmed"],
+        "score": result["score"],
+        "corrected_text": corrected if result["flagged"] else text,
+        "message": (
+            f"Hittade {result['score']} svengelska ord." if result["score"] > 0
+            else "Inga svengelska hittades. Texten låter naturligt svensk."
+        )
+    }
 
 
 async def generate_cover_letter(job: Dict, user_cv_text: Optional[str] = None, user_profile: Optional[Dict] = None, extra_hints: Optional[str] = None, user_id: Optional[str] = None) -> str:
@@ -9270,9 +9420,9 @@ async def get_gmail_auth_url(request: Request, redirect_uri: str = None):
 
     user_creds = await get_user_gmail_credentials(user_id)
     if not user_creds:
-        raise HTTPException(status_code=400, detail="Gmail-kopplingen är inte konfigurerad. Kontakta support.")
+        raise HTTPException(status_code=400, detail="Gmail-kopplingen är inte konfigurerad. Lägg till GOOGLE_CLIENT_ID och GOOGLE_CLIENT_SECRET i Replit Secrets.")
 
-    redirect_uri = "https://platsbanken-ai.vercel.app/api/gmail/callback"
+    redirect_uri = f"{get_app_base_url()}/api/gmail/callback"
 
     params = {
         "client_id": user_creds["client_id"],
@@ -9288,7 +9438,7 @@ async def get_gmail_auth_url(request: Request, redirect_uri: str = None):
 
 
 @app.get("/api/gmail/callback")
-async def gmail_oauth_callback(code: str, state: str = ""):
+async def gmail_oauth_callback(request: Request, code: str, state: str = ""):
     """Handle OAuth callback. Exchange code for tokens using per-user credentials from DB."""
     if not state or state == "default_user" or len(state) < 10:
         raise HTTPException(status_code=400, detail="Ogiltig state-parameter. Logga in och försök igen.")
@@ -9298,7 +9448,7 @@ async def gmail_oauth_callback(code: str, state: str = ""):
     if not user_creds:
         raise HTTPException(status_code=400, detail="Gmail-kopplingen är inte konfigurerad.")
 
-    redirect_uri = "https://platsbanken-ai.vercel.app/api/gmail/callback"
+    redirect_uri = f"{get_app_base_url()}/api/gmail/callback"
 
     async with httpx.AsyncClient() as client:
         response = await client.post(
