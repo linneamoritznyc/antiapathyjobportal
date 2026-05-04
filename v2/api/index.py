@@ -1429,6 +1429,14 @@ SVENGELSKA_MAP = {
 }
 
 
+def analyze_swedish_vibe(text):
+    import requests
+    api_url = "https://api-inference.huggingface.co/models/KBLab/bert-base-swedish-cased"
+    headers = {"Authorization": f"Bearer {os.environ.get('HUGGINGFACE_API_KEY')}"}
+    response = requests.post(api_url, headers=headers, json={"inputs": text})
+    return response.json()
+
+
 async def check_svengelska_kblab(text: str) -> dict:
     """
     Detect svengelska (Swedish-English hybrid language) using KBLab/bert-base-swedish-cased
@@ -1490,6 +1498,26 @@ async def check_svengelska_kblab(text: str) -> dict:
         "score": len(flagged),
         "available": True
     }
+
+
+@app.post("/api/analyze-vibe")
+async def analyze_vibe_endpoint(request: Request):
+    """
+    Raw KBLab/bert-base-swedish-cased fill-mask analysis via analyze_swedish_vibe().
+    Send {"inputs": "text med [MASK] att fylla i"} and get model predictions back.
+    """
+    import asyncio
+    body = await request.json()
+    text = body.get("inputs") or body.get("text", "")
+    if not text:
+        raise HTTPException(status_code=400, detail="Skicka {'inputs': 'text med [MASK]'}")
+    if not os.environ.get("HUGGINGFACE_API_KEY"):
+        raise HTTPException(status_code=503, detail="HUGGINGFACE_API_KEY är inte konfigurerad.")
+    try:
+        result = await asyncio.get_event_loop().run_in_executor(None, analyze_swedish_vibe, text)
+        return {"success": True, "result": result, "model": "KBLab/bert-base-swedish-cased"}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 @app.post("/api/check-svengelska")
