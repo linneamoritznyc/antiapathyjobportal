@@ -3939,17 +3939,54 @@ async def get_full_master_cv(request: Request):
 
 @app.get("/api/bransch-cvs")
 async def get_bransch_cvs(request: Request):
-    """Get all Bransch-CVs (industry-specific CV templates)"""
+    """Get all Bransch-CVs for this user.
+
+    Primary source: user_cvs table (AI-generated, per-user).
+    Fallback: bransch_cvs table (legacy).
+    Also annotates which branches have a pre-built PDF on disk.
+    """
     user_id = await get_user_id_from_request(request)
     if not user_id:
         return {"success": False, "bransch_cvs": []}
 
-    # Fetch bransch-CVs from database
-    bransch_cvs = await db_request("GET", "bransch_cvs", params={
-        "user_id": f"eq.{user_id}", "order": "created_at.desc"
+    # Primary: user_cvs table (active table used by generate-branscher)
+    user_cvs = await db_request("GET", "user_cvs", params={
+        "user_id": f"eq.{user_id}",
+        "order": "bransch_id.asc"
     }) or []
 
-    return {"bransch_cvs": bransch_cvs}
+    # Legacy fallback: bransch_cvs table — include any entries not already in user_cvs
+    legacy_cvs = []
+    if not user_cvs:
+        legacy_cvs = await db_request("GET", "bransch_cvs", params={
+            "user_id": f"eq.{user_id}", "order": "created_at.desc"
+        }) or []
+
+    existing_ids = {cv.get("bransch_id") for cv in user_cvs}
+    for lcv in legacy_cvs:
+        if lcv.get("bransch_id") not in existing_ids:
+            user_cvs.append(lcv)
+
+    # Annotate each CV with whether a pre-built static PDF exists on disk
+    for cv in user_cvs:
+        cv["has_static_pdf"] = get_cv_pdf_exists(cv.get("bransch_id", ""))
+
+    # Also include branches that have a static PDF but no generated CV yet
+    static_only = []
+    for bransch_id, filename in CV_FILE_MAP.items():
+        if bransch_id not in existing_ids:
+            path = CV_FILES_DIR / filename
+            if path.exists():
+                static_only.append({
+                    "bransch_id": bransch_id,
+                    "cv_text": None,
+                    "pdf_url": None,
+                    "has_static_pdf": True,
+                    "source": "static_pdf",
+                    "filename": filename
+                })
+
+    return {"success": True, "bransch_cvs": user_cvs, "static_only": static_only}
 
 
 def _safe_pdf_text(text) -> str:
@@ -9431,12 +9468,22 @@ async def gmail_oauth_callback(code: str, state: str = ""):
     token_data = {
         "user_id": user_id,
         "access_token": tokens["access_token"],
-        "refresh_token": tokens.get("refresh_token"),
         "token_expires_at": expires_at.isoformat(),
         "gmail_address": gmail_address,
         "is_connected": True,
         "updated_at": datetime.now().isoformat()
     }
+    # Only write refresh_token when Google actually returns one.
+    # On re-auth Google omits it if the grant still exists — keep the stored token.
+    new_refresh_token = tokens.get("refresh_token")
+    if new_refresh_token:
+        token_data["refresh_token"] = new_refresh_token
+    elif existing:
+        # Preserve whatever is already in DB
+        existing_rt = existing[0].get("refresh_token")
+        if existing_rt:
+            token_data["refresh_token"] = existing_rt
+
     if existing:
         await db_request("PATCH", f"user_google_credentials?user_id=eq.{user_id}", data=token_data)
     else:
@@ -9483,12 +9530,24 @@ async def get_gmail_status(request: Request):
     has_oauth_creds = bool(cred.get("client_id") and cred.get("client_secret")) or app_configured
 
     if not cred.get("is_connected"):
-        return {"connected": False, "gmail_address": None, "app_configured": has_oauth_creds}
+        # Distinguish "never connected" from "was connected but token got revoked/expired"
+        was_connected = bool(cred.get("gmail_address"))
+        return {
+            "connected": False,
+            "gmail_address": cred.get("gmail_address"),
+            "app_configured": has_oauth_creds,
+            "needs_reconnect": was_connected,
+            "reconnect_reason": (
+                "Din Gmail-anslutning har gått ut. Koppla om Gmail i Profil-fliken."
+                if was_connected else None
+            )
+        }
 
     return {
         "connected": True,
         "gmail_address": cred.get("gmail_address"),
-        "app_configured": has_oauth_creds
+        "app_configured": has_oauth_creds,
+        "needs_reconnect": False
     }
 
 
@@ -9530,38 +9589,45 @@ async def disconnect_gmail(request: Request):
 
 
 async def refresh_gmail_token(user_id: str) -> Optional[str]:
-    """Get a valid Gmail access token for this user, refreshing if needed."""
+    """Get a valid Gmail access token for this user, refreshing if needed.
+
+    Handles three failure modes gracefully:
+    - Expired access token → refreshes silently
+    - Rotated refresh token → saves the new one
+    - Revoked / 7-day-expired refresh token (Google test-mode) → marks is_connected=False
+      so the UI can prompt the user to reconnect instead of silently failing
+    """
+    from datetime import timezone as _tz
+
     creds = await db_request("GET", "user_google_credentials", params={"user_id": f"eq.{user_id}"})
     if not creds or not creds[0].get("is_connected"):
         return None
 
     cred = creds[0]
 
-    # Need OAuth credentials for token refresh — try per-user, then app-level
+    # OAuth credentials — prefer per-user rows, fall back to app-level env vars
     client_id = cred.get("client_id") or os.getenv("GOOGLE_CLIENT_ID", "")
     client_secret = cred.get("client_secret") or os.getenv("GOOGLE_CLIENT_SECRET", "")
     if not client_id or not client_secret:
         return None
 
-    # Return existing token if still valid (with 5-min buffer)
-    expires_at = cred.get("token_expires_at")
-    if expires_at:
+    # Return existing token if still valid (with 5-min buffer).
+    # Normalise to UTC-aware to avoid TypeError when mixing naive/aware datetimes.
+    expires_at_str = cred.get("token_expires_at")
+    if expires_at_str:
         try:
-            exp_time = datetime.fromisoformat(expires_at.replace('Z', '+00:00'))
-            buffer = timedelta(minutes=5)
-            if exp_time.tzinfo:
-                from datetime import timezone
-                if exp_time > datetime.now(timezone.utc) + buffer:
-                    return cred.get("access_token")
-            else:
-                if exp_time > datetime.now() + buffer:
-                    return cred.get("access_token")
+            exp_time = datetime.fromisoformat(expires_at_str.replace('Z', '+00:00'))
+            if exp_time.tzinfo is None:
+                exp_time = exp_time.replace(tzinfo=_tz.utc)
+            if exp_time > datetime.now(_tz.utc) + timedelta(minutes=5):
+                return cred.get("access_token")
         except (ValueError, TypeError):
-            pass
+            pass  # Fall through to refresh
 
-    # Refresh using per-user credentials from DB
+    # Attempt refresh
     refresh_token = cred.get("refresh_token")
     if not refresh_token:
+        logger.warning(f"No refresh_token stored for user {user_id} — Gmail needs to be reconnected")
         return None
 
     async with httpx.AsyncClient() as client:
@@ -9575,17 +9641,40 @@ async def refresh_gmail_token(user_id: str) -> Optional[str]:
             },
             timeout=10
         )
+
         if response.status_code != 200:
+            err = response.json() if response.text else {}
+            err_code = err.get("error", "")
             logger.error(f"Token refresh failed for user {user_id}: {response.text}")
+
+            # Revoked / expired refresh token (happens after 7 days in Google test-mode
+            # or if the user revoked app access in their Google account settings).
+            # Mark as disconnected so the frontend can prompt reconnect.
+            if err_code in ("invalid_grant", "token_expired"):
+                await db_request("PATCH", f"user_google_credentials?user_id=eq.{user_id}", data={
+                    "is_connected": False,
+                    "updated_at": datetime.now().isoformat()
+                })
+                logger.warning(
+                    f"Gmail refresh_token revoked/expired for user {user_id}. "
+                    "Marked as disconnected. User must reconnect Gmail. "
+                    "If this happens every 7 days, publish the OAuth app in Google Cloud Console "
+                    "(OAuth consent screen → 'Publish App') to remove the 7-day test-mode limit."
+                )
             return None
 
         tokens = response.json()
-        expires_at = datetime.now() + timedelta(seconds=tokens.get("expires_in", 3600))
-        await db_request("PATCH", f"user_google_credentials?user_id=eq.{user_id}", data={
+        new_expires_at = datetime.now() + timedelta(seconds=tokens.get("expires_in", 3600))
+        update_data = {
             "access_token": tokens["access_token"],
-            "token_expires_at": expires_at.isoformat(),
+            "token_expires_at": new_expires_at.isoformat(),
             "updated_at": datetime.now().isoformat()
-        })
+        }
+        # Google occasionally rotates the refresh_token — save the new one if present
+        if tokens.get("refresh_token"):
+            update_data["refresh_token"] = tokens["refresh_token"]
+
+        await db_request("PATCH", f"user_google_credentials?user_id=eq.{user_id}", data=update_data)
         return tokens["access_token"]
 
 
