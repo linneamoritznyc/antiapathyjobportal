@@ -9729,6 +9729,61 @@ async def serve_static_js(filename: str):
                     headers={"Cache-Control": "public, max-age=86400"})
 
 
+# ============== PWA FILES ==============
+
+@app.get("/manifest.json")
+async def serve_manifest():
+    """Serve PWA manifest.json"""
+    from fastapi.responses import Response
+    file_path = pathlib.Path(__file__).parent.parent / "manifest.json"
+    if not file_path.exists():
+        raise HTTPException(status_code=404, detail="manifest.json not found")
+    content = file_path.read_text(encoding='utf-8')
+    return Response(content=content, media_type="application/manifest+json",
+                    headers={"Cache-Control": "public, max-age=86400"})
+
+
+@app.get("/service-worker.js")
+async def serve_service_worker():
+    """Serve PWA service worker - must be served from root for proper scope"""
+    from fastapi.responses import Response
+    file_path = pathlib.Path(__file__).parent.parent / "service-worker.js"
+    if not file_path.exists():
+        raise HTTPException(status_code=404, detail="service-worker.js not found")
+    content = file_path.read_text(encoding='utf-8')
+    # Service workers should not be cached heavily to allow updates
+    return Response(content=content, media_type="application/javascript",
+                    headers={"Cache-Control": "no-cache", "Service-Worker-Allowed": "/"})
+
+
+@app.get("/pwa-icon-512.jpg")
+async def serve_pwa_icon_512():
+    """Serve PWA icon (512x512)"""
+    from fastapi.responses import Response
+    file_path = pathlib.Path(__file__).parent.parent / "pwa-icon-512.jpg"
+    if not file_path.exists():
+        raise HTTPException(status_code=404, detail="pwa-icon-512.jpg not found")
+    content = file_path.read_bytes()
+    return Response(content=content, media_type="image/jpeg",
+                    headers={"Cache-Control": "public, max-age=604800"})
+
+
+@app.get("/pwa-icon-192.png")
+async def serve_pwa_icon_192():
+    """Serve PWA icon (192x192) - fallback to 512 if not exists"""
+    from fastapi.responses import Response
+    file_path = pathlib.Path(__file__).parent.parent / "pwa-icon-192.png"
+    if not file_path.exists():
+        # Fallback to the 512 icon
+        file_path = pathlib.Path(__file__).parent.parent / "pwa-icon-512.jpg"
+    if not file_path.exists():
+        raise HTTPException(status_code=404, detail="PWA icon not found")
+    content = file_path.read_bytes()
+    media_type = "image/png" if str(file_path).endswith(".png") else "image/jpeg"
+    return Response(content=content, media_type=media_type,
+                    headers={"Cache-Control": "public, max-age=604800"})
+
+
 # ============== FRONTEND ==============
 
 @app.get("/setup", response_class=HTMLResponse)

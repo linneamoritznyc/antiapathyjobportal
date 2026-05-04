@@ -3,8 +3,25 @@
 <head>
     <!-- FRONTEND_VERSION: 2026-02-22-v14 -->
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
     <title>Platsbanken AI</title>
+    
+    <!-- PWA Meta Tags -->
+    <link rel="manifest" href="/manifest.json">
+    <meta name="theme-color" content="#ec4899">
+    <meta name="mobile-web-app-capable" content="yes">
+    <meta name="application-name" content="Platsbanken AI">
+    
+    <!-- iOS PWA Meta Tags -->
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="apple-mobile-web-app-title" content="Platsbanken AI">
+    <link rel="apple-touch-icon" href="/pwa-icon-512.jpg">
+    <link rel="apple-touch-startup-image" href="/pwa-icon-512.jpg">
+    
+    <!-- Prevent iOS text size adjustment -->
+    <meta name="format-detection" content="telephone=no">
+    
     <script src="https://cdn.tailwindcss.com"></script>
     <script crossorigin="anonymous" src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
     <script crossorigin="anonymous" src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
@@ -13,6 +30,9 @@
         * { font-family: system-ui, -apple-system, sans-serif; }
         .gradient { background: linear-gradient(135deg, #ec4899 0%, #f472b6 50%, #fb7185 100%); }
         .tab-active { border-bottom: 3px solid white; }
+        /* PWA safe area padding for notched devices */
+        .safe-area-top { padding-top: env(safe-area-inset-top); }
+        .safe-area-bottom { padding-bottom: env(safe-area-inset-bottom); }
     </style>
 </head>
 <body class="bg-slate-50 min-h-screen">
@@ -9956,6 +9976,21 @@
         };
 
         ReactDOM.createRoot(document.getElementById('root')).render(<App />);
+    </script>
+    
+    <!-- PWA Service Worker Registration -->
+    <script>
+        if ('serviceWorker' in navigator) {
+            window.addEventListener('load', () => {
+                navigator.serviceWorker.register('/service-worker.js')
+                    .then((registration) => {
+                        console.log('[PWA] Service Worker registered:', registration.scope);
+                    })
+                    .catch((error) => {
+                        console.log('[PWA] Service Worker registration failed:', error);
+                    });
+            });
+        }
     </script>
 </body>
 </html>

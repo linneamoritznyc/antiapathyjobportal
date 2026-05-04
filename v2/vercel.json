@@ -13,7 +13,10 @@
           "integritetspolicy.html",
           "cv_template.html",
           "lan-data.js",
-          "linkedin-parser.js"
+          "linkedin-parser.js",
+          "manifest.json",
+          "service-worker.js",
+          "pwa-icon-512.jpg"
         ]
       }
     }
