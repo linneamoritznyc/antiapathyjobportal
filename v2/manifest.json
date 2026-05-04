@@ -1,0 +1,21 @@
+{
+  "name": "Platsbanken AI",
+  "short_name": "PlatsbankenAI",
+  "description": "AI-drivet jobbportal för neurodivergenta jobbsökare i Sverige",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#f8fafc",
+  "theme_color": "#ec4899",
+  "orientation": "portrait-primary",
+  "lang": "sv",
+  "icons": [
+    {
+      "src": "data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><rect width='100' height='100' rx='20' fill='%23ec4899'/><text y='.9em' font-size='80' x='10'>💼</text></svg>",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ],
+  "categories": ["productivity", "utilities"],
+  "screenshots": []
+}

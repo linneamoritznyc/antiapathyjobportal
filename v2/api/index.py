@@ -33,6 +33,7 @@ SUPABASE_ANON_KEY = os.getenv("SUPABASE_ANON_KEY")  # For client-side auth
 ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY")
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
 HUGGINGFACE_API_KEY = os.getenv("HUGGINGFACE_API_KEY")
+APP_URL = os.getenv("APP_URL", "").rstrip("/")
 
 # ── Swedish Language Rules (Svenska Skrivregler) ──────────────────────────
 # Used in all AI text generation: cover letters, CVs, application answers
@@ -1383,6 +1384,103 @@ Bot:
     return text
 
 
+# Common English loanwords (svengelska) → preferred Swedish equivalents
+# For ambiguous ones, KBLab BERT fill-mask picks the best word in context.
+_SVENGELSKA_STATIC = [
+    (r'\bchallenges\b', 'utmaningar'),
+    (r'\bfeedback\b', 'återkoppling'),
+    (r'\bdeadlines?\b', 'tidsgränser'),
+    (r'\bteam ?player\b', 'lagspelare'),
+    (r'\bskills\b', 'kompetenser'),
+    (r'\bmeetings?\b', 'möten'),
+    (r'\bfollow-?up\b', 'uppföljning'),
+    (r'\bonboarding\b', 'introduktionsprocess'),
+    (r'\bstakeholders?\b', 'intressenter'),
+    (r'\boutcome[sd]?\b', 'resultat'),
+    (r'\bmindset\b', 'tankesätt'),
+    (r'\bnetworking\b', 'nätverkande'),
+    (r'\bperformance\b', 'prestation'),
+    (r'\bdeliverables?\b', 'leveranser'),
+    (r'\bsupportive\b', 'stöttande'),
+    (r'\boutstanding\b', 'enastående'),
+]
+
+# Words where context matters — BERT fill-mask resolves the best Swedish word
+_SVENGELSKA_AMBIGUOUS = {
+    'approach': ['tillvägagångssätt', 'metod', 'strategi'],
+    'commitment': ['engagemang', 'åtagande', 'dedikation'],
+    'impact': ['påverkan', 'genomslag', 'effekt'],
+    'dedicated': ['hängiven', 'engagerad', 'dedikerad'],
+}
+
+
+async def fix_svengelska_with_kblab(text: str) -> str:
+    """
+    Detect and replace svengelska (Swedish-English mix) in cover letter text.
+    Step 1: Apply static dictionary replacements (clear-cut cases).
+    Step 2: For ambiguous words, use KBLab/bert-base-swedish-cased fill-mask
+            via HuggingFace Inference API to pick the best Swedish word in context.
+    Returns corrected text, or original on failure.
+    """
+    if not text:
+        return text
+
+    corrected = text
+
+    # Step 1: static replacements (case-insensitive, preserve word boundaries)
+    for pattern, replacement in _SVENGELSKA_STATIC:
+        corrected = re.sub(pattern, replacement, corrected, flags=re.IGNORECASE)
+
+    if not HUGGINGFACE_API_KEY:
+        return corrected
+
+    # Step 2: context-aware replacement for ambiguous words via BERT fill-mask
+    try:
+        async with httpx.AsyncClient(timeout=15) as client:
+            for english_word, candidates in _SVENGELSKA_AMBIGUOUS.items():
+                pattern = re.compile(r'\b' + re.escape(english_word) + r'\b', re.IGNORECASE)
+                matches = list(pattern.finditer(corrected))
+                if not matches:
+                    continue
+
+                for match in matches:
+                    start, end = match.start(), match.end()
+                    # Build masked sentence (take up to 100 chars around the word for context)
+                    ctx_start = max(0, start - 60)
+                    ctx_end = min(len(corrected), end + 60)
+                    masked = corrected[ctx_start:start] + '[MASK]' + corrected[end:ctx_end]
+
+                    resp = await client.post(
+                        "https://api-inference.huggingface.co/models/KBLab/bert-base-swedish-cased",
+                        headers={"Authorization": f"Bearer {HUGGINGFACE_API_KEY}"},
+                        json={"inputs": masked}
+                    )
+
+                    if resp.status_code == 200:
+                        predictions = resp.json()
+                        if isinstance(predictions, list):
+                            # Pick the candidate with the highest BERT score
+                            best_word = None
+                            best_score = -1.0
+                            for pred in predictions[:10]:
+                                token = pred.get("token_str", "").strip()
+                                score = pred.get("score", 0.0)
+                                if token.lower() in [c.lower() for c in candidates] and score > best_score:
+                                    best_score = score
+                                    best_word = token
+                            if best_word:
+                                corrected = corrected[:start] + best_word + corrected[end:]
+                                logger.info(f"KBLab BERT: replaced '{english_word}' → '{best_word}' (score {best_score:.2f})")
+                    elif resp.status_code == 503:
+                        logger.info("KBLab BERT model cold-starting, skipping fill-mask step")
+                        break
+
+    except Exception as e:
+        logger.warning(f"KBLab BERT svengelska check failed (non-blocking): {e}")
+
+    return corrected
+
+
 async def generate_cover_letter(job: Dict, user_cv_text: Optional[str] = None, user_profile: Optional[Dict] = None, extra_hints: Optional[str] = None, user_id: Optional[str] = None) -> str:
     """Generate personalized cover letter using Claude"""
 
@@ -1727,6 +1825,8 @@ Skriv ENDAST det färdiga brevet, inget annat."""
                 letter_text = re.sub(r'^#+\s+', '', letter_text, flags=re.MULTILINE)
                 # Run GPT-SW3 Swedish grammar check (non-blocking — returns original on failure)
                 letter_text = await check_swedish_with_gpt_sw3(letter_text)
+                # Run KBLab BERT svengelska fix (non-blocking)
+                letter_text = await fix_svengelska_with_kblab(letter_text)
                 return letter_text
             else:
                 error_body = response.text[:300]
@@ -1753,6 +1853,7 @@ Skriv ENDAST det färdiga brevet, inget annat."""
                         # Strip markdown heading markers if Claude added them
                         letter_text = re.sub(r'^#+\s+', '', letter_text, flags=re.MULTILINE)
                         letter_text = await check_swedish_with_gpt_sw3(letter_text)
+                        letter_text = await fix_svengelska_with_kblab(letter_text)
                         return letter_text
                 except Exception as fallback_err:
                     logger.error(f"Haiku fallback also failed: {fallback_err}")
@@ -3838,17 +3939,54 @@ async def get_full_master_cv(request: Request):
 
 @app.get("/api/bransch-cvs")
 async def get_bransch_cvs(request: Request):
-    """Get all Bransch-CVs (industry-specific CV templates)"""
+    """Get all Bransch-CVs for this user.
+
+    Primary source: user_cvs table (AI-generated, per-user).
+    Fallback: bransch_cvs table (legacy).
+    Also annotates which branches have a pre-built PDF on disk.
+    """
     user_id = await get_user_id_from_request(request)
     if not user_id:
         return {"success": False, "bransch_cvs": []}
 
-    # Fetch bransch-CVs from database
-    bransch_cvs = await db_request("GET", "bransch_cvs", params={
-        "user_id": f"eq.{user_id}", "order": "created_at.desc"
+    # Primary: user_cvs table (active table used by generate-branscher)
+    user_cvs = await db_request("GET", "user_cvs", params={
+        "user_id": f"eq.{user_id}",
+        "order": "bransch_id.asc"
     }) or []
 
-    return {"bransch_cvs": bransch_cvs}
+    # Legacy fallback: bransch_cvs table — include any entries not already in user_cvs
+    legacy_cvs = []
+    if not user_cvs:
+        legacy_cvs = await db_request("GET", "bransch_cvs", params={
+            "user_id": f"eq.{user_id}", "order": "created_at.desc"
+        }) or []
+
+    existing_ids = {cv.get("bransch_id") for cv in user_cvs}
+    for lcv in legacy_cvs:
+        if lcv.get("bransch_id") not in existing_ids:
+            user_cvs.append(lcv)
+
+    # Annotate each CV with whether a pre-built static PDF exists on disk
+    for cv in user_cvs:
+        cv["has_static_pdf"] = get_cv_pdf_exists(cv.get("bransch_id", ""))
+
+    # Also include branches that have a static PDF but no generated CV yet
+    static_only = []
+    for bransch_id, filename in CV_FILE_MAP.items():
+        if bransch_id not in existing_ids:
+            path = CV_FILES_DIR / filename
+            if path.exists():
+                static_only.append({
+                    "bransch_id": bransch_id,
+                    "cv_text": None,
+                    "pdf_url": None,
+                    "has_static_pdf": True,
+                    "source": "static_pdf",
+                    "filename": filename
+                })
+
+    return {"success": True, "bransch_cvs": user_cvs, "static_only": static_only}
 
 
 def _safe_pdf_text(text) -> str:
@@ -5557,7 +5695,7 @@ async def google_auth():
     """Redirect user to Google Sign-In via Supabase OAuth."""
     if not SUPABASE_URL or not SUPABASE_ANON_KEY:
         raise HTTPException(status_code=500, detail="Supabase not configured")
-    redirect_to = "https://platsbanken-ai.vercel.app/login"
+    redirect_to = f"{APP_URL}/login"
     url = (
         f"{SUPABASE_URL}/auth/v1/authorize?provider=google"
         f"&redirect_to={redirect_to}"
@@ -5587,7 +5725,7 @@ async def sign_up(request: SignUpRequest):
                 "password": request.password,
                 "data": {"full_name": request.full_name} if request.full_name else {},
                 "options": {
-                    "email_redirect_to": "https://platsbanken-ai.vercel.app/login"
+                    "email_redirect_to": f"{APP_URL}/login"
                 }
             }
         )
@@ -5628,7 +5766,7 @@ async def resend_verification(request: ResendVerificationRequest):
                 "type": "signup",
                 "email": request.email,
                 "options": {
-                    "email_redirect_to": "https://platsbanken-ai.vercel.app/login"
+                    "email_redirect_to": f"{APP_URL}/login"
                 }
             }
         )
@@ -9223,15 +9361,30 @@ async def export_user_data(request: Request):
 # ============== GMAIL OAUTH (Per-user credentials from Supabase) ==============
 
 async def get_user_gmail_credentials(user_id: str) -> Optional[dict]:
-    """Fetch Gmail OAuth credentials. Falls back to app-level env vars if user has no per-user creds."""
+    """Fetch Gmail OAuth credentials for a user.
+
+    Priority order:
+    1. DB row that already has client_id + client_secret stored
+    2. DB row (any row) merged with app-level env var credentials
+    3. Just env vars (no DB row yet)
+    Returns None only if no client_id/secret can be found anywhere.
+    """
     creds = await db_request("GET", "user_google_credentials", params={"user_id": f"eq.{user_id}"})
-    if creds and creds[0].get("client_id") and creds[0].get("client_secret"):
-        return creds[0]
-    # Fall back to app-level credentials from environment variables
-    app_client_id = os.getenv("GOOGLE_CLIENT_ID", "")
-    app_client_secret = os.getenv("GOOGLE_CLIENT_SECRET", "")
+    app_client_id = os.getenv("GOOGLE_CLIENT_ID", "").strip()
+    app_client_secret = os.getenv("GOOGLE_CLIENT_SECRET", "").strip()
+
+    if creds:
+        row = creds[0]
+        row_client_id = row.get("client_id") or app_client_id
+        row_client_secret = row.get("client_secret") or app_client_secret
+        if row_client_id and row_client_secret:
+            # Merge env-var credentials into the row dict so callers always see client_id
+            return {**row, "client_id": row_client_id, "client_secret": row_client_secret}
+
+    # No DB row — return env-var creds only
     if app_client_id and app_client_secret:
         return {"user_id": user_id, "client_id": app_client_id, "client_secret": app_client_secret}
+
     return None
 
 
@@ -9272,7 +9425,7 @@ async def get_gmail_auth_url(request: Request, redirect_uri: str = None):
     if not user_creds:
         raise HTTPException(status_code=400, detail="Gmail-kopplingen är inte konfigurerad. Kontakta support.")
 
-    redirect_uri = "https://platsbanken-ai.vercel.app/api/gmail/callback"
+    redirect_uri = f"{APP_URL}/api/gmail/callback"
 
     params = {
         "client_id": user_creds["client_id"],
@@ -9298,7 +9451,7 @@ async def gmail_oauth_callback(code: str, state: str = ""):
     if not user_creds:
         raise HTTPException(status_code=400, detail="Gmail-kopplingen är inte konfigurerad.")
 
-    redirect_uri = "https://platsbanken-ai.vercel.app/api/gmail/callback"
+    redirect_uri = f"{APP_URL}/api/gmail/callback"
 
     async with httpx.AsyncClient() as client:
         response = await client.post(
@@ -9325,21 +9478,58 @@ async def gmail_oauth_callback(code: str, state: str = ""):
 
     expires_at = datetime.now() + timedelta(seconds=tokens.get("expires_in", 3600))
 
+    # Determine the client_id/secret that was used so we can persist them.
+    # This is the critical step that was missing: without client_id in the DB
+    # the refresh_token can never be used after the access_token expires.
+    cred_source = await get_user_gmail_credentials(user_id)
+    used_client_id = (cred_source or {}).get("client_id") or os.getenv("GOOGLE_CLIENT_ID", "")
+    used_client_secret = (cred_source or {}).get("client_secret") or os.getenv("GOOGLE_CLIENT_SECRET", "")
+
     # Upsert — create or update
     existing = await db_request("GET", "user_google_credentials", params={"user_id": f"eq.{user_id}"})
     token_data = {
         "user_id": user_id,
         "access_token": tokens["access_token"],
-        "refresh_token": tokens.get("refresh_token"),
         "token_expires_at": expires_at.isoformat(),
         "gmail_address": gmail_address,
         "is_connected": True,
         "updated_at": datetime.now().isoformat()
     }
+
+    # Always persist client_id/secret so future refreshes don't depend on env vars
+    if used_client_id:
+        token_data["client_id"] = used_client_id
+    if used_client_secret:
+        token_data["client_secret"] = used_client_secret
+
+    # Only write refresh_token when Google actually returns one.
+    # With prompt=consent + access_type=offline Google ALWAYS returns one on fresh auth.
+    new_refresh_token = tokens.get("refresh_token")
+    if new_refresh_token:
+        token_data["refresh_token"] = new_refresh_token
+        logger.info(f"Gmail callback: new refresh_token received and saved for user {user_id[:8]}")
+    elif existing:
+        existing_rt = existing[0].get("refresh_token")
+        if existing_rt:
+            token_data["refresh_token"] = existing_rt
+
+    if not token_data.get("refresh_token"):
+        logger.error(
+            f"Gmail callback: NO refresh_token in Google response for user {user_id[:8]}. "
+            "This means the connection will break when the access_token expires in 1 hour. "
+            "Cause: prompt=consent was not honoured, or the user denied offline access."
+        )
+
     if existing:
         await db_request("PATCH", f"user_google_credentials?user_id=eq.{user_id}", data=token_data)
     else:
         await db_request("POST", "user_google_credentials", data=token_data)
+
+    logger.info(
+        f"Gmail connected: user={user_id[:8]} email={gmail_address} "
+        f"refresh_token={'saved' if token_data.get('refresh_token') else 'MISSING'} "
+        f"client_id={'saved' if token_data.get('client_id') else 'MISSING'}"
+    )
 
     return HTMLResponse(content=f"""
     <!DOCTYPE html>
@@ -9382,12 +9572,106 @@ async def get_gmail_status(request: Request):
     has_oauth_creds = bool(cred.get("client_id") and cred.get("client_secret")) or app_configured
 
     if not cred.get("is_connected"):
-        return {"connected": False, "gmail_address": None, "app_configured": has_oauth_creds}
+        # Distinguish "never connected" from "was connected but token got revoked/expired"
+        was_connected = bool(cred.get("gmail_address"))
+        return {
+            "connected": False,
+            "gmail_address": cred.get("gmail_address"),
+            "app_configured": has_oauth_creds,
+            "needs_reconnect": was_connected,
+            "reconnect_reason": (
+                "Din Gmail-anslutning har gått ut. Koppla om Gmail i Profil-fliken."
+                if was_connected else None
+            )
+        }
 
     return {
         "connected": True,
         "gmail_address": cred.get("gmail_address"),
-        "app_configured": has_oauth_creds
+        "app_configured": has_oauth_creds,
+        "needs_reconnect": False
+    }
+
+
+@app.post("/api/gmail/repair")
+async def repair_gmail_connection(request: Request):
+    """
+    Self-heal a broken Gmail connection WITHOUT requiring full re-auth.
+
+    Does three things in order:
+    1. Writes GOOGLE_CLIENT_ID/SECRET from env vars into the DB row if missing
+    2. Forces a token refresh using the stored refresh_token
+    3. Returns the new connection status
+
+    Call this when: client_id was missing in DB, or access_token is stale but
+    refresh_token still exists. If refresh_token itself is revoked the user
+    must go through the full OAuth flow again (/api/gmail/auth-url).
+    """
+    user_id = await get_user_id_from_request(request, required=True)
+
+    app_client_id = os.getenv("GOOGLE_CLIENT_ID", "").strip()
+    app_client_secret = os.getenv("GOOGLE_CLIENT_SECRET", "").strip()
+
+    creds = await db_request("GET", "user_google_credentials", params={"user_id": f"eq.{user_id}"})
+    if not creds:
+        return {"success": False, "error": "Ingen Gmail-rad hittad. Koppla Gmail via Profil-fliken först."}
+
+    cred = creds[0]
+
+    # Step 1: persist client_id/secret if missing
+    needs_patch = {}
+    if not cred.get("client_id") and app_client_id:
+        needs_patch["client_id"] = app_client_id
+    if not cred.get("client_secret") and app_client_secret:
+        needs_patch["client_secret"] = app_client_secret
+    if needs_patch:
+        needs_patch["updated_at"] = datetime.now().isoformat()
+        await db_request("PATCH", f"user_google_credentials?user_id=eq.{user_id}", data=needs_patch)
+        logger.info(f"gmail/repair: wrote client_id/secret to DB for user {user_id[:8]}")
+
+    if not (cred.get("client_id") or app_client_id):
+        return {
+            "success": False,
+            "error": (
+                "GOOGLE_CLIENT_ID saknas i miljövariablerna. "
+                "Lägg till GOOGLE_CLIENT_ID och GOOGLE_CLIENT_SECRET i Replit Secrets och försök igen."
+            )
+        }
+
+    if not cred.get("refresh_token"):
+        return {
+            "success": False,
+            "error": (
+                "Ingen refresh_token lagrad. Du måste koppla om Gmail helt "
+                "via Profil → Gmail → Koppla Gmail."
+            )
+        }
+
+    # Step 2: force token refresh (re-read row so we have the patched client_id)
+    new_token = await refresh_gmail_token(user_id)
+    if not new_token:
+        return {
+            "success": False,
+            "error": (
+                "Token-refresh misslyckades. Refresh_token kan vara ogiltig (återkallad av Google). "
+                "Gå till Profil → Gmail → Koppla om Gmail för att skaffa en ny."
+            )
+        }
+
+    # Mark as connected (in case it was flagged as disconnected)
+    await db_request("PATCH", f"user_google_credentials?user_id=eq.{user_id}", data={
+        "is_connected": True,
+        "updated_at": datetime.now().isoformat()
+    })
+
+    updated = await db_request("GET", "user_google_credentials", params={"user_id": f"eq.{user_id}"})
+    gmail_address = (updated[0].get("gmail_address") if updated else None) or cred.get("gmail_address")
+
+    logger.info(f"gmail/repair: successfully refreshed token for user {user_id[:8]} ({gmail_address})")
+    return {
+        "success": True,
+        "message": f"Gmail-kopplingen är reparerad. {gmail_address} är aktiv igen.",
+        "gmail_address": gmail_address
     }
 
 
@@ -9429,38 +9713,60 @@ async def disconnect_gmail(request: Request):
 
 
 async def refresh_gmail_token(user_id: str) -> Optional[str]:
-    """Get a valid Gmail access token for this user, refreshing if needed."""
+    """Get a valid Gmail access token for this user, refreshing if needed.
+
+    Handles three failure modes gracefully:
+    - Expired access token → refreshes silently
+    - Rotated refresh token → saves the new one
+    - Revoked / 7-day-expired refresh token (Google test-mode) → marks is_connected=False
+      so the UI can prompt the user to reconnect instead of silently failing
+    """
+    from datetime import timezone as _tz
+
     creds = await db_request("GET", "user_google_credentials", params={"user_id": f"eq.{user_id}"})
     if not creds or not creds[0].get("is_connected"):
         return None
 
     cred = creds[0]
 
-    # Need OAuth credentials for token refresh — try per-user, then app-level
-    client_id = cred.get("client_id") or os.getenv("GOOGLE_CLIENT_ID", "")
-    client_secret = cred.get("client_secret") or os.getenv("GOOGLE_CLIENT_SECRET", "")
+    # OAuth credentials — prefer per-user rows, fall back to app-level env vars
+    client_id = cred.get("client_id") or os.getenv("GOOGLE_CLIENT_ID", "").strip()
+    client_secret = cred.get("client_secret") or os.getenv("GOOGLE_CLIENT_SECRET", "").strip()
     if not client_id or not client_secret:
+        logger.error(
+            f"refresh_gmail_token: cannot refresh for user {user_id[:8]} — "
+            "client_id/client_secret missing from both DB and GOOGLE_CLIENT_ID/GOOGLE_CLIENT_SECRET env vars. "
+            "Add GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET to Replit Secrets."
+        )
         return None
 
-    # Return existing token if still valid (with 5-min buffer)
-    expires_at = cred.get("token_expires_at")
-    if expires_at:
-        try:
-            exp_time = datetime.fromisoformat(expires_at.replace('Z', '+00:00'))
-            buffer = timedelta(minutes=5)
-            if exp_time.tzinfo:
-                from datetime import timezone
-                if exp_time > datetime.now(timezone.utc) + buffer:
-                    return cred.get("access_token")
-            else:
-                if exp_time > datetime.now() + buffer:
-                    return cred.get("access_token")
-        except (ValueError, TypeError):
-            pass
+    # Self-heal: if client_id came from env vars (not DB), persist it so future
+    # refreshes work even if the env var is later removed.
+    if not cred.get("client_id") and client_id:
+        await db_request("PATCH", f"user_google_credentials?user_id=eq.{user_id}", data={
+            "client_id": client_id,
+            "client_secret": client_secret,
+            "updated_at": datetime.now().isoformat()
+        })
+        logger.info(f"refresh_gmail_token: persisted client_id to DB for user {user_id[:8]}")
 
-    # Refresh using per-user credentials from DB
+    # Return existing token if still valid (with 5-min buffer).
+    # Normalise to UTC-aware to avoid TypeError when mixing naive/aware datetimes.
+    expires_at_str = cred.get("token_expires_at")
+    if expires_at_str:
+        try:
+            exp_time = datetime.fromisoformat(expires_at_str.replace('Z', '+00:00'))
+            if exp_time.tzinfo is None:
+                exp_time = exp_time.replace(tzinfo=_tz.utc)
+            if exp_time > datetime.now(_tz.utc) + timedelta(minutes=5):
+                return cred.get("access_token")
+        except (ValueError, TypeError):
+            pass  # Fall through to refresh
+
+    # Attempt refresh
     refresh_token = cred.get("refresh_token")
     if not refresh_token:
+        logger.warning(f"No refresh_token stored for user {user_id} — Gmail needs to be reconnected")
         return None
 
     async with httpx.AsyncClient() as client:
@@ -9474,17 +9780,40 @@ async def refresh_gmail_token(user_id: str) -> Optional[str]:
             },
             timeout=10
         )
+
         if response.status_code != 200:
+            err = response.json() if response.text else {}
+            err_code = err.get("error", "")
             logger.error(f"Token refresh failed for user {user_id}: {response.text}")
+
+            # Revoked / expired refresh token (happens after 7 days in Google test-mode
+            # or if the user revoked app access in their Google account settings).
+            # Mark as disconnected so the frontend can prompt reconnect.
+            if err_code in ("invalid_grant", "token_expired"):
+                await db_request("PATCH", f"user_google_credentials?user_id=eq.{user_id}", data={
+                    "is_connected": False,
+                    "updated_at": datetime.now().isoformat()
+                })
+                logger.warning(
+                    f"Gmail refresh_token revoked/expired for user {user_id}. "
+                    "Marked as disconnected. User must reconnect Gmail. "
+                    "If this happens every 7 days, publish the OAuth app in Google Cloud Console "
+                    "(OAuth consent screen → 'Publish App') to remove the 7-day test-mode limit."
+                )
             return None
 
         tokens = response.json()
-        expires_at = datetime.now() + timedelta(seconds=tokens.get("expires_in", 3600))
-        await db_request("PATCH", f"user_google_credentials?user_id=eq.{user_id}", data={
+        new_expires_at = datetime.now() + timedelta(seconds=tokens.get("expires_in", 3600))
+        update_data = {
             "access_token": tokens["access_token"],
-            "token_expires_at": expires_at.isoformat(),
+            "token_expires_at": new_expires_at.isoformat(),
             "updated_at": datetime.now().isoformat()
-        })
+        }
+        # Google occasionally rotates the refresh_token — save the new one if present
+        if tokens.get("refresh_token"):
+            update_data["refresh_token"] = tokens["refresh_token"]
+
+        await db_request("PATCH", f"user_google_credentials?user_id=eq.{user_id}", data=update_data)
         return tokens["access_token"]
 
 
@@ -9726,6 +10055,18 @@ async def serve_static_js(filename: str):
         raise HTTPException(status_code=404, detail=f"{filename} not found")
     content = file_path.read_text(encoding='utf-8')
     return Response(content=content, media_type="application/javascript",
+                    headers={"Cache-Control": "public, max-age=86400"})
+
+
+@app.get("/manifest.json")
+async def serve_manifest():
+    """Serve PWA web app manifest."""
+    from fastapi.responses import Response
+    manifest_path = pathlib.Path(__file__).parent.parent / "manifest.json"
+    if not manifest_path.exists():
+        raise HTTPException(status_code=404, detail="manifest.json not found")
+    content = manifest_path.read_text(encoding='utf-8')
+    return Response(content=content, media_type="application/manifest+json",
                     headers={"Cache-Control": "public, max-age=86400"})
 
 
