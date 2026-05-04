@@ -37,3 +37,8 @@ externalPort = 80
 [deployment]
 deploymentTarget = "autoscale"
 run = ["python", "start.py"]
+
+[userenv]
+
+[userenv.shared]
+HUGGINGFACE_API_KEY = "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"
