@@ -1134,66 +1134,53 @@
             const [step, setStep] = useState(0);
             const [customSearch, setCustomSearch] = useState('');
 
-            // Load saved answers from localStorage if they exist
-            const getSavedAnswers = () => {
+            const emptyAnswers = {
+                full_name: '', phone: '', home_location: '', age: '',
+                drivers_license: '', own_car: '', own_computer: '', linkedin: '',
+                portfolio_url: '', earliest_start: '', education_level: '',
+                search_terms: [], custom_search: '', working_hours: [],
+                employment_form: [], duration: '', salary: '', dealbreakers: []
+            };
+
+            // Merge any source of answers into the canonical shape
+            const mergeAnswers = (merged) => {
+                if (merged.working_hours && typeof merged.working_hours === 'string') {
+                    merged.working_hours = [merged.working_hours];
+                }
+                return {
+                    full_name: merged.full_name || '',
+                    phone: merged.phone || '',
+                    home_location: merged.home_location || merged.location_text || '',
+                    age: merged.age || '',
+                    drivers_license: merged.drivers_license || '',
+                    own_car: merged.own_car || '',
+                    own_computer: merged.own_computer || '',
+                    linkedin: merged.linkedin || '',
+                    portfolio_url: merged.portfolio_url || '',
+                    earliest_start: merged.earliest_start || '',
+                    education_level: merged.education_level || '',
+                    search_terms: merged.search_terms || [],
+                    custom_search: merged.custom_search || '',
+                    working_hours: merged.working_hours || [],
+                    employment_form: merged.employment_form || [],
+                    duration: merged.duration || '',
+                    salary: merged.salary || '',
+                    dealbreakers: merged.dealbreakers || []
+                };
+            };
+
+            const [answers, setAnswers] = useState(() => {
+                // Start from localStorage cache (instant) — server will override below
                 try {
                     const saved = localStorage.getItem('job_preferences');
                     const savedProfile = localStorage.getItem('user_profile');
                     const parsed = saved ? JSON.parse(saved) : {};
                     const parsedProfile = savedProfile ? JSON.parse(savedProfile) : {};
                     const merged = { ...parsedProfile, ...parsed };
-                    if (Object.keys(merged).length > 0) {
-                        // Ensure working_hours is an array for multi-select
-                        if (merged.working_hours && typeof merged.working_hours === 'string') {
-                            merged.working_hours = [merged.working_hours];
-                        }
-                        return {
-                            full_name: merged.full_name || '',
-                            phone: merged.phone || '',
-                            home_location: merged.home_location || '',
-                            age: merged.age || '',
-                            drivers_license: merged.drivers_license || '',
-                            own_car: merged.own_car || '',
-                            own_computer: merged.own_computer || '',
-                            linkedin: merged.linkedin || '',
-                            portfolio_url: merged.portfolio_url || '',
-                            earliest_start: merged.earliest_start || '',
-                            education_level: merged.education_level || '',
-                            search_terms: merged.search_terms || [],
-                            custom_search: merged.custom_search || '',
-                            working_hours: merged.working_hours || [],
-                            employment_form: merged.employment_form || [],
-                            duration: merged.duration || '',
-                            salary: merged.salary || '',
-                            dealbreakers: merged.dealbreakers || []
-                        };
-                    }
-                } catch(e) {
-                    console.error('Error loading saved answers:', e);
-                }
-                return {
-                    full_name: '',
-                    phone: '',
-                    home_location: '',
-                    age: '',
-                    drivers_license: '',
-                    own_car: '',
-                    own_computer: '',
-                    linkedin: '',
-                    portfolio_url: '',
-                    earliest_start: '',
-                    education_level: '',
-                    search_terms: [],
-                    custom_search: '',
-                    working_hours: [],
-                    employment_form: [],
-                    duration: '',
-                    salary: '',
-                    dealbreakers: []
-                };
-            };
-
-            const [answers, setAnswers] = useState(getSavedAnswers());
+                    if (Object.keys(merged).length > 0) return mergeAnswers(merged);
+                } catch(e) {}
+                return emptyAnswers;
+            });
 
             // Summary mode - show editable answers instead of step-by-step quiz
             const hasExistingAnswers = answers.full_name || (answers.search_terms && answers.search_terms.length > 0) || answers.custom_search;
@@ -1201,6 +1188,28 @@
             const [editingField, setEditingField] = useState(null);
             const [savingChanges, setSavingChanges] = useState(false);
             const [saveStatus, setSaveStatus] = useState(null);
+
+            // On mount: fetch from Supabase (source of truth) and override local cache
+            useEffect(() => {
+                const token = localStorage.getItem('auth_token');
+                if (!token) return;
+                Promise.all([
+                    fetch('/api/user/preferences', { headers: { 'Authorization': 'Bearer ' + token } }).then(r => r.json()).catch(() => null),
+                    fetch('/api/user/profile', { headers: { 'Authorization': 'Bearer ' + token } }).then(r => r.json()).catch(() => null)
+                ]).then(([prefsData, profileData]) => {
+                    const serverPrefs = (prefsData && prefsData.success && prefsData.preferences && prefsData.preferences.quiz_answers) || {};
+                    const serverProfile = (profileData && profileData.profile) || {};
+                    const merged = { ...serverProfile, ...serverPrefs };
+                    if (Object.keys(merged).length > 0) {
+                        const built = mergeAnswers(merged);
+                        setAnswers(built);
+                        localStorage.setItem('job_preferences', JSON.stringify(built));
+                        if (built.full_name || (built.search_terms && built.search_terms.length > 0) || built.custom_search) {
+                            setShowSummary(true);
+                        }
+                    }
+                });
+            }, []);
 
             const questions = [
                 // === PERSONAL INFO (for applications & cover letters) ===
@@ -8640,11 +8649,8 @@
                     localStorage.setItem('user_profile', JSON.stringify(profileData));
                     onComplete();
                 } catch (err) {
-                    // Save locally even if server fails
-                    localStorage.setItem('onboarding_complete', 'true');
-                    localStorage.setItem('job_preferences', JSON.stringify(answers));
-                    localStorage.setItem('user_profile', JSON.stringify(answers));
-                    onComplete();
+                    console.error('Failed to save to Supabase:', err);
+                    alert('Kunde inte spara till servern. Kontrollera din internetanslutning och försök igen.');
                 }
                 setSaving(false);
             };
@@ -9838,8 +9844,6 @@
                             <div className="max-w-3xl mx-auto">
                                 <QuizPage
                                     onComplete={async (answers) => {
-                                        localStorage.setItem('job_preferences', JSON.stringify(answers));
-                                        // Also save to Supabase
                                         try {
                                             const profileData = {
                                                 full_name: answers.full_name,
@@ -9867,7 +9871,12 @@
                                                 authFetch('/api/user/profile-from-quiz', { method: 'POST', body: JSON.stringify(profileData) }),
                                                 authFetch('/api/user/preferences', { method: 'POST', body: JSON.stringify(prefData) })
                                             ]);
-                                        } catch (e) { console.warn('Quiz save to server failed:', e); }
+                                            // Cache locally only after server confirms
+                                            localStorage.setItem('job_preferences', JSON.stringify(answers));
+                                            localStorage.setItem('user_profile', JSON.stringify(profileData));
+                                        } catch (e) {
+                                            alert('Kunde inte spara till servern. Kontrollera din internetanslutning och försök igen.');
+                                        }
                                     }}
                                     saving={false}
                                 />

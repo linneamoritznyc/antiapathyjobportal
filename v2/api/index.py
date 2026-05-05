@@ -37,16 +37,18 @@ HUGGINGFACE_API_KEY = os.getenv("HUGGINGFACE_API_KEY")
 HF_SWEDISH_VIBE_MODEL = "https://api-inference.huggingface.co/models/KBLab/bert-base-swedish-cased"
 
 
+PUBLISHED_URL = "https://antiapathyjobportalreplit--linneamoritz.replit.app"
+
 def get_app_base_url() -> str:
     """Return the canonical base URL for this deployment (no trailing slash).
-    Priority: APP_BASE_URL env var > REPLIT_DEV_DOMAIN > fallback localhost."""
+    Priority: APP_BASE_URL env var > REPLIT_DEV_DOMAIN > published domain."""
     custom = os.getenv("APP_BASE_URL", "").rstrip("/")
     if custom:
         return custom
     replit_domain = os.getenv("REPLIT_DEV_DOMAIN", "") or os.getenv("REPLIT_DOMAINS", "").split(",")[0].strip()
     if replit_domain:
         return f"https://{replit_domain}"
-    return "http://localhost:5000"
+    return PUBLISHED_URL
 
 
 def get_base_url_from_request(req: Request) -> str:
