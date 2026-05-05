@@ -8595,7 +8595,7 @@
 
         // ============== ONBOARDING ==============
 
-        const OnboardingWizard = ({ onComplete }) => {
+        const OnboardingWizard = ({ onComplete, onSkip }) => {
             const [saving, setSaving] = useState(false);
 
             const handleQuizComplete = async (answers) => {
@@ -8649,7 +8649,19 @@
                 setSaving(false);
             };
 
-            return <QuizPage onComplete={handleQuizComplete} saving={saving} />;
+            return (
+                <div className="relative">
+                    <QuizPage onComplete={handleQuizComplete} saving={saving} />
+                    <div className="fixed bottom-6 left-0 right-0 flex justify-center z-50 pointer-events-none">
+                        <button
+                            onClick={onSkip}
+                            className="pointer-events-auto bg-white/10 hover:bg-white/20 backdrop-blur text-white/70 hover:text-white text-sm px-5 py-2.5 rounded-full border border-white/20 transition"
+                        >
+                            Hoppa över — fyll i senare
+                        </button>
+                    </div>
+                </div>
+            );
         };
 
         // NOTE: Old onboarding wizard (_ONBOARDING_OLD_UNUSED) removed — 340 lines of dead code.
@@ -9271,11 +9283,16 @@
 
             // Show quiz if needed
             if (showOnboarding && user) {
-                return <OnboardingWizard onComplete={() => {
-                    setShowOnboarding(false);
-                    // Auto-scrape with new preferences
-                    handleScrape('');
-                }} />;
+                return <OnboardingWizard
+                    onComplete={() => {
+                        setShowOnboarding(false);
+                        handleScrape('');
+                    }}
+                    onSkip={() => {
+                        localStorage.setItem('onboarding_complete', 'true');
+                        setShowOnboarding(false);
+                    }}
+                />;
             }
 
             // Landing page for non-logged-in users
@@ -9684,6 +9701,31 @@
                     </header>
 
                     <main className="max-w-5xl mx-auto px-6 py-4">
+
+                        {/* Soft nudge for users who skipped onboarding */}
+                        {(() => {
+                            try {
+                                const prefs = JSON.parse(localStorage.getItem('job_preferences') || '{}');
+                                const hasPrefs = (prefs.search_terms && prefs.search_terms.length > 0) || prefs.custom_search || prefs.full_name;
+                                if (!hasPrefs) return (
+                                    <div className="mb-4 bg-indigo-50 border border-indigo-200 rounded-xl px-4 py-3 flex items-center justify-between gap-4">
+                                        <div className="flex items-center gap-3">
+                                            <span className="text-indigo-500 text-lg">✨</span>
+                                            <p className="text-indigo-800 text-sm">
+                                                <strong>Fyll i din profil</strong> — det tar 2 minuter och gör att AI:n hittar rätt jobb och skriver bättre brev åt dig.
+                                            </p>
+                                        </div>
+                                        <button
+                                            onClick={() => setShowOnboarding(true)}
+                                            className="flex-shrink-0 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-semibold px-4 py-2 rounded-lg transition"
+                                        >
+                                            Fyll i nu →
+                                        </button>
+                                    </div>
+                                );
+                            } catch(e) {}
+                            return null;
+                        })()}
 
                         {activeTab === 'jobs' && (
                             <JobsPage
