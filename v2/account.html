@@ -27,6 +27,69 @@
             </div>
         );
 
+        const EmailPreferencesSection = ({ showToast }) => {
+            const [optIn, setOptIn] = React.useState(false);
+            const [loading, setLoading] = React.useState(true);
+            const [saving, setSaving] = React.useState(false);
+
+            React.useEffect(() => {
+                const token = localStorage.getItem('auth_token');
+                if (!token) { setLoading(false); return; }
+                fetch('/api/user/email-preferences', { headers: { 'Authorization': `Bearer ${token}` } })
+                    .then(r => r.json())
+                    .then(d => { setOptIn(!!d.email_digest_opt_in); setLoading(false); })
+                    .catch(() => setLoading(false));
+            }, []);
+
+            const toggle = async () => {
+                const token = localStorage.getItem('auth_token');
+                if (!token) return;
+                setSaving(true);
+                const newVal = !optIn;
+                try {
+                    const r = await fetch('/api/user/email-preferences', {
+                        method: 'PATCH',
+                        headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ email_digest_opt_in: newVal })
+                    });
+                    if (r.ok) {
+                        setOptIn(newVal);
+                        showToast(newVal ? 'Veckorapport aktiverad! Du får mail varje vecka.' : 'Veckorapport avstängd.', newVal ? 'success' : 'info');
+                    } else {
+                        showToast('Kunde inte ändra inställningen.', 'error');
+                    }
+                } catch(e) { showToast('Något gick fel.', 'error'); }
+                setSaving(false);
+            };
+
+            return (
+                <section className="bg-white rounded-xl border border-slate-200 p-6">
+                    <h2 className="text-lg font-semibold text-slate-800 mb-1">📬 E-postnotiser</h2>
+                    <p className="text-sm text-slate-500 mb-5">Välj om du vill ta emot uppdateringar via e-post.</p>
+                    <div className="flex items-start gap-4 p-4 bg-indigo-50 border border-indigo-100 rounded-xl">
+                        <div className="flex-1">
+                            <div className="font-medium text-slate-800 text-sm">Veckorapport</div>
+                            <div className="text-xs text-slate-500 mt-1 leading-relaxed">
+                                En gång i veckan: hur många jobb som är tillgängliga, hur det går med dina ansökningar, 
+                                och en motiverande påminnelse. Tar 10 sekunder att läsa.
+                            </div>
+                            <div className="text-xs text-indigo-600 mt-2 font-medium">
+                                "Linnea, du har 49 jobb att söka. En ansökan tar 3–5 min. →"
+                            </div>
+                        </div>
+                        <button
+                            onClick={toggle}
+                            disabled={saving || loading}
+                            className={`relative flex-shrink-0 w-12 h-6 rounded-full transition-colors duration-200 focus:outline-none disabled:opacity-50 ${optIn ? 'bg-indigo-600' : 'bg-slate-300'}`}
+                            aria-label="Toggle weekly digest"
+                        >
+                            <span className={`absolute top-0.5 left-0.5 w-5 h-5 rounded-full bg-white shadow transition-transform duration-200 ${optIn ? 'translate-x-6' : 'translate-x-0'}`} />
+                        </button>
+                    </div>
+                </section>
+            );
+        };
+
         const AccountPage = () => {
             const [user, setUser] = useState(null);
             const [loading, setLoading] = useState(true);
@@ -617,6 +680,9 @@
                         {/* Settings Tab Content */}
                         {activeTab === 'settings' && (
                         <>
+                        {/* Email Notifications Section */}
+                        <EmailPreferencesSection showToast={showToast} />
+
                         {/* Security Section */}
                         <section className="bg-white rounded-xl border border-slate-200 p-6">
                             <h2 className="text-lg font-semibold text-slate-800 mb-4">Säkerhet</h2>

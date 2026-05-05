@@ -13,6 +13,7 @@ import logging
 import httpx
 import re
 import time
+import smtplib
 from datetime import datetime, timedelta
 import base64
 from email.mime.text import MIMEText
@@ -33,6 +34,9 @@ SUPABASE_ANON_KEY = os.getenv("SUPABASE_ANON_KEY")  # For client-side auth
 ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY")
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
 HUGGINGFACE_API_KEY = os.getenv("HUGGINGFACE_API_KEY")
+GMAIL_USER = os.getenv("GMAIL_USER")          # e.g. linneamoritzCV@gmail.com
+GMAIL_APP_PASSWORD = os.getenv("GMAIL_APP_PASSWORD")  # 16-char Gmail App Password
+CRON_SECRET = os.getenv("CRON_SECRET", "")    # Used to protect /api/admin/* endpoints
 
 HF_SWEDISH_VIBE_MODEL = "https://api-inference.huggingface.co/models/KBLab/bert-base-swedish-cased"
 
@@ -162,6 +166,103 @@ HÄLSNINGAR: "Hej [namn]," (naturligt). Undvik "Bäste/Bästa" (ålderdomligt).
 
 # Gmail API scopes
 GMAIL_SCOPES = "https://www.googleapis.com/auth/gmail.compose"
+
+
+# ============== SYSTEM EMAIL (SMTP) ==============
+
+def _send_system_email_sync(to_email: str, subject: str, html_body: str) -> bool:
+    """Blocking SMTP send — run via thread pool from async code."""
+    if not GMAIL_USER or not GMAIL_APP_PASSWORD:
+        logger.warning("GMAIL_USER / GMAIL_APP_PASSWORD not set — skipping system email")
+        return False
+    try:
+        msg = MIMEMultipart("alternative")
+        msg["Subject"] = subject
+        msg["From"] = f"Platsbanken AI <{GMAIL_USER}>"
+        msg["To"] = to_email
+        msg.attach(MIMEText(html_body, "html", "utf-8"))
+        with smtplib.SMTP_SSL("smtp.gmail.com", 465, timeout=15) as server:
+            server.login(GMAIL_USER, GMAIL_APP_PASSWORD)
+            server.sendmail(GMAIL_USER, to_email, msg.as_bytes())
+        logger.info(f"System email sent to {to_email}: {subject}")
+        return True
+    except Exception as e:
+        logger.error(f"System email failed to {to_email}: {e}")
+        return False
+
+
+async def send_system_email(to_email: str, subject: str, html_body: str) -> bool:
+    """Async wrapper — runs SMTP in a thread pool so it doesn't block the event loop."""
+    import asyncio
+    loop = asyncio.get_event_loop()
+    return await loop.run_in_executor(None, _send_system_email_sync, to_email, subject, html_body)
+
+
+def build_welcome_email(full_name: str) -> str:
+    first = full_name.split()[0] if full_name else "du"
+    return f"""
+<!DOCTYPE html><html lang="sv"><body style="font-family:sans-serif;max-width:600px;margin:0 auto;padding:24px;color:#1e293b;background:#f8fafc;">
+<div style="background:linear-gradient(135deg,#6366f1,#8b5cf6);padding:32px;border-radius:16px;text-align:center;margin-bottom:24px;">
+  <h1 style="color:white;margin:0;font-size:28px;">Välkommen, {first}! 🎉</h1>
+  <p style="color:rgba(255,255,255,0.85);margin:12px 0 0;font-size:16px;">Jobbsökande utan ångest börjar nu.</p>
+</div>
+<div style="background:white;border-radius:16px;padding:28px;border:1px solid #e2e8f0;">
+  <p style="font-size:16px;line-height:1.7;margin-top:0;">Hej {first},</p>
+  <p style="font-size:16px;line-height:1.7;">Ditt konto är skapat. Här är vad du kan göra:</p>
+  <ul style="line-height:2;font-size:15px;padding-left:20px;">
+    <li>🔍 <strong>Sök jobb</strong> direkt från Platsbanken — inga manuella sökningar</li>
+    <li>✍️ <strong>Generera personligt brev</strong> med AI som skriver i din stil</li>
+    <li>📄 <strong>Branschanpassade CV:n</strong> — ett CV per bransch, automatiskt</li>
+    <li>🚫 <strong>Förbjud ord du hatar</strong> (t.ex. "gedigen") under Ordlista & Stil</li>
+    <li>📬 <strong>Gmail-integration</strong> — skicka ansökningar direkt från appen</li>
+  </ul>
+  <p style="font-size:15px;line-height:1.7;color:#475569;">En ansökan tar ca 3–5 minuter. Börja nu och du kan ha 5 ansökningar idag.</p>
+  <div style="text-align:center;margin:28px 0;">
+    <a href="https://antiapathyjobportalreplit--linneamoritz.replit.app" 
+       style="background:linear-gradient(135deg,#6366f1,#8b5cf6);color:white;text-decoration:none;padding:14px 32px;border-radius:12px;font-size:16px;font-weight:600;display:inline-block;">
+      Öppna appen →
+    </a>
+  </div>
+  <p style="font-size:13px;color:#94a3b8;margin-bottom:0;">Platsbanken AI · Jobbsökande utan ångest</p>
+</div>
+</body></html>"""
+
+
+def build_weekly_digest_email(first_name: str, job_count: int, application_count: int, sent_count: int) -> str:
+    first = first_name or "du"
+    verb = "söka" if job_count != 1 else "söka"
+    job_word = "jobb" if job_count != 1 else "jobb"
+    return f"""
+<!DOCTYPE html><html lang="sv"><body style="font-family:sans-serif;max-width:600px;margin:0 auto;padding:24px;color:#1e293b;background:#f8fafc;">
+<div style="background:linear-gradient(135deg,#f59e0b,#ef4444);padding:32px;border-radius:16px;text-align:center;margin-bottom:24px;">
+  <p style="color:rgba(255,255,255,0.9);margin:0 0 8px;font-size:14px;text-transform:uppercase;letter-spacing:1px;">Veckorapport</p>
+  <h1 style="color:white;margin:0;font-size:32px;">{job_count}</h1>
+  <p style="color:rgba(255,255,255,0.9);margin:8px 0 0;font-size:18px;">{job_word} att {verb}, {first}</p>
+</div>
+<div style="background:white;border-radius:16px;padding:28px;border:1px solid #e2e8f0;">
+  <p style="font-size:16px;line-height:1.7;margin-top:0;">Hej {first},</p>
+  <p style="font-size:16px;line-height:1.7;">Det finns just nu <strong>{job_count} jobb</strong> på Platsbanken som matchar din profil. 
+  {"Du har skickat " + str(sent_count) + " ansökningar hittills — bra jobbat!" if sent_count > 0 else "Du har inte skickat någon ansökan än — nu är ett perfekt tillfälle."}</p>
+  <div style="background:#fef3c7;border:1px solid #fde68a;border-radius:12px;padding:16px;margin:16px 0;">
+    <p style="margin:0;font-size:15px;line-height:1.6;color:#92400e;">
+      💡 <strong>Visste du?</strong> Arbetsgivare svarar ofta inte direkt — men det betyder inte att du inte är aktuell. 
+      Varje ansökan du skickar ökar dina chanser. Med vår app tar en ansökan bara <strong>3–5 minuter</strong>.
+    </p>
+  </div>
+  <p style="font-size:15px;line-height:1.7;color:#475569;">Öppna appen, välj ett jobb och låt AI skriva brevet — du granskar och skickar.</p>
+  <div style="text-align:center;margin:28px 0;">
+    <a href="https://antiapathyjobportalreplit--linneamoritz.replit.app" 
+       style="background:linear-gradient(135deg,#f59e0b,#ef4444);color:white;text-decoration:none;padding:14px 32px;border-radius:12px;font-size:16px;font-weight:600;display:inline-block;">
+      Sök jobb nu → 
+    </a>
+  </div>
+  <hr style="border:none;border-top:1px solid #e2e8f0;margin:20px 0;">
+  <p style="font-size:12px;color:#94a3b8;margin:0;text-align:center;">
+    Du får detta mail för att du har aktiverat veckorapporter. 
+    <a href="https://antiapathyjobportalreplit--linneamoritz.replit.app/account#settings" style="color:#6366f1;">Avsluta prenumeration</a>
+  </p>
+</div>
+</body></html>"""
 
 app = FastAPI(
     title="Anti-Apathy Job Portal",
@@ -5831,10 +5932,23 @@ async def sign_up(request: SignUpRequest, http_request: Request):
             raise HTTPException(status_code=400, detail=error.get("msg", "Kunde inte skapa konto"))
 
         data = response.json()
+        new_user = data.get("user", {})
+        user_id = new_user.get("id")
+        user_email = request.email
+        user_name = request.full_name or ""
+
+        # Send welcome email in background (don't block signup response)
+        import asyncio
+        asyncio.create_task(send_system_email(
+            user_email,
+            "Välkommen till Platsbanken AI 🎉",
+            build_welcome_email(user_name)
+        ))
+
         return {
             "success": True,
             "message": "Konto skapat! Kolla din e-post för att bekräfta.",
-            "user_id": data.get("user", {}).get("id")
+            "user_id": user_id
         }
 
 
@@ -11643,6 +11757,131 @@ async def update_letter_style_phrases(request: Request):
             params={"user_id": f"eq.{user_id}"}, data={db_column: current_list})
 
     return {"success": True, db_column: current_list}
+
+
+# ============== EMAIL PREFERENCES ==============
+
+@app.get("/api/user/email-preferences")
+async def get_email_preferences(request: Request):
+    """Get user's email opt-in preferences (stored in quiz_answers JSONB)."""
+    user_id = await get_user_id_from_request(request, required=True)
+    rows = await db_request("GET", "user_job_preferences",
+        params={"user_id": f"eq.{user_id}", "select": "quiz_answers"})
+    qa = (rows[0].get("quiz_answers") or {}) if rows else {}
+    return {
+        "email_digest_opt_in": qa.get("email_digest_opt_in", False),
+    }
+
+
+@app.patch("/api/user/email-preferences")
+async def update_email_preferences(request: Request):
+    """Toggle weekly digest email opt-in (merged into quiz_answers JSONB)."""
+    user_id = await get_user_id_from_request(request, required=True)
+    body = await request.json()
+    opt_in = bool(body.get("email_digest_opt_in", False))
+
+    # Fetch existing quiz_answers and merge
+    rows = await db_request("GET", "user_job_preferences",
+        params={"user_id": f"eq.{user_id}", "select": "quiz_answers"})
+    existing_qa = (rows[0].get("quiz_answers") or {}) if rows else {}
+    merged_qa = {**existing_qa, "email_digest_opt_in": opt_in}
+
+    import httpx as _httpx
+    async with _httpx.AsyncClient() as client:
+        await client.post(
+            f"{SUPABASE_URL}/rest/v1/user_job_preferences?on_conflict=user_id",
+            headers={
+                "apikey": SUPABASE_KEY,
+                "Authorization": f"Bearer {SUPABASE_KEY}",
+                "Content-Type": "application/json",
+                "Prefer": "resolution=merge-duplicates,return=representation"
+            },
+            json={"user_id": user_id, "quiz_answers": merged_qa},
+            timeout=10
+        )
+    return {"success": True, "email_digest_opt_in": opt_in}
+
+
+# ============== WEEKLY DIGEST (CRON ENDPOINT) ==============
+
+@app.post("/api/admin/weekly-digest")
+async def send_weekly_digest(request: Request):
+    """
+    Send weekly job digest emails to all opted-in users.
+    Protected by CRON_SECRET header.  Call weekly via cron-job.org or GitHub Actions.
+    Example cron: POST /api/admin/weekly-digest  X-Cron-Secret: <secret>
+    """
+    # Verify cron secret
+    provided = request.headers.get("X-Cron-Secret", "")
+    if not CRON_SECRET or provided != CRON_SECRET:
+        raise HTTPException(status_code=403, detail="Invalid or missing cron secret")
+
+    if not GMAIL_USER or not GMAIL_APP_PASSWORD:
+        raise HTTPException(status_code=500, detail="GMAIL_USER / GMAIL_APP_PASSWORD not configured")
+
+    # 1. Find all users with email_digest_opt_in = true in quiz_answers
+    all_prefs = await db_request("GET", "user_job_preferences",
+        params={"select": "user_id,quiz_answers"}) or []
+    opted_in_user_ids = [
+        row["user_id"] for row in all_prefs
+        if (row.get("quiz_answers") or {}).get("email_digest_opt_in") is True
+    ]
+
+    if not opted_in_user_ids:
+        return {"success": True, "sent": 0, "message": "No opted-in users"}
+
+    # 2. Get total available jobs (non-expired)
+    from datetime import date
+    today = date.today().isoformat()
+    jobs = await db_request("GET", "jobs", params={
+        "select": "id",
+        "or": f"(deadline.is.null,deadline.gte.{today})",
+        "limit": "5000"
+    }) or []
+    total_jobs = len(jobs)
+
+    sent_count = 0
+    errors = []
+    for uid in opted_in_user_ids:
+        try:
+            # Get user profile for name + email
+            profiles = await db_request("GET", "user_profiles",
+                params={"user_id": f"eq.{uid}", "select": "full_name,email"})
+            if not profiles:
+                continue
+            profile = profiles[0]
+            user_email = profile.get("email", "")
+            full_name = profile.get("full_name", "")
+            first_name = full_name.split()[0] if full_name else "du"
+            if not user_email:
+                continue
+
+            # Get application count for this user
+            apps = await db_request("GET", "applications",
+                params={"user_id": f"eq.{uid}", "select": "id,status"}) or []
+            sent_apps = [a for a in apps if a.get("status") in ("sent", "applied")]
+
+            html = build_weekly_digest_email(first_name, total_jobs, len(apps), len(sent_apps))
+            ok = await send_system_email(
+                user_email,
+                f"{first_name}, du har {total_jobs} jobb att söka 🎯",
+                html
+            )
+            if ok:
+                sent_count += 1
+            else:
+                errors.append(user_email)
+        except Exception as e:
+            logger.error(f"Weekly digest error for {uid}: {e}")
+            errors.append(str(uid))
+
+    return {
+        "success": True,
+        "sent": sent_count,
+        "errors": errors,
+        "total_opted_in": len(opted_in_user_ids),
+        "total_jobs": total_jobs
+    }
 
 
 @app.exception_handler(Exception)

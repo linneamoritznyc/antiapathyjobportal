@@ -8,7 +8,8 @@ AI-powered job application automation for neurodivergent job seekers in Sweden. 
 - **Frontend:** Single-file React 18 + Tailwind CSS via CDN (`v2/frontend.html`, `v2/login.html`, `v2/account.html`)
 - **Database:** Supabase (PostgreSQL) — 29 tables for jobs, user profiles, CVs, applications
 - **AI:** Anthropic Claude API — generates Swedish cover letters with strict grammar/style rules
-- **Email:** Gmail API — creates draft emails with PDF CV attachments
+- **Email (drafts):** Gmail API — creates draft emails with PDF CV attachments
+- **Email (system):** SMTP via `smtplib` — welcome emails on signup, weekly digest for opted-in users
 - **CV System:** 8 industry-specific PDF CVs in `v2/api/cv_files/`
 
 ## Running the App
@@ -39,9 +40,12 @@ SUPABASE_URL=https://your-project.supabase.co
 SUPABASE_ANON_KEY=...
 SUPABASE_SERVICE_ROLE_KEY=...
 
-# Required for Gmail draft creation
+# Required for Gmail draft creation AND system emails (welcome, digest)
 GMAIL_USER=your-email@gmail.com
-GMAIL_APP_PASSWORD=your-16-char-app-password
+GMAIL_APP_PASSWORD=your-16-char-app-password  # Gmail App Password (not account password)
+
+# Required for weekly digest cron protection
+CRON_SECRET=some-random-secret
 
 # Optional
 GEMINI_API_KEY=...
@@ -59,6 +63,9 @@ HUGGINGFACE_API_KEY=...
 - `GET /api/cv/all` — List all CVs
 - `GET /api/aktivitetsrapport` — Activity report
 - `GET /api/health` — Health check
+- `GET /api/user/email-preferences` — Get email opt-in settings
+- `PATCH /api/user/email-preferences` — Toggle weekly digest
+- `POST /api/admin/weekly-digest` — Send digest to opted-in users (requires X-Cron-Secret header)
 
 ## Notes
 
