@@ -307,7 +307,7 @@ async def ensure_storage_buckets():
                 )
                 if resp.status_code in [200, 201]:
                     logger.info(f"Created storage bucket: {bucket['id']}")
-                elif resp.status_code == 409:
+                elif resp.status_code == 409 or "Duplicate" in resp.text or "already exists" in resp.text:
                     logger.debug(f"Storage bucket already exists: {bucket['id']}")
                 else:
                     logger.warning(f"Bucket {bucket['id']}: {resp.status_code} - {resp.text[:100]}")
