@@ -8729,6 +8729,9 @@
                 const onboardingComplete = localStorage.getItem('onboarding_complete');
                 if (onboardingComplete) return;
 
+                // Small delay so auth token has time to propagate after a fresh OAuth redirect
+                await new Promise(r => setTimeout(r, 800));
+
                 // Check Supabase — maybe quiz was done on another device/browser
                 try {
                     const res = await authFetch('/api/user/preferences');
@@ -8741,6 +8744,11 @@
                         }
                     }
                 } catch (e) { /* ignore - no auth or network error */ }
+
+                // Only show onboarding if we have a valid logged-in user
+                // (avoid showing quiz on page load before auth resolves)
+                const hasToken = !!localStorage.getItem('auth_token');
+                if (!hasToken) return;
 
                 // No quiz done yet - show it
                 setShowOnboarding(true);
