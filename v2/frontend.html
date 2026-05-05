@@ -8677,6 +8677,7 @@
             const [applications, setApplications] = useState([]);
             const [stats, setStats] = useState({});
             const [showOnboarding, setShowOnboarding] = useState(false);
+            const [prefsLoaded, setPrefsLoaded] = useState(false);
             const [landingTab, setLandingTab] = useState('hem');
 
             const [scraping, setScraping] = useState(false);
@@ -8732,8 +8733,12 @@
                             // Notify components to re-read preferences
                             window.dispatchEvent(new Event('prefsUpdated'));
                         }
+                        setPrefsLoaded(true);
                     })
-                    .catch(err => console.warn('Could not load prefs from server:', err));
+                    .catch(err => {
+                        console.warn('Could not load prefs from server:', err);
+                        setPrefsLoaded(true);
+                    });
             }, []);
 
             const checkOnboarding = async () => {
@@ -9702,8 +9707,8 @@
 
                     <main className="max-w-5xl mx-auto px-6 py-4">
 
-                        {/* Soft nudge for users who skipped onboarding */}
-                        {(() => {
+                        {/* Soft nudge for users who skipped onboarding — only after server prefs have loaded */}
+                        {prefsLoaded && (() => {
                             try {
                                 const prefs = JSON.parse(localStorage.getItem('job_preferences') || '{}');
                                 const hasPrefs = (prefs.search_terms && prefs.search_terms.length > 0) || prefs.custom_search || prefs.full_name;

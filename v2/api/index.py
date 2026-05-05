@@ -48,6 +48,15 @@ def get_app_base_url() -> str:
         return f"https://{replit_domain}"
     return "http://localhost:5000"
 
+
+def get_base_url_from_request(req: Request) -> str:
+    """Return the base URL based on the incoming request's host header.
+    This ensures redirect URLs work on both the dev preview and the published domain."""
+    host = req.headers.get("x-forwarded-host") or req.headers.get("host", "")
+    if host and not host.startswith("localhost") and not host.startswith("127."):
+        return f"https://{host}"
+    return get_app_base_url()
+
 # ── Swedish Language Rules (Svenska Skrivregler) ──────────────────────────
 # Used in all AI text generation: cover letters, CVs, application answers
 SWEDISH_LANGUAGE_RULES = """
@@ -5768,11 +5777,19 @@ async def debug_env():
     }
 
 @app.get("/api/auth/google")
-async def google_auth():
+async def google_auth(request: Request):
     """Redirect user to Google Sign-In via Supabase OAuth."""
     if not SUPABASE_URL or not SUPABASE_ANON_KEY:
         raise HTTPException(status_code=500, detail="Supabase not configured")
-    redirect_to = f"{get_app_base_url()}/login"
+    # Use the actual request host so redirect works on both dev and published URLs
+    host = request.headers.get("x-forwarded-host") or request.headers.get("host", "")
+    if host and not host.startswith("localhost") and not host.startswith("127."):
+        scheme = "https"
+        base = f"{scheme}://{host}"
+    else:
+        base = get_app_base_url()
+    redirect_to = f"{base}/login"
+    logger.info(f"Google OAuth redirect_to: {redirect_to}")
     url = (
         f"{SUPABASE_URL}/auth/v1/authorize?provider=google"
         f"&redirect_to={redirect_to}"
@@ -5782,7 +5799,7 @@ async def google_auth():
 
 
 @app.post("/api/auth/signup")
-async def sign_up(request: SignUpRequest):
+async def sign_up(request: SignUpRequest, http_request: Request):
     """
     Create a new user account with email and password.
     Supabase will send a confirmation email automatically.
@@ -5802,7 +5819,7 @@ async def sign_up(request: SignUpRequest):
                 "password": request.password,
                 "data": {"full_name": request.full_name} if request.full_name else {},
                 "options": {
-                    "email_redirect_to": f"{get_app_base_url()}/login"
+                    "email_redirect_to": f"{get_base_url_from_request(http_request)}/login"
                 }
             }
         )
@@ -5824,7 +5841,7 @@ class ResendVerificationRequest(BaseModel):
 
 
 @app.post("/api/auth/resend-verification")
-async def resend_verification(request: ResendVerificationRequest):
+async def resend_verification(request: ResendVerificationRequest, http_request: Request):
     """
     Resend email verification link.
     Uses Supabase's resend endpoint.
@@ -5843,7 +5860,7 @@ async def resend_verification(request: ResendVerificationRequest):
                 "type": "signup",
                 "email": request.email,
                 "options": {
-                    "email_redirect_to": f"{get_app_base_url()}/login"
+                    "email_redirect_to": f"{get_base_url_from_request(http_request)}/login"
                 }
             }
         )
@@ -5947,7 +5964,7 @@ async def sign_out(request: Request):
 
 
 @app.post("/api/auth/reset-password")
-async def reset_password(request: ResetPasswordRequest):
+async def reset_password(request: ResetPasswordRequest, http_request: Request):
     """
     Send password reset email.
     Supabase handles the email automatically.
@@ -5965,7 +5982,7 @@ async def reset_password(request: ResetPasswordRequest):
             json={
                 "email": request.email,
                 "options": {
-                    "redirect_to": f"{get_app_base_url()}/login"
+                    "redirect_to": f"{get_base_url_from_request(http_request)}/login"
                 }
             }
         )
