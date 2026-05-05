@@ -7367,6 +7367,13 @@
                 });
             };
 
+            const deleteEducation = (index) => {
+                setEditedCV({
+                    ...editedCV,
+                    education: editedCV.education.filter((_, i) => i !== index)
+                });
+            };
+
             const updateEducation = (index, field, value) => {
                 const newEdu = [...editedCV.education];
                 newEdu[index] = { ...newEdu[index], [field]: value };
@@ -7611,6 +7618,15 @@
                                 <div className="space-y-4">
                                     {editedCV.education?.map((edu, i) => (
                                         <div key={i} className="bg-slate-50 rounded-xl p-4 border border-slate-200">
+                                            <div className="flex justify-between items-start mb-3">
+                                                <span className="text-xs font-medium text-slate-500">#{i + 1}</span>
+                                                <button
+                                                    onClick={() => deleteEducation(i)}
+                                                    className="text-red-500 hover:text-red-700 text-sm"
+                                                >
+                                                    🗑️ Ta bort
+                                                </button>
+                                            </div>
                                             <div className="grid md:grid-cols-2 gap-3">
                                                 <input
                                                     placeholder="Skola/Universitet"
@@ -9038,16 +9054,53 @@
                 setSavingMasterCV(true);
 
                 try {
+                    // Save profile
+                    if (editedCV.profile) {
+                        await authFetch('/api/profile/details', {
+                            method: 'PATCH',
+                            body: JSON.stringify({
+                                full_name: editedCV.profile.full_name || '',
+                                email: editedCV.profile.email || '',
+                                phone: editedCV.profile.phone || '',
+                                location: editedCV.profile.location || '',
+                            })
+                        });
+                    }
+
+                    // Track original IDs to detect deletions
+                    const originalExpIds = new Set((masterCV?.experiences || []).map(e => e.id).filter(Boolean));
+                    const originalEduIds = new Set((masterCV?.education || []).map(e => e.id).filter(Boolean));
+                    const originalSkillIds = new Set((masterCV?.skills || []).map(s => s.id).filter(Boolean));
+
+                    const currentExpIds = new Set((editedCV.experiences || []).map(e => e.id).filter(Boolean));
+                    const currentEduIds = new Set((editedCV.education || []).map(e => e.id).filter(Boolean));
+                    const currentSkillIds = new Set((editedCV.skills || []).map(s => s.id).filter(Boolean));
+
+                    // Delete removed entries
+                    for (const id of originalExpIds) {
+                        if (!currentExpIds.has(id)) {
+                            await authFetch(`/api/user/experience/${id}`, { method: 'DELETE' });
+                        }
+                    }
+                    for (const id of originalEduIds) {
+                        if (!currentEduIds.has(id)) {
+                            await authFetch(`/api/user/education/${id}`, { method: 'DELETE' });
+                        }
+                    }
+                    for (const id of originalSkillIds) {
+                        if (!currentSkillIds.has(id)) {
+                            await authFetch(`/api/user/skill/${id}`, { method: 'DELETE' });
+                        }
+                    }
+
                     // Save experiences
-                    for (const exp of editedCV.experiences) {
+                    for (const exp of (editedCV.experiences || [])) {
                         if (exp.id) {
-                            // Update existing
                             await authFetch(`/api/user/experience/${exp.id}`, {
                                 method: 'PUT',
                                 body: JSON.stringify(exp)
                             });
                         } else {
-                            // Create new
                             await authFetch('/api/user/experience', {
                                 method: 'POST',
                                 body: JSON.stringify(exp)
@@ -9056,7 +9109,7 @@
                     }
 
                     // Save education
-                    for (const edu of editedCV.education) {
+                    for (const edu of (editedCV.education || [])) {
                         if (edu.id) {
                             await authFetch(`/api/user/education/${edu.id}`, {
                                 method: 'PUT',

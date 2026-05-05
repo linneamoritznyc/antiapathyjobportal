@@ -4310,14 +4310,24 @@ def _build_master_cv_pdf(profile: Dict, experiences: list, education: list, volu
             meta_parts = []
             if exp.get("location"):
                 meta_parts.append(safe_text(exp["location"]))
-            if exp.get("dates"):
-                meta_parts.append(safe_text(exp["dates"]))
+            exp_dates = exp.get("dates") or ""
+            if not exp_dates:
+                s = exp.get("start_date", "") or ""
+                e = exp.get("end_date", "") or ""
+                if s or e:
+                    exp_dates = f"{s} - {e or 'Nuvarande'}"
+            if exp_dates:
+                meta_parts.append(safe_text(exp_dates))
             if meta_parts:
                 pdf.set_font("Helvetica", "I", 9)
                 pdf.set_text_color(100, 100, 100)
                 pdf.cell(0, 5, "  |  ".join(meta_parts), new_x="LMARGIN", new_y="NEXT")
 
             bullets = exp.get("bullets") or []
+            if not bullets:
+                desc = (exp.get("description") or "").strip()
+                if desc:
+                    bullets = [line.strip() for line in desc.split("\n") if line.strip()]
             if bullets:
                 pdf.set_font("Helvetica", "", 9)
                 pdf.set_text_color(60, 60, 60)
@@ -4341,8 +4351,16 @@ def _build_master_cv_pdf(profile: Dict, experiences: list, education: list, volu
             meta_parts = []
             if edu.get("location"):
                 meta_parts.append(safe_text(edu["location"]))
-            if edu.get("dates"):
-                meta_parts.append(safe_text(edu["dates"]))
+            edu_dates = edu.get("dates") or ""
+            if not edu_dates:
+                s = edu.get("start_date", "") or ""
+                e = edu.get("end_date", "") or ""
+                if s or e:
+                    edu_dates = f"{s} - {e}" if e else s
+            if edu.get("field_of_study"):
+                meta_parts.append(safe_text(edu["field_of_study"]))
+            if edu_dates:
+                meta_parts.append(safe_text(edu_dates))
             if meta_parts:
                 pdf.set_font("Helvetica", "I", 9)
                 pdf.set_text_color(100, 100, 100)
