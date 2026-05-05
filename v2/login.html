@@ -135,8 +135,38 @@
                 </button>
             </form>
 
+            <!-- Set New Password Form (shown after clicking reset link in email) -->
+            <form id="new-password-form" onsubmit="handleNewPassword(event)" class="space-y-4 hidden">
+                <div class="flex items-center gap-3 bg-indigo-50 border border-indigo-200 rounded-lg p-3 mb-2">
+                    <span class="text-xl">🔑</span>
+                    <p class="text-sm text-indigo-800 font-medium">Välj ett nytt lösenord för ditt konto.</p>
+                </div>
+                <div>
+                    <label class="block text-sm font-medium text-slate-700 mb-1">Nytt lösenord</label>
+                    <div class="relative">
+                        <input type="password" id="new-password" required minlength="8"
+                            class="w-full px-4 py-3 border border-slate-200 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent pr-12"
+                            placeholder="Minst 8 tecken">
+                        <button type="button" onclick="togglePassword('new-password', 'eye-new')"
+                            class="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600">
+                            <span id="eye-new">👁</span>
+                        </button>
+                    </div>
+                </div>
+                <div>
+                    <label class="block text-sm font-medium text-slate-700 mb-1">Bekräfta lösenord</label>
+                    <input type="password" id="confirm-new-password" required minlength="8"
+                        class="w-full px-4 py-3 border border-slate-200 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
+                        placeholder="Upprepa lösenordet">
+                </div>
+                <button type="submit" id="new-password-btn"
+                    class="w-full bg-indigo-600 text-white font-semibold py-3 px-4 rounded-lg hover:bg-indigo-700 transition">
+                    Spara nytt lösenord
+                </button>
+            </form>
+
             <!-- Divider -->
-            <div class="relative my-6">
+            <div class="google-section relative my-6">
                 <div class="absolute inset-0 flex items-center">
                     <div class="w-full border-t border-slate-200"></div>
                 </div>
@@ -147,7 +177,7 @@
 
             <!-- Google Sign-In Button -->
             <button onclick="handleGoogleSignIn()" id="google-btn"
-                class="w-full flex items-center justify-center gap-3 px-4 py-3 border border-slate-300 rounded-lg hover:bg-slate-50 transition font-medium text-slate-700">
+                class="google-section w-full flex items-center justify-center gap-3 px-4 py-3 border border-slate-300 rounded-lg hover:bg-slate-50 transition font-medium text-slate-700">
                 <svg width="20" height="20" viewBox="0 0 24 24">
                     <path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92a5.06 5.06 0 0 1-2.2 3.32v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.1z" fill="#4285F4"/>
                     <path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" fill="#34A853"/>
@@ -194,6 +224,18 @@
             // Handle successful verification - AUTO LOGIN
             if (accessToken) {
                 const refreshToken = params.get('refresh_token');
+                const tokenType = params.get('type');
+
+                // Password recovery flow — show "set new password" form instead of logging in
+                if (tokenType === 'recovery') {
+                    window._recoveryToken = accessToken;
+                    document.getElementById('login-form').classList.add('hidden');
+                    document.getElementById('signup-form').classList.add('hidden');
+                    document.getElementById('reset-form').classList.add('hidden');
+                    document.getElementById('new-password-form').classList.remove('hidden');
+                    document.querySelectorAll('.google-section').forEach(el => el.classList.add('hidden'));
+                    return;
+                }
 
                 // Save tokens immediately
                 localStorage.setItem('auth_token', accessToken);
@@ -605,6 +647,64 @@
 
             } catch (err) {
                 showStatus('Något gick fel. Försök igen.', true);
+            }
+        }
+
+        async function handleNewPassword(e) {
+            e.preventDefault();
+            const pw = document.getElementById('new-password').value;
+            const pw2 = document.getElementById('confirm-new-password').value;
+
+            if (pw !== pw2) {
+                showStatus('Lösenorden matchar inte.', true);
+                return;
+            }
+            if (pw.length < 8) {
+                showStatus('Lösenordet måste vara minst 8 tecken.', true);
+                return;
+            }
+
+            const token = window._recoveryToken;
+            if (!token) {
+                showStatus('Sessionen har gått ut. Begär en ny återställningslänk.', true);
+                return;
+            }
+
+            const btn = document.getElementById('new-password-btn');
+            btn.disabled = true;
+            btn.textContent = 'Sparar...';
+
+            try {
+                const res = await fetch('/api/auth/update-password', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': 'Bearer ' + token
+                    },
+                    body: JSON.stringify({ new_password: pw })
+                });
+
+                if (res.ok) {
+                    window._recoveryToken = null;
+                    // Clear any stale sessions
+                    localStorage.removeItem('auth_token');
+                    localStorage.removeItem('refresh_token');
+                    localStorage.removeItem('user');
+
+                    document.getElementById('new-password-form').classList.add('hidden');
+                    document.querySelectorAll('.google-section').forEach(el => el.classList.remove('hidden'));
+                    showTab('login');
+                    showStatus('✅ Lösenord sparat! Logga in med ditt nya lösenord.');
+                } else {
+                    const err = await res.json().catch(() => ({}));
+                    showStatus(err.detail || 'Kunde inte spara lösenordet. Försök igen.', true);
+                    btn.disabled = false;
+                    btn.textContent = 'Spara nytt lösenord';
+                }
+            } catch (err) {
+                showStatus('Något gick fel. Försök igen.', true);
+                btn.disabled = false;
+                btn.textContent = 'Spara nytt lösenord';
             }
         }
     </script>
