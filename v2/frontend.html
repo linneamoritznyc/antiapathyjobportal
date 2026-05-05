@@ -691,15 +691,17 @@
                             bransch: effectiveBransch
                         })
                     });
-                    const data = await res.json();
+                    let data = {};
+                    try { data = await res.json(); } catch(e) {}
                     if (data.success) {
                         setDraftSaved(true);
                     } else {
-                        alert(data.detail || 'Kunde inte spara utkast. Är Gmail kopplat i Profil?');
+                        const msg = data.detail || (res.ok ? 'Okänt fel.' : `Serverfel (${res.status}).`);
+                        alert(`Kunde inte spara utkast i Gmail.\n\n${msg}\n\nGå till Profil → Gmail om du behöver koppla om.`);
                     }
                 } catch (err) {
                     console.error('Save draft error:', err);
-                    alert('Något gick fel. Försök igen.');
+                    alert('Nätverksfel. Kontrollera din anslutning och försök igen.');
                 }
                 setSavingDraft(false);
             };
@@ -1908,13 +1910,16 @@
                         /* ===== CONNECTED STATE ===== */
                         <div className="space-y-4">
                             <div className="bg-white rounded-xl border border-slate-200 overflow-hidden">
-                                <div className="bg-green-50 border-b border-green-200 px-6 py-5 flex items-center gap-4">
+                                <div className={`border-b px-6 py-5 flex items-center gap-4 ${gmailStatus.needs_reconnect ? 'bg-amber-50 border-amber-200' : 'bg-green-50 border-green-200'}`}>
                                     <div className="w-12 h-12 bg-green-100 rounded-full flex items-center justify-center text-2xl">
                                         <svg width="24" height="24" viewBox="0 0 24 24" fill="none"><path d="M20 4H4c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V6c0-1.1-.9-2-2-2zm0 4l-8 5-8-5V6l8 5 8-5v2z" fill="#16a34a"/></svg>
                                     </div>
                                     <div>
-                                        <p className="font-semibold text-green-800 text-lg">Gmail kopplad</p>
-                                        <p className="text-green-700">{gmailStatus.gmail_address}</p>
+                                        <p className={`font-semibold text-lg ${gmailStatus.needs_reconnect ? 'text-amber-800' : 'text-green-800'}`}>Gmail kopplad</p>
+                                        <p className={gmailStatus.needs_reconnect ? 'text-amber-700' : 'text-green-700'}>{gmailStatus.gmail_address}</p>
+                                        {gmailStatus.needs_reconnect && (
+                                            <p className="text-sm text-amber-700 mt-1 font-medium">⚠ Token har gått ut – koppla om Gmail nedan</p>
+                                        )}
                                     </div>
                                 </div>
                                 <div className="px-6 py-5 space-y-3">
@@ -1957,6 +1962,12 @@
                     ) : (
                         /* ===== NOT CONNECTED STATE — CONSENT FLOW ===== */
                         <div className="space-y-4">
+                            {/* Token expired warning */}
+                            {gmailStatus.needs_reconnect && (
+                                <div className="bg-amber-50 border border-amber-200 rounded-xl px-5 py-4 text-sm text-amber-800">
+                                    <strong>Din Gmail-koppling har gått ut.</strong> Google-tokens löper ut regelbundet och måste förnyas. Koppla om din Gmail nedan för att återaktivera utkastfunktionen.
+                                </div>
+                            )}
                             {/* What the app will do */}
                             <div className="bg-white rounded-xl border border-slate-200 overflow-hidden">
                                 <div className="px-6 py-5 border-b border-slate-100">

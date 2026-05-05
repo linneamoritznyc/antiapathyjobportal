@@ -9384,10 +9384,26 @@ async def get_gmail_status(request: Request):
     if not cred.get("is_connected"):
         return {"connected": False, "gmail_address": None, "app_configured": has_oauth_creds}
 
+    # Verify token is actually refreshable (not just DB flag)
+    # Checks expiry and, if expired, attempts refresh — marks disconnected if refresh fails
+    token_ok = await refresh_gmail_token(user_id)
+    if not token_ok:
+        # refresh_gmail_token already marks is_connected=False on 400/401
+        # Re-fetch to get updated state
+        creds2 = await db_request("GET", "user_google_credentials", params={"user_id": f"eq.{user_id}"})
+        still_connected = creds2 and creds2[0].get("is_connected")
+        return {
+            "connected": bool(still_connected),
+            "gmail_address": cred.get("gmail_address") if still_connected else None,
+            "app_configured": has_oauth_creds,
+            "needs_reconnect": not bool(still_connected)
+        }
+
     return {
         "connected": True,
         "gmail_address": cred.get("gmail_address"),
-        "app_configured": has_oauth_creds
+        "app_configured": has_oauth_creds,
+        "needs_reconnect": False
     }
 
 
@@ -9475,7 +9491,13 @@ async def refresh_gmail_token(user_id: str) -> Optional[str]:
             timeout=10
         )
         if response.status_code != 200:
-            logger.error(f"Token refresh failed for user {user_id}: {response.text}")
+            logger.error(f"Token refresh failed for user {user_id}: {response.status_code} {response.text}")
+            # Mark as disconnected so status endpoint shows the truth
+            if response.status_code in (400, 401):
+                await db_request("PATCH", f"user_google_credentials?user_id=eq.{user_id}", data={
+                    "is_connected": False,
+                    "updated_at": datetime.now().isoformat()
+                })
             return None
 
         tokens = response.json()
@@ -9599,13 +9621,18 @@ async def create_gmail_draft_for_user(
         if not creds:
             return (None, "Gmail är inte kopplat. Gå till Profil → Gmail och koppla ditt konto.")
         cred = creds[0]
-        if not cred.get("client_id") or not cred.get("client_secret"):
-            return (None, "Gmail-kopplingen är inte konfigurerad. Försök igen senare.")
+        # Check OAuth credentials: per-user DB record OR app-level env vars
+        has_client_creds = (
+            bool(cred.get("client_id") and cred.get("client_secret"))
+            or bool(os.getenv("GOOGLE_CLIENT_ID") and os.getenv("GOOGLE_CLIENT_SECRET"))
+        )
+        if not has_client_creds:
+            return (None, "Gmail OAuth-konfiguration saknas. Kontakta support.")
         if not cred.get("is_connected"):
             return (None, "Gmail-kopplingen är inaktiverad. Gå till Profil → Gmail och koppla om.")
         if not cred.get("refresh_token"):
             return (None, "Gmail refresh token saknas. Koppla bort och koppla om Gmail i Profil.")
-        return (None, "Gmail-token kunde inte förnyas. Koppla bort och koppla om Gmail i Profil.")
+        return (None, "Gmail-token har gått ut eller återkallats. Koppla bort och koppla om Gmail i Profil.")
     try:
         from email.mime.multipart import MIMEMultipart
         from email.mime.text import MIMEText
