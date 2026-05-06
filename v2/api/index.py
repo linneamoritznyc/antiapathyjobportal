@@ -1512,6 +1512,33 @@ Bot:
     return text
 
 
+def _schedule_bert_vibe_check(text: str) -> None:
+    """Fire-and-forget the KBLab BERT vibe-check on a background task.
+
+    The result is purely informational (logged via print), so we never block
+    the response path waiting for it. fix_with_swedish_bert is sync and uses
+    a HuggingFace Inference call internally, which we run in the default
+    executor so it doesn't tie up the event loop.
+    """
+    if not text:
+        return
+    try:
+        import asyncio as _asyncio
+        loop = _asyncio.get_event_loop()
+
+        async def _run():
+            try:
+                analysis = await loop.run_in_executor(None, fix_with_swedish_bert, text[:512])
+                print(f"Svensk analys klar: {analysis}")
+            except Exception as bert_err:
+                print(f"BERT-fel (ej kritiskt): {bert_err}")
+
+        loop.create_task(_run())
+    except Exception as e:
+        # If we can't even schedule the task (e.g. no running loop), just skip.
+        logger.debug(f"Could not schedule BERT vibe-check: {e}")
+
+
 # Known svengelska words and their Swedish equivalents (augments the system prompt rules)
 SVENGELSKA_MAP = {
     "meeting": "möte", "meetings": "möten",
@@ -2025,7 +2052,7 @@ Skriv ENDAST det färdiga brevet, inget annat."""
                     "max_tokens": 1500,
                     "messages": [{"role": "user", "content": prompt}]
                 },
-                timeout=55
+                timeout=30
             )
 
             if response.status_code == 200:
@@ -2035,15 +2062,9 @@ Skriv ENDAST det färdiga brevet, inget annat."""
                 letter_text = re.sub(r'^#+\s+', '', letter_text, flags=re.MULTILINE)
                 # Run GPT-SW3 Swedish grammar check (non-blocking — returns original on failure)
                 letter_text = await check_swedish_with_gpt_sw3(letter_text)
-                # Kör svensk vibe-check med KBLab BERT (loggar resultat, blockerar ej)
-                try:
-                    import asyncio as _asyncio
-                    swedish_analysis = await _asyncio.get_event_loop().run_in_executor(
-                        None, fix_with_swedish_bert, letter_text[:512]
-                    )
-                    print(f"Svensk analys klar: {swedish_analysis}")
-                except Exception as _bert_err:
-                    print(f"BERT-fel (ej kritiskt): {_bert_err}")
+                # KBLab BERT vibe-check fires off in the background — purely informational,
+                # we don't want it on the response path.
+                _schedule_bert_vibe_check(letter_text)
                 return letter_text
             else:
                 error_body = response.text[:300]
@@ -2062,7 +2083,7 @@ Skriv ENDAST det färdiga brevet, inget annat."""
                             "max_tokens": 1500,
                             "messages": [{"role": "user", "content": prompt}]
                         },
-                        timeout=55
+                        timeout=30
                     )
                     if fallback_resp.status_code == 200:
                         result = fallback_resp.json()
@@ -2070,21 +2091,13 @@ Skriv ENDAST det färdiga brevet, inget annat."""
                         # Strip markdown heading markers if Claude added them
                         letter_text = re.sub(r'^#+\s+', '', letter_text, flags=re.MULTILINE)
                         letter_text = await check_swedish_with_gpt_sw3(letter_text)
-                        # Kör svensk vibe-check med KBLab BERT (loggar resultat, blockerar ej)
-                        try:
-                            import asyncio as _asyncio
-                            swedish_analysis = await _asyncio.get_event_loop().run_in_executor(
-                                None, fix_with_swedish_bert, letter_text[:512]
-                            )
-                            print(f"Svensk analys klar: {swedish_analysis}")
-                        except Exception as _bert_err:
-                            print(f"BERT-fel (ej kritiskt): {_bert_err}")
+                        _schedule_bert_vibe_check(letter_text)
                         return letter_text
                 except Exception as fallback_err:
                     logger.error(f"Haiku fallback also failed: {fallback_err}")
                 # Anthropic failed — try Gemini as final fallback
                 try:
-                    gemini_letter = await call_gemini_api(prompt, max_tokens=1500, timeout=55)
+                    gemini_letter = await call_gemini_api(prompt, max_tokens=1500, timeout=30)
                     if gemini_letter:
                         gemini_letter = re.sub(r'^#+\s+', '', gemini_letter, flags=re.MULTILINE)
                         logger.info("Cover letter generated with Gemini fallback")
