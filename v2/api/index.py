@@ -4818,6 +4818,10 @@ async def download_bransch_cv_pdf(cv_id: str, request: Request):
     name = profile.get("full_name") or "Namn"
 
     # Build PDF from CV text
+    # NOTE: Everything passed to pdf.cell / pdf.multi_cell MUST go through
+    # _safe_pdf_text — FPDF's built-in Helvetica is Latin-1 only and will
+    # crash on em-dashes, smart quotes, or bullet glyphs (•) that Claude
+    # often inserts in generated CVs.
     pdf = FPDF()
     pdf.set_auto_page_break(auto=True, margin=20)
     pdf.add_page()
@@ -4825,7 +4829,7 @@ async def download_bransch_cv_pdf(cv_id: str, request: Request):
     # Header
     pdf.set_font("Helvetica", "B", 18)
     pdf.set_text_color(30, 30, 30)
-    pdf.cell(0, 10, name, new_x="LMARGIN", new_y="NEXT")
+    pdf.cell(0, 10, _safe_pdf_text(name), new_x="LMARGIN", new_y="NEXT")
 
     # Contact line
     contact_parts = []
@@ -4838,12 +4842,12 @@ async def download_bransch_cv_pdf(cv_id: str, request: Request):
     if contact_parts:
         pdf.set_font("Helvetica", "", 10)
         pdf.set_text_color(80, 80, 80)
-        pdf.cell(0, 6, "  |  ".join(contact_parts), new_x="LMARGIN", new_y="NEXT")
+        pdf.cell(0, 6, _safe_pdf_text("  |  ".join(contact_parts)), new_x="LMARGIN", new_y="NEXT")
 
     pdf.ln(2)
     pdf.set_font("Helvetica", "I", 10)
     pdf.set_text_color(60, 130, 200)
-    pdf.cell(0, 6, f"CV — {category}", new_x="LMARGIN", new_y="NEXT")
+    pdf.cell(0, 6, _safe_pdf_text(f"CV - {category}"), new_x="LMARGIN", new_y="NEXT")
 
     pdf.ln(2)
     pdf.set_draw_color(200, 200, 200)
@@ -4862,19 +4866,19 @@ async def download_bransch_cv_pdf(cv_id: str, request: Request):
             clean = line.replace("##", "").replace("**", "").strip()
             pdf.set_font("Helvetica", "B", 12)
             pdf.set_text_color(40, 40, 40)
-            pdf.cell(0, 7, clean, new_x="LMARGIN", new_y="NEXT")
+            pdf.cell(0, 7, _safe_pdf_text(clean), new_x="LMARGIN", new_y="NEXT")
             pdf.set_font("Helvetica", "", 10)
             pdf.set_text_color(40, 40, 40)
         elif line.startswith("- ") or line.startswith("• "):
             bullet_text = line.lstrip("-• ").strip()
             pdf.cell(5)
-            pdf.multi_cell(0, 5, f"• {bullet_text}")
+            pdf.multi_cell(0, 5, _safe_pdf_text(f"- {bullet_text}"))
         else:
-            pdf.multi_cell(0, 5, line)
+            pdf.multi_cell(0, 5, _safe_pdf_text(line))
 
     pdf_bytes = pdf.output()
-    safe_name = name.replace(" ", "_")
-    safe_cat = category.replace(" ", "_").replace("&", "")
+    safe_name = _safe_pdf_text(name).replace(" ", "_")
+    safe_cat = _safe_pdf_text(category).replace(" ", "_").replace("&", "")
     filename = f"CV_{safe_name}_{safe_cat}.pdf"
 
     return Response(
