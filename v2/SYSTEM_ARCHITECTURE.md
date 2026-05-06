@@ -3,6 +3,8 @@
 
 *Senast uppdaterad: 2026-02-18 — Baserad på faktisk DB-state och källkod*
 
+> **⚠️ 2026-05-06**: Appen migrerades från Vercel till Replit. Detta dokument refererar fortfarande till Vercel på flera ställen — dessa ska läsas som "Replit" tills hela arkitekturdokumentet skrivs om. Live-URL: `https://antiapathyjobportalreplit--linneamoritz.replit.app/`
+
 ---
 
 ## Del 1: Grundläggande arkitektur & Modellering

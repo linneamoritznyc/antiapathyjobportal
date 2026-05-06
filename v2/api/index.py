@@ -1404,7 +1404,7 @@ DEFAULT_EXPERIENCE = {
 - Global Marketing, Minerva Project (Sep 2019-Apr 2020): Kundservice via Intercom""",
 
     "tech": """- Webbutveckling: Fullstack-appar med React, Python/FastAPI, PostgreSQL
-- Deployment: Vercel, Supabase, API-integrationer
+- Deployment: Replit, Supabase, API-integrationer
 - Innehållsanalytiker, Google Ads (2018-2019): Teknisk granskning, dataanalys""",
 
     "industry": """- Siggesta Gård: Städning och praktiskt underhållsarbete
@@ -2450,7 +2450,7 @@ async def _upload_bransch_cv_pdf(user_id: str, bransch_id: str, pdf_bytes: bytes
 
 async def generate_all_bransch_cvs(master_cv: Dict, user_id: str) -> List[Dict]:
     """Generate all bransch-CV versions for a user.
-    Runs AI calls in parallel (batches of 4) to stay within Vercel 60s timeout."""
+    Runs AI calls in parallel (batches of 4) so the user doesn't wait sequentially."""
     import asyncio as _asyncio
     generated_cvs = []
     profile_name = (master_cv.get("profile") or {}).get("full_name", "")

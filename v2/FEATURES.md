@@ -713,7 +713,7 @@ Personuppgifter och kontoinställningar.
 | Komponent | Teknik |
 |-----------|--------|
 | Frontend | React + Tailwind CSS (single-page, CDN) |
-| Backend | FastAPI (Python, Vercel serverless, 60s timeout) |
+| Backend | FastAPI (Python, Replit-hostat) |
 | Databas | Supabase PostgreSQL + Storage (3 buckets) |
 | AI Brev | Claude Sonnet 4.5 (`claude-sonnet-4-5-20250929`) → Haiku 4.5 (`claude-haiku-4-5-20251001`) → Gemini 2.0 Flash (triple fallback) |
 | AI CV-analys | Samma triple fallback (Sonnet → Haiku → Gemini) |
@@ -726,8 +726,8 @@ Personuppgifter och kontoinställningar.
 | Jobbkälla | Platsbanken API (Arbetsförmedlingen) + manuell URL-inkling |
 | E-post | Gmail API (användarens egna OAuth) |
 | PDF-generering | fpdf2 (CV:er, aktivitetsrapport) + ReportLab (personliga brev) |
-| Deploy | Vercel Pro |
-| AI Groq | **⚠️ Env var finns** (`GROQ_API_KEY` i Vercel) men **ej integrerad i kod** |
+| Deploy | Replit (migrerat från Vercel Pro 2026-05-06) |
+| AI Groq | **⚠️ Env var finns** (`GROQ_API_KEY` i Replit Secrets) men **ej integrerad i kod** |
 
 ---
 

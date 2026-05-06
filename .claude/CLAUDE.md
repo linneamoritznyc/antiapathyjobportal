@@ -5,45 +5,43 @@ AI-powered job application portal for neurodivergent job seekers in Sweden. Scra
 
 ---
 
-## ⚠️ CRITICAL: REPO STRUCTURE — TWO APPS EXIST, ONLY ONE IS LIVE
-
-This repo is a mess. There are two `frontend.html`, two `api/index.py`, and two `vercel.json`. You WILL edit the wrong file if you're not careful.
+## Repo structure
 
 ```
 antiapathyjobportal/
-├── vercel.json              ← ROOT vercel config (NOT deployed — Vercel root dir = v2/)
-├── api/index.py             ← ROOT backend (NOT deployed — dead code)
-├── frontend.html            ← ROOT frontend (NOT deployed — dead code)
-│
-└── v2/                      ← ✅ THIS IS THE LIVE APP (Vercel root dir = v2/)
-    ├── vercel.json          ← ✅ Active Vercel config
-    ├── frontend.html        ← ✅ THE UI — edit this for all frontend changes
-    └── api/
-        ├── index.py         ← ✅ THE BACKEND — all API endpoints, business logic
-        └── cv_files/        ← PDF CVs for Gmail attachments
+└── v2/                      ← THE LIVE APP
+    ├── frontend.html        ← React + Tailwind single-file UI
+    ├── login.html           ← login / signup page
+    ├── account.html         ← post-Google-login redirect handler
+    ├── api/
+    │   ├── index.py         ← FastAPI backend (all endpoints, business logic)
+    │   └── cv_files/        ← PDF CVs for Gmail attachments
+    ├── supabase_schema.sql  ← Source-of-truth DB schema
+    └── REPLIT_SESSION_*.md  ← Notes from past sessions
 ```
 
-### THE RULE: If you're changing anything — it goes in `v2/`
+### THE RULE: All code changes go in `v2/`
 
-**Frontend/UI changes → `v2/frontend.html`**
+**Frontend/UI changes → `v2/frontend.html`** (or `v2/login.html` / `v2/account.html` for those pages)
 **Backend/API changes → `v2/api/index.py`**
 **DB schema reference → `v2/supabase_schema.sql`**
 
-Everything else in the repo root is legacy/dead. Don't touch it.
+Old root-level `api/`, `frontend.html`, `vercel.json` and `v1/` were cleaned up. Don't recreate them.
 
 ---
 
 ## Deployment pipeline
 
-- **Vercel Pro** plan (maxDuration up to 60s for serverless functions)
-- **No local development** — no terminal, no local CLI. Everything is cloud-only (Vercel + Supabase + Claude Code on the web). Never suggest local terminal commands like `git checkout` or `npm run`.
+- **Hosting: Replit** (migrated from Vercel on 2026-05-06). Live URL: `https://antiapathyjobportalreplit--linneamoritz.replit.app/`
+- **No local development** — no terminal, no local CLI. Everything is cloud-only (Replit + Supabase + Claude Code on the web). Never suggest local terminal commands like `git checkout` or `npm run`.
 - User manages PRs and merges via **GitHub web UI** (github.com). Claude Code pushes branches; user merges via PR.
+- App is started by `start.py` at the repo root.
 
 ```
-GitHub (branch: main, root dir: v2/) → Vercel Pro → serves v2/api/index.py
-                                                      reads v2/frontend.html
-                                                            ↓
-                                                        Supabase (cloud DB)
+GitHub (branch: main) → Replit → runs start.py → serves v2/api/index.py
+                                                  reads v2/frontend.html
+                                                        ↓
+                                                    Supabase (cloud DB)
 ```
 
 How `v2/api/index.py` finds the frontend:
@@ -55,11 +53,7 @@ frontend_path = pathlib.Path(__file__).parent.parent / "frontend.html"
 # result   = v2/frontend.html  ✅
 ```
 
----
-
-## ⚠️ Vercel dashboard navigation
-
-**READ THIS FILE FIRST**: `.claude/vercel-navigation.md` — full guide to Vercel dashboard navigation, settings locations, and common traps. Always consult it before giving Vercel UI instructions.
+No more 60-second function timeout — Replit runs as a long-lived process.
 
 ---
 
@@ -68,27 +62,13 @@ frontend_path = pathlib.Path(__file__).parent.parent / "frontend.html"
 | File | Purpose |
 |------|---------|
 | `v2/frontend.html` | React + Tailwind single-file UI |
-| `v2/api/index.py` | FastAPI backend (Vercel serverless) |
+| `v2/login.html` | Login/signup page (also handles password reset + Google OAuth) |
+| `v2/account.html` | Post-OAuth redirect handler |
+| `v2/api/index.py` | FastAPI backend |
 | `v2/api/cv_files/CV_Linnea_Moritz_*.pdf` | 9 bransch-CVer for Gmail attachments |
 | `v2/supabase_schema.sql` | Source-of-truth DB schema (keep updated) |
-| `v2/vercel.json` | Vercel config (root dir for project = v2/) |
-
----
-
-## Dead files — DO NOT TOUCH
-
-| Path | Why it exists | Status |
-|------|--------------|--------|
-| `api/index.py` | Old v1 backend | Dead — not deployed |
-| `frontend.html` | Old v1 frontend | Dead — not deployed |
-| `vercel.json` (root) | Old v1 config | Ignored — Vercel uses v2/ as root |
-| `v1/` | Abandoned experiments | Ignore completely |
-| `api_server.py` | Old local dev server | Dead |
-| `job_portal_backend.py` | Old business logic | Dead |
-| `api_server_updated.py` | Experiment | Not active |
-| `config.py`, `auth.py`, `rate_limit.py` | Only for api_server_updated | Dead |
-| `Olika CV/` | Old CV duplicates | Dead |
-| `fix_my_backend.py` | One-shot script, already run | Dead |
+| `start.py` | Entry point (used by Replit) |
+| `.replit` | Replit configuration |
 
 ---
 
@@ -104,6 +84,7 @@ Both methods store tokens in localStorage (`auth_token`, `refresh_token`, `user`
 **Login page**: `v2/login.html`
 **Auth endpoints**: `v2/api/index.py` (around line 3700+)
 **Supabase requirement**: Google provider must be enabled in Supabase Dashboard → Authentication → Providers → Google
+**Google OAuth redirect URI** (set in Google Cloud Console + Supabase): `https://antiapathyjobportalreplit--linneamoritz.replit.app/api/gmail/callback`
 
 ---
 
@@ -209,9 +190,9 @@ When you write code that references a table or column:
 
 ---
 
-## Environment Variables (Vercel)
+## Environment Variables (Replit Secrets)
 
-All env vars are set in Vercel Dashboard → Settings → Environment Variables (All Environments).
+All env vars are set in Replit → Tools → Secrets.
 
 | Variable | Purpose | Free tier? |
 |----------|---------|------------|
@@ -224,7 +205,7 @@ All env vars are set in Vercel Dashboard → Settings → Environment Variables 
 | `SUPABASE_SERVICE_ROLE_KEY` | Supabase admin key (server-side only) | — |
 | `NEXT_PUBLIC_SUPABASE_URL` | Supabase URL (client-side) | — |
 | `NEXT_PUBLIC_SUPABASE_ANON_KEY` | Supabase anon key (client-side) | — |
-| `APP_URL` | App base URL for OAuth callbacks | — |
+| `APP_URL` | App base URL for OAuth callbacks (now the Replit URL) | — |
 | `GOOGLE_CLIENT_ID` | Google OAuth client ID (for login) | — |
 | `GOOGLE_CLIENT_SECRET` | Google OAuth client secret (for login) | — |
 
@@ -243,8 +224,8 @@ If Anthropic hits rate/spend limits, Gemini kicks in automatically.
 ## Architecture
 
 ```
-GitHub → Vercel (v2/ as root dir) → FastAPI (v2/api/index.py)
-                                          ↓
+GitHub → Replit (runs start.py) → FastAPI (v2/api/index.py)
+                                        ↓
                               Supabase (auth, jobs, CVs, Gmail tokens)
 ```
 
@@ -256,8 +237,7 @@ Core flow: job scraping → CV matching → cover letter generation → Gmail dr
 
 ## Common mistakes to AVOID
 
-1. **Editing root `frontend.html` or root `api/index.py`** — these are dead. Always edit in `v2/`.
-2. **Building API endpoints to read the DB** — just ask user to run SQL in Supabase dashboard.
-3. **Creating SQL migration files in the repo** — give SQL in chat, update `v2/supabase_schema.sql`.
-4. **Suggesting local terminal commands** — this is a cloud-only app. No local dev, no terminal. Never tell user to run local commands like `git checkout`, `npm install`, etc.
-5. **Over-engineering** — keep it simple. Get basics working first.
+1. **Building API endpoints to read the DB** — just ask user to run SQL in Supabase dashboard.
+2. **Creating SQL migration files in the repo** — give SQL in chat, update `v2/supabase_schema.sql`.
+3. **Suggesting local terminal commands** — this is a cloud-only app. No local dev, no terminal. Never tell user to run local commands like `git checkout`, `npm install`, etc.
+4. **Over-engineering** — keep it simple. Get basics working first.

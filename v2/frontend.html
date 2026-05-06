@@ -3771,7 +3771,7 @@
                     try { data = await res.json(); } catch { data = {}; }
 
                     if (!res.ok) {
-                        alert(data.detail || `Serverfel (${res.status}). Vercel-timeout? Försök igen.`);
+                        alert(data.detail || `Serverfel (${res.status}). Försök igen.`);
                     } else if (data.success) {
                         await fetchBranschCVs();
                         alert(data.message || 'CV genererat!');
