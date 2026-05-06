@@ -1442,10 +1442,13 @@ def detect_job_category(title: str, description: str) -> str:
     return "default"
 
 
-async def check_swedish_with_gpt_sw3(text: str) -> str:
+async def check_swedish_with_gpt_sw3(text: str, max_new_tokens: int = 1500) -> str:
     """
     Post-generation Swedish grammar check using GPT-SW3 via HuggingFace Inference API.
     Returns corrected text, or original text if the check fails/is unavailable.
+
+    `max_new_tokens` defaults to 1500 (cover-letter-sized). Pass a higher value
+    (e.g. 3500) for longer outputs like full CVs to avoid truncation.
     """
     if not HUGGINGFACE_API_KEY or not text:
         return text
@@ -1480,7 +1483,7 @@ Bot:
                 json={
                     "inputs": prompt,
                     "parameters": {
-                        "max_new_tokens": 1500,
+                        "max_new_tokens": max_new_tokens,
                         "temperature": 0.1,
                         "do_sample": True,
                         "return_full_text": False
@@ -2144,37 +2147,37 @@ async def generate_bransch_cv(master_cv: Dict, bransch: Dict) -> str:
     if isinstance(profile, list) and len(profile) > 0:
         profile = profile[0]
 
-    # Format experiences — prioritize relevant ones, then include rest as brief list
+    # Split experiences by relevance to this bransch.
+    # Only jobs *explicitly tagged* with this bransch_id count as primary —
+    # untagged jobs (e.g. restaurant work on a tech CV) go to "Övrig erfarenhet"
+    # so Claude doesn't dilute the primary section with irrelevant history.
     experiences = master_cv.get('experiences', [])
     bransch_id = bransch.get('id', '')
-    relevant_exps = []
+    primary_exps = []
     other_exps = []
     for exp in experiences:
         if isinstance(exp, dict):
-            cats = exp.get('categories', [])
-            if bransch_id in cats or not cats:
-                relevant_exps.append(exp)
+            cats = exp.get('categories', []) or []
+            if bransch_id in cats:
+                primary_exps.append(exp)
             else:
                 other_exps.append(exp)
 
-    experience_text = ""
-    # Full detail for relevant experiences (max 15)
-    for exp in (relevant_exps + other_exps)[:15]:
+    primary_text = ""
+    for exp in primary_exps:
         company = exp.get('company', '')
         title = exp.get('title', '')
         location = exp.get('location', '')
         dates = exp.get('dates', '') or f"{exp.get('start_date', '')} - {exp.get('end_date', 'Nuvarande')}"
         description = exp.get('description', '')
-        experience_text += f"\n{title} - {company} ({location})\n{dates}\n{description}\n"
-    # Brief list for remaining experiences (title + company only)
-    remaining = (relevant_exps + other_exps)[15:]
-    if remaining:
-        experience_text += "\nÖVRIGA ERFARENHETER (kortformat):\n"
-        for exp in remaining:
-            title = exp.get('title', '')
-            company = exp.get('company', '')
-            dates = exp.get('dates', '') or f"{exp.get('start_date', '')} - {exp.get('end_date', '')}"
-            experience_text += f"- {title} @ {company} ({dates})\n"
+        primary_text += f"\n{title} - {company} ({location})\n{dates}\n{description}\n"
+
+    other_text = ""
+    for exp in other_exps:
+        title = exp.get('title', '')
+        company = exp.get('company', '')
+        dates = exp.get('dates', '') or f"{exp.get('start_date', '')} - {exp.get('end_date', '')}"
+        other_text += f"- {title} @ {company} ({dates})\n"
 
     # Format education as text
     education_list = master_cv.get('education', [])
@@ -2237,7 +2240,14 @@ async def generate_bransch_cv(master_cv: Dict, bransch: Dict) -> str:
             if proj.get('description'):
                 projects_text += f": {proj['description']}"
 
-    prompt = f"""Skriv ett komplett CV på svenska för {bransch['name']}-jobb.
+    cv_system_prompt = f"""Du skriver ett CV på svenska för en {bransch['name']}-tjänst.
+
+{SWEDISH_LANGUAGE_RULES}
+
+CV:t måste låta som ett {bransch['name']}-CV — inte ett blandat CV. Primära erfarenheter (de som är taggade med branschen) ska få full uppmärksamhet med konkreta bullet points. Övriga erfarenheter listas kort längst ner under "ÖVRIG ERFARENHET" — de ska aldrig dominera CV:t."""
+
+    prompt = f"""DENNA CV-VERSION ÄR FÖR: {bransch['name']}
+Fokus: {bransch['focus']}
 
 PERSONINFO:
 - Namn: {profile.get('full_name', '')}
@@ -2247,8 +2257,11 @@ PERSONINFO:
 - Språk: {', '.join(profile.get('languages', ['Svenska', 'Engelska'])) if isinstance(profile.get('languages'), list) else 'Svenska, Engelska'}
 - Körkort: {'Ja, B-körkort' if profile.get('drivers_license') else 'Nej'}
 
-ALL ERFARENHET (inkludera ALLT):
-{experience_text or 'Ingen erfarenhet angiven'}
+PRIMÄRA ERFARENHETER (taggade med {bransch['name']} — fyll ut med fulla bullets):
+{primary_text or '(inga jobb är taggade med denna bransch — be användaren att tagga relevanta erfarenheter under Erfarenheter i Master CV)'}
+
+ÖVRIG ERFARENHET (visa BARA som en-radare under separat rubrik längst ner — inga bullet points, inga utfyllnader):
+{other_text or 'Inga övriga erfarenheter'}
 
 ALL UTBILDNING:
 {education_text or 'Ej angivet'}
@@ -2268,33 +2281,32 @@ CERTIFIERINGAR:
 PROJEKT:
 {projects_text or 'Ej angivet'}
 
-DENNA CV-VERSION ÄR FÖR: {bransch['name']}
-Fokus: {bransch['focus']}
-
 INSTRUKTIONER:
-1. Skriv ett KOMPLETT CV - inkludera ALL erfarenhet, ALL utbildning, ALLA färdigheter
-2. Ordna erfarenheterna kronologiskt (senaste först)
-3. För {bransch['name']}-versionen: skriv en kort profil (2-3 meningar) som lyfter erfarenhet relevant för denna bransch
-4. Bullet points för varje jobb ska vara korta och konkreta
-5. Inga emojis
-6. Inkludera relevanta utmärkelser, certifieringar, volontärarbete och projekt
-7. Format:
+1. Skriv en kort PROFIL (2-3 meningar) som lyfter de PRIMÄRA erfarenheterna och visar varför personen passar för {bransch['name']}-jobb. Nämn aldrig restaurang/kassa/städ-erfarenhet i profilen om branschen är något annat.
+2. Lista PRIMÄRA ERFARENHETER kronologiskt (senaste först) med fulla bullet points — 2-4 konkreta punkter per jobb som visar relevant kompetens för {bransch['name']}.
+3. Lista ÖVRIGA ERFARENHETER längst ner under rubriken "ÖVRIG ERFARENHET" som korta en-radare ("Titel @ Företag (Datum)") — inga bullets, ingen utfyllnad. Hoppa över sektionen om listan är tom.
+4. Inkludera utbildning, färdigheter, volontärarbete, utmärkelser, certifieringar och projekt — filtrera aldrig bort dem.
+5. Inga emojis. Inga markdown-symboler (#, **, ```). Bara ren text.
+6. Format:
    NAMN
    Plats | Telefon | E-post
 
    PROFIL
-   [2-3 meningar]
+   [2-3 meningar fokuserade på {bransch['name']}]
 
    ERFARENHET
    [Titel - Företag (Datum)]
    - Punkt 1
    - Punkt 2
 
+   ÖVRIG ERFARENHET
+   - Titel @ Företag (Datum)
+
    UTBILDNING
    [Skola - Examen (Datum)]
 
    IDEELLT ARBETE
-   [Om relevant för branschen]
+   [Om relevant]
 
    UTMÄRKELSER
    [Om relevant]
@@ -2304,10 +2316,6 @@ INSTRUKTIONER:
 
    FÄRDIGHETER
    [Lista]
-
-KRITISKT - Inkludera de mest relevanta erfarenheterna för {bransch['name']}. Inkludera MINST 10 jobb (alla om det är färre). Övriga erfarenheter i kortformat kan listas kort. Filtrera aldrig bort utbildning, certifieringar eller volontärarbete.
-
-{SWEDISH_LANGUAGE_RULES}
 
 Skriv ENDAST CV-texten, inget annat."""
 
@@ -2328,6 +2336,7 @@ Skriv ENDAST CV-texten, inget annat."""
                         json={
                             "model": model_name,
                             "max_tokens": 4000,
+                            "system": cv_system_prompt,
                             "messages": [{"role": "user", "content": prompt}]
                         },
                         timeout=55
@@ -2336,7 +2345,10 @@ Skriv ENDAST CV-texten, inget annat."""
                     if response.status_code == 200:
                         result = response.json()
                         logger.info(f"Bransch CV generation succeeded with model: {model_name}")
-                        return result["content"][0]["text"].strip()
+                        cv_text = result["content"][0]["text"].strip()
+                        # Run GPT-SW3 Swedish grammar pass (non-blocking — returns original on failure).
+                        # Higher token limit because a full CV is much longer than a cover letter.
+                        return await check_swedish_with_gpt_sw3(cv_text, max_new_tokens=3500)
                     else:
                         logger.warning(f"Bransch CV {model_name} failed: {response.status_code} - {response.text[:200]}")
                 except Exception as model_err:
@@ -2344,10 +2356,10 @@ Skriv ENDAST CV-texten, inget annat."""
 
         # If Anthropic failed, try Gemini
         logger.info("Anthropic models failed for bransch CV, trying Gemini")
-        gemini_result = await call_gemini_api(prompt, max_tokens=4000, timeout=55)
+        gemini_result = await call_gemini_api(prompt, max_tokens=4000, timeout=55, system_prompt=cv_system_prompt)
         if gemini_result:
             logger.info("Bransch CV generation succeeded with Gemini fallback")
-            return gemini_result
+            return await check_swedish_with_gpt_sw3(gemini_result, max_new_tokens=3500)
 
     except Exception as e:
         logger.error(f"Error generating CV: {e}")
