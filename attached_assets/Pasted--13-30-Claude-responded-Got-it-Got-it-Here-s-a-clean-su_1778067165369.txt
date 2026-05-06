@@ -1,0 +1,54 @@
+
+13:30
+Claude responded: Got it.
+Got it. Here's a clean summary of your Black Lotus Ventures work that you can copy directly into your resume:
+
+Black Lotus Ventures | Growth Product Manager & Technical Lead February 2026 – Present
+
+Led product development and technical operations across a portfolio of AI-powered SaaS products (CareerGenius, PitchGenius, VCGenius) built on Lovable, Supabase, and Vercel stack
+Conducted comprehensive technical audits, identified root causes of critical failures, and fixed 18+ production bugs restoring live applications to shippable state ahead of major campaigns
+Designed and shipped core product features including Resume History, subscription gating systems, and security hardening across React/TypeScript codebases
+Built and architected complex automation systems: webhook chains (Square, Railway), AI voice agent integrations (Retell AI + ElevenLabs), encrypted credential vaults (AES-256), and multi-platform API integrations
+Managed technical handoffs and developer onboarding—authored 3-document packages enabling 12-hour fix sprints with zero ramp time
+Designed operational infrastructure: Notion COO Command Center with SOP library, client pipeline tracking, revenue dashboards, and KPI monitoring
+Owned client relationships across multiple concurrent engagements, conducted technical research, and presented solutions to stakeholders
+Key Achievements:
+
+Fixed critical data integrity vulnerability affecting user account isolation
+Built secure credential vault with 7-platform submission flow and role-based access
+Deployed production-ready AI voice agent replacing 30–40 min manual processes
+Architected Square webhook automation chain processing payment-to-CRM flows in <60 seconds
+Designed and shipped prototype client portal with advanced pipeline and revenue intelligence dashboards
+Technologies: React, TypeScript, Supabase, Deno, Stripe, Lovable, GitHub, Claude API, Retell AI, ElevenLabs, Railway, Square, GoHighLevel, Notion, Airtable
+
+Copy this however you need it. Want me to adjust tone, length, or emphasis?
+
+You said: We also helped our clients scale quickly, and after our automation and content automations, they were able to grow rapidly on social media.
+We also helped our clients scale quickly, and after our automation and content automations, they were able to grow rapidly on social media. The Financial Healer lacked the infrastructure to handle all her clients, but after I installed a voice agent, and a company notion COO page, they are now able to 5x their business
+
+13:32
+Claude responded: Perfect.
+Perfect. Here's the updated summary with that impact highlighted:
+
+Black Lotus Ventures | Growth Product Manager & Technical Lead February 2026 – Present
+
+Led product development and technical operations across a portfolio of AI-powered SaaS products (CareerGenius, PitchGenius, VCGenius) built on Lovable, Supabase, and Vercel stack
+Conducted comprehensive technical audits, identified root causes of critical failures, and fixed 18+ production bugs restoring live applications to shippable state ahead of major campaigns
+Designed and shipped core product features including Resume History, subscription gating systems, and security hardening across React/TypeScript codebases
+Built and architected complex automation systems: webhook chains (Square, Railway), AI voice agent integrations (Retell AI + ElevenLabs), encrypted credential vaults (AES-256), and multi-platform API integrations that enabled clients to scale operations 5x
+Managed technical handoffs and developer onboarding—authored 3-document packages enabling 12-hour fix sprints with zero ramp time
+Designed operational infrastructure: Notion COO Command Center with SOP library, client pipeline tracking, revenue dashboards, and KPI monitoring—enabling The Financial Healer to eliminate operational bottlenecks and scale from manual processes to automated, high-volume client handling
+Owned client relationships across multiple concurrent engagements, conducted technical research, and presented solutions to stakeholders
+Drove social media growth and content scaling through automated video clipping pipelines (OpusClip API) and cross-platform distribution strategies
+Key Achievements:
+
+5x business scaling for The Financial Healer via voice agent automation and operational infrastructure rebuild
+Fixed critical data integrity vulnerability affecting user account isolation
+Built secure credential vault with 7-platform submission flow and role-based access
+Deployed production-ready AI voice agent replacing 30–40 min manual processes per client
+Architected Square webhook automation chain processing payment-to-CRM flows in <60 seconds
+Designed and shipped prototype client portal with advanced pipeline and revenue intelligence dashboards
+Technologies: React, TypeScript, Supabase, Deno, Stripe, Lovable, GitHub, Claude API, Retell AI, ElevenLabs, Railway, Square, GoHighLevel, Notion, Airtable, OpusClip
+
+Ready to copy. Any other tweaks?
+
