@@ -4,6 +4,32 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Logga in - Platsbanken AI</title>
+    <script async src="https://elu.dev/v1/elu_pk_live_L4T1n6Rnzow8wRJEk9ZFnzUlvl.js"></script>
+    <script>
+        // ELU Analytics: attach the signed-in user's email to their session so product
+        // analytics can attribute behavior to a real person instead of an anonymous
+        // device. Optional — safe to remove if you don't want to share email with
+        // analytics. See https://elu.dev for docs.
+        (function() {
+            window.eluIdentifyCurrentUser = function() {
+                try {
+                    var raw = localStorage.getItem('user');
+                    if (!raw) return;
+                    var u = JSON.parse(raw);
+                    if (u && u.email && typeof window !== 'undefined' && window.elu && window.elu.identify) {
+                        window.elu.identify(u.email, { email: u.email });
+                    }
+                } catch (e) {}
+            };
+            var tries = 0;
+            var iv = setInterval(function() {
+                if ((typeof window !== 'undefined' && window.elu && window.elu.identify) || tries++ > 25) {
+                    clearInterval(iv);
+                    window.eluIdentifyCurrentUser();
+                }
+            }, 200);
+        })();
+    </script>
     <script src="https://cdn.tailwindcss.com"></script>
 </head>
 <body class="bg-gradient-to-br from-indigo-50 to-slate-100 min-h-screen flex items-center justify-center p-4">
@@ -254,6 +280,7 @@
                         || (payload.app_metadata && payload.app_metadata.email);
                     if (email) {
                         localStorage.setItem('user', JSON.stringify({ email: email, id: payload.sub }));
+                        if (typeof window !== 'undefined' && window.eluIdentifyCurrentUser) window.eluIdentifyCurrentUser();
                     }
                 } catch (e) {
                     // JWT decode failed — will fall back to server fetch below
@@ -269,6 +296,7 @@
                                 email: data.user.email,
                                 id: data.user.id
                             }));
+                            if (typeof window !== 'undefined' && window.eluIdentifyCurrentUser) window.eluIdentifyCurrentUser();
                         }
                     }).catch(function() {});
                 }
@@ -575,6 +603,7 @@
                 localStorage.setItem('auth_token', data.access_token);
                 localStorage.setItem('refresh_token', data.refresh_token);
                 localStorage.setItem('user', JSON.stringify(data.user));
+                if (typeof window !== 'undefined' && window.eluIdentifyCurrentUser) window.eluIdentifyCurrentUser();
 
                 showStatus('Inloggad! Omdirigerar...');
                 setTimeout(() => {
@@ -687,6 +716,7 @@
                 if (res.ok) {
                     window._recoveryToken = null;
                     // Clear any stale sessions
+                    if (typeof window !== 'undefined' && window.elu && window.elu.reset) window.elu.reset();
                     localStorage.removeItem('auth_token');
                     localStorage.removeItem('refresh_token');
                     localStorage.removeItem('user');
